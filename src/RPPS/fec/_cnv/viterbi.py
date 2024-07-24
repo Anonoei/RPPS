@@ -1,17 +1,77 @@
 from ..convolutional import Convolutional
+from helpers.encoding import Encoding
+from helpers.bitarray import bitarray
 
 import numpy as np
 
 class Viterbi(Convolutional):
-    delta = np.zeros((num_states, num_observations))  # Viterbi path metrics matrix initialization
-    pointer = np.zeros(delta.shape, dtype=int)        # Backtrack pointers for reconstructing the best path later
+    def encode(self, data: Encoding):
+        """
+        SOVA (Soft-Output Viterbi Algorithm) encoding
+        :param data: stream of arbitrary data
+        :param rate: encoding rate (e.g. 7/8)
+        :return: encoded data and trellis diagram
+        """
+        # Calculate the number of systematic bits and redundant bits
+        N_systematic = int(self._rate * len(data.bitarray))
+        N_redundant = len(data.bitarray) - N_systematic
 
-    for t in range(1, num_observations):
-       delta[:,t] = (delta[:,t-1].T * transition_matrix).T + emission[obs[t], :]*np.log2(fcr)  # Calculate new metrics based on transitions and emissions for code rate ratios like 7/8 or 3/4
-       pointer[:, t] = np.argmax(delta[:, t])          # Record the state with highest metric value as backpointers
+        # Initialize the trellis diagram
+        T = np.zeros((2, 2), dtype=int)
+        T[0, :] = [1, 0]  # initial state
 
-    end_state = np.argmax(delta[:, num_observations - 1])     # Find the state with maximum probability at last time step (decoded bits)
-    viterbi_path = [end_state]                                # Start path reconstruction from this state
-    for t in range(num_observations-1, 0, -1):               # Trace back to find previous states through recorded pointers
-        end_state = pointer[end_state,t+1]
-        viterbi_path.insert(0, int(end_state))                # Insert found state at the beginning of path list for correct order reconstruction
+        # Encode the data
+        encoded_data = bitarray()
+        for i in range(len(data.bitarray)):
+            if i < N_systematic:
+                x = data.bitarray[i]
+            else:
+                x = np.random.randint(2)  # add a random bit for redundancy
+            y = T[:, -1].copy()  # get the previous state
+            T[:, -1] = [x, x ^ y[0]]  # update the trellis diagram
+            encoded_data.append(int(y[0]))
+            encoded_data.append(int(y[1]))
+            #encoded_data.extend([int(y[0]), int(y[1])])
+
+        return encoded_data, T
+
+    def decode(self, encoded_data):
+        """
+        SOVA (Soft-Output Viterbi Algorithm) decoding
+        :param encoded_data: encoded data
+        :param rate: encoding rate (e.g. 7/8)
+        :return: decoded data
+        """
+        # Calculate the number of systematic bits and redundant bits
+        N_systematic = int(self._rate * len(encoded_data.bitarray))
+        N_redundant = len(encoded_data.bitarray) - N_systematic
+
+        # Initialize the trellis diagram
+        T = np.zeros((2, 2), dtype=int)
+        T[0, :] = [1, 0]  # initial state
+
+        # Define the transition probabilities (trellis diagram)
+        P = np.array([[1/2, 1/2], [1/2, 1/2]])  # for a rate-1/2 convolutional code
+        P = np.kron(P, np.ones((2, 2)))  # repeat the transition probabilities
+
+
+        # Initialize the likelihoods and state sequences
+        L = np.zeros((len(encoded_data.bitarray), 2))  # likelihoods
+        S = np.zeros(len(encoded_data.bitarray), dtype=int)  # state sequence
+
+        # Iterate over the codeword
+        for i in range(len(encoded_data.bitarray)):
+            # Calculate the likelihoods for each possible state
+            #L[i, :] = P[T[:, -1].copy(), :] * (encoded_data.bitarray[i] == T[-1, :])
+            L[i, :] = P[:, S[i]] * (encoded_data.bitarray[i] == T[0, :])
+
+            # Update the state sequence and trellis diagram
+            S[i] = np.argmax(L[i])
+            T[:, -1] = T[S[i], :]  # update the trellis diagram
+
+        # Extract the decoded data from the state sequence
+        decoded_data = bitarray()
+        for i in range(N_systematic):
+            decoded_data.append(S[N_systematic + i])
+
+        return decoded_data

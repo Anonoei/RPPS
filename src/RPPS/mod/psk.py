@@ -1,6 +1,7 @@
 from .mod import Modulation, np
 
 from meta import Meta
+from helpers.encoding import Encoding
 from .constellation import Constellation
 
 from pyboiler.logger import Logger, Level
@@ -19,7 +20,7 @@ class PSK(Modulation):
 
         return data, meta
 
-    def generate(self, data: bytes, meta = Meta()):
+    def generate(self, data: Encoding, meta = Meta()):
         symbols = self.constellation.encode(data, meta)
 
         meta.mod = type(self).__name__

@@ -10,13 +10,19 @@ class Constellation:
     __slots__ = ("log", "_points", "_mapping", "_bps")
 
     def __init__(self, points, map = None, log=Logger().Child("Modulation")):
-        self.log = log.Child("Constellation")
+        self.log = log.Child("Constellation", Level.WARN)
         self._points = np.array(points)
         if map is None:
             self._mapping = np.array(list(range(0, len(points), 1)))
         else:
             self._mapping = np.array(map)
         self._bps = len(self.points) // 2 # Bits per symbol
+
+    def __str__(self) -> str:
+        return f"Points: {self._points}, Map: {self._mapping}"
+
+    def __repr__(self) -> str:
+        return f"<Constellation: {self._bps}>"
 
     @property
     def points(self):
@@ -40,7 +46,7 @@ class Constellation:
         return self._bps
 
 
-    def encode(self, data, meta: Meta, noise: bool = True):
+    def encode(self, data: Encoding, meta: Meta, noise: bool = True):
         indexes = self.index(data, meta)
         points = self.map(indexes, meta)
         symbols = self.to_symbols(points, meta, noise=noise)
@@ -57,24 +63,24 @@ class Constellation:
     #  Encoding
     ##############################
 
-    def index(self, data, meta):
-        data = Encoding.from_bytes(data)
+    def index(self, data: Encoding, meta):
         self.log.trace(f"Data is {data}")
-        self.log.trace(f"Data hex is {data.hex}")
-        self.log.trace(f"Data bits are {data.bin}")
+        self.log.trace(f"Data bitarray is {data.bitarray}")
 
         padding = len(data.bin) % self._bps
         if not padding == 0:
             self.log.trace(f"Padding by {padding}")
-            data.bin = data.bin + ("0" * (self._bps - padding))
-        num_symbols = len(data.bin) // self._bps
+            for _ in range(0, (self._bps - padding)):
+                data.bitarray.append(0)
+        num_symbols = len(data.bitarray) // self._bps
 
         self.log.trace(f"Data requires {num_symbols} indexes to encode")
 
-        indexes = []
-        for i in range(0, len(data.bin), self._bps):
-            bit_int = int(data.bin[i:i+self._bps], 2)
-            indexes.append(int(bit_int))
+        indexes = np.split(data.bitarray.arr, num_symbols)
+        indexes = [int(f"{data[0]}{data[1]}", 2) for data in indexes]
+        #for i in range(0, len(data.bin), self._bps):
+        #    bit_int = int(data.bin[i:i+self._bps], 2)
+        #    indexes.append(int(bit_int))
 
         self.log.trace(f"Indexes are {indexes}")
         return indexes
@@ -104,19 +110,27 @@ class Constellation:
     #  Decoding
     ##############################
 
-    def from_symbols(self, symbols, meta):
+    def from_symbols(self, symbols, meta, clean: bool=True):
         #self.log.trace(f"Symbols are:\n{symbols}")
-        syms = []
-        for symbol in symbols: # Clean up the symbols
-            diff = np.abs(self.points - symbol)
-            index = np.argmin(diff)
-            closest = self.points[index]
-            syms.append(closest)
-        syms = np.array(syms)
-        self.log.trace(f"Symbols are:\n{syms}")
         points = []
-        for symbol in syms:
-            points.append(int(np.where(self.points == symbol)[0][0]))
+        if clean:
+            syms = []
+            for symbol in symbols: # Clean up the symbols
+                diff = np.abs(self.points - symbol)
+                index = np.argmin(diff)
+                closest = self.points[index]
+                syms.append(closest)
+            syms = np.array(syms)
+            self.log.trace(f"Symbols are:\n{syms}")
+
+            for symbol in syms:
+                points.append(int(np.where(self.points == symbol)[0][0]))
+        else:
+            self.log.trace(f"Symbols are:\n{symbols}")
+            for symbol in symbols: # Clean up the symbols
+                diff = np.abs(self.points - symbol)
+                index = np.argmin(diff)
+                points.append(int(index))
         self.log.trace(f"Points are {points}")
         return points
 
@@ -128,7 +142,6 @@ class Constellation:
         return indexes
 
     def unindex(self, indexes, meta):
-
         bits = ""
         for i in range(0, len(indexes), 1):
             cur_bits = bin(indexes[i])[2:]

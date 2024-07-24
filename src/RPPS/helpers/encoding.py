@@ -1,3 +1,5 @@
+from .bitarray import bitarray
+
 class Encoding:
     __slots__ = ("cache", "length")
 
@@ -7,12 +9,12 @@ class Encoding:
             "hex": None,
             "bytes": None,
             "int": None,
-            "str": None,
+            "bitarray": None,
         }
         self.length = None
 
     def __str__(self):
-        return f"{self.hex}"
+        return f"0x{self.hex}"
 
     def __repr__(self):
         return f"<Encoded data>"
@@ -20,7 +22,8 @@ class Encoding:
     @property
     def bin(self):
         if self.cache["bin"] is None:
-            self.cache["bin"] = Encoding._pad(bin(self.cache["int"])[2:], 8)
+            #self.cache["bin"] = Encoding._pad(bin(self.cache["int"])[2:], 8)
+            self.cache["bin"] = "".join([item for item in self.bitarray.astype(str)])
         return self.cache["bin"]
 
     @bin.setter
@@ -52,6 +55,12 @@ class Encoding:
     @property
     def int(self):
         return self.cache["int"]
+
+    @property
+    def bitarray(self):
+        if self.cache["bitarray"] is None:
+            self.cache["bitarray"] = bitarray.from_encoding(self)
+        return self.cache["bitarray"]
 
     @staticmethod
     def from_bin(binary, length = None):
