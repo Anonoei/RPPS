@@ -1,11 +1,11 @@
 from ..convolutional import Convolutional
-from helpers.encoding import Encoding
+from helpers.stream import Stream
 from helpers.bitarray import bitarray
 
 import numpy as np
 
 class Viterbi(Convolutional):
-    def encode(self, data: Encoding):
+    def encode(self, data: Stream):
         """
         SOVA (Soft-Output Viterbi Algorithm) encoding
         :param data: stream of arbitrary data

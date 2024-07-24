@@ -12,52 +12,31 @@ class RPPS:
 
 def main():
     import mod
-    import fec
+    import coding
 
-    from helpers.encoding import Encoding
+    from helpers.stream import Stream
     from viz import show, DrawConstellation
 
-    #pr = cProfile.Profile()
-    #pr.enable()
-
-    enc = Encoding.from_bytes(b"""
-        Hello world! This is a much longer message containing way more bytes for this to process so I can test how well it performs
-        Hello world! This is a much longer message containing way more bytes for this to process so I can test how well it performs
-        Hello world! This is a much longer message containing way more bytes for this to process so I can test how well it performs
-        Hello world! This is a much longer message containing way more bytes for this to process so I can test how well it performs
-        Hello world! This is a much longer message containing way more bytes for this to process so I can test how well it performs
-        Hello world! This is a much longer message containing way more bytes for this to process so I can test how well it performs
-        Hello world! This is a much longer message containing way more bytes for this to process so I can test how well it performs
-        Hello world! This is a much longer message containing way more bytes for this to process so I can test how well it performs
-        Hello world! This is a much longer message containing way more bytes for this to process so I can test how well it performs
-        Hello world! This is a much longer message containing way more bytes for this to process so I can test how well it performs
-        """
-    )
-    #print(f"Raw: {enc.bitarray}")
-
-    # Add FEC
-    #vit = fec.Viterbi(3, 4)
-    #encoded, trellis = vit.encode(enc)
-    #print(f"Encoded: {encoded}")
-    #print(f"Trellis: {trellis}")
-    #enc = Encoding.from_bytes(encoded.to_bytes())
-
-    length = len(enc.bytes)
-    qpsk = mod.QPSK()
+    pr = cProfile.Profile()
+    pr.enable()
 
 
-    print(f"Coding {length} bytes each itteration")
+    ecc = coding.Repetition(3, 4)
+    qpsk = mod.QPSK(1)
 
     time_start = time.perf_counter()
-    ittrs = 20
+    ittrs = 100
     for _ in range(ittrs):
         # Encode data
         #print(f"Encoding!")
-        r, meta = qpsk.generate(enc)
-        #print(f"Encoded {len(r)} symbols: \'{enc.bytes}\'")
+        enc = Stream.from_bytes(b"""Hello world!""")
+        encoded = ecc.encode(enc)
+        enc = Stream.from_bytes(encoded.to_bytes())
+        r, meta = qpsk.modulate(enc)
+        #print(f"Modulated {len(r)} symbols: \'{enc.bytes}\'")
         #DrawConstellation(r, meta)
         #show()
-        #meta.serialize(r)
+        meta.serialize(r)
     time_dur = time.perf_counter() - time_start
     print(f"Encode x{ittrs} took {time_dur:.2f}s, avg: {time_dur/ittrs:.2f}")
 
@@ -65,18 +44,18 @@ def main():
     for _ in range(ittrs):
         # Decode data
         #print(f"Decoding!")
-        data, meta = qpsk.process("qpsk.complex64.rpps.iq")
-        #print(f"Decoded {len(r)} symbols: \'{data.bytes}\'")
+        data, meta = qpsk.demodulate("qpsk.complex64.rpps.iq")
+        #print(f"Demodulated {len(r)} symbols: \'{data.bytes}\'")
 
-        #decoded = vit.decode(data)
-        #print(f"Decoded: {decoded}")
+        decoded = ecc.decode(data.bitarray)
+        #print(f"Decoded: {decoded.to_bytes()}")
         #DrawConstellation(r, meta)
         #show()
     time_dur = time.perf_counter() - time_start
     print(f"Decode x{ittrs} took {time_dur:.2f}s, avg: {time_dur/ittrs:.2f}")
-    #pr.disable()
-    #ps = pstats.Stats(pr).sort_stats(pstats.SortKey.CUMULATIVE)
-    #ps.print_stats()
+    pr.disable()
+    ps = pstats.Stats(pr).sort_stats(pstats.SortKey.CUMULATIVE)
+    ps.print_stats()
 
 if __name__ == "__main__":
     main()

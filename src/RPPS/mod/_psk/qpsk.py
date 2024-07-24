@@ -1,15 +1,31 @@
-from ..psk import PSK, Constellation, Logger, np
+from ..psk import PSK
 
-Logger().Modulation.PSK.Child("QPSK")
+from mod.constellation import Mapping, Maps, Points
 
 class QPSK(PSK):
-    constellation = Constellation(
+    points = Points(
         [
-            .7 -.7j, -.7 - .7j,
+            .7 - .7j, -.7 - .7j,
             .7 + .7j, -.7 + .7j
-        ],
+        ]
+    )
+    maps = Maps(
         [
-            0, 2,
-            1, 3,
+            Mapping([
+                0, 1,
+                2, 3,
+            ]),
+            Mapping([
+                0, 2,
+                1, 3,
+            ]),
+            Mapping([
+                3, 1,
+                2, 0,
+            ]),
+            Mapping([
+                3, 2,
+                1, 0,
+            ]),
         ]
     )

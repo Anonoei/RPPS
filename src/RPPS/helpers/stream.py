@@ -1,6 +1,6 @@
 from .bitarray import bitarray
 
-class Encoding:
+class Stream:
     __slots__ = ("cache", "length")
 
     def __init__(self):
@@ -33,7 +33,7 @@ class Encoding:
     @property
     def hex(self):
         if self.cache["hex"] is None:
-            self.cache["hex"] = Encoding._pad(hex(self.cache["int"])[2:], 2)
+            self.cache["hex"] = Stream._pad(hex(self.cache["int"])[2:], 2)
         return self.cache["hex"]
 
     @hex.setter
@@ -64,23 +64,23 @@ class Encoding:
 
     @staticmethod
     def from_bin(binary, length = None):
-        enc = Encoding()
-        enc.cache["bin"] = Encoding._pad(binary, 8)
+        enc = Stream()
+        enc.cache["bin"] = Stream._pad(binary, 8)
         enc.cache["int"] = int(binary, 2)
         enc.length = length
         return enc
 
     @classmethod
     def from_hex(hexadecimal, length = None):
-        enc = Encoding()
-        enc.cache["hex"] = Encoding._pad(hexadecimal, 2)
+        enc = Stream()
+        enc.cache["hex"] = Stream._pad(hexadecimal, 2)
         enc.cache["int"] = int(hexadecimal, 16)
         enc.length = length
         return enc
 
     @staticmethod
     def from_bytes(byte, length = None):
-        enc = Encoding()
+        enc = Stream()
         enc.cache["bytes"] = byte
         enc.cache["int"] = int.from_bytes(byte)
         enc.length = length
@@ -88,7 +88,7 @@ class Encoding:
 
     @staticmethod
     def from_int(int, length = None):
-        enc = Encoding()
+        enc = Stream()
         enc.cache["int"] = int
         enc.length = length
         return enc

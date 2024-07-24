@@ -1,28 +1,102 @@
+import math
 import numpy as np
 
-import helpers.binary as binh
-from helpers.encoding import Encoding
+from helpers.stream import Stream
 from meta import Meta
 
 from pyboiler.logger import Logger, Level
 
+
+class Mapping:
+    __slots__ = ("arr")
+
+    def __init__(self, map=None):
+        if isinstance(map, int):
+            map = np.array([0] * map)
+        elif not isinstance(map, np.ndarray):
+            map = np.array(map)
+        elif map is None:
+            map = np.array([])
+        self.arr = map
+
+    @staticmethod
+    def new(map):
+        return Mapping(map)
+
+    @staticmethod
+    def empty(length: int):
+        return Mapping(length)
+
+    def __len__(self):
+        return len(self.arr)
+
+    def __str__(self):
+        return str(self.arr)
+
+    def __getitem__(self, item):
+        return self.arr[item]
+
+    def __setitem__(self, item, val):
+        self.arr[item] = val
+
+
+class Maps:
+    __slots__ = ("maps")
+
+    def __init__(self, maps):
+        self.maps = maps
+
+    def __len__(self):
+        return len(self.maps)
+
+    def __getitem__(self, item):
+        return self.maps[item]
+
+    def __setitem__(self, item, val):
+        self.maps[item] = val
+
+class Points:
+    __slots__ = ("arr")
+
+    def __init__(self, points):
+        self.arr = np.array(points)
+
+    def __len__(self):
+        return len(self.arr)
+
+    def __str__(self):
+        return str(self.arr)
+
+    def __getitem__(self, item):
+        return self.arr[item]
+
+    def __setitem__(self, item, val):
+        self.arr[item] = val
+
+
 class Constellation:
     __slots__ = ("log", "_points", "_mapping", "_bps")
 
-    def __init__(self, points, map = None, log=Logger().Child("Modulation")):
+    def __init__(self, points: Points, mapping = None, log=Logger().Child("Modulation")):
         self.log = log.Child("Constellation", Level.WARN)
-        self._points = np.array(points)
-        if map is None:
-            self._mapping = np.array(list(range(0, len(points), 1)))
-        else:
-            self._mapping = np.array(map)
-        self._bps = len(self.points) // 2 # Bits per symbol
+        if not isinstance(points, Points):
+            points = Points(points)
+        self._points = points
+
+        if mapping is None:
+            mapping = Mapping()
+        self._mapping = mapping
+
+        self._bps = int(math.log2(len(self.points))) # Bits per symbol
 
     def __str__(self) -> str:
         return f"Points: {self._points}, Map: {self._mapping}"
 
     def __repr__(self) -> str:
         return f"<Constellation: {self._bps}>"
+
+    def __len__(self) -> int:
+        return len(self._points)
 
     @property
     def points(self):
@@ -46,13 +120,13 @@ class Constellation:
         return self._bps
 
 
-    def encode(self, data: Encoding, meta: Meta, noise: bool = True):
+    def modulate(self, data: Stream, meta: Meta, noise: bool = True):
         indexes = self.index(data, meta)
         points = self.map(indexes, meta)
         symbols = self.to_symbols(points, meta, noise=noise)
         return symbols
 
-    def decode(self, symbols, meta: Meta):
+    def demodulate(self, symbols, meta: Meta):
         points = self.from_symbols(symbols, meta)
         indexes = self.unmap(points, meta)
         data = self.unindex(indexes, meta)
@@ -60,10 +134,10 @@ class Constellation:
 
 
     ##############################
-    #  Encoding
+    #  Modulate
     ##############################
 
-    def index(self, data: Encoding, meta):
+    def index(self, data: Stream, meta):
         self.log.trace(f"Data is {data}")
         self.log.trace(f"Data bitarray is {data.bitarray}")
 
@@ -86,9 +160,14 @@ class Constellation:
         return indexes
 
     def map(self, indexes, meta):
+        self.log.trace(f"Using mapping: {self.mapping}")
         points = []
         for idx in indexes:
-            points.append(int(np.where(self.mapping == idx)[0][0]))
+            points.append(
+                int(
+                    np.where(self.mapping.arr == idx)[0][0]
+                )
+            )
         self.log.trace(f"Points are {points}")
         return points
 
@@ -107,7 +186,7 @@ class Constellation:
         return symbols
 
     ##############################
-    #  Decoding
+    #  Demodulate
     ##############################
 
     def from_symbols(self, symbols, meta, clean: bool=True):
@@ -135,6 +214,7 @@ class Constellation:
         return points
 
     def unmap(self, points, meta):
+        self.log.trace(f"Using mapping: {self.mapping}")
         indexes = []
         for pnt in points:
             indexes.append(int(self.mapping[pnt]))
@@ -149,7 +229,7 @@ class Constellation:
                 cur_bits = "0" + cur_bits
             bits += cur_bits
 
-        data = Encoding.from_bin(bits)
+        data = Stream.from_bin(bits)
 
         self.log.trace(f"Data bits are {data.bin}")
 
