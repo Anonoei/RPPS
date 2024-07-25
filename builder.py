@@ -67,6 +67,8 @@ def main():
                 deps = line
                 break
         # deps = '{"deps":' + "" + "}"
+        if deps is None:
+            raise Exception("deps is None")
         deps = json.loads(deps[deps.index("[") - 1 : deps.index("]") + 1])
         for dep in deps:
             try:
@@ -97,7 +99,7 @@ def main():
         run("pytest")
 
     def cmd_format(args):
-        run("black src/RPPS")
+        run("black src/rpps")
 
     def cmd_version(args):
         bump = "bumpver update --allow-dirty "
@@ -112,10 +114,10 @@ def main():
         run(bump)
 
     def cmd_docs(args):
-        run(f"{sys.executable} -m pdoc -o docs --html src/RPPS --force")
+        run(f"{sys.executable} -m pdoc -o docs --html src/rpps --force")
         docs = PATH_ROOT / "docs"
         if docs.exists():
-            mv_docs = docs / "RPPS"
+            mv_docs = docs / "rpps"
             if mv_docs.exists():
                 temp = PATH_ROOT / ".BUILDpy_TEMP"
                 shutil.move(mv_docs, temp)

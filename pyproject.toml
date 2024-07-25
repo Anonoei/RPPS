@@ -3,16 +3,16 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "RPPS_anonoei"
-version = "0.3.2"
-description = "Various generic python helpers so I don't keep rewriting them"
+name = "rpps"
+version = "0.0.1"
+description = "RF Parameter Processor Suite"
 dependencies = []
 requires-python = ">=3.6"
 authors = [
     {name = "Anonoei", email="dev@anonoei.com"}
 ]
 readme = "README.md"
-keywords = ["anonoei", "boilerplate"]
+keywords = ["anonoei", "dsp", "sdr"]
 classifiers = [
     "Development Status :: 4 - Beta",
 
@@ -35,7 +35,7 @@ Source = "https://github.com/anonoei/RPPS"
 dev = ["twine", "build", "black", "bumpver", "pytest", "pdoc3"]
 
 [tool.bumpver]
-current_version = "0.3.2"
+current_version = "0.0.1"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message = "bump version {old_version} -> {new_version}"
 tag_message = "{new_version}"

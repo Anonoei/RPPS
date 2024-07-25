@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
+<meta name="generator" content="pdoc3 0.11.1">
+<title>rpps.mod.constellation API documentation</title>
+<meta name="description" content="">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:1.5em;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:2em 0 .50em 0}h3{font-size:1.4em;margin:1.6em 0 .7em 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .2s ease-in-out}a:visited{color:#503}a:hover{color:#b62}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900;font-weight:bold}pre code{font-size:.8em;line-height:1.4em;padding:1em;display:block}code{background:#f3f3f3;font-family:"DejaVu Sans Mono",monospace;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em 1em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul ul{padding-left:1em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha512-D9gUyxqja7hBtkWpPWGt9wfbfaMGVt9gnyCvYa+jojwwPHLCzUm5i8rpk7vD7wNee9bA35eYIjobYPaQuKS1MQ==" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => {
+hljs.configure({languages: ['bash', 'css', 'diff', 'graphql', 'ini', 'javascript', 'json', 'plaintext', 'python', 'python-repl', 'rust', 'shell', 'sql', 'typescript', 'xml', 'yaml']});
+hljs.highlightAll();
+})</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>rpps.mod.constellation</code></h1>
+</header>
+<section id="section-intro">
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="rpps.mod.constellation.Constellation"><code class="flex name class">
+<span>class <span class="ident">Constellation</span></span>
+<span>(</span><span>points: <a title="rpps.mod.constellation.Points" href="#rpps.mod.constellation.Points">Points</a>, mapping=None, log=&lt;pyboiler.logger._Logger object&gt;)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Constellation:
+    __slots__ = (&#34;log&#34;, &#34;_points&#34;, &#34;_mapping&#34;, &#34;_bps&#34;)
+
+    def __init__(self, points: Points, mapping = None, log=Logger().Child(&#34;Modulation&#34;)):
+        self.log = log.Child(&#34;Constellation&#34;, Level.WARN)
+        if not isinstance(points, Points):
+            points = Points(points)
+        self._points = points
+
+        if mapping is None:
+            mapping = Mapping()
+        self._mapping = mapping
+
+        self._bps = int(math.log2(len(self.points))) # Bits per symbol
+
+    def __str__(self) -&gt; str:
+        return f&#34;Points: {self._points}, Map: {self._mapping}&#34;
+
+    def __repr__(self) -&gt; str:
+        return f&#34;&lt;Constellation: {self._bps}&gt;&#34;
+
+    def __len__(self) -&gt; int:
+        return len(self._points)
+
+    @property
+    def points(self):
+        return self._points
+
+    @points.setter
+    def points(self, points):
+        self._points = np.array(points)
+        self._bps = len(self.points) // 2
+
+    @property
+    def mapping(self):
+        return self._mapping
+
+    @mapping.setter
+    def mapping(self, map):
+        self._mapping = np.array(map)
+
+    @property
+    def bits_per_symbol(self):
+        return self._bps
+
+
+    def modulate(self, data: Stream, meta: Meta, noise: bool = True):
+        indexes = self.index(data, meta)
+        points = self.map(indexes, meta)
+        symbols = self.to_symbols(points, meta, noise=noise)
+        return symbols
+
+    def demodulate(self, symbols, meta: Meta):
+        points = self.from_symbols(symbols, meta)
+        indexes = self.unmap(points, meta)
+        data = self.unindex(indexes, meta)
+        return data
+
+
+    ##############################
+    #  Modulate
+    ##############################
+
+    def index(self, data: Stream, meta):
+        self.log.trace(f&#34;Data is {data}&#34;)
+        self.log.trace(f&#34;Data bitarray is {data.bitarray}&#34;)
+
+        padding = len(data.bin) % self._bps
+        if not padding == 0:
+            self.log.trace(f&#34;Padding by {padding}&#34;)
+            for _ in range(0, (self._bps - padding)):
+                data.bitarray.append(0)
+        num_symbols = len(data.bitarray) // self._bps
+
+        self.log.trace(f&#34;Data requires {num_symbols} indexes to encode&#34;)
+
+        indexes = np.split(data.bitarray.arr, num_symbols)
+        indexes = [int(f&#34;{data[0]}{data[1]}&#34;, 2) for data in indexes]
+        #for i in range(0, len(data.bin), self._bps):
+        #    bit_int = int(data.bin[i:i+self._bps], 2)
+        #    indexes.append(int(bit_int))
+
+        self.log.trace(f&#34;Indexes are {indexes}&#34;)
+        return indexes
+
+    def map(self, indexes, meta):
+        self.log.trace(f&#34;Using mapping: {self.mapping}&#34;)
+        points = []
+        for idx in indexes:
+            points.append(
+                int(
+                    np.where(self.mapping.arr == idx)[0][0]
+                )
+            )
+        self.log.trace(f&#34;Points are {points}&#34;)
+        return points
+
+    def to_symbols(self, points, meta, noise: bool = True):
+        points = np.array(points)
+        symbols = self.points[points]
+        self.log.trace(f&#34;Symbols are:\n{symbols}&#34;)
+        # Add noise
+        if noise:
+            n = (np.random.randn(len(symbols)) + 1j*np.random.randn(len(symbols)))/np.sqrt(2) # AWGN with unity power
+            symbols = symbols + n * np.sqrt(0.01) # noise power of 0.01
+
+        symbols = symbols.astype(np.complex64)
+        meta.fmt = type(symbols[0]).__name__
+        self.log.trace(f&#34;Symbols are: {symbols}&#34;)
+        return symbols
+
+    ##############################
+    #  Demodulate
+    ##############################
+
+    def from_symbols(self, symbols, meta, clean: bool=True):
+        #self.log.trace(f&#34;Symbols are:\n{symbols}&#34;)
+        points = []
+        if clean:
+            syms = []
+            for symbol in symbols: # Clean up the symbols
+                diff = np.abs(self.points - symbol)
+                index = np.argmin(diff)
+                closest = self.points[index]
+                syms.append(closest)
+            syms = np.array(syms)
+            self.log.trace(f&#34;Symbols are:\n{syms}&#34;)
+
+            for symbol in syms:
+                points.append(int(np.where(self.points == symbol)[0][0]))
+        else:
+            self.log.trace(f&#34;Symbols are:\n{symbols}&#34;)
+            for symbol in symbols: # Clean up the symbols
+                diff = np.abs(self.points - symbol)
+                index = np.argmin(diff)
+                points.append(int(index))
+        self.log.trace(f&#34;Points are {points}&#34;)
+        return points
+
+    def unmap(self, points, meta):
+        self.log.trace(f&#34;Using mapping: {self.mapping}&#34;)
+        indexes = []
+        for pnt in points:
+            indexes.append(int(self.mapping[pnt]))
+        self.log.trace(f&#34;Indexes are {indexes}&#34;)
+        return indexes
+
+    def unindex(self, indexes, meta):
+        bits = &#34;&#34;
+        for i in range(0, len(indexes), 1):
+            cur_bits = bin(indexes[i])[2:]
+            if len(cur_bits) == 1:
+                cur_bits = &#34;0&#34; + cur_bits
+            bits += cur_bits
+
+        data = Stream.from_bin(bits)
+
+        self.log.trace(f&#34;Data bits are {data.bin}&#34;)
+
+        self.log.trace(f&#34;Data hex is {data.hex}&#34;)
+        self.log.trace(f&#34;Data is {data.bytes}&#34;)
+
+        return data</code></pre>
+</details>
+<h3>Instance variables</h3>
+<dl>
+<dt id="rpps.mod.constellation.Constellation.bits_per_symbol"><code class="name">prop <span class="ident">bits_per_symbol</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def bits_per_symbol(self):
+    return self._bps</code></pre>
+</details>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.log"><code class="name">var <span class="ident">log</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.mapping"><code class="name">prop <span class="ident">mapping</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def mapping(self):
+    return self._mapping</code></pre>
+</details>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.points"><code class="name">prop <span class="ident">points</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def points(self):
+    return self._points</code></pre>
+</details>
+</dd>
+</dl>
+<h3>Methods</h3>
+<dl>
+<dt id="rpps.mod.constellation.Constellation.demodulate"><code class="name flex">
+<span>def <span class="ident">demodulate</span></span>(<span>self, symbols, meta: <a title="rpps.meta.Meta" href="../meta.html#rpps.meta.Meta">Meta</a>)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.from_symbols"><code class="name flex">
+<span>def <span class="ident">from_symbols</span></span>(<span>self, symbols, meta, clean: bool = True)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.index"><code class="name flex">
+<span>def <span class="ident">index</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="../helpers/stream.html#rpps.helpers.stream.Stream">Stream</a>, meta)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.map"><code class="name flex">
+<span>def <span class="ident">map</span></span>(<span>self, indexes, meta)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.modulate"><code class="name flex">
+<span>def <span class="ident">modulate</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="../helpers/stream.html#rpps.helpers.stream.Stream">Stream</a>, meta: <a title="rpps.meta.Meta" href="../meta.html#rpps.meta.Meta">Meta</a>, noise: bool = True)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.to_symbols"><code class="name flex">
+<span>def <span class="ident">to_symbols</span></span>(<span>self, points, meta, noise: bool = True)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.unindex"><code class="name flex">
+<span>def <span class="ident">unindex</span></span>(<span>self, indexes, meta)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.unmap"><code class="name flex">
+<span>def <span class="ident">unmap</span></span>(<span>self, points, meta)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+<dt id="rpps.mod.constellation.Mapping"><code class="flex name class">
+<span>class <span class="ident">Mapping</span></span>
+<span>(</span><span>map=None)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Mapping:
+    __slots__ = (&#34;arr&#34;)
+
+    def __init__(self, map=None):
+        if isinstance(map, int):
+            map = np.array([0] * map)
+        elif not isinstance(map, np.ndarray):
+            map = np.array(map)
+        elif map is None:
+            map = np.array([])
+        self.arr = map
+
+    @staticmethod
+    def new(map):
+        return Mapping(map)
+
+    @staticmethod
+    def empty(length: int):
+        return Mapping(length)
+
+    def __len__(self):
+        return len(self.arr)
+
+    def __str__(self):
+        return str(self.arr)
+
+    def __getitem__(self, item):
+        return self.arr[item]
+
+    def __setitem__(self, item, val):
+        self.arr[item] = val</code></pre>
+</details>
+<h3>Static methods</h3>
+<dl>
+<dt id="rpps.mod.constellation.Mapping.empty"><code class="name flex">
+<span>def <span class="ident">empty</span></span>(<span>length: int)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.constellation.Mapping.new"><code class="name flex">
+<span>def <span class="ident">new</span></span>(<span>map)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+<h3>Instance variables</h3>
+<dl>
+<dt id="rpps.mod.constellation.Mapping.arr"><code class="name">var <span class="ident">arr</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+<dt id="rpps.mod.constellation.Maps"><code class="flex name class">
+<span>class <span class="ident">Maps</span></span>
+<span>(</span><span>maps)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Maps:
+    __slots__ = (&#34;maps&#34;)
+
+    def __init__(self, maps):
+        self.maps = maps
+
+    def __len__(self):
+        return len(self.maps)
+
+    def __getitem__(self, item):
+        return self.maps[item]
+
+    def __setitem__(self, item, val):
+        self.maps[item] = val</code></pre>
+</details>
+<h3>Instance variables</h3>
+<dl>
+<dt id="rpps.mod.constellation.Maps.maps"><code class="name">var <span class="ident">maps</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+<dt id="rpps.mod.constellation.Points"><code class="flex name class">
+<span>class <span class="ident">Points</span></span>
+<span>(</span><span>points)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Points:
+    __slots__ = (&#34;arr&#34;)
+
+    def __init__(self, points):
+        self.arr = np.array(points)
+
+    def __len__(self):
+        return len(self.arr)
+
+    def __str__(self):
+        return str(self.arr)
+
+    def __getitem__(self, item):
+        return self.arr[item]
+
+    def __setitem__(self, item, val):
+        self.arr[item] = val</code></pre>
+</details>
+<h3>Instance variables</h3>
+<dl>
+<dt id="rpps.mod.constellation.Points.arr"><code class="name">var <span class="ident">arr</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="rpps.mod" href="index.html">rpps.mod</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="rpps.mod.constellation.Constellation" href="#rpps.mod.constellation.Constellation">Constellation</a></code></h4>
+<ul class="two-column">
+<li><code><a title="rpps.mod.constellation.Constellation.bits_per_symbol" href="#rpps.mod.constellation.Constellation.bits_per_symbol">bits_per_symbol</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.demodulate" href="#rpps.mod.constellation.Constellation.demodulate">demodulate</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.from_symbols" href="#rpps.mod.constellation.Constellation.from_symbols">from_symbols</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.index" href="#rpps.mod.constellation.Constellation.index">index</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.log" href="#rpps.mod.constellation.Constellation.log">log</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.map" href="#rpps.mod.constellation.Constellation.map">map</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.mapping" href="#rpps.mod.constellation.Constellation.mapping">mapping</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.modulate" href="#rpps.mod.constellation.Constellation.modulate">modulate</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.points" href="#rpps.mod.constellation.Constellation.points">points</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.to_symbols" href="#rpps.mod.constellation.Constellation.to_symbols">to_symbols</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.unindex" href="#rpps.mod.constellation.Constellation.unindex">unindex</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.unmap" href="#rpps.mod.constellation.Constellation.unmap">unmap</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="rpps.mod.constellation.Mapping" href="#rpps.mod.constellation.Mapping">Mapping</a></code></h4>
+<ul class="">
+<li><code><a title="rpps.mod.constellation.Mapping.arr" href="#rpps.mod.constellation.Mapping.arr">arr</a></code></li>
+<li><code><a title="rpps.mod.constellation.Mapping.empty" href="#rpps.mod.constellation.Mapping.empty">empty</a></code></li>
+<li><code><a title="rpps.mod.constellation.Mapping.new" href="#rpps.mod.constellation.Mapping.new">new</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="rpps.mod.constellation.Maps" href="#rpps.mod.constellation.Maps">Maps</a></code></h4>
+<ul class="">
+<li><code><a title="rpps.mod.constellation.Maps.maps" href="#rpps.mod.constellation.Maps.maps">maps</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="rpps.mod.constellation.Points" href="#rpps.mod.constellation.Points">Points</a></code></h4>
+<ul class="">
+<li><code><a title="rpps.mod.constellation.Points.arr" href="#rpps.mod.constellation.Points.arr">arr</a></code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc" title="pdoc: Python API documentation generator"><cite>pdoc</cite> 0.11.1</a>.</p>
+</footer>
+</body>
+</html>
