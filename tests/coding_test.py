@@ -2,7 +2,7 @@ import rpps as rp
 
 
 def test_repetition():
-    ecc = rp.coding.Repetition(3, 4)
+    ecc = rp.coding.Repetition(4)
 
     enc_msg = b"""Hello world!"""
 

@@ -12,7 +12,7 @@ def test_modulation():
     meta = rp.Meta.from_name(meta.to_name())
     data, meta = qpsk.demodulate(symbols, meta)
 
-    assert data.bytes == enc_msg
+    assert data.to_bytes() == enc_msg
 
 def test_serialization():
     qpsk = rp.mod.QPSK(1)
@@ -28,7 +28,7 @@ def test_serialization():
 
     data, meta = qpsk.demodulate(symbols, meta)
 
-    assert data.bytes == enc_msg
+    assert data.to_bytes() == enc_msg
 
 
 if __name__ == "__main__":

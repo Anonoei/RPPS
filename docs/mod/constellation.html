@@ -49,7 +49,7 @@ hljs.highlightAll();
     __slots__ = (&#34;log&#34;, &#34;_points&#34;, &#34;_mapping&#34;, &#34;_bps&#34;)
 
     def __init__(self, points: Points, mapping = None, log=Logger().Child(&#34;Modulation&#34;)):
-        self.log = log.Child(&#34;Constellation&#34;, Level.WARN)
+        self.log = log.Child(&#34;Constellation&#34;, Level.TRACE)
         if not isinstance(points, Points):
             points = Points(points)
         self._points = points
@@ -90,7 +90,6 @@ hljs.highlightAll();
     def bits_per_symbol(self):
         return self._bps
 
-
     def modulate(self, data: Stream, meta: Meta, noise: bool = True):
         indexes = self.index(data, meta)
         points = self.map(indexes, meta)
@@ -103,27 +102,28 @@ hljs.highlightAll();
         data = self.unindex(indexes, meta)
         return data
 
-
     ##############################
     #  Modulate
     ##############################
 
     def index(self, data: Stream, meta):
-        self.log.trace(f&#34;Data is {data}&#34;)
         self.log.trace(f&#34;Data bitarray is {data.bitarray}&#34;)
+        self.log.trace(f&#34;Bits per symbol: {self._bps} / {len(data.bitarray)}&#34;)
 
-        padding = len(data.bin) % self._bps
+        padding = len(data.bitarray) % self._bps
         if not padding == 0:
-            self.log.trace(f&#34;Padding by {padding}&#34;)
+
             for _ in range(0, (self._bps - padding)):
                 data.bitarray.append(0)
+            self.log.trace(f&#34;Padded by {self._bps - padding}: {len(data.bitarray)}&#34;)
         num_symbols = len(data.bitarray) // self._bps
 
         self.log.trace(f&#34;Data requires {num_symbols} indexes to encode&#34;)
 
         indexes = np.split(data.bitarray.arr, num_symbols)
-        indexes = [int(f&#34;{data[0]}{data[1]}&#34;, 2) for data in indexes]
-        #for i in range(0, len(data.bin), self._bps):
+        indexes = [int(&#34;&#34;.join(data.astype(str)), 2) for data in indexes]
+        # indexes = []
+        # for i in range(0, len(data.bin), self._bps):
         #    bit_int = int(data.bin[i:i+self._bps], 2)
         #    indexes.append(int(bit_int))
 
@@ -142,10 +142,10 @@ hljs.highlightAll();
         self.log.trace(f&#34;Points are {points}&#34;)
         return points
 
-    def to_symbols(self, points, meta, noise: bool = True):
+    def to_symbols(self, points, meta, noise: bool = False):
         points = np.array(points)
         symbols = self.points[points]
-        self.log.trace(f&#34;Symbols are:\n{symbols}&#34;)
+        self.log.trace(f&#34;Symbols are:\n{symbols} / {len(symbols)}&#34;)
         # Add noise
         if noise:
             n = (np.random.randn(len(symbols)) + 1j*np.random.randn(len(symbols)))/np.sqrt(2) # AWGN with unity power
@@ -153,7 +153,7 @@ hljs.highlightAll();
 
         symbols = symbols.astype(np.complex64)
         meta.fmt = type(symbols[0]).__name__
-        self.log.trace(f&#34;Symbols are: {symbols}&#34;)
+        # self.log.trace(f&#34;Symbols are: {symbols}&#34;)
         return symbols
 
     ##############################
@@ -161,7 +161,7 @@ hljs.highlightAll();
     ##############################
 
     def from_symbols(self, symbols, meta, clean: bool=True):
-        #self.log.trace(f&#34;Symbols are:\n{symbols}&#34;)
+        # self.log.trace(f&#34;Symbols are:\n{symbols}&#34;)
         points = []
         if clean:
             syms = []
@@ -171,17 +171,17 @@ hljs.highlightAll();
                 closest = self.points[index]
                 syms.append(closest)
             syms = np.array(syms)
-            self.log.trace(f&#34;Symbols are:\n{syms}&#34;)
+            self.log.trace(f&#34;Symbols are:\n{syms}  / {len(symbols)}&#34;)
 
             for symbol in syms:
                 points.append(int(np.where(self.points == symbol)[0][0]))
         else:
-            self.log.trace(f&#34;Symbols are:\n{symbols}&#34;)
+            self.log.trace(f&#34;Symbols are:\n{symbols}  / {len(symbols)}&#34;)
             for symbol in symbols: # Clean up the symbols
                 diff = np.abs(self.points - symbol)
                 index = np.argmin(diff)
                 points.append(int(index))
-        self.log.trace(f&#34;Points are {points}&#34;)
+        self.log.trace(f&#34;Points are {points} / Demodulated {len(points)} symbols&#34;)
         return points
 
     def unmap(self, points, meta):
@@ -193,19 +193,21 @@ hljs.highlightAll();
         return indexes
 
     def unindex(self, indexes, meta):
+        self.log.trace(f&#34;Bits per symbol: {self._bps}&#34;)
         bits = &#34;&#34;
-        for i in range(0, len(indexes), 1):
-            cur_bits = bin(indexes[i])[2:]
-            if len(cur_bits) == 1:
-                cur_bits = &#34;0&#34; + cur_bits
-            bits += cur_bits
+        for ind in indexes:
+            bits += bin(ind)[2:].zfill(self._bps)
 
-        data = Stream.from_bin(bits)
+        padding = len(bits) % 8
+        if not padding == 0:
+            self.log.trace(f&#34;Unpadding by {padding}&#34;)
+            bits = bits[:-padding]
 
-        self.log.trace(f&#34;Data bits are {data.bin}&#34;)
+        data = bitarray([int(bit) for bit in bits])
 
-        self.log.trace(f&#34;Data hex is {data.hex}&#34;)
-        self.log.trace(f&#34;Data is {data.bytes}&#34;)
+        #data = Stream.from_bin(bits, len(bits))
+
+        self.log.trace(f&#34;Data bits are {data} / {len(data)}&#34;)
 
         return data</code></pre>
 </details>
@@ -285,7 +287,7 @@ def points(self):
 <div class="desc"></div>
 </dd>
 <dt id="rpps.mod.constellation.Constellation.to_symbols"><code class="name flex">
-<span>def <span class="ident">to_symbols</span></span>(<span>self, points, meta, noise: bool = True)</span>
+<span>def <span class="ident">to_symbols</span></span>(<span>self, points, meta, noise: bool = False)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -428,11 +430,32 @@ def points(self):
         return self.arr[item]
 
     def __setitem__(self, item, val):
-        self.arr[item] = val</code></pre>
+        self.arr[item] = val
+
+    def real(self):
+        return np.real(self.arr)
+
+    def imag(self):
+        return np.imag(self.arr)</code></pre>
 </details>
 <h3>Instance variables</h3>
 <dl>
 <dt id="rpps.mod.constellation.Points.arr"><code class="name">var <span class="ident">arr</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+<h3>Methods</h3>
+<dl>
+<dt id="rpps.mod.constellation.Points.imag"><code class="name flex">
+<span>def <span class="ident">imag</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.constellation.Points.real"><code class="name flex">
+<span>def <span class="ident">real</span></span>(<span>self)</span>
+</code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
@@ -488,6 +511,8 @@ def points(self):
 <h4><code><a title="rpps.mod.constellation.Points" href="#rpps.mod.constellation.Points">Points</a></code></h4>
 <ul class="">
 <li><code><a title="rpps.mod.constellation.Points.arr" href="#rpps.mod.constellation.Points.arr">arr</a></code></li>
+<li><code><a title="rpps.mod.constellation.Points.imag" href="#rpps.mod.constellation.Points.imag">imag</a></code></li>
+<li><code><a title="rpps.mod.constellation.Points.real" href="#rpps.mod.constellation.Points.real">real</a></code></li>
 </ul>
 </li>
 </ul>

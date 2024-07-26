@@ -47,15 +47,16 @@ hljs.highlightAll();
 </summary>
 <pre><code class="python">class Coding:
     def __init__(self, num, den):
+        self.log = Logger().Child(&#34;Coding&#34;, Level.WARN).Child(type(self).__name__, Level.TRACE)
         self.num = num
         self.den = den
         self._rate = self.num/self.den
 
-    def encode(self, data):
-        pass
+    def encode(self, data: Stream) -&gt; bitarray:
+        ...
 
-    def decode(self, data):
-        pass</code></pre>
+    def decode(self, data: bitarray) -&gt; bitarray:
+        ...</code></pre>
 </details>
 <h3>Subclasses</h3>
 <ul class="hlist">
@@ -65,13 +66,13 @@ hljs.highlightAll();
 <h3>Methods</h3>
 <dl>
 <dt id="rpps.coding.coding.Coding.decode"><code class="name flex">
-<span>def <span class="ident">decode</span></span>(<span>self, data)</span>
+<span>def <span class="ident">decode</span></span>(<span>self, data: <a title="rpps.helpers.bitarray.bitarray" href="../helpers/bitarray.html#rpps.helpers.bitarray.bitarray">bitarray</a>) ‑> <a title="rpps.helpers.bitarray.bitarray" href="../helpers/bitarray.html#rpps.helpers.bitarray.bitarray">bitarray</a></span>
 </code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
 <dt id="rpps.coding.coding.Coding.encode"><code class="name flex">
-<span>def <span class="ident">encode</span></span>(<span>self, data)</span>
+<span>def <span class="ident">encode</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="../helpers/stream.html#rpps.helpers.stream.Stream">Stream</a>) ‑> <a title="rpps.helpers.bitarray.bitarray" href="../helpers/bitarray.html#rpps.helpers.bitarray.bitarray">bitarray</a></span>
 </code></dt>
 <dd>
 <div class="desc"></div>

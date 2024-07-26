@@ -101,11 +101,12 @@ hljs.highlightAll();
 </summary>
 <pre><code class="python">class Modulation:
     __slots__ = (&#34;log&#34;, &#34;constellation&#34;, &#34;map&#34;)
+    name = &#34;Modulation&#34;
     points = Points([])
     maps = Maps([])
 
     def __init__(self, map_idx: int = None):  # type: ignore
-        self.log = Logger().Child(&#34;Modulation&#34;).Child(type(self).__name__)
+        self.log = Logger().Child(&#34;Modulation&#34;).Child(type(self).name)
         self.map = map_idx
         if self.map is not None:
             self.constellation = Constellation(
@@ -131,7 +132,7 @@ hljs.highlightAll();
 
         symbols = self.constellation.modulate(data, meta)
 
-        meta.mod = type(self).__name__
+        meta.mod = type(self).name
         return symbols, meta</code></pre>
 </details>
 <h3>Subclasses</h3>
@@ -145,6 +146,10 @@ hljs.highlightAll();
 <h3>Class variables</h3>
 <dl>
 <dt id="rpps.mod.modulation.Modulation.maps"><code class="name">var <span class="ident">maps</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.modulation.Modulation.name"><code class="name">var <span class="ident">name</span></code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
@@ -235,6 +240,7 @@ hljs.highlightAll();
 <li><code><a title="rpps.mod.modulation.Modulation.map" href="#rpps.mod.modulation.Modulation.map">map</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.maps" href="#rpps.mod.modulation.Modulation.maps">maps</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.modulate" href="#rpps.mod.modulation.Modulation.modulate">modulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.name" href="#rpps.mod.modulation.Modulation.name">name</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.points" href="#rpps.mod.modulation.Modulation.points">points</a></code></li>
 </ul>
 </li>

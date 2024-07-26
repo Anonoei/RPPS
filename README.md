@@ -14,7 +14,9 @@ RPPS is a generic signal processor/generator library.
  - [ ] Pre-processing
  - [ ] Modulation
    - [ ] PSK
+     - [X] BPSK
      - [X] QPSK
+     - [X] 8PSK
    - [ ] QAM
    - [ ] APSK
    - [ ] ASK
