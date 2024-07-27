@@ -6,6 +6,27 @@ RPPS is a generic signal processor/generator library.
  - [Documentation](https://anonoei.github.io/RPPS/)
  - [PyPI](https://pypi.org/project/rpps/)
 
+## Usage
+```
+import rpps as rp
+
+def main():
+    mod = rp.mod.identify.by_name("QPSK", 0) # Use QPSK modulation, with mapping 0
+    ecc = rp.coding.Repetition(2) # Use Repetition coding, with rate of 2
+
+    pipeline = rp.Pipeline(mod, ecc) # Initialize a processing pipeline
+
+    enc_msg = b"""Test""" # Define the data to process
+    syms = pipeline.enc(enc_msg) # Encode data with ecc, and mod. Get the symbols
+    path = pipeline.meta.serialize(syms) # Serialize the symbols to file
+
+    data = pipeline.from_file(path) # Read the symbols and metadata from file, use the same pipeline processing
+    print(data) # Check decoded data is what you encoded
+
+if __name__ == "__main__":
+  main()
+```
+
 ## Install
 1. Run `python3 -m pip install rpps`
 2. In your project, `import rpps as rp`
