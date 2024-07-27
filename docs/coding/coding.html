@@ -35,6 +35,46 @@ hljs.highlightAll();
 <section>
 <h2 class="section-title" id="header-classes">Classes</h2>
 <dl>
+<dt id="rpps.coding.coding.Block"><code class="flex name class">
+<span>class <span class="ident">Block</span></span>
+<span>(</span><span>num, den, length)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Block(Coding):
+    def __init__(self, num, den, length):
+        super().__init__(num, den)
+        self.length = length
+
+    def init_meta(self, meta: Meta):
+        from .meta import BlockCodingMeta
+        meta.coding = BlockCodingMeta()  # type: ignore
+        meta.coding.fields[&#34;Type&#34;] = &#34;BLK&#34;
+        meta.coding.fields[&#34;Length&#34;] = self.length
+        super().init_meta(meta)</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.coding.coding.Coding" href="#rpps.coding.coding.Coding">Coding</a></li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li>rpps.coding._blk.repetition.Repetition</li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="rpps.coding.coding.Block.init_meta"><code class="name flex">
+<span>def <span class="ident">init_meta</span></span>(<span>self, meta: <a title="rpps.meta.Meta" href="../meta.html#rpps.meta.Meta">Meta</a>)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
 <dt id="rpps.coding.coding.Coding"><code class="flex name class">
 <span>class <span class="ident">Coding</span></span>
 <span>(</span><span>num, den)</span>
@@ -52,6 +92,11 @@ hljs.highlightAll();
         self.den = den
         self._rate = self.num/self.den
 
+    def init_meta(self, meta: Meta):
+        meta.coding.fields[&#34;Name&#34;] = type(self).__name__
+        meta.coding.fields[&#34;RateNum&#34;] = self.num
+        meta.coding.fields[&#34;RateDen&#34;] = self.den
+
     def encode(self, data: Stream) -&gt; bitarray:
         ...
 
@@ -60,8 +105,8 @@ hljs.highlightAll();
 </details>
 <h3>Subclasses</h3>
 <ul class="hlist">
-<li><a title="rpps.coding.block.Block" href="block.html#rpps.coding.block.Block">Block</a></li>
-<li><a title="rpps.coding.convolutional.Convolutional" href="convolutional.html#rpps.coding.convolutional.Convolutional">Convolutional</a></li>
+<li><a title="rpps.coding.coding.Block" href="#rpps.coding.coding.Block">Block</a></li>
+<li><a title="rpps.coding.coding.Convolutional" href="#rpps.coding.coding.Convolutional">Convolutional</a></li>
 </ul>
 <h3>Methods</h3>
 <dl>
@@ -73,6 +118,48 @@ hljs.highlightAll();
 </dd>
 <dt id="rpps.coding.coding.Coding.encode"><code class="name flex">
 <span>def <span class="ident">encode</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="../helpers/stream.html#rpps.helpers.stream.Stream">Stream</a>) ‑> <a title="rpps.helpers.bitarray.bitarray" href="../helpers/bitarray.html#rpps.helpers.bitarray.bitarray">bitarray</a></span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.coding.coding.Coding.init_meta"><code class="name flex">
+<span>def <span class="ident">init_meta</span></span>(<span>self, meta: <a title="rpps.meta.Meta" href="../meta.html#rpps.meta.Meta">Meta</a>)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+<dt id="rpps.coding.coding.Convolutional"><code class="flex name class">
+<span>class <span class="ident">Convolutional</span></span>
+<span>(</span><span>num, den)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Convolutional(Coding):
+
+    def init_meta(self, meta: Meta):
+        from .meta import ConvolutionalCodingMeta
+        meta.coding = ConvolutionalCodingMeta()  # type: ignore
+        meta.coding.fields[&#34;Type&#34;] = &#34;CNV&#34;
+        super().init_meta(meta)</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.coding.coding.Coding" href="#rpps.coding.coding.Coding">Coding</a></li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li>rpps.coding._cnv.viterbi.Viterbi</li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="rpps.coding.coding.Convolutional.init_meta"><code class="name flex">
+<span>def <span class="ident">init_meta</span></span>(<span>self, meta: <a title="rpps.meta.Meta" href="../meta.html#rpps.meta.Meta">Meta</a>)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -95,10 +182,23 @@ hljs.highlightAll();
 <li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
 <li>
+<h4><code><a title="rpps.coding.coding.Block" href="#rpps.coding.coding.Block">Block</a></code></h4>
+<ul class="">
+<li><code><a title="rpps.coding.coding.Block.init_meta" href="#rpps.coding.coding.Block.init_meta">init_meta</a></code></li>
+</ul>
+</li>
+<li>
 <h4><code><a title="rpps.coding.coding.Coding" href="#rpps.coding.coding.Coding">Coding</a></code></h4>
 <ul class="">
 <li><code><a title="rpps.coding.coding.Coding.decode" href="#rpps.coding.coding.Coding.decode">decode</a></code></li>
 <li><code><a title="rpps.coding.coding.Coding.encode" href="#rpps.coding.coding.Coding.encode">encode</a></code></li>
+<li><code><a title="rpps.coding.coding.Coding.init_meta" href="#rpps.coding.coding.Coding.init_meta">init_meta</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="rpps.coding.coding.Convolutional" href="#rpps.coding.coding.Convolutional">Convolutional</a></code></h4>
+<ul class="">
+<li><code><a title="rpps.coding.coding.Convolutional.init_meta" href="#rpps.coding.coding.Convolutional.init_meta">init_meta</a></code></li>
 </ul>
 </li>
 </ul>

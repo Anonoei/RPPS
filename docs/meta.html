@@ -45,23 +45,62 @@ hljs.highlightAll();
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class Meta:
-    mod = &#34;&#34;
-    fmt = &#34;&#34;
-    fec = &#34;&#34;
+    mod = _Meta()
+    coding = _Meta()
+    fmt = &#34;complex64&#34;
+
+    def __str__(self):
+        return &#34;.&#34;.join([
+            self.mod.__str__(),
+            self.coding.__str__(),
+            self.fmt,
+        ])
+
+    def short(self) -&gt; str:
+        lst = []
+        lst.append(self.mod.short())
+        lst.append(self.fmt)
+        return &#34;.&#34;.join(lst)
+
+    def __repr__(self) -&gt; str:
+        return f&#34;&lt;Meta: {str(self)}&gt;&#34;
 
     def serialize(self, data):
         path = pathlib.Path(f&#34;data/{self.to_name()}&#34;)
-        data.tofile(path) # Save to file
+        meta_path = pathlib.Path(f&#34;data/{self.to_name()}.meta&#34;)
+        data.tofile(path) # Save IQ to file
+        meta_path.write_text(self.to_json(), encoding=&#34;UTF-8&#34;)
         return path
 
     def to_name(self):
-        fields = [
-            self.mod.lower(),
-            self.fmt,
-            &#34;rpps&#34;,
-            &#34;iq&#34;,
-        ]
-        return &#34;.&#34;.join(fields)
+        return f&#34;{self.short()}.rpps&#34;
+
+    def json(self):
+        return {
+            &#34;RPPS&#34;: version,
+            &#34;Format&#34;: self.fmt,
+            &#34;Mod&#34;: self.mod.fields,
+            &#34;Coding&#34;: self.coding.fields,
+        }
+
+    def to_json(self):
+        return json.dumps(
+            self.json(),
+            indent=4,
+        )
+
+    @staticmethod
+    def from_json(d: dict):
+        meta = Meta()
+        # print(f&#34;Creating Meta from {json.dumps(d, indent=4)}&#34;)
+        meta.fmt = d[&#34;Format&#34;]
+        meta.mod = Construct(&#34;Mod&#34;, d[&#34;Mod&#34;])
+        meta.coding = Construct(&#34;Coding&#34;, d[&#34;Coding&#34;])
+        return meta
+
+    @staticmethod
+    def read_json(path: pathlib.Path):
+        return Meta.from_json(json.loads(path.read_text()))
 
     @staticmethod
     def from_name(name: str, meta = None):
@@ -77,13 +116,19 @@ hljs.highlightAll();
         import numpy as np
         if isinstance(path, str):
             path = pathlib.Path(path)
-        meta = Meta.from_name(path.name, meta)
+        meta_json = pathlib.Path(f&#34;{str(path)}.meta&#34;)
+        if meta is None:
+            if meta_json.exists():
+                meta = Meta.read_json(meta_json)
+            else:
+                meta = Meta.from_name(path.name, meta)
+        # print(f&#34;Meta is {str(meta)}&#34;)
         symbols = np.fromfile(path, getattr(np, meta.fmt))
         return meta, symbols</code></pre>
 </details>
 <h3>Class variables</h3>
 <dl>
-<dt id="rpps.meta.Meta.fec"><code class="name">var <span class="ident">fec</span></code></dt>
+<dt id="rpps.meta.Meta.coding"><code class="name">var <span class="ident">coding</span></code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
@@ -104,8 +149,20 @@ hljs.highlightAll();
 <dd>
 <div class="desc"></div>
 </dd>
+<dt id="rpps.meta.Meta.from_json"><code class="name flex">
+<span>def <span class="ident">from_json</span></span>(<span>d: dict)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
 <dt id="rpps.meta.Meta.from_name"><code class="name flex">
 <span>def <span class="ident">from_name</span></span>(<span>name: str, meta=None)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.meta.Meta.read_json"><code class="name flex">
+<span>def <span class="ident">read_json</span></span>(<span>path: pathlib.Path)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -113,8 +170,26 @@ hljs.highlightAll();
 </dl>
 <h3>Methods</h3>
 <dl>
+<dt id="rpps.meta.Meta.json"><code class="name flex">
+<span>def <span class="ident">json</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
 <dt id="rpps.meta.Meta.serialize"><code class="name flex">
 <span>def <span class="ident">serialize</span></span>(<span>self, data)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.meta.Meta.short"><code class="name flex">
+<span>def <span class="ident">short</span></span>(<span>self) ‑> str</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.meta.Meta.to_json"><code class="name flex">
+<span>def <span class="ident">to_json</span></span>(<span>self)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -145,12 +220,17 @@ hljs.highlightAll();
 <li>
 <h4><code><a title="rpps.meta.Meta" href="#rpps.meta.Meta">Meta</a></code></h4>
 <ul class="two-column">
-<li><code><a title="rpps.meta.Meta.fec" href="#rpps.meta.Meta.fec">fec</a></code></li>
+<li><code><a title="rpps.meta.Meta.coding" href="#rpps.meta.Meta.coding">coding</a></code></li>
 <li><code><a title="rpps.meta.Meta.fmt" href="#rpps.meta.Meta.fmt">fmt</a></code></li>
 <li><code><a title="rpps.meta.Meta.from_file" href="#rpps.meta.Meta.from_file">from_file</a></code></li>
+<li><code><a title="rpps.meta.Meta.from_json" href="#rpps.meta.Meta.from_json">from_json</a></code></li>
 <li><code><a title="rpps.meta.Meta.from_name" href="#rpps.meta.Meta.from_name">from_name</a></code></li>
+<li><code><a title="rpps.meta.Meta.json" href="#rpps.meta.Meta.json">json</a></code></li>
 <li><code><a title="rpps.meta.Meta.mod" href="#rpps.meta.Meta.mod">mod</a></code></li>
+<li><code><a title="rpps.meta.Meta.read_json" href="#rpps.meta.Meta.read_json">read_json</a></code></li>
 <li><code><a title="rpps.meta.Meta.serialize" href="#rpps.meta.Meta.serialize">serialize</a></code></li>
+<li><code><a title="rpps.meta.Meta.short" href="#rpps.meta.Meta.short">short</a></code></li>
+<li><code><a title="rpps.meta.Meta.to_json" href="#rpps.meta.Meta.to_json">to_json</a></code></li>
 <li><code><a title="rpps.meta.Meta.to_name" href="#rpps.meta.Meta.to_name">to_name</a></code></li>
 </ul>
 </li>

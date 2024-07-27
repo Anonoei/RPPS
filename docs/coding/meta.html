@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
-<title>rpps.mod.psk API documentation</title>
+<title>rpps.coding.meta API documentation</title>
 <meta name="description" content="">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
@@ -22,7 +22,7 @@ hljs.highlightAll();
 <main>
 <article id="content">
 <header>
-<h1 class="title">Module <code>rpps.mod.psk</code></h1>
+<h1 class="title">Module <code>rpps.coding.meta</code></h1>
 </header>
 <section id="section-intro">
 </section>
@@ -31,13 +31,21 @@ hljs.highlightAll();
 <section>
 </section>
 <section>
+<h2 class="section-title" id="header-functions">Functions</h2>
+<dl>
+<dt id="rpps.coding.meta.Construct"><code class="name flex">
+<span>def <span class="ident">Construct</span></span>(<span>j: dict)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
 </section>
 <section>
 <h2 class="section-title" id="header-classes">Classes</h2>
 <dl>
-<dt id="rpps.mod.psk.PSK"><code class="flex name class">
-<span>class <span class="ident">PSK</span></span>
-<span>(</span><span>map_idx: int = None)</span>
+<dt id="rpps.coding.meta.BlockCodingMeta"><code class="flex name class">
+<span>class <span class="ident">BlockCodingMeta</span></span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -45,43 +53,117 @@ hljs.highlightAll();
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">class PSK(Modulation):
-    def draw_refs(self, points: bool=True, ref: bool=True):
-        if points:
-            x = self.points.real()
-            y = self.points.imag()
-            plt.scatter(x=x, y=y, s=200, c=&#34;r&#34;)
-            labels = self.maps[self.map].arr
-            # Add labels using annotate()
-            for i, label in enumerate(labels):
-                plt.annotate(bin(label)[2:].zfill(self.constellation._bps), (x[i], y[i]), fontsize=20)
-
-        if ref:
-            angle = np.linspace(0, 2 * np.pi, 150)
-            radius = 1
-            x = radius * np.cos(angle)
-            y = radius * np.sin(angle)
-            plt.plot(x, y, &#34;g&#34;)</code></pre>
+<pre><code class="python">class BlockCodingMeta(CodingMeta):
+    __slots__ = (&#34;fields&#34;)
+    def __init__(self):
+        self.fields = OrderedDict(
+            (
+                (&#34;Type&#34;, None),
+                (&#34;Name&#34;, None),
+                (&#34;RateNum&#34;, None),
+                (&#34;RateDen&#34;, None),
+                (&#34;Length&#34;, None),
+            )
+        )</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
-<li><a title="rpps.mod.modulation.Modulation" href="modulation.html#rpps.mod.modulation.Modulation">Modulation</a></li>
+<li><a title="rpps.coding.meta.CodingMeta" href="#rpps.coding.meta.CodingMeta">CodingMeta</a></li>
+<li>rpps._meta._Meta</li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.coding.meta.CodingMeta" href="#rpps.coding.meta.CodingMeta">CodingMeta</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.coding.meta.CodingMeta.fields" href="#rpps.coding.meta.CodingMeta.fields">fields</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="rpps.coding.meta.CodingMeta"><code class="flex name class">
+<span>class <span class="ident">CodingMeta</span></span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class CodingMeta(_Meta):
+    __slots__ = (&#34;fields&#34;)
+
+    def __init__(self):
+        self.fields = OrderedDict((
+            (&#34;Type&#34;, None),
+            (&#34;Name&#34;, None),
+            (&#34;RateNum&#34;, None),
+            (&#34;RateDen&#34;, None),
+        ))
+
+    def short(self) -&gt; str:
+        return f&#34;{self.fields[&#39;Name&#39;]}&#34;</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>rpps._meta._Meta</li>
 </ul>
 <h3>Subclasses</h3>
 <ul class="hlist">
-<li>rpps.mod._psk.bpsk.BPSK</li>
-<li>rpps.mod._psk.epsk.EPSK</li>
-<li>rpps.mod._psk.qpsk.QPSK</li>
+<li><a title="rpps.coding.meta.BlockCodingMeta" href="#rpps.coding.meta.BlockCodingMeta">BlockCodingMeta</a></li>
+<li><a title="rpps.coding.meta.ConvolutionalCodingMeta" href="#rpps.coding.meta.ConvolutionalCodingMeta">ConvolutionalCodingMeta</a></li>
 </ul>
+<h3>Instance variables</h3>
+<dl>
+<dt id="rpps.coding.meta.CodingMeta.fields"><code class="name">var <span class="ident">fields</span></code></dt>
+<dd>
+<div class="desc"><p>dict() -&gt; new empty dictionary
+dict(mapping) -&gt; new dictionary initialized from a mapping object's
+(key, value) pairs
+dict(iterable) -&gt; new dictionary initialized as if via:
+d = {}
+for k, v in iterable:
+d[k] = v
+dict(**kwargs) -&gt; new dictionary initialized with the name=value pairs
+in the keyword argument list.
+For example:
+dict(one=1, two=2)</p></div>
+</dd>
+</dl>
 <h3>Methods</h3>
 <dl>
-<dt id="rpps.mod.psk.PSK.draw_refs"><code class="name flex">
-<span>def <span class="ident">draw_refs</span></span>(<span>self, points: bool = True, ref: bool = True)</span>
+<dt id="rpps.coding.meta.CodingMeta.short"><code class="name flex">
+<span>def <span class="ident">short</span></span>(<span>self) ‑> str</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
 </dl>
+</dd>
+<dt id="rpps.coding.meta.ConvolutionalCodingMeta"><code class="flex name class">
+<span>class <span class="ident">ConvolutionalCodingMeta</span></span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class ConvolutionalCodingMeta(CodingMeta):
+    __slots__ = (&#34;fields&#34;)</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.coding.meta.CodingMeta" href="#rpps.coding.meta.CodingMeta">CodingMeta</a></li>
+<li>rpps._meta._Meta</li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.coding.meta.CodingMeta" href="#rpps.coding.meta.CodingMeta">CodingMeta</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.coding.meta.CodingMeta.fields" href="#rpps.coding.meta.CodingMeta.fields">fields</a></code></li>
+</ul>
+</li>
+</ul>
 </dd>
 </dl>
 </section>
@@ -93,16 +175,28 @@ hljs.highlightAll();
 <ul id="index">
 <li><h3>Super-module</h3>
 <ul>
-<li><code><a title="rpps.mod" href="index.html">rpps.mod</a></code></li>
+<li><code><a title="rpps.coding" href="index.html">rpps.coding</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-functions">Functions</a></h3>
+<ul class="">
+<li><code><a title="rpps.coding.meta.Construct" href="#rpps.coding.meta.Construct">Construct</a></code></li>
 </ul>
 </li>
 <li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
 <li>
-<h4><code><a title="rpps.mod.psk.PSK" href="#rpps.mod.psk.PSK">PSK</a></code></h4>
+<h4><code><a title="rpps.coding.meta.BlockCodingMeta" href="#rpps.coding.meta.BlockCodingMeta">BlockCodingMeta</a></code></h4>
+</li>
+<li>
+<h4><code><a title="rpps.coding.meta.CodingMeta" href="#rpps.coding.meta.CodingMeta">CodingMeta</a></code></h4>
 <ul class="">
-<li><code><a title="rpps.mod.psk.PSK.draw_refs" href="#rpps.mod.psk.PSK.draw_refs">draw_refs</a></code></li>
+<li><code><a title="rpps.coding.meta.CodingMeta.fields" href="#rpps.coding.meta.CodingMeta.fields">fields</a></code></li>
+<li><code><a title="rpps.coding.meta.CodingMeta.short" href="#rpps.coding.meta.CodingMeta.short">short</a></code></li>
 </ul>
+</li>
+<li>
+<h4><code><a title="rpps.coding.meta.ConvolutionalCodingMeta" href="#rpps.coding.meta.ConvolutionalCodingMeta">ConvolutionalCodingMeta</a></code></h4>
 </li>
 </ul>
 </li>

@@ -54,8 +54,6 @@ hljs.highlightAll();
             points = Points(points)
         self._points = points
 
-        if mapping is None:
-            mapping = Mapping()
         self._mapping = mapping
 
         self._bps = int(math.log2(len(self.points))) # Bits per symbol
@@ -83,8 +81,8 @@ hljs.highlightAll();
         return self._mapping
 
     @mapping.setter
-    def mapping(self, map):
-        self._mapping = np.array(map)
+    def mapping(self, map: Mapping):
+        self._mapping = map
 
     @property
     def bits_per_symbol(self):
@@ -336,6 +334,9 @@ def points(self):
     def empty(length: int):
         return Mapping(length)
 
+    def str(self):
+        return &#34;-&#34;.join(self.arr.astype(str))
+
     def __len__(self):
         return len(self.arr)
 
@@ -366,6 +367,15 @@ def points(self):
 <h3>Instance variables</h3>
 <dl>
 <dt id="rpps.mod.constellation.Mapping.arr"><code class="name">var <span class="ident">arr</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+<h3>Methods</h3>
+<dl>
+<dt id="rpps.mod.constellation.Mapping.str"><code class="name flex">
+<span>def <span class="ident">str</span></span>(<span>self)</span>
+</code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
@@ -499,6 +509,7 @@ def points(self):
 <li><code><a title="rpps.mod.constellation.Mapping.arr" href="#rpps.mod.constellation.Mapping.arr">arr</a></code></li>
 <li><code><a title="rpps.mod.constellation.Mapping.empty" href="#rpps.mod.constellation.Mapping.empty">empty</a></code></li>
 <li><code><a title="rpps.mod.constellation.Mapping.new" href="#rpps.mod.constellation.Mapping.new">new</a></code></li>
+<li><code><a title="rpps.mod.constellation.Mapping.str" href="#rpps.mod.constellation.Mapping.str">str</a></code></li>
 </ul>
 </li>
 <li>

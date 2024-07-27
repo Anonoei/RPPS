@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
-<title>rpps.helpers.pipeline API documentation</title>
+<title>rpps.pipeline API documentation</title>
 <meta name="description" content="">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
@@ -22,7 +22,7 @@ hljs.highlightAll();
 <main>
 <article id="content">
 <header>
-<h1 class="title">Module <code>rpps.helpers.pipeline</code></h1>
+<h1 class="title">Module <code>rpps.pipeline</code></h1>
 </header>
 <section id="section-intro">
 </section>
@@ -35,7 +35,7 @@ hljs.highlightAll();
 <section>
 <h2 class="section-title" id="header-classes">Classes</h2>
 <dl>
-<dt id="rpps.helpers.pipeline.Pipeline"><code class="flex name class">
+<dt id="rpps.pipeline.Pipeline"><code class="flex name class">
 <span>class <span class="ident">Pipeline</span></span>
 <span>(</span><span>mod, ecc=None)</span>
 </code></dt>
@@ -48,33 +48,44 @@ hljs.highlightAll();
 <pre><code class="python">class Pipeline:
     def __init__(self, mod, ecc=None):
         self.log = Logger().Child(&#34;Pipeline&#34;, Level.TRACE)
+        self.meta = Meta()
         self.mod: Modulation = mod
-        self.ecc: Coding = ecc  # type: ignore
+        self.coding: Coding = ecc  # type: ignore
+
+        if self.mod is not None:
+            self.mod.init_meta(self.meta)
+        if self.coding is not None:
+            self.coding.init_meta(self.meta)
+
+    def __str__(self):
+        return self.meta.short()
 
     def __repr__(self):
-        return f&#34;&lt;Pipeline {type(self.mod).__name__}-{type(self.ecc).__name__}&gt;&#34;
+        return f&#34;&lt;Pipeline {str(self.meta)}&gt;&#34;
 
     def enc(self, data: Stream):
         self.log.trace(f&#34;Encoding {repr(self)} {data}&#34;)
         if isinstance(data, bytes):
             data = Stream.from_bytes(data)
 
-        if issubclass(type(self.ecc), Coding):
-            encoded = self.ecc.encode(data)
+        if issubclass(type(self.coding), Coding):
+            encoded = self.coding.encode(data)
             data = Stream.from_bytes(encoded.to_bytes())
 
-        syms, meta = self.mod.modulate(data)
-        return syms, meta
+        syms, meta = self.mod.modulate(data, self.meta)
+        self.meta = meta
+        return syms
 
     def dec(self, symbols, meta):
 
         data, meta = self.mod.demodulate(symbols, meta)
+        self.meta = meta
 
-        if issubclass(type(self.ecc), Coding):
-            decoded = self.ecc.decode(data)
+        if issubclass(type(self.coding), Coding):
+            decoded = self.coding.decode(data)
             data = Stream.from_bytes(decoded.to_bytes())
         self.log.trace(f&#34;Decoded {data.bytes}&#34;)
-        return data, meta
+        return data
 
     def from_file(self, path):
         meta, symbols = Meta.from_file(path)
@@ -82,19 +93,19 @@ hljs.highlightAll();
 </details>
 <h3>Methods</h3>
 <dl>
-<dt id="rpps.helpers.pipeline.Pipeline.dec"><code class="name flex">
+<dt id="rpps.pipeline.Pipeline.dec"><code class="name flex">
 <span>def <span class="ident">dec</span></span>(<span>self, symbols, meta)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
-<dt id="rpps.helpers.pipeline.Pipeline.enc"><code class="name flex">
-<span>def <span class="ident">enc</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="stream.html#rpps.helpers.stream.Stream">Stream</a>)</span>
+<dt id="rpps.pipeline.Pipeline.enc"><code class="name flex">
+<span>def <span class="ident">enc</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="helpers/stream.html#rpps.helpers.stream.Stream">Stream</a>)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
-<dt id="rpps.helpers.pipeline.Pipeline.from_file"><code class="name flex">
+<dt id="rpps.pipeline.Pipeline.from_file"><code class="name flex">
 <span>def <span class="ident">from_file</span></span>(<span>self, path)</span>
 </code></dt>
 <dd>
@@ -112,17 +123,17 @@ hljs.highlightAll();
 <ul id="index">
 <li><h3>Super-module</h3>
 <ul>
-<li><code><a title="rpps.helpers" href="index.html">rpps.helpers</a></code></li>
+<li><code><a title="rpps" href="index.html">rpps</a></code></li>
 </ul>
 </li>
 <li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
 <li>
-<h4><code><a title="rpps.helpers.pipeline.Pipeline" href="#rpps.helpers.pipeline.Pipeline">Pipeline</a></code></h4>
+<h4><code><a title="rpps.pipeline.Pipeline" href="#rpps.pipeline.Pipeline">Pipeline</a></code></h4>
 <ul class="">
-<li><code><a title="rpps.helpers.pipeline.Pipeline.dec" href="#rpps.helpers.pipeline.Pipeline.dec">dec</a></code></li>
-<li><code><a title="rpps.helpers.pipeline.Pipeline.enc" href="#rpps.helpers.pipeline.Pipeline.enc">enc</a></code></li>
-<li><code><a title="rpps.helpers.pipeline.Pipeline.from_file" href="#rpps.helpers.pipeline.Pipeline.from_file">from_file</a></code></li>
+<li><code><a title="rpps.pipeline.Pipeline.dec" href="#rpps.pipeline.Pipeline.dec">dec</a></code></li>
+<li><code><a title="rpps.pipeline.Pipeline.enc" href="#rpps.pipeline.Pipeline.enc">enc</a></code></li>
+<li><code><a title="rpps.pipeline.Pipeline.from_file" href="#rpps.pipeline.Pipeline.from_file">from_file</a></code></li>
 </ul>
 </li>
 </ul>

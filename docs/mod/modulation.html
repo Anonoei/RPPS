@@ -37,7 +37,7 @@ hljs.highlightAll();
 <dl>
 <dt id="rpps.mod.modulation.APSK"><code class="flex name class">
 <span>class <span class="ident">APSK</span></span>
-<span>(</span><span>map_idx: int = None)</span>
+<span>(</span><span>mapping=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -55,7 +55,7 @@ hljs.highlightAll();
 </dd>
 <dt id="rpps.mod.modulation.ASK"><code class="flex name class">
 <span>class <span class="ident">ASK</span></span>
-<span>(</span><span>map_idx: int = None)</span>
+<span>(</span><span>mapping=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -73,7 +73,7 @@ hljs.highlightAll();
 </dd>
 <dt id="rpps.mod.modulation.FSK"><code class="flex name class">
 <span>class <span class="ident">FSK</span></span>
-<span>(</span><span>map_idx: int = None)</span>
+<span>(</span><span>mapping=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -91,7 +91,7 @@ hljs.highlightAll();
 </dd>
 <dt id="rpps.mod.modulation.Modulation"><code class="flex name class">
 <span>class <span class="ident">Modulation</span></span>
-<span>(</span><span>map_idx: int = None)</span>
+<span>(</span><span>mapping=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -100,39 +100,39 @@ hljs.highlightAll();
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class Modulation:
-    __slots__ = (&#34;log&#34;, &#34;constellation&#34;, &#34;map&#34;)
+    __slots__ = (&#34;log&#34;, &#34;constellation&#34;, &#34;mapping&#34;)
     name = &#34;Modulation&#34;
     points = Points([])
-    maps = Maps([])
 
-    def __init__(self, map_idx: int = None):  # type: ignore
+    def __init__(self, mapping = None):  # type: ignore
         self.log = Logger().Child(&#34;Modulation&#34;).Child(type(self).name)
-        self.map = map_idx
-        if self.map is not None:
-            self.constellation = Constellation(
-                type(self).points,
-                type(self).maps[self.map],
-                log=self.log)
-        else:
-            self.constellation = Constellation(
-                type(self).points,
-                log=self.log)
+
+        self.constellation = Constellation(type(self).points, log=self.log)
+
+        if mapping is not None:
+            self.constellation.mapping =  Mapping(mapping)
+
+    def set_mapping(self, mapping: Mapping):
+        self.constellation.mapping = mapping
+
+    def init_meta(self, meta):
+        if self.constellation.mapping is None:
+            raise Exception(&#34;A mapping must be defined before modulating&#34;)
+        from .meta import ModMeta
+        meta.mod = ModMeta()
+        meta.mod.fields[&#34;Name&#34;] = type(self).name[:-3]
+        meta.mod.fields[&#34;Type&#34;] = type(self).name[-3:]
+        meta.mod.fields[&#34;Map&#34;] = self.constellation.mapping.str()
 
     def demodulate(self, symbols: np.ndarray, meta=Meta()):
-        if self.map is None:
-            raise Exception(&#34;A map must be provided to demodulate!&#34;)
-
         data = self.constellation.demodulate(symbols, meta)
 
         return data, meta
 
     def modulate(self, data: Stream, meta=Meta()):
-        if self.map is None:
-            raise Exception(&#34;A map must be provided to modulate!&#34;)
-
         symbols = self.constellation.modulate(data, meta)
 
-        meta.mod = type(self).name
+        self.init_meta(meta)
         return symbols, meta</code></pre>
 </details>
 <h3>Subclasses</h3>
@@ -140,15 +140,11 @@ hljs.highlightAll();
 <li><a title="rpps.mod.modulation.APSK" href="#rpps.mod.modulation.APSK">APSK</a></li>
 <li><a title="rpps.mod.modulation.ASK" href="#rpps.mod.modulation.ASK">ASK</a></li>
 <li><a title="rpps.mod.modulation.FSK" href="#rpps.mod.modulation.FSK">FSK</a></li>
+<li><a title="rpps.mod.modulation.PSK" href="#rpps.mod.modulation.PSK">PSK</a></li>
 <li><a title="rpps.mod.modulation.QAM" href="#rpps.mod.modulation.QAM">QAM</a></li>
-<li><a title="rpps.mod.psk.PSK" href="psk.html#rpps.mod.psk.PSK">PSK</a></li>
 </ul>
 <h3>Class variables</h3>
 <dl>
-<dt id="rpps.mod.modulation.Modulation.maps"><code class="name">var <span class="ident">maps</span></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
 <dt id="rpps.mod.modulation.Modulation.name"><code class="name">var <span class="ident">name</span></code></dt>
 <dd>
 <div class="desc"></div>
@@ -168,7 +164,7 @@ hljs.highlightAll();
 <dd>
 <div class="desc"></div>
 </dd>
-<dt id="rpps.mod.modulation.Modulation.map"><code class="name">var <span class="ident">map</span></code></dt>
+<dt id="rpps.mod.modulation.Modulation.mapping"><code class="name">var <span class="ident">mapping</span></code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
@@ -176,13 +172,77 @@ hljs.highlightAll();
 <h3>Methods</h3>
 <dl>
 <dt id="rpps.mod.modulation.Modulation.demodulate"><code class="name flex">
-<span>def <span class="ident">demodulate</span></span>(<span>self, symbols: numpy.ndarray, meta=&lt;rpps.meta.Meta object&gt;)</span>
+<span>def <span class="ident">demodulate</span></span>(<span>self, symbols: numpy.ndarray, meta=&lt;Meta: ..complex64&gt;)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.modulation.Modulation.init_meta"><code class="name flex">
+<span>def <span class="ident">init_meta</span></span>(<span>self, meta)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
 <dt id="rpps.mod.modulation.Modulation.modulate"><code class="name flex">
-<span>def <span class="ident">modulate</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="../helpers/stream.html#rpps.helpers.stream.Stream">Stream</a>, meta=&lt;rpps.meta.Meta object&gt;)</span>
+<span>def <span class="ident">modulate</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="../helpers/stream.html#rpps.helpers.stream.Stream">Stream</a>, meta=&lt;Meta: ..complex64&gt;)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.modulation.Modulation.set_mapping"><code class="name flex">
+<span>def <span class="ident">set_mapping</span></span>(<span>self, mapping: <a title="rpps.mod.constellation.Mapping" href="constellation.html#rpps.mod.constellation.Mapping">Mapping</a>)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+<dt id="rpps.mod.modulation.PSK"><code class="flex name class">
+<span>class <span class="ident">PSK</span></span>
+<span>(</span><span>mapping=None)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class PSK(Modulation):
+    def draw_refs(self, points: bool = True, ref: bool = True):
+        if points:
+            x = self.points.real()
+            y = self.points.imag()
+            plt.scatter(x=x, y=y, s=200, c=&#34;r&#34;)
+            labels = self.constellation.mapping.arr
+            # Add labels using annotate()
+            for i, label in enumerate(labels):
+                plt.annotate(
+                    bin(label)[2:].zfill(self.constellation._bps),
+                    (x[i], y[i]),
+                    fontsize=20,
+                )
+
+        if ref:
+            angle = np.linspace(0, 2 * np.pi, 150)
+            radius = 1
+            x = radius * np.cos(angle)
+            y = radius * np.sin(angle)
+            plt.plot(x, y, &#34;g&#34;)</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.mod.modulation.Modulation" href="#rpps.mod.modulation.Modulation">Modulation</a></li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li>rpps.mod._psk.bpsk.BPSK</li>
+<li>rpps.mod._psk.epsk.EPSK</li>
+<li>rpps.mod._psk.qpsk.QPSK</li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="rpps.mod.modulation.PSK.draw_refs"><code class="name flex">
+<span>def <span class="ident">draw_refs</span></span>(<span>self, points: bool = True, ref: bool = True)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -191,7 +251,7 @@ hljs.highlightAll();
 </dd>
 <dt id="rpps.mod.modulation.QAM"><code class="flex name class">
 <span>class <span class="ident">QAM</span></span>
-<span>(</span><span>map_idx: int = None)</span>
+<span>(</span><span>mapping=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -236,12 +296,19 @@ hljs.highlightAll();
 <ul class="two-column">
 <li><code><a title="rpps.mod.modulation.Modulation.constellation" href="#rpps.mod.modulation.Modulation.constellation">constellation</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.demodulate" href="#rpps.mod.modulation.Modulation.demodulate">demodulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.init_meta" href="#rpps.mod.modulation.Modulation.init_meta">init_meta</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.log" href="#rpps.mod.modulation.Modulation.log">log</a></code></li>
-<li><code><a title="rpps.mod.modulation.Modulation.map" href="#rpps.mod.modulation.Modulation.map">map</a></code></li>
-<li><code><a title="rpps.mod.modulation.Modulation.maps" href="#rpps.mod.modulation.Modulation.maps">maps</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.mapping" href="#rpps.mod.modulation.Modulation.mapping">mapping</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.modulate" href="#rpps.mod.modulation.Modulation.modulate">modulate</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.name" href="#rpps.mod.modulation.Modulation.name">name</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.points" href="#rpps.mod.modulation.Modulation.points">points</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.set_mapping" href="#rpps.mod.modulation.Modulation.set_mapping">set_mapping</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="rpps.mod.modulation.PSK" href="#rpps.mod.modulation.PSK">PSK</a></code></h4>
+<ul class="">
+<li><code><a title="rpps.mod.modulation.PSK.draw_refs" href="#rpps.mod.modulation.PSK.draw_refs">draw_refs</a></code></li>
 </ul>
 </li>
 <li>
