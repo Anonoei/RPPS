@@ -12,6 +12,8 @@ Logger("RPPS", Level.TRACE)
 
 # Import helpers/globals
 from .helpers import bitarray, Stream
+from .mod.meta import ModMeta
+from .coding.meta import CodingMeta
 from .meta import Meta
 
 
@@ -19,4 +21,4 @@ from . import coding
 from . import mod
 from . import viz
 
-from .helpers.pipeline import Pipeline
+from .pipeline import Pipeline

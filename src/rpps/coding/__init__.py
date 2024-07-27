@@ -5,10 +5,7 @@ from ..meta import Meta
 
 # -----
 
-from .coding import Coding
-
-from .block import Block
-from .convolutional import Convolutional
+from .coding import Coding, Block, Convolutional
 
 from ._blk import *
 from ._cnv import *

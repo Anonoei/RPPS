@@ -4,11 +4,12 @@ import time
 import cProfile
 import pstats
 
+import numpy as np
 import rpps as rp
 
 def main():
 
-    mod = rp.mod.identify.by_name("8PSK")(0)
+    mod = rp.mod.identify.by_name("QPSK", 0)
     ecc = rp.coding.Repetition(2)
 
     pipeline = rp.Pipeline(mod, ecc)
@@ -17,7 +18,7 @@ def main():
 
     def encode(pipeline: rp.Pipeline, enc_msg):
         time_start = time.perf_counter()
-        syms, meta = pipeline.enc(enc_msg)
+        syms = pipeline.enc(enc_msg)
 
         time_dur = time.perf_counter() - time_start
         print(f"Encode took {time_dur:.2f}s")
@@ -26,11 +27,11 @@ def main():
         #mod.draw_refs()
         rp.viz.show()
 
-        return meta.serialize(syms)
+        return pipeline.meta.serialize(syms)
 
     def decode(pipeline: rp.Pipeline, path):
         time_start = time.perf_counter()
-        data, meta = pipeline.from_file(path)
+        data = pipeline.from_file(path)
 
         time_dur = time.perf_counter() - time_start
         print(f"Decode took {time_dur:.2f}s")
@@ -41,7 +42,6 @@ def main():
     path = encode(pipeline, enc_msg)
     print()
     decode(pipeline, path)
-
 
 if __name__ == "__main__":
     # pr = cProfile.Profile()

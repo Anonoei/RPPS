@@ -1,16 +1,9 @@
-from ..psk import PSK
+from ..modulation import PSK
 
 from ..constellation import Mapping, Maps, Points
 
-class QPSK(PSK):
-    name = "QPSK"
-    points = Points(
-        [
-            .7 - .7j, -.7 - .7j,
-            .7 + .7j, -.7 + .7j
-        ]
-    )
-    maps = Maps(
+
+QPSK_Maps = Maps(
         [
             Mapping([
                 0, 1,
@@ -28,5 +21,14 @@ class QPSK(PSK):
                 3, 2,
                 1, 0,
             ]),
+        ]
+    )
+
+class QPSK(PSK):
+    name = "QPSK"
+    points = Points(
+        [
+            .7 - .7j, -.7 - .7j,
+            .7 + .7j, -.7 + .7j
         ]
     )

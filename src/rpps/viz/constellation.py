@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from . import Meta
 from . import identify
 
-def draw(symbols, meta: Meta, ref: bool = True):
+def draw(symbols, meta: Meta):
     fig = plt.figure()
     ax = fig.add_subplot()
     plt.scatter(np.real(symbols), np.imag(symbols), s=10, c="b")

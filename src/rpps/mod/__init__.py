@@ -14,5 +14,9 @@ MAP = {
     "PSK": PSK_MAP,
 }
 
+MAPPING = {
+    "PSK": PSK_MAPPING
+}
+
 
 from . import identify

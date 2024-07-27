@@ -1,15 +1,8 @@
-from ..psk import PSK
+from ..modulation import PSK
 
 from ..constellation import Mapping, Maps, Points
 
-class BPSK(PSK):
-    name = "BPSK"
-    points = Points(
-        [
-            1 + 0j, -1 + 0j,
-        ]
-    )
-    maps = Maps(
+BPSK_Maps = Maps(
         [
             Mapping([
                 0, 1,
@@ -17,5 +10,13 @@ class BPSK(PSK):
             Mapping([
                 1, 0
             ]),
+        ]
+    )
+
+class BPSK(PSK):
+    name = "BPSK"
+    points = Points(
+        [
+            1 + 0j, -1 + 0j,
         ]
     )

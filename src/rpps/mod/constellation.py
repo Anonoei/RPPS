@@ -28,6 +28,9 @@ class Mapping:
     def empty(length: int):
         return Mapping(length)
 
+    def str(self):
+        return "-".join(self.arr.astype(str))
+
     def __len__(self):
         return len(self.arr)
 
@@ -90,8 +93,6 @@ class Constellation:
             points = Points(points)
         self._points = points
 
-        if mapping is None:
-            mapping = Mapping()
         self._mapping = mapping
 
         self._bps = int(math.log2(len(self.points))) # Bits per symbol
@@ -119,8 +120,8 @@ class Constellation:
         return self._mapping
 
     @mapping.setter
-    def mapping(self, map):
-        self._mapping = np.array(map)
+    def mapping(self, map: Mapping):
+        self._mapping = map
 
     @property
     def bits_per_symbol(self):

@@ -7,4 +7,5 @@ from ..mod import identify
 # -----
 
 from .generic import show
+from .dialog import get_file
 from .constellation import draw as DrawConstellation

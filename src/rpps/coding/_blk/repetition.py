@@ -1,4 +1,4 @@
-from ..block import Block
+from ..coding import Block
 from .. import Stream
 from .. import bitarray
 

@@ -1,4 +1,4 @@
-from ..convolutional import Convolutional
+from ..coding import Convolutional
 from .. import Stream
 from .. import bitarray
 
