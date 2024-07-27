@@ -19,13 +19,10 @@ class Meta:
         ])
 
     def short(self) -> str:
-        return ".".join(
-            [
-                self.mod.short(),
-                self.coding.short(),
-                self.fmt,
-            ]
-        )
+        lst = []
+        lst.append(self.mod.short())
+        lst.append(self.fmt)
+        return ".".join(lst)
 
     def __repr__(self) -> str:
         return f"<Meta: {str(self)}>"

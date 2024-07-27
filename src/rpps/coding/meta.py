@@ -35,6 +35,8 @@ class ConvolutionalCodingMeta(CodingMeta):
     __slots__ = ("fields")
 
 def Construct(j: dict):
+    if j.get("Type", None) is None:
+        return CodingMeta()
     if j["Type"] == "BLK":
         meta = BlockCodingMeta()
     elif j["Type"] == "CNV":

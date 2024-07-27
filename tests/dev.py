@@ -36,9 +36,6 @@ def main():
         time_dur = time.perf_counter() - time_start
         print(f"Decode took {time_dur:.2f}s")
 
-        # DrawConstellation(r, meta)
-        # show()
-
     path = encode(pipeline, enc_msg)
     print()
     decode(pipeline, path)
