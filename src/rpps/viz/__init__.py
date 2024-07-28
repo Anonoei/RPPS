@@ -2,7 +2,7 @@
 from ..helpers.bitarray import bitarray
 from ..helpers.stream import Stream
 from ..meta import Meta
-from ..mod import identify
+from ..mod import name, mapping, maps
 
 # -----
 

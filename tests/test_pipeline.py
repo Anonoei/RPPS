@@ -1,7 +1,7 @@
 import rpps as rp
 
 def test_pipeline():
-    mod = rp.mod.identify.by_name("QPSK", 0)
+    mod = rp.mod.name("QPSK", 0)
     ecc = rp.coding.Repetition(2)
 
     pipeline = rp.Pipeline(mod, ecc)

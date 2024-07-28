@@ -11,8 +11,8 @@ RPPS is a generic signal processor/generator library.
 import rpps as rp
 
 def main():
-    mod = rp.mod.identify.by_name("QPSK", 0) # Use QPSK modulation, with mapping 0
-    ecc = rp.coding.Repetition(2) # Use Repetition coding, with rate of 2
+    mod = rp.mod.name("QPSK", 0) # Use QPSK modulation, with mapping 0
+    ecc = rp.coding.name("BLK", "Repetition", 2) # Use Repetition coding, with rate of 2
 
     pipeline = rp.Pipeline(mod, ecc) # Initialize a processing pipeline
 

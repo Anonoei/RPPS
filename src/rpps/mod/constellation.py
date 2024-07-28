@@ -83,6 +83,9 @@ class Points:
     def imag(self):
         return np.imag(self.arr)
 
+    def degrees(self):
+        return np.angle(self.arr, deg=True)
+
 
 class Constellation:
     __slots__ = ("log", "_points", "_mapping", "_bps")

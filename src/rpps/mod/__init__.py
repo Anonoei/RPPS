@@ -18,5 +18,4 @@ MAPPING = {
     "PSK": PSK_MAPPING
 }
 
-
-from . import identify
+from ._identify import name, mapping, maps

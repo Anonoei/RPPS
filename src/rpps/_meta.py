@@ -9,6 +9,9 @@ class _Meta:
     def __repr__(self):
         return f"<_Meta: {_Meta.__str__(self)}>"
 
+    def short(self):
+        ...
+
     def json(self):
         return self.fields
 

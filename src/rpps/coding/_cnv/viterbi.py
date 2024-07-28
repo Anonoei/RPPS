@@ -5,6 +5,7 @@ from .. import bitarray
 import numpy as np
 
 class Viterbi(Convolutional):
+    name = "Viterbi"
     def encode(self, data: Stream):
         """
         SOVA (Soft-Output Viterbi Algorithm) encoding

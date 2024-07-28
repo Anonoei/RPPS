@@ -8,9 +8,8 @@ import numpy as np
 import rpps as rp
 
 def main():
-
-    mod = rp.mod.identify.by_name("QPSK", 0)
-    ecc = rp.coding.Repetition(2)
+    mod = rp.mod.name("QPSK", 0)
+    ecc = rp.coding.name("BLK", "Repetition", 2)
 
     pipeline = rp.Pipeline(mod, ecc)
 
@@ -23,8 +22,8 @@ def main():
         time_dur = time.perf_counter() - time_start
         print(f"Encode took {time_dur:.2f}s")
 
-        #rp.viz.DrawConstellation(syms, meta)
-        #mod.draw_refs()
+        rp.viz.DrawConstellation(syms, pipeline.meta)
+        mod.draw_refs()
         rp.viz.show()
 
         return pipeline.meta.serialize(syms)

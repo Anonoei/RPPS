@@ -2,7 +2,7 @@ import rpps as rp
 
 
 def test_modulation():
-    mod = rp.mod.identify.by_name("QPSK", 1)
+    mod = rp.mod.name("QPSK", 1)
 
     enc_msg = b"""Hello world!"""
 
@@ -15,7 +15,7 @@ def test_modulation():
     assert data.to_bytes() == enc_msg
 
 def test_serialization():
-    mod = rp.mod.identify.by_name("QPSK", 1)
+    mod = rp.mod.name("QPSK", 1)
 
     enc_msg = b"""Hello world!"""
 

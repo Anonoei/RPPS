@@ -48,6 +48,9 @@ class Modulation:
         self.init_meta(meta)
         return symbols, meta
 
+    def draw_refs(self, points: bool = True, ref: bool = True):
+        ...
+
 
 class PSK(Modulation):
     def draw_refs(self, points: bool = True, ref: bool = True):

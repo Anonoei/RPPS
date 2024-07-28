@@ -5,6 +5,7 @@ from .. import bitarray
 import numpy as np
 
 class Repetition(Block):
+    name = "Repetition"
     def __init__(self, count):
         super().__init__(1, count, count)
 
