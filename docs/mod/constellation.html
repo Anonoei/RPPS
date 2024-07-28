@@ -446,7 +446,10 @@ def points(self):
         return np.real(self.arr)
 
     def imag(self):
-        return np.imag(self.arr)</code></pre>
+        return np.imag(self.arr)
+
+    def degrees(self):
+        return np.angle(self.arr, deg=True)</code></pre>
 </details>
 <h3>Instance variables</h3>
 <dl>
@@ -457,6 +460,12 @@ def points(self):
 </dl>
 <h3>Methods</h3>
 <dl>
+<dt id="rpps.mod.constellation.Points.degrees"><code class="name flex">
+<span>def <span class="ident">degrees</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
 <dt id="rpps.mod.constellation.Points.imag"><code class="name flex">
 <span>def <span class="ident">imag</span></span>(<span>self)</span>
 </code></dt>
@@ -522,6 +531,7 @@ def points(self):
 <h4><code><a title="rpps.mod.constellation.Points" href="#rpps.mod.constellation.Points">Points</a></code></h4>
 <ul class="">
 <li><code><a title="rpps.mod.constellation.Points.arr" href="#rpps.mod.constellation.Points.arr">arr</a></code></li>
+<li><code><a title="rpps.mod.constellation.Points.degrees" href="#rpps.mod.constellation.Points.degrees">degrees</a></code></li>
 <li><code><a title="rpps.mod.constellation.Points.imag" href="#rpps.mod.constellation.Points.imag">imag</a></code></li>
 <li><code><a title="rpps.mod.constellation.Points.real" href="#rpps.mod.constellation.Points.real">real</a></code></li>
 </ul>

@@ -133,7 +133,10 @@ hljs.highlightAll();
         symbols = self.constellation.modulate(data, meta)
 
         self.init_meta(meta)
-        return symbols, meta</code></pre>
+        return symbols, meta
+
+    def draw_refs(self, points: bool = True, ref: bool = True):
+        ...</code></pre>
 </details>
 <h3>Subclasses</h3>
 <ul class="hlist">
@@ -173,6 +176,12 @@ hljs.highlightAll();
 <dl>
 <dt id="rpps.mod.modulation.Modulation.demodulate"><code class="name flex">
 <span>def <span class="ident">demodulate</span></span>(<span>self, symbols: numpy.ndarray, meta=&lt;Meta: ..complex64&gt;)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.modulation.Modulation.draw_refs"><code class="name flex">
+<span>def <span class="ident">draw_refs</span></span>(<span>self, points: bool = True, ref: bool = True)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -296,6 +305,7 @@ hljs.highlightAll();
 <ul class="two-column">
 <li><code><a title="rpps.mod.modulation.Modulation.constellation" href="#rpps.mod.modulation.Modulation.constellation">constellation</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.demodulate" href="#rpps.mod.modulation.Modulation.demodulate">demodulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.draw_refs" href="#rpps.mod.modulation.Modulation.draw_refs">draw_refs</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.init_meta" href="#rpps.mod.modulation.Modulation.init_meta">init_meta</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.log" href="#rpps.mod.modulation.Modulation.log">log</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.mapping" href="#rpps.mod.modulation.Modulation.mapping">mapping</a></code></li>
