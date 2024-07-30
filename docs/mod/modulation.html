@@ -135,7 +135,7 @@ hljs.highlightAll();
         self.init_meta(meta)
         return symbols, meta
 
-    def draw_refs(self, points: bool = True, ref: bool = True):
+    def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         ...</code></pre>
 </details>
 <h3>Subclasses</h3>
@@ -175,13 +175,13 @@ hljs.highlightAll();
 <h3>Methods</h3>
 <dl>
 <dt id="rpps.mod.modulation.Modulation.demodulate"><code class="name flex">
-<span>def <span class="ident">demodulate</span></span>(<span>self, symbols: numpy.ndarray, meta=&lt;Meta: ..complex64&gt;)</span>
+<span>def <span class="ident">demodulate</span></span>(<span>self, symbols: numpy.ndarray, meta=&lt;Meta: ...complex64&gt;)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
 <dt id="rpps.mod.modulation.Modulation.draw_refs"><code class="name flex">
-<span>def <span class="ident">draw_refs</span></span>(<span>self, points: bool = True, ref: bool = True)</span>
+<span>def <span class="ident">draw_refs</span></span>(<span>self, points: bool = True, ref: bool = True, ax=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -193,7 +193,7 @@ hljs.highlightAll();
 <div class="desc"></div>
 </dd>
 <dt id="rpps.mod.modulation.Modulation.modulate"><code class="name flex">
-<span>def <span class="ident">modulate</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="../helpers/stream.html#rpps.helpers.stream.Stream">Stream</a>, meta=&lt;Meta: ..complex64&gt;)</span>
+<span>def <span class="ident">modulate</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="../helpers/stream.html#rpps.helpers.stream.Stream">Stream</a>, meta=&lt;Meta: ...complex64&gt;)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
@@ -217,15 +217,19 @@ hljs.highlightAll();
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class PSK(Modulation):
-    def draw_refs(self, points: bool = True, ref: bool = True):
+
+    def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
+        if ax is None:
+            fig = plt.figure()
+            ax = fig.add_subplot()
         if points:
             x = self.points.real()
             y = self.points.imag()
-            plt.scatter(x=x, y=y, s=200, c=&#34;r&#34;)
+            ax.scatter(x=x, y=y, s=200, c=&#34;r&#34;)
             labels = self.constellation.mapping.arr
             # Add labels using annotate()
             for i, label in enumerate(labels):
-                plt.annotate(
+                ax.annotate(
                     bin(label)[2:].zfill(self.constellation._bps),
                     (x[i], y[i]),
                     fontsize=20,
@@ -236,7 +240,7 @@ hljs.highlightAll();
             radius = 1
             x = radius * np.cos(angle)
             y = radius * np.sin(angle)
-            plt.plot(x, y, &#34;g&#34;)</code></pre>
+            ax.plot(x, y, &#34;g&#34;)</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
@@ -251,7 +255,7 @@ hljs.highlightAll();
 <h3>Methods</h3>
 <dl>
 <dt id="rpps.mod.modulation.PSK.draw_refs"><code class="name flex">
-<span>def <span class="ident">draw_refs</span></span>(<span>self, points: bool = True, ref: bool = True)</span>
+<span>def <span class="ident">draw_refs</span></span>(<span>self, points: bool = True, ref: bool = True, ax=None)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>

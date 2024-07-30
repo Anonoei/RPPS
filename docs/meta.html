@@ -45,12 +45,14 @@ hljs.highlightAll();
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class Meta:
+    freq = _Meta()
     mod = _Meta()
     coding = _Meta()
     fmt = &#34;complex64&#34;
 
     def __str__(self):
         return &#34;.&#34;.join([
+            self.freq.__str__(),
             self.mod.__str__(),
             self.coding.__str__(),
             self.fmt,
@@ -79,6 +81,7 @@ hljs.highlightAll();
         return {
             &#34;RPPS&#34;: version,
             &#34;Format&#34;: self.fmt,
+            &#34;Freq&#34;: self.freq.fields,
             &#34;Mod&#34;: self.mod.fields,
             &#34;Coding&#34;: self.coding.fields,
         }
@@ -94,6 +97,7 @@ hljs.highlightAll();
         meta = Meta()
         # print(f&#34;Creating Meta from {json.dumps(d, indent=4)}&#34;)
         meta.fmt = d[&#34;Format&#34;]
+        meta.freq = Construct(&#34;Freq&#34;, d[&#34;Freq&#34;])
         meta.mod = Construct(&#34;Mod&#34;, d[&#34;Mod&#34;])
         meta.coding = Construct(&#34;Coding&#34;, d[&#34;Coding&#34;])
         return meta
@@ -133,6 +137,10 @@ hljs.highlightAll();
 <div class="desc"></div>
 </dd>
 <dt id="rpps.meta.Meta.fmt"><code class="name">var <span class="ident">fmt</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.meta.Meta.freq"><code class="name">var <span class="ident">freq</span></code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
@@ -222,6 +230,7 @@ hljs.highlightAll();
 <ul class="two-column">
 <li><code><a title="rpps.meta.Meta.coding" href="#rpps.meta.Meta.coding">coding</a></code></li>
 <li><code><a title="rpps.meta.Meta.fmt" href="#rpps.meta.Meta.fmt">fmt</a></code></li>
+<li><code><a title="rpps.meta.Meta.freq" href="#rpps.meta.Meta.freq">freq</a></code></li>
 <li><code><a title="rpps.meta.Meta.from_file" href="#rpps.meta.Meta.from_file">from_file</a></code></li>
 <li><code><a title="rpps.meta.Meta.from_json" href="#rpps.meta.Meta.from_json">from_json</a></code></li>
 <li><code><a title="rpps.meta.Meta.from_name" href="#rpps.meta.Meta.from_name">from_name</a></code></li>
