@@ -6,17 +6,17 @@ RPPS is a generic signal processor/generator library.
  - [Documentation](https://anonoei.github.io/RPPS/)
  - [PyPI](https://pypi.org/project/rpps/)
 
-## Usage
+## Example Usage
 ```
 import rpps as rp
 
 def main():
     mod = rp.mod.name("QPSK", 0) # Use QPSK modulation, with mapping 0
-    ecc = rp.coding.name("BLK", "Repetition", 2) # Use Repetition coding, with rate of 2
+    ecc = rp.coding.name("BLK", "Repetition", 3) # Use Repetition coding, with rate of 2
 
     pipeline = rp.Pipeline(mod, ecc) # Initialize a processing pipeline
 
-    enc_msg = b"""Test""" # Define the data to process
+    enc_msg = b"Test" # Define the data to process
     syms = pipeline.enc(enc_msg) # Encode data with ecc, and mod. Get the symbols
     path = pipeline.meta.serialize(syms) # Serialize the symbols to file
 
@@ -32,8 +32,10 @@ if __name__ == "__main__":
 2. In your project, `import rpps as rp`
 
 ## Roadmap
- - [ ] Pre-processing
- - [ ] Modulation
+ - [ ] [Pre-processing](https://github.com/Anonoei/RPPS/tree/main/src/rpps/freq)
+   - [ ] Filters
+   - [ ] Pulse Shaping
+ - [ ] [Modulation](https://github.com/Anonoei/RPPS/tree/main/src/rpps/mod)
    - [ ] PSK
      - [X] BPSK
      - [X] QPSK
@@ -42,7 +44,7 @@ if __name__ == "__main__":
    - [ ] APSK
    - [ ] ASK
    - [ ] FSK
- - [ ] Coding
+ - [ ] [Coding](https://github.com/Anonoei/RPPS/tree/main/src/rpps/coding)
    - [ ] Block
      - [X] Repetition
      - [ ] LDPC
