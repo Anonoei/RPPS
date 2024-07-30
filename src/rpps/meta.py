@@ -7,12 +7,14 @@ from ._meta import _Meta, Construct
 
 
 class Meta:
+    freq = _Meta()
     mod = _Meta()
     coding = _Meta()
     fmt = "complex64"
 
     def __str__(self):
         return ".".join([
+            self.freq.__str__(),
             self.mod.__str__(),
             self.coding.__str__(),
             self.fmt,
@@ -41,6 +43,7 @@ class Meta:
         return {
             "RPPS": version,
             "Format": self.fmt,
+            "Freq": self.freq.fields,
             "Mod": self.mod.fields,
             "Coding": self.coding.fields,
         }
@@ -56,6 +59,7 @@ class Meta:
         meta = Meta()
         # print(f"Creating Meta from {json.dumps(d, indent=4)}")
         meta.fmt = d["Format"]
+        meta.freq = Construct("Freq", d["Freq"])
         meta.mod = Construct("Mod", d["Mod"])
         meta.coding = Construct("Coding", d["Coding"])
         return meta

@@ -9,11 +9,11 @@ import rpps as rp
 
 def main():
     mod = rp.mod.name("QPSK", 0)
-    ecc = rp.coding.name("BLK", "Repetition", 2)
+    ecc = rp.coding.name("BLK", "Repetition", 3)
 
     pipeline = rp.Pipeline(mod, ecc)
 
-    enc_msg = b"""Test"""
+    enc_msg = b"""Hello World!"""
 
     def encode(pipeline: rp.Pipeline, enc_msg):
         time_start = time.perf_counter()
@@ -22,9 +22,18 @@ def main():
         time_dur = time.perf_counter() - time_start
         print(f"Encode took {time_dur:.2f}s")
 
-        rp.viz.DrawConstellation(syms, pipeline.meta)
-        mod.draw_refs()
+        fig, ax = rp.viz.phasor(syms, pipeline.meta)
+        mod.draw_refs(ax=ax)
         rp.viz.show()
+        # rp.viz.figure()
+        # rp.viz.quadrature(syms, pipeline.meta)
+        # rp.viz.figure()
+        # rp.viz.psd(syms, pipeline.meta)
+        #rp.viz.figure()
+        #rp.viz.phase(syms, pipeline.meta)
+        #rp.viz.figure()
+        #rp.viz.magnitude(syms, pipeline.meta)
+        #rp.viz.show()
 
         return pipeline.meta.serialize(syms)
 

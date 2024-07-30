@@ -24,7 +24,9 @@ class _Meta:
             self.fields[k] = v
 
 def Construct(name, j: dict):
-    if name == "Mod":
+    if name == "Freq":
+        from .freq.meta import Construct
+    elif name == "Mod":
         from .mod.meta import Construct
     elif name == "Coding":
         from .coding.meta import Construct

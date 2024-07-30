@@ -48,20 +48,24 @@ class Modulation:
         self.init_meta(meta)
         return symbols, meta
 
-    def draw_refs(self, points: bool = True, ref: bool = True):
+    def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         ...
 
 
 class PSK(Modulation):
-    def draw_refs(self, points: bool = True, ref: bool = True):
+
+    def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
+        if ax is None:
+            fig = plt.figure()
+            ax = fig.add_subplot()
         if points:
             x = self.points.real()
             y = self.points.imag()
-            plt.scatter(x=x, y=y, s=200, c="r")
+            ax.scatter(x=x, y=y, s=200, c="r")
             labels = self.constellation.mapping.arr
             # Add labels using annotate()
             for i, label in enumerate(labels):
-                plt.annotate(
+                ax.annotate(
                     bin(label)[2:].zfill(self.constellation._bps),
                     (x[i], y[i]),
                     fontsize=20,
@@ -72,7 +76,7 @@ class PSK(Modulation):
             radius = 1
             x = radius * np.cos(angle)
             y = radius * np.sin(angle)
-            plt.plot(x, y, "g")
+            ax.plot(x, y, "g")
 
 
 class ASK(Modulation):

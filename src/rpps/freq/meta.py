@@ -2,21 +2,20 @@ from .._meta import _Meta
 
 from collections import OrderedDict
 
-class ModMeta(_Meta):
+class FreqMeta(_Meta):
     __slots__ = "fields"
 
     def __init__(self):
         self.fields = OrderedDict((
-            ("Name", None),
-            ("Type", None),
-            ("Map", None),
+            ("SampleRate", None),
+            ("CenterFreq", None),
         ))
 
     def short(self) -> str:
-        return f"{self.fields['Name']}{self.fields['Type']}"
+        return f"{self.fields['CenterFreq']}_{self.fields['SampleRate']}"
 
 
 def Construct(j: dict):
-    meta = ModMeta()
+    meta = FreqMeta()
     meta.from_json(j)
     return meta

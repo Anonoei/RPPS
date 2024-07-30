@@ -6,6 +6,7 @@ from ..mod import name, mapping, maps
 
 # -----
 
-from .generic import show
+from .generic import show, figure
 from .dialog import get_file
-from .constellation import draw as DrawConstellation
+from .time import phasor, quadrature
+from .freq import psd, phase, magnitude
