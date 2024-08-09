@@ -9,6 +9,8 @@ class FreqMeta(_Meta):
         self.fields = OrderedDict((
             ("SampleRate", None),
             ("CenterFreq", None),
+            ("BlockSize", None),
+            ("BlockTime", None),
         ))
 
     def short(self) -> str:

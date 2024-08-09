@@ -38,15 +38,10 @@ class Modulation:
         meta.mod.fields["Map"] = self.constellation.mapping.str()
 
     def demodulate(self, symbols: np.ndarray, meta=Meta()):
-        data = self.constellation.demodulate(symbols, meta)
-
-        return data, meta
+        ...
 
     def modulate(self, data: Stream, meta=Meta()):
-        symbols = self.constellation.modulate(data, meta)
-
-        self.init_meta(meta)
-        return symbols, meta
+        ...
 
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         ...
@@ -77,6 +72,17 @@ class PSK(Modulation):
             x = radius * np.cos(angle)
             y = radius * np.sin(angle)
             ax.plot(x, y, "g")
+
+    def demodulate(self, symbols: np.ndarray, meta=Meta()):
+        data = self.constellation.demodulate(symbols, meta)
+
+        return data, meta
+
+    def modulate(self, data: Stream, meta=Meta()):
+        symbols = self.constellation.modulate(data, meta)
+
+        self.init_meta(meta)
+        return symbols, meta
 
 
 class ASK(Modulation):

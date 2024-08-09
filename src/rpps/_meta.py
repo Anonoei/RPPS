@@ -23,6 +23,12 @@ class _Meta:
             self.fields[k]  # Check if passed dict matches self
             self.fields[k] = v
 
+    def __getitem__(self, k):
+        return self.fields[k]
+
+    def __setitem__(self, k, v):
+        self.fields[k] = v
+
 def Construct(name, j: dict):
     if name == "Freq":
         from .freq.meta import Construct

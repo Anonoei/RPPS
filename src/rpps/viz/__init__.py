@@ -6,7 +6,9 @@ from ..mod import name, mapping, maps
 
 # -----
 
-from .generic import show, figure
+from ..helpers.formats import Format
+
+from .generic import *
 from .dialog import get_file
 from .time import phasor, quadrature
-from .freq import psd, phase, magnitude
+from .freq import psd, phase, magnitude, spectrogram

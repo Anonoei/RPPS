@@ -4,13 +4,14 @@ import json
 from . import __version__ as version
 
 from ._meta import _Meta, Construct
+from .helpers import Formats
 
 
 class Meta:
     freq = _Meta()
     mod = _Meta()
     coding = _Meta()
-    fmt = "complex64"
+    fmt = "cf64"
 
     def __str__(self):
         return ".".join([
@@ -28,6 +29,9 @@ class Meta:
 
     def __repr__(self) -> str:
         return f"<Meta: {str(self)}>"
+
+    def format(self):
+        return Formats[self.fmt]
 
     def serialize(self, data):
         path = pathlib.Path(f"data/{self.to_name()}")
