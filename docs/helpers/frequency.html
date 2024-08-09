@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
-<title>rpps.helpers API documentation</title>
+<title>rpps.helpers.frequency API documentation</title>
 <meta name="description" content="">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
@@ -22,48 +22,166 @@ hljs.highlightAll();
 <main>
 <article id="content">
 <header>
-<h1 class="title">Module <code>rpps.helpers</code></h1>
+<h1 class="title">Module <code>rpps.helpers.frequency</code></h1>
 </header>
 <section id="section-intro">
 </section>
 <section>
-<h2 class="section-title" id="header-submodules">Sub-modules</h2>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
 <dl>
-<dt><code class="name"><a title="rpps.helpers.args" href="args.html">rpps.helpers.args</a></code></dt>
+<dt id="rpps.helpers.frequency.Frequency"><code class="flex name class">
+<span>class <span class="ident">Frequency</span></span>
+<span>(</span><span>freq=0)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Helper for frequencies</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Frequency:
+    &#34;&#34;&#34;Helper for frequencies&#34;&#34;&#34;
+
+    def __init__(self, freq=0):
+        self.freq = freq
+        self.mult = 1
+        self.label = &#34;&#34;
+
+        if isinstance(freq, str):
+            if not re.match(r&#34;((\d+\.?)?\d+?)((e\d+)|([hkmg]))&#34;, freq):
+                print(&#34;Invalid frequency string!&#34;)
+                print(&#34;It must be provided in scientific notation&#34;)
+                print(&#34; ##.#e# - re: &#39;((\\d+\\.?)?\\d+?)(e\\d+)&#39;&#34;)
+                print(&#34;Or with units&#34;)
+                print(&#34; ##.#m - re: &#39;((\\d+\\.?)?\\d+?)[hkmg]&#39;&#34;)
+                exit(1)
+
+    def __str__(self):
+        return self.str
+
+    def default(self):
+        return self.str
+
+    @property
+    def raw(self):
+        return self.freq
+
+    @property
+    def short(self):
+        return self.freq / self.mult
+
+    @property
+    def str(self):
+        return format(self.freq / self.mult, &#34;.2f&#34;) + self.unit
+
+    @property
+    def unit(self):
+        return self.label.upper() + &#34;Hz&#34;
+
+    def init(self, freq=None):
+        if freq is not None:
+            self.freq = freq
+
+        # input(&#34;Initializing: &#34; + str(self.freq))
+        if isinstance(self.freq, str):
+            if &#34;e&#34; in self.freq:
+                freq = self.freq.split(&#34;e&#34;)
+                mult = int(&#34;1&#34; + (int(freq[1]) * &#34;0&#34;))
+                freq = float(freq[0])
+                # input(&#34;scinot: got &#34; + str(freq) + &#34; * &#34; + str(mult))
+                self.freq = freq * mult
+                self.init()
+                return
+
+            for i, l in enumerate([&#34;h&#34;, &#34;k&#34;, &#34;m&#34;, &#34;g&#34;]):
+                if self.freq.endswith(l):
+                    self.mult = int(&#34;1&#34; + (i * &#34;000&#34;))
+                    self.freq = float(self.freq[:-1])
+                    self.label = l
+                    return
+        else:
+            for i, l in enumerate([&#34;&#34;, &#34;k&#34;, &#34;m&#34;, &#34;g&#34;]):
+                mult = int(&#34;1&#34; + (i * &#34;000&#34;))
+                cur_freq = self.freq / mult
+                if cur_freq &lt; 1000:
+                    self.mult = mult
+                    self.label = l
+                    return</code></pre>
+</details>
+<h3>Instance variables</h3>
+<dl>
+<dt id="rpps.helpers.frequency.Frequency.raw"><code class="name">prop <span class="ident">raw</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def raw(self):
+    return self.freq</code></pre>
+</details>
+</dd>
+<dt id="rpps.helpers.frequency.Frequency.short"><code class="name">prop <span class="ident">short</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def short(self):
+    return self.freq / self.mult</code></pre>
+</details>
+</dd>
+<dt id="rpps.helpers.frequency.Frequency.str"><code class="name">prop <span class="ident">str</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def str(self):
+    return format(self.freq / self.mult, &#34;.2f&#34;) + self.unit</code></pre>
+</details>
+</dd>
+<dt id="rpps.helpers.frequency.Frequency.unit"><code class="name">prop <span class="ident">unit</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def unit(self):
+    return self.label.upper() + &#34;Hz&#34;</code></pre>
+</details>
+</dd>
+</dl>
+<h3>Methods</h3>
+<dl>
+<dt id="rpps.helpers.frequency.Frequency.default"><code class="name flex">
+<span>def <span class="ident">default</span></span>(<span>self)</span>
+</code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
-<dt><code class="name"><a title="rpps.helpers.binary" href="binary.html">rpps.helpers.binary</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="rpps.helpers.bitarray" href="bitarray.html">rpps.helpers.bitarray</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="rpps.helpers.formats" href="formats.html">rpps.helpers.formats</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="rpps.helpers.frequency" href="frequency.html">rpps.helpers.frequency</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="rpps.helpers.progress" href="progress.html">rpps.helpers.progress</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="rpps.helpers.stream" href="stream.html">rpps.helpers.stream</a></code></dt>
+<dt id="rpps.helpers.frequency.Frequency.init"><code class="name flex">
+<span>def <span class="ident">init</span></span>(<span>self, freq=None)</span>
+</code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
 </dl>
-</section>
-<section>
-</section>
-<section>
-</section>
-<section>
+</dd>
+</dl>
 </section>
 </article>
 <nav id="sidebar">
@@ -73,18 +191,22 @@ hljs.highlightAll();
 <ul id="index">
 <li><h3>Super-module</h3>
 <ul>
-<li><code><a title="rpps" href="../index.html">rpps</a></code></li>
+<li><code><a title="rpps.helpers" href="index.html">rpps.helpers</a></code></li>
 </ul>
 </li>
-<li><h3><a href="#header-submodules">Sub-modules</a></h3>
+<li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
-<li><code><a title="rpps.helpers.args" href="args.html">rpps.helpers.args</a></code></li>
-<li><code><a title="rpps.helpers.binary" href="binary.html">rpps.helpers.binary</a></code></li>
-<li><code><a title="rpps.helpers.bitarray" href="bitarray.html">rpps.helpers.bitarray</a></code></li>
-<li><code><a title="rpps.helpers.formats" href="formats.html">rpps.helpers.formats</a></code></li>
-<li><code><a title="rpps.helpers.frequency" href="frequency.html">rpps.helpers.frequency</a></code></li>
-<li><code><a title="rpps.helpers.progress" href="progress.html">rpps.helpers.progress</a></code></li>
-<li><code><a title="rpps.helpers.stream" href="stream.html">rpps.helpers.stream</a></code></li>
+<li>
+<h4><code><a title="rpps.helpers.frequency.Frequency" href="#rpps.helpers.frequency.Frequency">Frequency</a></code></h4>
+<ul class="two-column">
+<li><code><a title="rpps.helpers.frequency.Frequency.default" href="#rpps.helpers.frequency.Frequency.default">default</a></code></li>
+<li><code><a title="rpps.helpers.frequency.Frequency.init" href="#rpps.helpers.frequency.Frequency.init">init</a></code></li>
+<li><code><a title="rpps.helpers.frequency.Frequency.raw" href="#rpps.helpers.frequency.Frequency.raw">raw</a></code></li>
+<li><code><a title="rpps.helpers.frequency.Frequency.short" href="#rpps.helpers.frequency.Frequency.short">short</a></code></li>
+<li><code><a title="rpps.helpers.frequency.Frequency.str" href="#rpps.helpers.frequency.Frequency.str">str</a></code></li>
+<li><code><a title="rpps.helpers.frequency.Frequency.unit" href="#rpps.helpers.frequency.Frequency.unit">unit</a></code></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>

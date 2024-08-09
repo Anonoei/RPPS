@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
-<title>rpps.helpers API documentation</title>
+<title>rpps.file API documentation</title>
 <meta name="description" content="">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
@@ -22,48 +22,65 @@ hljs.highlightAll();
 <main>
 <article id="content">
 <header>
-<h1 class="title">Module <code>rpps.helpers</code></h1>
+<h1 class="title">Module <code>rpps.file</code></h1>
 </header>
 <section id="section-intro">
 </section>
 <section>
-<h2 class="section-title" id="header-submodules">Sub-modules</h2>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
 <dl>
-<dt><code class="name"><a title="rpps.helpers.args" href="args.html">rpps.helpers.args</a></code></dt>
+<dt id="rpps.file.file"><code class="flex name class">
+<span>class <span class="ident">file</span></span>
+</code></dt>
 <dd>
 <div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="rpps.helpers.binary" href="binary.html">rpps.helpers.binary</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="rpps.helpers.bitarray" href="bitarray.html">rpps.helpers.bitarray</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="rpps.helpers.formats" href="formats.html">rpps.helpers.formats</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="rpps.helpers.frequency" href="frequency.html">rpps.helpers.frequency</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="rpps.helpers.progress" href="progress.html">rpps.helpers.progress</a></code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="rpps.helpers.stream" href="stream.html">rpps.helpers.stream</a></code></dt>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class file:
+    fmt = Format()
+
+    @staticmethod
+    def get_format():
+        return file.fmt
+
+    @staticmethod
+    def read(meta: Meta, path: str, bins: int, offset: int = 0, skip=1, max_ittr=-1):
+        file.fmt = Formats[meta.fmt]()
+        for sym in file.fmt.read(meta, path, bins, offset, skip, max_ittr):
+            yield sym</code></pre>
+</details>
+<h3>Class variables</h3>
+<dl>
+<dt id="rpps.file.file.fmt"><code class="name">var <span class="ident">fmt</span></code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
 </dl>
-</section>
-<section>
-</section>
-<section>
-</section>
-<section>
+<h3>Static methods</h3>
+<dl>
+<dt id="rpps.file.file.get_format"><code class="name flex">
+<span>def <span class="ident">get_format</span></span>(<span>)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.file.file.read"><code class="name flex">
+<span>def <span class="ident">read</span></span>(<span>meta: <a title="rpps.meta.Meta" href="meta.html#rpps.meta.Meta">Meta</a>, path: str, bins: int, offset: int = 0, skip=1, max_ittr=-1)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+</dl>
 </section>
 </article>
 <nav id="sidebar">
@@ -73,18 +90,19 @@ hljs.highlightAll();
 <ul id="index">
 <li><h3>Super-module</h3>
 <ul>
-<li><code><a title="rpps" href="../index.html">rpps</a></code></li>
+<li><code><a title="rpps" href="index.html">rpps</a></code></li>
 </ul>
 </li>
-<li><h3><a href="#header-submodules">Sub-modules</a></h3>
+<li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
-<li><code><a title="rpps.helpers.args" href="args.html">rpps.helpers.args</a></code></li>
-<li><code><a title="rpps.helpers.binary" href="binary.html">rpps.helpers.binary</a></code></li>
-<li><code><a title="rpps.helpers.bitarray" href="bitarray.html">rpps.helpers.bitarray</a></code></li>
-<li><code><a title="rpps.helpers.formats" href="formats.html">rpps.helpers.formats</a></code></li>
-<li><code><a title="rpps.helpers.frequency" href="frequency.html">rpps.helpers.frequency</a></code></li>
-<li><code><a title="rpps.helpers.progress" href="progress.html">rpps.helpers.progress</a></code></li>
-<li><code><a title="rpps.helpers.stream" href="stream.html">rpps.helpers.stream</a></code></li>
+<li>
+<h4><code><a title="rpps.file.file" href="#rpps.file.file">file</a></code></h4>
+<ul class="">
+<li><code><a title="rpps.file.file.fmt" href="#rpps.file.file.fmt">fmt</a></code></li>
+<li><code><a title="rpps.file.file.get_format" href="#rpps.file.file.get_format">get_format</a></code></li>
+<li><code><a title="rpps.file.file.read" href="#rpps.file.file.read">read</a></code></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
