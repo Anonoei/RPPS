@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rpps"
-version = "0.0.5"
+version = "0.0.6"
 description = "RF Parameter Processor Suite"
 dependencies = []
 requires-python = ">=3.6"
@@ -35,7 +35,7 @@ Source = "https://github.com/anonoei/RPPS"
 dev = ["twine", "build", "black", "bumpver", "pytest", "pdoc3"]
 
 [tool.bumpver]
-current_version = "0.0.5"
+current_version = "0.0.6"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message = "bump version {old_version} -> {new_version}"
 tag_message = "{new_version}"
