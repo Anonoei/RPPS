@@ -8,7 +8,7 @@ from . import Meta
 class Coding:
     name = "Coding"
     def __init__(self, num, den):
-        self.log = Logger().Child("Coding", Level.WARN).Child(type(self).__name__, Level.TRACE)
+        self.log = Logger().Child("Coding", Level.WARN).Child(type(self).__name__, Level.WARN)
         self.num = num
         self.den = den
         self._rate = self.num/self.den

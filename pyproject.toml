@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "rpps"
 version = "0.0.6"
 description = "RF Parameter Processor Suite"
-dependencies = []
+dependencies = ["pyboiler-anonoei", "numpy", "matplotlib"]
 requires-python = ">=3.6"
 authors = [
     {name = "Anonoei", email="dev@anonoei.com"}
@@ -32,7 +32,7 @@ Issues = "https://github.com/Anonoei/RPPS/issues"
 Source = "https://github.com/anonoei/RPPS"
 
 [project.optional-dependencies]
-dev = ["twine", "build", "black", "bumpver", "pytest", "pdoc3"]
+dev = ["twine", "build", "bumpver", "pytest", "pdoc3"]
 
 [tool.bumpver]
 current_version = "0.0.6"

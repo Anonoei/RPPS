@@ -9,9 +9,9 @@ import rpps as rp
 def main():
     # path = rp.viz.get_file()
     # print(f"Path is: {path}")
-    path = "data/QPSK_2SPS.sigmf-data"
+    path = "rpps.w.bin"
     meta = rp.Meta()
-    meta.fmt = "cf32"
+    meta.fmt = "cf64"
     # meta.freq["SampleRate"] = 250000
     meta.freq["CenterFreq"] = 96900000
 

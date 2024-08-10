@@ -91,7 +91,7 @@ class Constellation:
     __slots__ = ("log", "_points", "_mapping", "_bps")
 
     def __init__(self, points: Points, mapping = None, log=Logger().Child("Modulation")):
-        self.log = log.Child("Constellation", Level.TRACE)
+        self.log = log.Child("Constellation", Level.WARN)
         if not isinstance(points, Points):
             points = Points(points)
         self._points = points

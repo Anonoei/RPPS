@@ -34,13 +34,7 @@ def main():
     commands.add_argument("-b", "--build", action="store_true", help="build RPPS")
     commands.add_argument("-u", "--upload", action="store_true", help="upload RPPS")
     commands.add_argument("-t", "--test", action="store_true", help="run pytest")
-    commands.add_argument(
-        "-f", "--format", action="store_true", help="run black formatter"
-    )
     commands.add_argument("-d", "--docs", action="store_true", help="generate docs")
-    commands.add_argument(
-        "-p", "--prepare", action="store_true", help="run format, test, and docs"
-    )
     commands.add_argument("-v", "--version", action="store_true", help="bump version")
 
     ver = parser.add_mutually_exclusive_group()
@@ -55,27 +49,28 @@ def main():
 
     args = parser.parse_args()
 
-
-
     PATH_ROOT = get_path()
     os.system(f"cd {PATH_ROOT}")
 
     with open("pyproject.toml", "r") as f:
+        dev_deps = None
         deps = None
         for line in f.readlines():
-            if line.startswith("dev = "):
+            if line.startswith("dependencies = "):
                 deps = line
+            if line.startswith("dev = "):
+                dev_deps = line
+            if deps is not None and dev_deps is not None:
                 break
         # deps = '{"deps":' + "" + "}"
-        if deps is None:
+        if deps is None or dev_deps is None:
             raise Exception("deps is None")
         deps = json.loads(deps[deps.index("[") - 1 : deps.index("]") + 1])
-        for dep in deps:
+        dev_deps = json.loads(dev_deps[dev_deps.index("[") - 1 : dev_deps.index("]") + 1])
+        for dep in deps + dev_deps:
             try:
                 importlib.import_module(dep)
             except ModuleNotFoundError:
-                if dep == "pdoc3":
-                    continue
                 os.system(f"{sys.executable} -m pip install {dep}")
 
     def cmd_local(args):
@@ -97,9 +92,6 @@ def main():
 
     def cmd_test(args):
         run("pytest")
-
-    def cmd_format(args):
-        run("black src/rpps")
 
     def cmd_version(args):
         bump = "bumpver update --allow-dirty "
@@ -124,15 +116,8 @@ def main():
                 shutil.rmtree(docs)
                 shutil.move(temp, docs)
 
-    if args.prepare:
-        cmd_format(args)
-        cmd_test(args)
-        cmd_docs(args)
-
     if args.version:
         cmd_version(args)
-    if args.format:
-        cmd_format(args)
     if args.build:
         cmd_build(args)
     if args.local:

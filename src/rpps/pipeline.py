@@ -9,7 +9,7 @@ from .coding import Coding
 
 class Pipeline:
     def __init__(self, mod, ecc=None):
-        self.log = Logger().Child("Pipeline", Level.TRACE)
+        self.log = Logger().Child("Pipeline", Level.WARN)
         self.meta = Meta()
         self.mod: Modulation = mod
         self.coding: Coding = ecc  # type: ignore

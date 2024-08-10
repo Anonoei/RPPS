@@ -9,6 +9,7 @@ from .helpers import Formats
 
 class Meta:
     freq = _Meta()
+    inter = _Meta()
     mod = _Meta()
     coding = _Meta()
     fmt = "cf64"

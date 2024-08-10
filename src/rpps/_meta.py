@@ -29,6 +29,9 @@ class _Meta:
     def __setitem__(self, k, v):
         self.fields[k] = v
 
+    def get(self, k, d):
+        return self.fields.get(k, d)
+
 def Construct(name, j: dict):
     if name == "Freq":
         from .freq.meta import Construct

@@ -32,7 +32,11 @@ if __name__ == "__main__":
 2. In your project, `import rpps as rp`
 
 ## Roadmap
- - [ ] [Pre-processing](https://github.com/Anonoei/RPPS/tree/main/src/rpps/freq)
+ - [ ] [Interfaces](https://github.com/Anonoei/RPPS/tree/main/src/rpps/inter)
+   - [X] File
+   - [ ] (Linux only) tun/tap
+   - [ ] Socket
+ - [ ] [Pre-processing](https://github.com/Anonoei/RPPS/tree/main/src/rpps/process)
    - [ ] Filters
    - [ ] Pulse Shaping
  - [ ] [Modulation](https://github.com/Anonoei/RPPS/tree/main/src/rpps/mod)
@@ -56,3 +60,10 @@ if __name__ == "__main__":
  - [ ] De-frame
    - [ ] HDLC
    - [ ] PPP
+
+## Contributing
+ 1. `git clone https://github.com/Anonoei/RPPS`
+ 2. `cd RPPS`
+ 3. `python3 builder.py -b -l` build and install rpps locally
+    - This also installs deps, and dev_deps automatically
+ 4. run `python3 tests/dev.py`
