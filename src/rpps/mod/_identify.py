@@ -13,7 +13,7 @@ def mapping(n: str, idx: int) -> Mapping:
 
 def name(n: str, idx: int = -123) -> Modulation:
     mod = MAP[n[-3:]][n]
-    if idx is -123:
+    if idx == -123:
         mod = mod()
     else:
         mod = mod(mapping(n, idx))

@@ -10,8 +10,8 @@ import rpps as rp
 def main():
     mod = rp.mod.name("QPSK", 0)
     ecc = rp.coding.name("BLK", "Repetition", 3)
-
-    pipeline = rp.Pipeline(mod, ecc)
+    
+    pipeline = rp.Pipeline(mod, ecc,sps=2.2)
 
     enc_msg = b"""Hello World!"""
 
