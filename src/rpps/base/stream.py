@@ -14,7 +14,9 @@ class Stream:
         self.length = None
 
     def __str__(self):
-        return f"0x{self.hex}"
+        if self.cache["hex"] is not None:
+            return f"0x{self.hex}"
+        return f"{self.cache}"
 
     def __repr__(self):
         return f"<Encoded data>"
@@ -22,7 +24,7 @@ class Stream:
     @property
     def bin(self):
         if self.cache["bin"] is None:
-            #self.cache["bin"] = Encoding._pad(bin(self.cache["int"])[2:], 8)
+            # self.cache["bin"] = Encoding._pad(bin(self.cache["int"])[2:], 8)
             self.cache["bin"] = "".join([item for item in self.bitarray.astype(str)])
         return self.cache["bin"]
 
@@ -44,7 +46,7 @@ class Stream:
     def bytes(self):
         if self.cache["bytes"] is None:
             if self.cache["hex"] is None:
-                self.hex
+                return None
             self.cache["bytes"] = bytes.fromhex(self.cache["hex"])
         return self.cache["bytes"]
 
@@ -90,6 +92,13 @@ class Stream:
     def from_int(int, length = None):
         enc = Stream()
         enc.cache["int"] = int
+        enc.length = length
+        return enc
+
+    @staticmethod
+    def from_bitarray(ba, length=None):
+        enc = Stream()
+        enc.cache["bitarray"] = ba
         enc.length = length
         return enc
 

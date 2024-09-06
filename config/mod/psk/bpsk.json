@@ -1,0 +1,10 @@
+{
+  "Points": [
+    { "real": 1, "imag": 0 },
+    { "real": -1, "imag": 0 }
+  ],
+  "Maps": [
+    { "map": [0, 1], "comment": "R000" },
+    { "map": [1, 0], "comment": "R180" }
+  ]
+}

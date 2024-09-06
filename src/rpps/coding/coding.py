@@ -1,9 +1,8 @@
 from pyboiler.logger import Logger, Level
 
-from ..helpers.bitarray import bitarray
-from ..helpers.stream import Stream
-
 from . import Meta
+from . import base
+from . import dobject
 
 class Coding:
     name = "Coding"
@@ -18,11 +17,27 @@ class Coding:
         meta.coding.fields["RateNum"] = self.num
         meta.coding.fields["RateDen"] = self.den
 
-    def encode(self, data: Stream) -> bitarray:
+    def encode(self, dobj: dobject.DataObject, meta: Meta) -> dobject.CodingData:
         ...
 
-    def decode(self, data: bitarray) -> bitarray:
+    def decode(self, dobj: dobject.DataObject, meta: Meta) -> dobject.CodingData:
         ...
+
+    def __matmul__(self, other):
+        if isinstance(other, dobject.ModData):
+            return self.decode(other, other.meta)
+        elif issubclass(type(other), dobject.DataObject):
+            return self.encode(other, other.meta)
+        else:
+            raise TypeError(f"Cannot perform {type(self).__name__} on {type(other)}")
+
+    def __rmatmul__(self, other):
+        if isinstance(other, dobject.ModData):
+            return self.decode(other, other.meta)
+        elif issubclass(type(other), dobject.DataObject):
+            return self.encode(other, other.meta)
+        else:
+            raise TypeError(f"Cannot perform {type(self).__name__} on {type(other)}")
 
 
 class Block(Coding):

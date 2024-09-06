@@ -34,9 +34,9 @@ class _Meta:
 
 def Construct(name, j: dict):
     if name == "Freq":
-        from .freq.meta import Construct
+        from ..freq.meta import Construct
     elif name == "Mod":
-        from .mod.meta import Construct
+        from ..mod.meta import Construct
     elif name == "Coding":
-        from .coding.meta import Construct
+        from ..coding.meta import Construct
     return Construct(j)

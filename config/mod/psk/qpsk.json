@@ -1,0 +1,18 @@
+{
+  "Points": [
+    { "real": 0.7, "imag": -0.7 },
+    { "real": -0.7, "imag": -0.7 },
+    { "real": 0.7, "imag": 0.7 },
+    { "real": -0.7, "imag": 0.7 }
+  ],
+  "Maps": [
+    { "map": [0, 1, 2, 3], "comment": "R000 Normal Grey" },
+    { "map": [0, 2, 1, 3], "comment": "R000 Inverted Grey" },
+    { "map": [2, 0, 3, 1], "comment": "R090 Normal Grey" },
+    { "map": [1, 0, 3, 2], "comment": "R090 Inverted Grey" },
+    { "map": [3, 2, 1, 0], "comment": "R180 Normal Grey" },
+    { "map": [3, 1, 2, 0], "comment": "R180 Inverted Grey" },
+    { "map": [1, 3, 0, 2], "comment": "R270 Normal Grey" },
+    { "map": [2, 3, 0, 1], "comment": "R270 Inverted Grey" }
+  ]
+}

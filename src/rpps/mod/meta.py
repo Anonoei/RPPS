@@ -1,4 +1,4 @@
-from .._meta import _Meta
+from ..base._meta import _Meta
 
 from collections import OrderedDict
 

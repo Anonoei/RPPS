@@ -3,15 +3,16 @@ import numpy as np
 
 from pyboiler.logger import Logger, Level
 
-from . import Stream
-from . import bitarray
+from . import base
+from . import dobject
 from . import Meta
 
 
 class Mapping:
-    __slots__ = ("arr")
+    __slots__ = ("arr", "comment")
 
-    def __init__(self, map=None):
+    def __init__(self, map=None, comment=""):
+        self.comment = comment
         if isinstance(map, int):
             map = np.array([0] * map)
         elif not isinstance(map, np.ndarray):
@@ -37,6 +38,9 @@ class Mapping:
     def __str__(self):
         return str(self.arr)
 
+    def __repr__(self):
+        return f"({str(self)}, {self.comment})"
+
     def __getitem__(self, item):
         return self.arr[item]
 
@@ -49,6 +53,9 @@ class Maps:
 
     def __init__(self, maps):
         self.maps = maps
+
+    def __str__(self):
+        return str(self.maps)
 
     def __len__(self):
         return len(self.maps)
@@ -130,23 +137,25 @@ class Constellation:
     def bits_per_symbol(self):
         return self._bps
 
-    def modulate(self, data: Stream, meta: Meta, noise: bool = True):
-        indexes = self.index(data, meta)
+    def modulate(self, dobj: dobject.DataObject, meta: Meta, noise: bool = True):
+        indexes = self.index(dobj.stream, meta)
         points = self.map(indexes, meta)
         symbols = self.to_symbols(points, meta, noise=noise)
-        return symbols
+        return dobject.SymData(symbols)
 
-    def demodulate(self, symbols, meta: Meta):
-        points = self.from_symbols(symbols, meta)
+    def demodulate(self, syms: dobject.SymData, meta: Meta):
+        points = self.from_symbols(syms, meta)
         indexes = self.unmap(points, meta)
         data = self.unindex(indexes, meta)
-        return data
+        dobj = dobject.ModData()
+        dobj.from_bitarray(data)
+        return dobj
 
     ##############################
     #  Modulate
     ##############################
 
-    def index(self, data: Stream, meta):
+    def index(self, data: base.Stream, meta):
         self.log.trace(f"Data bitarray is {data.bitarray}")
         self.log.trace(f"Bits per symbol: {self._bps} / {len(data.bitarray)}")
 
@@ -205,7 +214,7 @@ class Constellation:
         points = []
         if clean:
             syms = []
-            for symbol in symbols: # Clean up the symbols
+            for symbol in symbols.stream: # Clean up the symbols
                 diff = np.abs(self.points - symbol)
                 index = np.argmin(diff)
                 closest = self.points[index]
@@ -243,9 +252,9 @@ class Constellation:
             self.log.trace(f"Unpadding by {padding}")
             bits = bits[:-padding]
 
-        data = bitarray([int(bit) for bit in bits])
+        data = base.bitarray([int(bit) for bit in bits])
 
-        #data = Stream.from_bin(bits, len(bits))
+        # data = Stream.from_bin(bits, len(bits))
 
         self.log.trace(f"Data bits are {data} / {len(data)}")
 

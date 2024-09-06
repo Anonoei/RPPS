@@ -1,4 +1,4 @@
-from .frequency import Frequency
+from ..base.frequency import Frequency
 
 def arg_freq(f):
     f = Frequency(f)

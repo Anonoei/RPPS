@@ -1,0 +1,16 @@
+{
+  "Points": [
+    { "real": 0.0, "imag": -1.0 },
+    { "real": 0.7, "imag": -0.7 },
+    { "real": -0.7, "imag": -0.7 },
+    { "real": 1.0, "imag": 0.0 },
+    { "real": -1.0, "imag": 0.0 },
+    { "real": 0.7, "imag": 0.7 },
+    { "real": -0.7, "imag": 0.7 },
+    { "real": 0.0, "imag": 1.0 }
+  ],
+  "Maps": [
+    { "map": [2, 3, 6, 1, 7, 0, 5, 4], "comment": "R000 Normal Grey" },
+    { "map": [6, 7, 5, 4, 2, 3, 1, 0], "comment": "R000 Inverted Grey" }
+  ]
+}

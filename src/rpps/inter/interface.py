@@ -2,7 +2,7 @@ import threading
 import time
 
 from .meta import InterMeta
-from .. import Stream
+#from .. import Stream
 
 class Interface:
     def __init__(self, meta, pipeline, baud=None):
