@@ -52,7 +52,6 @@ class Modulation(base.rpps.Pipe):
         ...
 
     def __matmul__(self, other):
-        print(f"Running matmul")
         if isinstance(other, dobject.SymData):
             return self.demodulate(other, other.meta)
         elif issubclass(type(other), dobject.DataObject):
@@ -61,7 +60,6 @@ class Modulation(base.rpps.Pipe):
             raise TypeError(f"Cannot perform {type(self).__name__} on {type(other)}")
 
     def __rmatmul__(self, other):
-        print(f"Running rmatmul")
         if isinstance(other, dobject.SymData):
             return self.demodulate(other, other.meta)
         elif issubclass(type(other), dobject.DataObject):
