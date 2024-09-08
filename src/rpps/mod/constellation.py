@@ -1,3 +1,4 @@
+"""IQ/Constellation implementation"""
 import math
 import numpy as np
 
@@ -9,6 +10,7 @@ from . import Meta
 
 
 class Mapping:
+    """Constellation map"""
     __slots__ = ("arr", "comment")
 
     def __init__(self, map=None, comment=""):
@@ -23,13 +25,16 @@ class Mapping:
 
     @staticmethod
     def new(map):
+        """Create a new mapping"""
         return Mapping(map)
 
     @staticmethod
     def empty(length: int):
+        """Create a new empty mapping"""
         return Mapping(length)
 
     def str(self):
+        """Return map values as str"""
         return "-".join(self.arr.astype(str))
 
     def __len__(self):
@@ -49,6 +54,7 @@ class Mapping:
 
 
 class Maps:
+    """Collection of constellation mappings"""
     __slots__ = ("maps")
 
     def __init__(self, maps):
@@ -67,6 +73,7 @@ class Maps:
         self.maps[item] = val
 
 class Points:
+    """Complex points"""
     __slots__ = ("arr")
 
     def __init__(self, points):
@@ -85,16 +92,20 @@ class Points:
         self.arr[item] = val
 
     def real(self):
+        """Get real from points"""
         return np.real(self.arr)
 
     def imag(self):
+        """Get imag from points"""
         return np.imag(self.arr)
 
     def degrees(self):
+        """Get point degrees"""
         return np.angle(self.arr, deg=True)
 
 
 class Constellation:
+    """Constellation implementation"""
     __slots__ = ("log", "_points", "_mapping", "_bps")
 
     def __init__(self, points: Points, mapping = None, log=Logger().Child("Modulation")):
@@ -118,6 +129,7 @@ class Constellation:
 
     @property
     def points(self):
+        """Get constellation points"""
         return self._points
 
     @points.setter
@@ -127,6 +139,7 @@ class Constellation:
 
     @property
     def mapping(self):
+        """Get constellation mapping"""
         return self._mapping
 
     @mapping.setter
@@ -135,15 +148,18 @@ class Constellation:
 
     @property
     def bits_per_symbol(self):
+        """Get bits per symbol"""
         return self._bps
 
     def modulate(self, dobj: dobject.BitObject, noise: bool = True):
+        """Modulate BitObject to IQ symbols"""
         indexes = self.index(dobj)
         points = self.map(indexes, dobj.meta)
         symbols = self.to_symbols(points, dobj.meta, noise=noise)
         return symbols
 
     def demodulate(self, syms: dobject.SymData):
+        """Demodulate IQ symbols to ModData"""
         # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
         distances = np.zeros((len(syms.data), len(self.points)), dtype=np.float16)
 
@@ -167,7 +183,8 @@ class Constellation:
     ##############################
 
     def index(self, dobj: dobject.BitObject):
-        self.log.trace(f"Data bitarray is {dobj.data}")
+        """Convert bits to indexes"""
+        self.log.trace(f"Data is {dobj.data}")
         self.log.trace(f"Bits per symbol: {self._bps} / {len(dobj)}")
 
         padding = len(dobj) % self._bps
@@ -192,6 +209,7 @@ class Constellation:
         return indexes
 
     def map(self, indexes, meta):
+        """Convert indexes to self.mapping values"""
         self.log.trace(f"Using mapping: {self.mapping}")
         points = []
         for idx in indexes:
@@ -204,6 +222,7 @@ class Constellation:
         return points
 
     def to_symbols(self, points, meta, noise: bool = False):
+        """Convert mapping values to symbols"""
         points = np.array(points)
         symbols = self.points[points]
         self.log.trace(f"Symbols are:\n{symbols} / {len(symbols)}")
@@ -222,6 +241,7 @@ class Constellation:
     ##############################
 
     def from_symbols(self, symbols: dobject.SymObject):
+        """Convert symbols to soft decisions"""
         # self.log.trace(f"Symbols are:\n{symbols}")
         # codewords = np.zeros((len(self.points), self._bps), dtype=bool)
         distances = np.zeros((len(symbols), len(self.points)), dtype=np.float16)
@@ -232,6 +252,7 @@ class Constellation:
         return distances
 
     def unmap(self, points, meta):
+        """Convert points to map indexes"""
         self.log.trace(f"Using mapping: {self.mapping}")
         indexes = []
         for pnt in points:
@@ -240,6 +261,7 @@ class Constellation:
         return indexes
 
     def unindex(self, indexes, meta):
+        """Convert indexes to bits"""
         self.log.trace(f"Bits per symbol: {self._bps}")
         bits = ""
         for ind in indexes:

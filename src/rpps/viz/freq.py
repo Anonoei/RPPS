@@ -1,3 +1,4 @@
+"""Frequency domain visualizations"""
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colormaps
@@ -21,6 +22,7 @@ def _pre_process(symbols, meta: Meta):
     return x, y
 
 def psd(symbols, meta: Meta, ax=None, _cache={}):
+    """Plot Power-Spectral-Density"""
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot()
@@ -51,6 +53,7 @@ def psd(symbols, meta: Meta, ax=None, _cache={}):
 
 
 def magnitude(symbols, meta: Meta, ax=None):
+    """Plot FFT Magnitude"""
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot()
@@ -67,6 +70,7 @@ def magnitude(symbols, meta: Meta, ax=None):
 
 
 def phase(symbols, meta: Meta, ax=None):
+    """Plot FFT phase"""
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot()
@@ -82,6 +86,7 @@ def phase(symbols, meta: Meta, ax=None):
     plt.ylabel("Phase")
 
 def spectrogram(symbol_list, meta: Meta, fmt: Format, ax=None):
+    """Plot spectrogram"""
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot()

@@ -1,4 +1,5 @@
-from ..coding import Convolutional
+"""Viterbi convolutional coding"""
+from ..coding import Convolutional, Decision
 
 from .. import Meta
 from .. import base
@@ -7,7 +8,13 @@ from .. import dobject
 import numpy as np
 
 class Viterbi(Convolutional):
+    """Parent viterbi implementation"""
     name = "Viterbi"
+
+class Hard(Viterbi):
+    """Hard decision viterbi"""
+    decision = Decision.HARD
+
     def encode(self, dobj: dobject.BitObject):
         assert self.den - 1 == self.num
 
@@ -41,17 +48,11 @@ class Viterbi(Convolutional):
         encoded_data = dobj.data.reshape(-1, self.den)
         print(f"Decoding {encoded_data.astype(int)}")
 
-
-
         decoded_data = decoded_data.reshape(-1)
         self.log.trace(f"Decoded to {decoded_data}")
         return dobject.BitObject(decoded_data)
 
-class Hard(Viterbi):
-    name = "Hard Viterbi"
 
-    def encode(self, dobj: dobject.BitObject):
-        pass
-
-    def decode(self, dobj: dobject.BitObject):
-        pass
+class Soft(Viterbi):
+    """Soft decision viterbi"""
+    decision = Decision.SOFT

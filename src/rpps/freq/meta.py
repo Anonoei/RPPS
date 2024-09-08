@@ -1,8 +1,10 @@
+"""Freq domain metadata helpers"""
 from ..base._meta import _Meta
 
 from collections import OrderedDict
 
 class FreqMeta(_Meta):
+    """Parent frequency metadata"""
     __slots__ = "fields"
 
     def __init__(self):

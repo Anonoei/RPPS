@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
 <title>rpps.helpers.formats API documentation</title>
-<meta name="description" content="">
+<meta name="description" content="File format helpers">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
@@ -25,6 +25,7 @@ hljs.highlightAll();
 <h1 class="title">Module <code>rpps.helpers.formats</code></h1>
 </header>
 <section id="section-intro">
+<p>File format helpers</p>
 </section>
 <section>
 </section>
@@ -39,12 +40,13 @@ hljs.highlightAll();
 <span>class <span class="ident">Format</span></span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>File Format parent class</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class Format:
+    &#34;&#34;&#34;File Format parent class&#34;&#34;&#34;
     byte_count = 0
     _cache = {
         &#34;read_time&#34;: 0.0,
@@ -59,6 +61,7 @@ hljs.highlightAll();
         return str(type(self).__name__)
 
     def init(self, path, meta, count, max_ittr):
+        &#34;&#34;&#34;Initialize the format&#34;&#34;&#34;
         if not self._last_path == path:
             self._last_path = path
             if max_ittr == -1:
@@ -72,29 +75,36 @@ hljs.highlightAll();
 
     @property
     def cache(self):
+        &#34;&#34;&#34;Get the formats cache&#34;&#34;&#34;
         return self._cache
 
     @property
     def cur_time(self):
+        &#34;&#34;&#34;Get relative time for current iteration&#34;&#34;&#34;
         return self._cache[&#34;block_time&#34;] * self._cache[&#34;cur_ittr&#34;]
 
     @property
     def block_time(self):
+        &#34;&#34;&#34;Get file time per block&#34;&#34;&#34;
         return self._cache[&#34;block_time&#34;]
 
     @property
     def read_time(self):
+        &#34;&#34;&#34;Get total file time&#34;&#34;&#34;
         return self._cache[&#34;read_time&#34;]
 
     @property
     def block(self):
+        &#34;&#34;&#34;Get current block&#34;&#34;&#34;
         return self._cache[&#34;cur_ittr&#34;]
 
     @property
     def blocks(self):
+        &#34;&#34;&#34;Get max block&#34;&#34;&#34;
         return self._cache[&#34;max_ittr&#34;]
 
     def read(self, meta, path: str, count: int, offset: int = 0, skip=1, max_ittr=-1):
+        &#34;&#34;&#34;Read next block from file&#34;&#34;&#34;
         if not self._last_path == path:
             if max_ittr == -1:
                 max_ittr = os.path.getsize(path) // count
@@ -132,73 +142,79 @@ hljs.highlightAll();
 <dl>
 <dt id="rpps.helpers.formats.Format.block"><code class="name">prop <span class="ident">block</span></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Get current block</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">@property
 def block(self):
+    &#34;&#34;&#34;Get current block&#34;&#34;&#34;
     return self._cache[&#34;cur_ittr&#34;]</code></pre>
 </details>
 </dd>
 <dt id="rpps.helpers.formats.Format.block_time"><code class="name">prop <span class="ident">block_time</span></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Get file time per block</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">@property
 def block_time(self):
+    &#34;&#34;&#34;Get file time per block&#34;&#34;&#34;
     return self._cache[&#34;block_time&#34;]</code></pre>
 </details>
 </dd>
 <dt id="rpps.helpers.formats.Format.blocks"><code class="name">prop <span class="ident">blocks</span></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Get max block</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">@property
 def blocks(self):
+    &#34;&#34;&#34;Get max block&#34;&#34;&#34;
     return self._cache[&#34;max_ittr&#34;]</code></pre>
 </details>
 </dd>
 <dt id="rpps.helpers.formats.Format.cache"><code class="name">prop <span class="ident">cache</span></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Get the formats cache</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">@property
 def cache(self):
+    &#34;&#34;&#34;Get the formats cache&#34;&#34;&#34;
     return self._cache</code></pre>
 </details>
 </dd>
 <dt id="rpps.helpers.formats.Format.cur_time"><code class="name">prop <span class="ident">cur_time</span></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Get relative time for current iteration</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">@property
 def cur_time(self):
+    &#34;&#34;&#34;Get relative time for current iteration&#34;&#34;&#34;
     return self._cache[&#34;block_time&#34;] * self._cache[&#34;cur_ittr&#34;]</code></pre>
 </details>
 </dd>
 <dt id="rpps.helpers.formats.Format.read_time"><code class="name">prop <span class="ident">read_time</span></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Get total file time</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">@property
 def read_time(self):
+    &#34;&#34;&#34;Get total file time&#34;&#34;&#34;
     return self._cache[&#34;read_time&#34;]</code></pre>
 </details>
 </dd>
@@ -209,13 +225,13 @@ def read_time(self):
 <span>def <span class="ident">init</span></span>(<span>self, path, meta, count, max_ittr)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Initialize the format</p></div>
 </dd>
 <dt id="rpps.helpers.formats.Format.read"><code class="name flex">
 <span>def <span class="ident">read</span></span>(<span>self, meta, path: str, count: int, offset: int = 0, skip=1, max_ittr=-1)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Read next block from file</p></div>
 </dd>
 </dl>
 </dd>
@@ -223,12 +239,13 @@ def read_time(self):
 <span>class <span class="ident">cf32</span></span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Complex Float32</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class cf32(Format):
+    &#34;&#34;&#34;Complex Float32&#34;&#34;&#34;
     byte_count = 32
 
     @staticmethod
@@ -250,17 +267,33 @@ def read_time(self):
 <div class="desc"></div>
 </dd>
 </dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.helpers.formats.Format" href="#rpps.helpers.formats.Format">Format</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.helpers.formats.Format.block" href="#rpps.helpers.formats.Format.block">block</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.block_time" href="#rpps.helpers.formats.Format.block_time">block_time</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.blocks" href="#rpps.helpers.formats.Format.blocks">blocks</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.cache" href="#rpps.helpers.formats.Format.cache">cache</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.cur_time" href="#rpps.helpers.formats.Format.cur_time">cur_time</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.init" href="#rpps.helpers.formats.Format.init">init</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.read" href="#rpps.helpers.formats.Format.read">read</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.read_time" href="#rpps.helpers.formats.Format.read_time">read_time</a></code></li>
+</ul>
+</li>
+</ul>
 </dd>
 <dt id="rpps.helpers.formats.cf64"><code class="flex name class">
 <span>class <span class="ident">cf64</span></span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Complex Float64</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class cf64(Format):
+    &#34;&#34;&#34;Complex Float64&#34;&#34;&#34;
     byte_count = 64
 
     @staticmethod
@@ -278,6 +311,21 @@ def read_time(self):
 <div class="desc"></div>
 </dd>
 </dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.helpers.formats.Format" href="#rpps.helpers.formats.Format">Format</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.helpers.formats.Format.block" href="#rpps.helpers.formats.Format.block">block</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.block_time" href="#rpps.helpers.formats.Format.block_time">block_time</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.blocks" href="#rpps.helpers.formats.Format.blocks">blocks</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.cache" href="#rpps.helpers.formats.Format.cache">cache</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.cur_time" href="#rpps.helpers.formats.Format.cur_time">cur_time</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.init" href="#rpps.helpers.formats.Format.init">init</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.read" href="#rpps.helpers.formats.Format.read">read</a></code></li>
+<li><code><a title="rpps.helpers.formats.Format.read_time" href="#rpps.helpers.formats.Format.read_time">read_time</a></code></li>
+</ul>
+</li>
+</ul>
 </dd>
 </dl>
 </section>

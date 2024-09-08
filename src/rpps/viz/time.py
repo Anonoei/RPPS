@@ -1,3 +1,4 @@
+"""Time domain viz helpers"""
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -5,6 +6,7 @@ from . import Meta
 
 
 def phasor(symbols, meta: Meta, ax=None):
+    """Plot phasor diagram"""
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot()
@@ -25,6 +27,7 @@ def phasor(symbols, meta: Meta, ax=None):
 
 
 def quadrature(symbols, meta: Meta, ax=None):
+    """Plot I and Q"""
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot()

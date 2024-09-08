@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
-<title>rpps.meta API documentation</title>
-<meta name="description" content="Pipeline metadata">
+<title>rpps.base.frequency API documentation</title>
+<meta name="description" content="Float/Int to Freq converter">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
@@ -22,10 +22,10 @@ hljs.highlightAll();
 <main>
 <article id="content">
 <header>
-<h1 class="title">Module <code>rpps.meta</code></h1>
+<h1 class="title">Module <code>rpps.base.frequency</code></h1>
 </header>
 <section id="section-intro">
-<p>Pipeline metadata</p>
+<p>Float/Int to Freq converter</p>
 </section>
 <section>
 </section>
@@ -36,141 +36,158 @@ hljs.highlightAll();
 <section>
 <h2 class="section-title" id="header-classes">Classes</h2>
 <dl>
-<dt id="rpps.meta.Meta"><code class="flex name class">
-<span>class <span class="ident">Meta</span></span>
+<dt id="rpps.base.frequency.Frequency"><code class="flex name class">
+<span>class <span class="ident">Frequency</span></span>
+<span>(</span><span>freq=0)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Helper for frequencies</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">class Meta:
-    freq = _Meta()
-    inter = _Meta()
-    mod = _Meta()
-    coding = _Meta()
+<pre><code class="python">class Frequency:
+    &#34;&#34;&#34;Helper for frequencies&#34;&#34;&#34;
+
+    def __init__(self, freq=0):
+        self.freq = freq
+        self.mult = 1
+        self.label = &#34;&#34;
+
+        if isinstance(freq, str):
+            if not re.match(r&#34;((\d+\.?)?\d+?)((e\d+)|([hkmg]))&#34;, freq):
+                print(&#34;Invalid frequency string!&#34;)
+                print(&#34;It must be provided in scientific notation&#34;)
+                print(&#34; ##.#e# - re: &#39;((\\d+\\.?)?\\d+?)(e\\d+)&#39;&#34;)
+                print(&#34;Or with units&#34;)
+                print(&#34; ##.#m - re: &#39;((\\d+\\.?)?\\d+?)[hkmg]&#39;&#34;)
+                exit(1)
 
     def __str__(self):
-        return &#34;.&#34;.join([
-            self.freq.__str__(),
-            self.mod.__str__(),
-            self.coding.__str__(),
-        ])
+        return self.str
 
-    def short(self) -&gt; str:
-        lst = []
-        lst.append(self.mod.short())
-        lst.append(self.fmt)
-        return &#34;.&#34;.join(lst)
+    def default(self):
+        return self.str
 
-    def __repr__(self) -&gt; str:
-        return f&#34;&lt;Meta: {str(self)}&gt;&#34;
+    @property
+    def raw(self):
+        &#34;&#34;&#34;Return the raw freq value&#34;&#34;&#34;
+        return self.freq
 
-    def to_name(self):
-        return f&#34;{self.short()}.rpps&#34;
+    @property
+    def short(self):
+        &#34;&#34;&#34;Return the shorthand freq&#34;&#34;&#34;
+        return self.freq / self.mult
 
-    def json(self):
-        return {
-            &#34;RPPS&#34;: version,
-            &#34;Freq&#34;: self.freq.fields,
-            &#34;Mod&#34;: self.mod.fields,
-            &#34;Coding&#34;: self.coding.fields,
-        }
+    @property
+    def str(self):
+        &#34;&#34;&#34;Return the shorthand freq and unit&#34;&#34;&#34;
+        return format(self.freq / self.mult, &#34;.2f&#34;) + self.unit
 
-    def to_json(self):
-        return json.dumps(
-            self.json(),
-            indent=4,
-        )
+    @property
+    def unit(self):
+        &#34;&#34;&#34;Return the frequency unit&#34;&#34;&#34;
+        return self.label.upper() + &#34;Hz&#34;
 
-    @staticmethod
-    def from_json(d: dict):
-        meta = Meta()
-        # print(f&#34;Creating Meta from {json.dumps(d, indent=4)}&#34;)
-        meta.fmt = d[&#34;Format&#34;]
-        meta.freq = Construct(&#34;Freq&#34;, d[&#34;Freq&#34;])
-        meta.mod = Construct(&#34;Mod&#34;, d[&#34;Mod&#34;])
-        meta.coding = Construct(&#34;Coding&#34;, d[&#34;Coding&#34;])
-        return meta
+    def init(self, freq=None):
+        &#34;&#34;&#34;Initialize the frequency object&#34;&#34;&#34;
+        if freq is not None:
+            self.freq = freq
 
-    @staticmethod
-    def read_json(path: pathlib.Path):
-        return Meta.from_json(json.loads(path.read_text()))
+        # input(&#34;Initializing: &#34; + str(self.freq))
+        if isinstance(self.freq, str):
+            if &#34;e&#34; in self.freq:
+                freq = self.freq.split(&#34;e&#34;)
+                mult = int(&#34;1&#34; + (int(freq[1]) * &#34;0&#34;))
+                freq = float(freq[0])
+                # input(&#34;scinot: got &#34; + str(freq) + &#34; * &#34; + str(mult))
+                self.freq = freq * mult
+                self.init()
+                return
 
-    @staticmethod
-    def from_name(name: str, meta = None):
-        if meta is None:
-            meta = Meta()
-        fields = name.split(&#34;.&#34;)
-        meta.mod = fields[0].upper()
-        return meta</code></pre>
+            for i, l in enumerate([&#34;h&#34;, &#34;k&#34;, &#34;m&#34;, &#34;g&#34;]):
+                if self.freq.endswith(l):
+                    self.mult = int(&#34;1&#34; + (i * &#34;000&#34;))
+                    self.freq = float(self.freq[:-1])
+                    self.label = l
+                    return
+        else:
+            for i, l in enumerate([&#34;&#34;, &#34;k&#34;, &#34;m&#34;, &#34;g&#34;]):
+                mult = int(&#34;1&#34; + (i * &#34;000&#34;))
+                cur_freq = self.freq / mult
+                if cur_freq &lt; 1000:
+                    self.mult = mult
+                    self.label = l
+                    return</code></pre>
 </details>
-<h3>Class variables</h3>
+<h3>Instance variables</h3>
 <dl>
-<dt id="rpps.meta.Meta.coding"><code class="name">var <span class="ident">coding</span></code></dt>
+<dt id="rpps.base.frequency.Frequency.raw"><code class="name">prop <span class="ident">raw</span></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Return the raw freq value</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def raw(self):
+    &#34;&#34;&#34;Return the raw freq value&#34;&#34;&#34;
+    return self.freq</code></pre>
+</details>
 </dd>
-<dt id="rpps.meta.Meta.freq"><code class="name">var <span class="ident">freq</span></code></dt>
+<dt id="rpps.base.frequency.Frequency.short"><code class="name">prop <span class="ident">short</span></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Return the shorthand freq</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def short(self):
+    &#34;&#34;&#34;Return the shorthand freq&#34;&#34;&#34;
+    return self.freq / self.mult</code></pre>
+</details>
 </dd>
-<dt id="rpps.meta.Meta.inter"><code class="name">var <span class="ident">inter</span></code></dt>
+<dt id="rpps.base.frequency.Frequency.str"><code class="name">prop <span class="ident">str</span></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Return the shorthand freq and unit</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def str(self):
+    &#34;&#34;&#34;Return the shorthand freq and unit&#34;&#34;&#34;
+    return format(self.freq / self.mult, &#34;.2f&#34;) + self.unit</code></pre>
+</details>
 </dd>
-<dt id="rpps.meta.Meta.mod"><code class="name">var <span class="ident">mod</span></code></dt>
+<dt id="rpps.base.frequency.Frequency.unit"><code class="name">prop <span class="ident">unit</span></code></dt>
 <dd>
-<div class="desc"></div>
-</dd>
-</dl>
-<h3>Static methods</h3>
-<dl>
-<dt id="rpps.meta.Meta.from_json"><code class="name flex">
-<span>def <span class="ident">from_json</span></span>(<span>d: dict)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt id="rpps.meta.Meta.from_name"><code class="name flex">
-<span>def <span class="ident">from_name</span></span>(<span>name: str, meta=None)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt id="rpps.meta.Meta.read_json"><code class="name flex">
-<span>def <span class="ident">read_json</span></span>(<span>path: pathlib.Path)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
+<div class="desc"><p>Return the frequency unit</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def unit(self):
+    &#34;&#34;&#34;Return the frequency unit&#34;&#34;&#34;
+    return self.label.upper() + &#34;Hz&#34;</code></pre>
+</details>
 </dd>
 </dl>
 <h3>Methods</h3>
 <dl>
-<dt id="rpps.meta.Meta.json"><code class="name flex">
-<span>def <span class="ident">json</span></span>(<span>self)</span>
+<dt id="rpps.base.frequency.Frequency.default"><code class="name flex">
+<span>def <span class="ident">default</span></span>(<span>self)</span>
 </code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
-<dt id="rpps.meta.Meta.short"><code class="name flex">
-<span>def <span class="ident">short</span></span>(<span>self) ‑> str</span>
+<dt id="rpps.base.frequency.Frequency.init"><code class="name flex">
+<span>def <span class="ident">init</span></span>(<span>self, freq=None)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
-</dd>
-<dt id="rpps.meta.Meta.to_json"><code class="name flex">
-<span>def <span class="ident">to_json</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt id="rpps.meta.Meta.to_name"><code class="name flex">
-<span>def <span class="ident">to_name</span></span>(<span>self)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
+<div class="desc"><p>Initialize the frequency object</p></div>
 </dd>
 </dl>
 </dd>
@@ -184,25 +201,20 @@ hljs.highlightAll();
 <ul id="index">
 <li><h3>Super-module</h3>
 <ul>
-<li><code><a title="rpps" href="index.html">rpps</a></code></li>
+<li><code><a title="rpps.base" href="index.html">rpps.base</a></code></li>
 </ul>
 </li>
 <li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
 <li>
-<h4><code><a title="rpps.meta.Meta" href="#rpps.meta.Meta">Meta</a></code></h4>
+<h4><code><a title="rpps.base.frequency.Frequency" href="#rpps.base.frequency.Frequency">Frequency</a></code></h4>
 <ul class="two-column">
-<li><code><a title="rpps.meta.Meta.coding" href="#rpps.meta.Meta.coding">coding</a></code></li>
-<li><code><a title="rpps.meta.Meta.freq" href="#rpps.meta.Meta.freq">freq</a></code></li>
-<li><code><a title="rpps.meta.Meta.from_json" href="#rpps.meta.Meta.from_json">from_json</a></code></li>
-<li><code><a title="rpps.meta.Meta.from_name" href="#rpps.meta.Meta.from_name">from_name</a></code></li>
-<li><code><a title="rpps.meta.Meta.inter" href="#rpps.meta.Meta.inter">inter</a></code></li>
-<li><code><a title="rpps.meta.Meta.json" href="#rpps.meta.Meta.json">json</a></code></li>
-<li><code><a title="rpps.meta.Meta.mod" href="#rpps.meta.Meta.mod">mod</a></code></li>
-<li><code><a title="rpps.meta.Meta.read_json" href="#rpps.meta.Meta.read_json">read_json</a></code></li>
-<li><code><a title="rpps.meta.Meta.short" href="#rpps.meta.Meta.short">short</a></code></li>
-<li><code><a title="rpps.meta.Meta.to_json" href="#rpps.meta.Meta.to_json">to_json</a></code></li>
-<li><code><a title="rpps.meta.Meta.to_name" href="#rpps.meta.Meta.to_name">to_name</a></code></li>
+<li><code><a title="rpps.base.frequency.Frequency.default" href="#rpps.base.frequency.Frequency.default">default</a></code></li>
+<li><code><a title="rpps.base.frequency.Frequency.init" href="#rpps.base.frequency.Frequency.init">init</a></code></li>
+<li><code><a title="rpps.base.frequency.Frequency.raw" href="#rpps.base.frequency.Frequency.raw">raw</a></code></li>
+<li><code><a title="rpps.base.frequency.Frequency.short" href="#rpps.base.frequency.Frequency.short">short</a></code></li>
+<li><code><a title="rpps.base.frequency.Frequency.str" href="#rpps.base.frequency.Frequency.str">str</a></code></li>
+<li><code><a title="rpps.base.frequency.Frequency.unit" href="#rpps.base.frequency.Frequency.unit">unit</a></code></li>
 </ul>
 </li>
 </ul>

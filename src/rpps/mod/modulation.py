@@ -1,3 +1,4 @@
+"""Modulation parent classes"""
 import numpy as np
 
 import numpy as np
@@ -14,6 +15,7 @@ from .constellation import Constellation
 
 
 class Modulation(base.rpps.Pipe):
+    """Modulation Pipe"""
     __slots__ = ("log", "constellation", "mapping")
     name = "Modulation"
     points = Points([])
@@ -28,12 +30,15 @@ class Modulation(base.rpps.Pipe):
             self.constellation.mapping =  Mapping(mapping)
 
     def set_mapping(self, mapping: Mapping):
+        """Set modulation mapping"""
         self.constellation.mapping = mapping
 
     def get_maps(self):
+        """Get available maps"""
         return self.maps
 
     def init_meta(self, meta):
+        """Initialize modulation meta"""
         if self.constellation.mapping is None:
             raise Exception("A mapping must be defined before modulating")
         from .meta import ModMeta
@@ -43,12 +48,20 @@ class Modulation(base.rpps.Pipe):
         meta.mod.fields["Map"] = self.constellation.mapping.str()
 
     def demodulate(self, syms: dobject.SymObject) -> dobject.ModData:
+        """Convert IQ samples to bits"""
         ...
 
     def modulate(self, dobj: dobject.BitObject) -> dobject.SymData:
+        """Convert bits to IQ samples"""
         ...
 
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
+        """Draw constellation points on viz"""
+        ...
+
+    @staticmethod
+    def load(name, obj):
+        """Load modulation from json"""
         ...
 
     def __rmatmul__(self, other):
@@ -60,6 +73,7 @@ class Modulation(base.rpps.Pipe):
 
 
 class PSK(Modulation):
+    """Phase-shift keying parent"""
 
     def __str__(self):
         return f"{type(self).__name__}:{self.constellation.mapping.str()})"
@@ -117,16 +131,16 @@ class PSK(Modulation):
 
 
 class ASK(Modulation):
-    pass
+    """Amplitude-shift keying parent"""
 
 
 class FSK(Modulation):
-    pass
+    """Frequency-shift keying parent"""
 
 
 class APSK(Modulation):
-    pass
+    """Amplitude-Phase-shift keying parent"""
 
 
 class QAM(Modulation):
-    pass
+    """Quadrature-Amplitude modulation parent"""

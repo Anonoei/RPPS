@@ -1,23 +1,8 @@
-"""Containers for data to ensure we can track where it came from
-
-StreamData:
- StreamData @ Scram  -> ScrambledData
- StreamData @ Coding -> CodedData
- StreamData @ Mod    -> SymData
-
- ScrambledData @ Scram -> ScramData|StreamData
- CodedData @ Coding -> CodingData|ScramData|StreamData
- SymData @ Mod -> ModData
- ModData @ Coding -> CodingData
- ModData @ Scram -> ScramData
-
-"""
+"""Containers for data to ensure we can track where it came from"""
 
 from enum import Enum
 import numpy as np
 
-from .base.stream import Stream
-from .base.bitarray import bitarray
 from .base.soft import SoftDecision
 from .meta import Meta
 
@@ -28,9 +13,11 @@ class Type(Enum):
     SYM = 2
     NONE = -1
 def ensure_bit(dobj):
+    """Ensure DataObject is using bits"""
     return BitObject(dobj, dobj.meta)
 
 def ensure_byte(dobj):
+    """Ensure DataObject is using bytes"""
     return ByteObject(dobj, dobj.meta)
 
 class DataObject:

@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
-<title>rpps.process API documentation</title>
-<meta name="description" content="Processing helpers">
+<title>rpps.inter.file API documentation</title>
+<meta name="description" content="Process data to/from files">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
@@ -22,25 +22,68 @@ hljs.highlightAll();
 <main>
 <article id="content">
 <header>
-<h1 class="title">Module <code>rpps.process</code></h1>
+<h1 class="title">Module <code>rpps.inter.file</code></h1>
 </header>
 <section id="section-intro">
-<p>Processing helpers</p>
+<p>Process data to/from files</p>
 </section>
 <section>
-<h2 class="section-title" id="header-submodules">Sub-modules</h2>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
 <dl>
-<dt><code class="name"><a title="rpps.process.rate" href="rate.html">rpps.process.rate</a></code></dt>
+<dt id="rpps.inter.file.File"><code class="flex name class">
+<span>class <span class="ident">File</span></span>
+<span>(</span><span>meta, pipeline, baud, r_file: str, w_file: str)</span>
+</code></dt>
 <dd>
-<div class="desc"><p>Rate processing</p></div>
+<div class="desc"><p>File interface</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class File(Interface):
+    &#34;&#34;&#34;File interface&#34;&#34;&#34;
+    def __init__(self, meta, pipeline, baud, r_file: str, w_file: str):
+        super().__init__(meta, pipeline, baud)
+        self._r = r_file
+        self._w = w_file
+
+    def _read(self) -&gt; bytes | None:
+        try:
+            with open(self._r, &#34;rb+&#34;) as f:
+                data = f.read()
+                input(data)
+                f.truncate(0) # clear file contents
+            return data
+        except FileNotFoundError:
+            return None
+
+    def _write(self, data):
+        with open(self._w, mode=&#34;ab&#34;) as f:
+            f.write(data)</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.inter.interface.Interface" href="interface.html#rpps.inter.interface.Interface">Interface</a></li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.inter.interface.Interface" href="interface.html#rpps.inter.interface.Interface">Interface</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.inter.interface.Interface.baud" href="interface.html#rpps.inter.interface.Interface.baud">baud</a></code></li>
+<li><code><a title="rpps.inter.interface.Interface.read" href="interface.html#rpps.inter.interface.Interface.read">read</a></code></li>
+<li><code><a title="rpps.inter.interface.Interface.start" href="interface.html#rpps.inter.interface.Interface.start">start</a></code></li>
+<li><code><a title="rpps.inter.interface.Interface.write" href="interface.html#rpps.inter.interface.Interface.write">write</a></code></li>
+</ul>
+</li>
+</ul>
 </dd>
 </dl>
-</section>
-<section>
-</section>
-<section>
-</section>
-<section>
 </section>
 </article>
 <nav id="sidebar">
@@ -50,12 +93,14 @@ hljs.highlightAll();
 <ul id="index">
 <li><h3>Super-module</h3>
 <ul>
-<li><code><a title="rpps" href="../index.html">rpps</a></code></li>
+<li><code><a title="rpps.inter" href="index.html">rpps.inter</a></code></li>
 </ul>
 </li>
-<li><h3><a href="#header-submodules">Sub-modules</a></h3>
+<li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
-<li><code><a title="rpps.process.rate" href="rate.html">rpps.process.rate</a></code></li>
+<li>
+<h4><code><a title="rpps.inter.file.File" href="#rpps.inter.file.File">File</a></code></h4>
+</li>
 </ul>
 </li>
 </ul>

@@ -1,8 +1,10 @@
+"""Rate processing"""
 import numpy as np
 
 import matplotlib.pyplot as plt
 
 def find_rate(syms):
+    """Find symbol rate from IQ samples"""
     m_syms = syms * np.conj(syms)
     rline_syms = np.zeros(len(m_syms) * 3)
     rline_syms[::3] = np.abs(m_syms)

@@ -1,8 +1,15 @@
 """
-Initialize RPPS
+RF Parameter Processor Suite
+
+RPPS is a generic signal processor/generator library.
+
+
+Github: https://github.com/Anonoei/RPPS
+
+PyPI: https://pypi.org/project/rpps/
 """
 
-__version__ = "0.0.6"
+__version__ = "0.1.0"
 __author__ = "Anonoei <dev@anonoei.com>"
 
 

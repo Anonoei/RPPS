@@ -1,3 +1,4 @@
+"""Coding parent classes"""
 from pyboiler.logger import Logger, Level
 
 from . import Meta
@@ -7,10 +8,12 @@ from . import dobject
 from enum import Enum
 
 class Decision(Enum):
+    """Coding decision type"""
     HARD = 0
     SOFT = 1
 
-class Coding:
+class Coding(base.rpps.Pipe):
+    """Coding Pipe"""
     name = "Coding"
     decision = Decision.HARD
     def __init__(self, num, den):
@@ -23,14 +26,17 @@ class Coding:
         return f"{self.name}:{self.num}/{self.den}:{self.decision}"
 
     def init_meta(self, meta: Meta):
+        """Initialize coding metadata"""
         meta.coding.fields["Name"] = type(self).__name__
         meta.coding.fields["RateNum"] = self.num
         meta.coding.fields["RateDen"] = self.den
 
     def encode(self, dobj: dobject.BitObject) -> dobject.CodingData:
+        """Encode dobject using specified coding"""
         ...
 
     def decode(self, dobj: dobject.BitObject) -> dobject.BitObject:
+        """Decode dobject using specified coding"""
         ...
 
     def __matmul__(self, other):
@@ -48,6 +54,7 @@ class Coding:
 
 
 class Block(Coding):
+    """Parent block coding"""
     def __init__(self, num, den, length):
         super().__init__(num, den)
         self.length = length
@@ -61,7 +68,7 @@ class Block(Coding):
 
 
 class Convolutional(Coding):
-
+    """Parent convolutional coding"""
     def init_meta(self, meta: Meta):
         from .meta import ConvolutionalCodingMeta
         meta.coding = ConvolutionalCodingMeta()  # type: ignore
