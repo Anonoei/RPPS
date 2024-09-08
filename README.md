@@ -11,17 +11,21 @@ RPPS is a generic signal processor/generator library.
 import rpps as rp
 
 def main():
-    mod = rp.mod.name("QPSK", 0) # Use QPSK modulation, with mapping 0
-    ecc = rp.coding.name("BLK", "Repetition", 3) # Use Repetition coding, with rate of 2
+    mod = rp.mod.load("QPSK")
+    mod.set_mapping(mod.get_maps()[0])
+    ecc = rp.coding.name("BLK", "Repetition", 3)
 
-    pipeline = rp.Pipeline(mod, ecc) # Initialize a processing pipeline
+    enc_msg = rp.dobject.StreamData(b"Hello World!")
 
-    enc_msg = b"Test" # Define the data to process
-    syms = pipeline.enc(enc_msg) # Encode data with ecc, and mod. Get the symbols
-    path = pipeline.meta.serialize(syms) # Serialize the symbols to file
+    f_pipe = lambda inp:inp @ ecc @ mod
+    r_pipe = lambda syms:syms @ mod @ ecc
 
-    data = pipeline.from_file(path) # Read the symbols and metadata from file, use the same pipeline processing
-    print(data) # Check decoded data is what you encoded
+    syms = f_pipe(enc_msg) # Encode data with ecc, and mod. Get the symbols
+
+    data = r_pipe(syms) # Read the symbols
+
+    dec_msg = rp.dobject.StreamData(data)
+    print(f"{enc_msg.hex == dec_msg.hex}") # Check decoded data is what you encoded
 
 if __name__ == "__main__":
   main()

@@ -35,6 +35,7 @@ from .meta import Meta
 
 from .file import file
 
+from . import scram
 from . import coding
 from . import mod
 from . import viz

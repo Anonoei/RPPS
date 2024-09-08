@@ -4,35 +4,25 @@ import pstats
 
 import rpps as rp
 
+
 def main():
     mod = rp.mod.load("QPSK")
     mod.set_mapping(mod.get_maps()[0])
     ecc = rp.coding.name("BLK", "Repetition", 3)
+    scr = rp.scram.load("fdt", "fib")
+
+    print(f"Mod: {mod}")
+    print(f"ECC: {ecc}")
+    print(f"SCR: {scr}")
 
     enc_msg = rp.dobject.StreamData(b"Hello World!")
+    syms = enc_msg * scr @ ecc @ mod  # Encode data with ecc, and mod. Get the symbols
 
-    print(f"enc_msg: {enc_msg.hex}")
-    # f_pipe = lambda inp:inp @ ecc @ mod
-    # r_pipe = lambda inp:inp @ mod @ ecc
+    data = syms @ mod @ ecc / scr  # Read the symbols
 
-    print(f"Running {ecc}")
-    coded = enc_msg @ ecc
-    print(f"coded: {coded}")
-    print(f"Running {mod}")
-    syms = coded @ mod
-    print(f"syms: {syms}")
+    dec_msg = rp.dobject.StreamData(data)
+    print(f"{enc_msg.hex == dec_msg.hex}")  # Check decoded data is what you encoded
 
-    print(f"Running {mod}")
-    demod = syms @ mod
-    print(f"demod: {demod}")
-    print(f"Running {ecc}")
-    decode = demod @ ecc
-    print(f"decode: {decode}")
-
-    dec_msg = rp.dobject.StreamData(decode)
-
-    print(f"dec_msg: {dec_msg.hex}")
-    print(f"{enc_msg.hex} == {dec_msg.hex} : {enc_msg.hex == dec_msg.hex}")
 
 if __name__ == "__main__":
     # pr = cProfile.Profile()

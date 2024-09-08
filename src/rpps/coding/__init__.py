@@ -8,8 +8,8 @@ from ..meta import Meta
 
 from .coding import Coding, Block, Convolutional
 
-from ._blk import *
-from ._cnv import *
+from .blk import *
+from .cnv import *
 
 MAP = {
     "BLK": BLK_MAP,

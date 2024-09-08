@@ -9,11 +9,11 @@ from .constellation import Mapping, Maps, Points
 def identify():
     """Identify available modulation types"""
     mods = {}
-    for folder in (config().PATH_CONFIG / "mod").iterdir():
+    for folder in (config().PATH_CONFIG / "mod").iterdir(): # type: ignore
         mods[folder.name] = [file.stem for file in folder.iterdir()]
     return mods
 
-def load(name: str):
+def load(name: str) -> modulation.Modulation:
     """Load a modulation from a file name"""
     def load_complex(comp):
         c = []
@@ -21,6 +21,6 @@ def load(name: str):
             c.append(num["real"] + num["imag"] * 1j)
         return c
     folder = name[-3:].lower()
-    mod = json.loads((config().PATH_CONFIG / "mod" / folder / f"{name.lower()}.json").read_text())
+    mod = json.loads((config().PATH_CONFIG / "mod" / folder / f"{name.lower()}.json").read_text())  # type: ignore
 
     return getattr(modulation, folder.upper()).load(name, mod)

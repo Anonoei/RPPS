@@ -7,9 +7,7 @@ from .meta import InterMeta
 
 class Interface:
     """Parent interface class"""
-    def __init__(self, meta, pipeline, baud=None):
-        self.meta = meta
-        self.pipeline = pipeline
+    def __init__(self, w_pipe, r_pipe):
 
         self._r_thread = threading.Thread(target=self.read)
         self._w_thread = threading.Thread(target=self.baud)
