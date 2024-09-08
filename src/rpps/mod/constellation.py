@@ -137,40 +137,52 @@ class Constellation:
     def bits_per_symbol(self):
         return self._bps
 
-    def modulate(self, dobj: dobject.DataObject, meta: Meta, noise: bool = True):
-        indexes = self.index(dobj.stream, meta)
-        points = self.map(indexes, meta)
-        symbols = self.to_symbols(points, meta, noise=noise)
-        return dobject.SymData(symbols)
+    def modulate(self, dobj: dobject.BitObject, noise: bool = True):
+        indexes = self.index(dobj)
+        points = self.map(indexes, dobj.meta)
+        symbols = self.to_symbols(points, dobj.meta, noise=noise)
+        return symbols
 
-    def demodulate(self, syms: dobject.SymData, meta: Meta):
-        points = self.from_symbols(syms, meta)
-        indexes = self.unmap(points, meta)
-        data = self.unindex(indexes, meta)
-        dobj = dobject.ModData()
-        dobj.from_bitarray(data)
-        return dobj
+    def demodulate(self, syms: dobject.SymData):
+        # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
+        distances = np.zeros((len(syms.data), len(self.points)), dtype=np.float16)
+
+        distances[:] = np.abs(self.points.arr - syms.data.reshape(-1, 1))
+        distances[:] = 1 - np.round(distances / distances.max(axis=0), decimals=2)
+
+        bits = np.array([bin(n)[2:].zfill(self._bps) for n in self.mapping.arr])
+        codewords = np.zeros((len(self.points), self._bps), dtype=int)
+
+        for i, b in enumerate(bits):
+            for j, c in enumerate(b):
+                codewords[i, j] = True if c == '1' else False
+
+        mod = dobject.ModData()
+        mod.soft = base.SoftDecision(codewords, distances)
+
+        return mod
 
     ##############################
     #  Modulate
     ##############################
 
-    def index(self, data: base.Stream, meta):
-        self.log.trace(f"Data bitarray is {data.bitarray}")
-        self.log.trace(f"Bits per symbol: {self._bps} / {len(data.bitarray)}")
+    def index(self, dobj: dobject.BitObject):
+        self.log.trace(f"Data bitarray is {dobj.data}")
+        self.log.trace(f"Bits per symbol: {self._bps} / {len(dobj)}")
 
-        padding = len(data.bitarray) % self._bps
+        padding = len(dobj) % self._bps
         if not padding == 0:
 
             for _ in range(0, (self._bps - padding)):
-                data.bitarray.append(0)
-            self.log.trace(f"Padded by {self._bps - padding}: {len(data.bitarray)}")
-        num_symbols = len(data.bitarray) // self._bps
+                dobj.append(0)
+            self.log.trace(f"Padded by {self._bps - padding}: {len(dobj)}")
+        num_symbols = len(dobj) // self._bps
 
         self.log.trace(f"Data requires {num_symbols} indexes to encode")
+        self.log.trace(f"Data is: {dobj}")
 
-        indexes = np.split(data.bitarray.arr, num_symbols)
-        indexes = [int("".join(data.astype(str)), 2) for data in indexes]
+        indexes = np.split(dobj.data, num_symbols)
+        indexes = [int("".join(data.astype(int).astype(str)), 2) for data in indexes]
         # indexes = []
         # for i in range(0, len(data.bin), self._bps):
         #    bit_int = int(data.bin[i:i+self._bps], 2)
@@ -203,35 +215,21 @@ class Constellation:
         symbols = symbols.astype(np.complex64)
         meta.fmt = type(symbols[0]).__name__
         # self.log.trace(f"Symbols are: {symbols}")
-        return symbols
+        return dobject.SymData(symbols)
 
     ##############################
     #  Demodulate
     ##############################
 
-    def from_symbols(self, symbols, meta, clean: bool=True):
+    def from_symbols(self, symbols: dobject.SymObject):
         # self.log.trace(f"Symbols are:\n{symbols}")
-        points = []
-        if clean:
-            syms = []
-            for symbol in symbols.stream: # Clean up the symbols
-                diff = np.abs(self.points - symbol)
-                index = np.argmin(diff)
-                closest = self.points[index]
-                syms.append(closest)
-            syms = np.array(syms)
-            self.log.trace(f"Symbols are:\n{syms}  / {len(symbols)}")
+        # codewords = np.zeros((len(self.points), self._bps), dtype=bool)
+        distances = np.zeros((len(symbols), len(self.points)), dtype=np.float16)
 
-            for symbol in syms:
-                points.append(int(np.where(self.points == symbol)[0][0]))
-        else:
-            self.log.trace(f"Symbols are:\n{symbols}  / {len(symbols)}")
-            for symbol in symbols: # Clean up the symbols
-                diff = np.abs(self.points - symbol)
-                index = np.argmin(diff)
-                points.append(int(index))
-        self.log.trace(f"Points are {points} / Demodulated {len(points)} symbols")
-        return points
+        distances[:] = np.abs(self.points.arr - symbols.data.reshape(-1, 1))
+        distances[:] = 1 - np.round(distances / distances.max(axis=0), decimals=2)
+        self.log.trace(f"Points are {distances} / Demodulated {len(distances)} symbols")
+        return distances
 
     def unmap(self, points, meta):
         self.log.trace(f"Using mapping: {self.mapping}")
@@ -252,7 +250,7 @@ class Constellation:
             self.log.trace(f"Unpadding by {padding}")
             bits = bits[:-padding]
 
-        data = base.bitarray([int(bit) for bit in bits])
+        data = dobject.ModData(np.array([int(bit) for bit in bits], dtype=bool))
 
         # data = Stream.from_bin(bits, len(bits))
 

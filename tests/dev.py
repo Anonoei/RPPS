@@ -1,10 +1,7 @@
-from pyboiler.logger import Logger, Level
-
 import time
 import cProfile
 import pstats
 
-import numpy as np
 import rpps as rp
 
 def main():
@@ -12,18 +9,30 @@ def main():
     mod.set_mapping(mod.get_maps()[0])
     ecc = rp.coding.name("BLK", "Repetition", 3)
 
-    enc_msg = rp.dobject.StreamData()
-    enc_msg.stream.bytes = b"""Hello World!"""
+    enc_msg = rp.dobject.StreamData(b"Hello World!")
 
-    f_pipe = lambda inp:inp @ ecc @ mod
-    r_pipe = lambda inp:inp @ mod @ ecc
+    print(f"enc_msg: {enc_msg.hex}")
+    # f_pipe = lambda inp:inp @ ecc @ mod
+    # r_pipe = lambda inp:inp @ mod @ ecc
 
-    syms = f_pipe(enc_msg)
+    print(f"Running {ecc}")
+    coded = enc_msg @ ecc
+    print(f"coded: {coded}")
+    print(f"Running {mod}")
+    syms = coded @ mod
+    print(f"syms: {syms}")
 
-    data = r_pipe(syms)
-    data.stream = rp.base.Stream.from_bytes(data.stream.bitarray.to_bytes())
-    print(f"Encoding: {enc_msg.stream.bytes}")
-    print(f"Decoded:  {data.stream.bytes}")
+    print(f"Running {mod}")
+    demod = syms @ mod
+    print(f"demod: {demod}")
+    print(f"Running {ecc}")
+    decode = demod @ ecc
+    print(f"decode: {decode}")
+
+    dec_msg = rp.dobject.StreamData(decode)
+
+    print(f"dec_msg: {dec_msg.hex}")
+    print(f"{enc_msg.hex} == {dec_msg.hex} : {enc_msg.hex == dec_msg.hex}")
 
 if __name__ == "__main__":
     # pr = cProfile.Profile()

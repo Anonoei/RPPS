@@ -8,64 +8,50 @@ import numpy as np
 
 class Viterbi(Convolutional):
     name = "Viterbi"
-    def encode(self, dobj: dobject.DataObject, meta: Meta):
-        # Calculate the number of systematic bits and redundant bits
-        N_systematic = int(self._rate * len(dobj.stream.bitarray))
-        N_redundant = len(dobj.stream.bitarray) - N_systematic
+    def encode(self, dobj: dobject.BitObject):
+        assert self.den - 1 == self.num
 
-        # Initialize the trellis diagram
-        T = np.zeros((2, 2), dtype=int)
-        T[0, :] = [1, 0]  # initial state
+        codewords = dobj.data.reshape(-1, self.num)
+        print(f"Encoding {codewords}")
 
-        # Encode the data
-        encoded_data = base.bitarray()
-        for i in range(len(dobj.stream.bitarray)):
-            if i < N_systematic:
-                x = dobj.stream.bitarray[i]
+        encoded_data = np.zeros((len(codewords), self.den), dtype=bool)
+
+        for idx, codeword in enumerate(codewords):
+            if len(codeword) != self.num:
+                raise ValueError(f"Data bit vector must be length {self.num}")
+
+            # Check parity
+            num_ones = sum(codeword)
+            if num_ones % 2 == 0:  # even number of ones
+                encoded_data[idx, -1] = False  # parity bit is zero (even)
             else:
-                x = np.random.randint(2)  # add a random bit for redundancy
-            y = T[:, -1].copy()  # get the previous state
-            T[:, -1] = [x, x ^ y[0]]  # update the trellis diagram
-            encoded_data.append(int(y[0]))
-            encoded_data.append(int(y[1]))
-            # encoded_data.extend([int(y[0]), int(y[1])])
+                encoded_data[idx, -1] = True  # parity bit is one (odd)
 
-        retr = dobject.CodingData()
-        retr.from_bitarray(encoded_data)
-        return retr
+            # Replicate data bits into the first three positions
+            encoded_data[idx, 0 : self.num] = codewords[idx]
 
-    def decode(self, dobj: dobject.DataObject, meta: Meta):
-        # Calculate the number of systematic bits and redundant bits
-        N_systematic = int(self._rate * len(dobj.stream.bitarray))
-        N_redundant = len(dobj.stream.bitarray) - N_systematic
+        print(f"Encoded: {encoded_data.astype(int)}")
+        encoded_data = encoded_data.reshape(-1)
+        self.log.trace(f"Encoded to {encoded_data}")
+        return dobject.CodingData(encoded_data.astype(bool))
 
-        # Initialize the trellis diagram
-        T = np.zeros((2, 2), dtype=int)
-        T[0, :] = [1, 0]  # initial state
+    def decode(self, dobj: dobject.BitObject):
+        assert self.den - 1 == self.num
 
-        # Define the transition probabilities (trellis diagram)
-        P = np.array([[1/2, 1/2], [1/2, 1/2]])  # for a rate-1/2 convolutional code
-        P = np.kron(P, np.ones((2, 2)))  # repeat the transition probabilities
+        encoded_data = dobj.data.reshape(-1, self.den)
+        print(f"Decoding {encoded_data.astype(int)}")
 
-        # Initialize the likelihoods and state sequences
-        L = np.zeros((len(dobj.stream.bitarray), 2))  # likelihoods
-        S = np.zeros(len(dobj.stream.bitarray), dtype=int)  # state sequence
 
-        # Iterate over the codeword
-        for i in range(len(encoded_data.bitarray)):
-            # Calculate the likelihoods for each possible state
-            # L[i, :] = P[T[:, -1].copy(), :] * (encoded_data.bitarray[i] == T[-1, :])
-            L[i, :] = P[:, S[i]] * (dobj.stream.bitarray[i] == T[0, :])
 
-            # Update the state sequence and trellis diagram
-            S[i] = np.argmax(L[i])
-            T[:, -1] = T[S[i], :]  # update the trellis diagram
+        decoded_data = decoded_data.reshape(-1)
+        self.log.trace(f"Decoded to {decoded_data}")
+        return dobject.BitObject(decoded_data)
 
-        # Extract the decoded data from the state sequence
-        decoded_data = base.bitarray()
-        for i in range(N_systematic):
-            decoded_data.append(S[N_systematic + i])
+class Hard(Viterbi):
+    name = "Hard Viterbi"
 
-        retr = dobject.CodingData()
-        retr.from_bitarray(decoded_data)
-        return retr
+    def encode(self, dobj: dobject.BitObject):
+        pass
+
+    def decode(self, dobj: dobject.BitObject):
+        pass

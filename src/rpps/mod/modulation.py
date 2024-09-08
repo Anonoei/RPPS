@@ -42,33 +42,27 @@ class Modulation(base.rpps.Pipe):
         meta.mod.fields["Type"] = type(self).name[-3:]
         meta.mod.fields["Map"] = self.constellation.mapping.str()
 
-    def demodulate(self, syms: dobject.SymData, meta=Meta()) -> dobject.ModData:
+    def demodulate(self, syms: dobject.SymObject) -> dobject.ModData:
         ...
 
-    def modulate(self, dobj: dobject.DataObject, meta=Meta()) -> dobject.SymData:
+    def modulate(self, dobj: dobject.BitObject) -> dobject.SymData:
         ...
 
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         ...
 
-    def __matmul__(self, other):
-        if isinstance(other, dobject.SymData):
-            return self.demodulate(other, other.meta)
-        elif issubclass(type(other), dobject.DataObject):
-            return self.modulate(other, other.meta)
-        else:
-            raise TypeError(f"Cannot perform {type(self).__name__} on {type(other)}")
-
     def __rmatmul__(self, other):
-        if isinstance(other, dobject.SymData):
-            return self.demodulate(other, other.meta)
-        elif issubclass(type(other), dobject.DataObject):
-            return self.modulate(other, other.meta)
-        else:
-            raise TypeError(f"Cannot perform {type(self).__name__} on {type(other)}")
+        if isinstance(other, dobject.SymObject):
+            return self.demodulate(other)
+        elif isinstance(other, dobject.DataObject):
+            return self.modulate(dobject.ensure_bit(other))
+        raise TypeError(f"Cannot perform {type(self).__name__} on {type(other)}")
 
 
 class PSK(Modulation):
+
+    def __str__(self):
+        return f"{type(self).__name__}:{self.constellation.mapping.str()})"
 
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         if ax is None:
@@ -94,13 +88,13 @@ class PSK(Modulation):
             y = radius * np.sin(angle)
             ax.plot(x, y, "g")
 
-    def demodulate(self, syms: dobject.SymData, meta=Meta()):
-        data = self.constellation.demodulate(syms, meta)
+    def demodulate(self, syms: dobject.SymData):
+        data = self.constellation.demodulate(syms)
         return data
 
-    def modulate(self, dobj: dobject.DataObject, meta=Meta()):
-        syms = self.constellation.modulate(dobj, meta)
-        self.init_meta(meta)
+    def modulate(self, dobj: dobject.BitObject):
+        syms = self.constellation.modulate(dobj)
+        self.init_meta(dobj.meta)
         return syms
 
     @staticmethod

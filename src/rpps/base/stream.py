@@ -16,10 +16,13 @@ class Stream:
     def __str__(self):
         if self.cache["hex"] is not None:
             return f"0x{self.hex}"
-        return f"{self.cache}"
+        return str({k: str(v) for k, v in self.cache.items()})
+
+    def __len__(self):
+        return self.length if self.length is not None else 0
 
     def __repr__(self):
-        return f"<Encoded data>"
+        return f"<Stream data>"
 
     @property
     def bin(self):
@@ -72,7 +75,7 @@ class Stream:
         enc.length = length
         return enc
 
-    @classmethod
+    @staticmethod
     def from_hex(hexadecimal, length = None):
         enc = Stream()
         enc.cache["hex"] = Stream._pad(hexadecimal, 2)

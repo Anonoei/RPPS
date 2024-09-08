@@ -3,7 +3,7 @@ import numpy as np
 class bitarray:
     def __init__(self, arr=None):
         if arr is None:
-            arr = np.array([], dtype=np.bool)
+            arr = np.array([], dtype=bool)
         self.arr = arr
 
     def __str__(self):

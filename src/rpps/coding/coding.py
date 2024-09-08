@@ -4,40 +4,47 @@ from . import Meta
 from . import base
 from . import dobject
 
+from enum import Enum
+
+class Decision(Enum):
+    HARD = 0
+    SOFT = 1
+
 class Coding:
     name = "Coding"
+    decision = Decision.HARD
     def __init__(self, num, den):
         self.log = Logger().Child("Coding", Level.WARN).Child(type(self).__name__, Level.WARN)
         self.num = num
         self.den = den
         self._rate = self.num/self.den
 
+    def __str__(self):
+        return f"{self.name}:{self.num}/{self.den}:{self.decision}"
+
     def init_meta(self, meta: Meta):
         meta.coding.fields["Name"] = type(self).__name__
         meta.coding.fields["RateNum"] = self.num
         meta.coding.fields["RateDen"] = self.den
 
-    def encode(self, dobj: dobject.DataObject, meta: Meta) -> dobject.CodingData:
+    def encode(self, dobj: dobject.BitObject) -> dobject.CodingData:
         ...
 
-    def decode(self, dobj: dobject.DataObject, meta: Meta) -> dobject.CodingData:
+    def decode(self, dobj: dobject.BitObject) -> dobject.BitObject:
         ...
 
     def __matmul__(self, other):
         if isinstance(other, dobject.ModData):
-            return self.decode(other, other.meta)
+            if self.decision == Decision.HARD:
+                other = dobject.ModData(other.hard)
+            return self.decode(other)
         elif issubclass(type(other), dobject.DataObject):
-            return self.encode(other, other.meta)
+            return self.encode(dobject.ensure_bit(other))
         else:
             raise TypeError(f"Cannot perform {type(self).__name__} on {type(other)}")
 
     def __rmatmul__(self, other):
-        if isinstance(other, dobject.ModData):
-            return self.decode(other, other.meta)
-        elif issubclass(type(other), dobject.DataObject):
-            return self.encode(other, other.meta)
-        else:
-            raise TypeError(f"Cannot perform {type(self).__name__} on {type(other)}")
+        return self.__matmul__(other)
 
 
 class Block(Coding):
