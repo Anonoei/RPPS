@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
+<meta name="generator" content="pdoc3 0.11.1">
+<title>rpps.dobject API documentation</title>
+<meta name="description" content="Containers for data to ensure we can track where it came from">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:1.5em;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:2em 0 .50em 0}h3{font-size:1.4em;margin:1.6em 0 .7em 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .2s ease-in-out}a:visited{color:#503}a:hover{color:#b62}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900;font-weight:bold}pre code{font-size:.8em;line-height:1.4em;padding:1em;display:block}code{background:#f3f3f3;font-family:"DejaVu Sans Mono",monospace;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em 1em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul ul{padding-left:1em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha512-D9gUyxqja7hBtkWpPWGt9wfbfaMGVt9gnyCvYa+jojwwPHLCzUm5i8rpk7vD7wNee9bA35eYIjobYPaQuKS1MQ==" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => {
+hljs.configure({languages: ['bash', 'css', 'diff', 'graphql', 'ini', 'javascript', 'json', 'plaintext', 'python', 'python-repl', 'rust', 'shell', 'sql', 'typescript', 'xml', 'yaml']});
+hljs.highlightAll();
+})</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>rpps.dobject</code></h1>
+</header>
+<section id="section-intro">
+<p>Containers for data to ensure we can track where it came from</p>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-functions">Functions</h2>
+<dl>
+<dt id="rpps.dobject.ensure_bit"><code class="name flex">
+<span>def <span class="ident">ensure_bit</span></span>(<span>dobj)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Ensure DataObject is using bits</p></div>
+</dd>
+<dt id="rpps.dobject.ensure_byte"><code class="name flex">
+<span>def <span class="ident">ensure_byte</span></span>(<span>dobj)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Ensure DataObject is using bytes</p></div>
+</dd>
+</dl>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="rpps.dobject.BitObject"><code class="flex name class">
+<span>class <span class="ident">BitObject</span></span>
+<span>(</span><span>data=None, meta=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Parent DataObject class</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class BitObject(DataObject):
+    type = Type.BIT
+    data = np.array([], dtype=bool)
+
+    def __str__(self):
+        return f&#34;{super().__str__()}:{self.bin}&#34;
+
+    @property
+    def bin(self):
+        return self.data.astype(int)</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.dobject.DataObject" href="#rpps.dobject.DataObject">DataObject</a></li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="rpps.dobject.CodingData" href="#rpps.dobject.CodingData">CodingData</a></li>
+<li><a title="rpps.dobject.ModData" href="#rpps.dobject.ModData">ModData</a></li>
+<li><a title="rpps.dobject.ScramData" href="#rpps.dobject.ScramData">ScramData</a></li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="rpps.dobject.BitObject.data"><code class="name">var <span class="ident">data</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.dobject.BitObject.type"><code class="name">var <span class="ident">type</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+<h3>Instance variables</h3>
+<dl>
+<dt id="rpps.dobject.BitObject.bin"><code class="name">prop <span class="ident">bin</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def bin(self):
+    return self.data.astype(int)</code></pre>
+</details>
+</dd>
+</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.dobject.DataObject" href="#rpps.dobject.DataObject">DataObject</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.dobject.DataObject.convert" href="#rpps.dobject.DataObject.convert">convert</a></code></li>
+<li><code><a title="rpps.dobject.DataObject.name" href="#rpps.dobject.DataObject.name">name</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="rpps.dobject.ByteObject"><code class="flex name class">
+<span>class <span class="ident">ByteObject</span></span>
+<span>(</span><span>data=None, meta=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Parent DataObject class</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class ByteObject(DataObject):
+    type = Type.BYTE
+    data = np.array([], dtype=np.uint8)
+
+    def __str__(self):
+        return f&#34;{super().__str__()}:{self.hex}&#34;
+
+    @property
+    def hex(self):
+        return self.data.tobytes().hex()</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.dobject.DataObject" href="#rpps.dobject.DataObject">DataObject</a></li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="rpps.dobject.StreamData" href="#rpps.dobject.StreamData">StreamData</a></li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="rpps.dobject.ByteObject.data"><code class="name">var <span class="ident">data</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.dobject.ByteObject.type"><code class="name">var <span class="ident">type</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+<h3>Instance variables</h3>
+<dl>
+<dt id="rpps.dobject.ByteObject.hex"><code class="name">prop <span class="ident">hex</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def hex(self):
+    return self.data.tobytes().hex()</code></pre>
+</details>
+</dd>
+</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.dobject.DataObject" href="#rpps.dobject.DataObject">DataObject</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.dobject.DataObject.convert" href="#rpps.dobject.DataObject.convert">convert</a></code></li>
+<li><code><a title="rpps.dobject.DataObject.name" href="#rpps.dobject.DataObject.name">name</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="rpps.dobject.CodingData"><code class="flex name class">
+<span>class <span class="ident">CodingData</span></span>
+<span>(</span><span>data=None, meta=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Data post-coding</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class CodingData(BitObject):
+    &#34;&#34;&#34;Data post-coding&#34;&#34;&#34;</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.dobject.BitObject" href="#rpps.dobject.BitObject">BitObject</a></li>
+<li><a title="rpps.dobject.DataObject" href="#rpps.dobject.DataObject">DataObject</a></li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.dobject.BitObject" href="#rpps.dobject.BitObject">BitObject</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.dobject.BitObject.convert" href="#rpps.dobject.DataObject.convert">convert</a></code></li>
+<li><code><a title="rpps.dobject.BitObject.name" href="#rpps.dobject.DataObject.name">name</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="rpps.dobject.DataObject"><code class="flex name class">
+<span>class <span class="ident">DataObject</span></span>
+<span>(</span><span>data=None, meta=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Parent DataObject class</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class DataObject:
+    &#34;&#34;&#34;Parent DataObject class&#34;&#34;&#34;
+    type = Type.NONE
+
+    data = []
+    meta = None
+
+    def __init__(self, data=None, meta=None):
+        if not isinstance(meta, Meta):
+            meta = Meta()
+        self.convert(data)
+        self.meta = meta
+
+    def __str__(self):
+        return f&#34;{self.name()}:{self.type}:{len(self)}&#34;
+
+    def __repr__(self):
+        return str(self)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __enter__(self, *args, **kwargs):
+        return self.data.__enter__(*args, **kwargs) # type: ignore
+
+    def __exit__(self, *args, **kwargs):
+        return self.data.__exit__(*args, **kwargs) # type: ignore
+
+    def __iter__(self, *args, **kwargs):
+        return self.data.__iter__(*args, **kwargs)
+
+    def __getitem__(self, *args, **kwargs):
+        return self.data.__getitem__(*args, **kwargs)
+
+    def name(self):
+        &#34;&#34;&#34;Get class name&#34;&#34;&#34;
+        return type(self).__name__
+
+    def append(self, data):
+        self.data = np.append(self.data, data)
+
+    def to_bits(self):
+        if isinstance(self.data, np.ndarray):
+            if self.type == Type.BIT:
+                return self.data
+            elif self.type == Type.BYTE:
+                return np.unpackbits(self.data)
+        raise NotImplementedError(f&#34;Cannot convert {self.type} to bits&#34;)
+
+    def to_bytes(self):
+        if isinstance(self.data, np.ndarray):
+            if self.type == Type.BYTE:
+                return self.data
+            if self.type == Type.BIT:
+                return np.packbits(self.data)
+        raise NotImplementedError(f&#34;Cannot convert {self.type} to bytes&#34;)
+
+    def convert(self, other):
+        &#34;&#34;&#34;Convert other to self&#34;&#34;&#34;
+        if issubclass(type(other), DataObject):
+            if self.type == Type.BIT:
+                self.data = other.to_bits()
+                return
+            elif self.type == Type.BYTE:
+                self.data = other.to_bytes()
+                return
+            raise NotImplementedError(f&#34;Cannot convert {other.type} to {self.type}&#34;)
+        else:
+            if other is None:
+                if self.type == Type.BYTE:
+                    self.data = np.array([], dtype=np.uint8)
+                    return
+                elif self.type == Type.BIT:
+                    self.data = np.array([], dtype=bool)
+                    return
+            elif isinstance(other, bytes):
+                if self.type == Type.BYTE:
+                    self.data = np.frombuffer(other, dtype=np.uint8)
+                    return
+                elif self.type == Type.BIT:
+                    self.data = np.unpackbits(np.array(other))
+                    return
+            elif isinstance(other, np.ndarray):
+                if self.type == Type.SYM:
+                    self.data = other
+                    return
+                if other.dtype == np.uint8:
+                    if self.type == Type.BYTE:
+                        self.data = np.copy(other)
+                        return
+                    elif self.type == Type.BIT:
+                        self.data = np.unpackbits(other)
+                        return
+                elif other.dtype == bool:
+                    if self.type == Type.BYTE:
+                        self.data = np.packbits(other)
+                        return
+                    elif self.type == Type.BIT:
+                        self.data = np.copy(other)
+                        return
+                raise NotImplementedError(f&#34;Cannot convert {type(other)} {other.shape} {other.dtype} to {self.type}&#34;)
+
+        raise NotImplementedError(f&#34;Cannot convert {type(other)} to {self.type}&#34;)</code></pre>
+</details>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="rpps.dobject.BitObject" href="#rpps.dobject.BitObject">BitObject</a></li>
+<li><a title="rpps.dobject.ByteObject" href="#rpps.dobject.ByteObject">ByteObject</a></li>
+<li><a title="rpps.dobject.SymObject" href="#rpps.dobject.SymObject">SymObject</a></li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="rpps.dobject.DataObject.data"><code class="name">var <span class="ident">data</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.dobject.DataObject.meta"><code class="name">var <span class="ident">meta</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.dobject.DataObject.type"><code class="name">var <span class="ident">type</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+<h3>Methods</h3>
+<dl>
+<dt id="rpps.dobject.DataObject.append"><code class="name flex">
+<span>def <span class="ident">append</span></span>(<span>self, data)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.dobject.DataObject.convert"><code class="name flex">
+<span>def <span class="ident">convert</span></span>(<span>self, other)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Convert other to self</p></div>
+</dd>
+<dt id="rpps.dobject.DataObject.name"><code class="name flex">
+<span>def <span class="ident">name</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Get class name</p></div>
+</dd>
+<dt id="rpps.dobject.DataObject.to_bits"><code class="name flex">
+<span>def <span class="ident">to_bits</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.dobject.DataObject.to_bytes"><code class="name flex">
+<span>def <span class="ident">to_bytes</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+<dt id="rpps.dobject.ModData"><code class="flex name class">
+<span>class <span class="ident">ModData</span></span>
+<span>(</span><span>data=None, meta=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Data returned from mod.demodulate</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class ModData(BitObject):
+    &#34;&#34;&#34;Data returned from mod.demodulate&#34;&#34;&#34;
+    soft = SoftDecision()
+    _data = None
+
+    @property
+    def hard(self):
+        return self.soft.hard()
+
+    @property
+    def data(self):
+        if self._data is not None:
+            return self._data
+        return self.soft.bits
+
+    @data.setter
+    def data(self, value):
+        self._data = value</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.dobject.BitObject" href="#rpps.dobject.BitObject">BitObject</a></li>
+<li><a title="rpps.dobject.DataObject" href="#rpps.dobject.DataObject">DataObject</a></li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="rpps.dobject.ModData.soft"><code class="name">var <span class="ident">soft</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+<h3>Instance variables</h3>
+<dl>
+<dt id="rpps.dobject.ModData.data"><code class="name">prop <span class="ident">data</span></code></dt>
+<dd>
+<div class="desc"><p>ndarray(shape, dtype=float, buffer=None, offset=0,
+strides=None, order=None)</p>
+<p>An array object represents a multidimensional, homogeneous array
+of fixed-size items.
+An associated data-type object describes the
+format of each element in the array (its byte-order, how many bytes it
+occupies in memory, whether it is an integer, a floating point number,
+or something else, etc.)</p>
+<p>Arrays should be constructed using <code>array</code>, <code>zeros</code> or <code>empty</code> (refer
+to the See Also section below).
+The parameters given here refer to
+a low-level method (<code>ndarray(&hellip;)</code>) for instantiating an array.</p>
+<p>For more information, refer to the <code>numpy</code> module and examine the
+methods and attributes of an array.</p>
+<h2 id="parameters">Parameters</h2>
+<p>(for the <strong>new</strong> method; see Notes below)</p>
+<dl>
+<dt><strong><code>shape</code></strong> :&ensp;<code>tuple</code> of <code>ints</code></dt>
+<dd>Shape of created array.</dd>
+<dt><strong><code>dtype</code></strong> :&ensp;<code>data-type</code>, optional</dt>
+<dd>Any object that can be interpreted as a numpy data type.</dd>
+<dt><strong><code>buffer</code></strong> :&ensp;<code>object exposing buffer interface</code>, optional</dt>
+<dd>Used to fill the array with data.</dd>
+<dt><strong><code>offset</code></strong> :&ensp;<code>int</code>, optional</dt>
+<dd>Offset of array data in buffer.</dd>
+<dt><strong><code>strides</code></strong> :&ensp;<code>tuple</code> of <code>ints</code>, optional</dt>
+<dd>Strides of data in memory.</dd>
+<dt><strong><code>order</code></strong> :&ensp;<code>{'C', 'F'}</code>, optional</dt>
+<dd>Row-major (C-style) or column-major (Fortran-style) order.</dd>
+</dl>
+<h2 id="attributes">Attributes</h2>
+<dl>
+<dt><strong><code>T</code></strong> :&ensp;<code>ndarray</code></dt>
+<dd>Transpose of the array.</dd>
+<dt><strong><code>data</code></strong> :&ensp;<code>buffer</code></dt>
+<dd>The array's elements, in memory.</dd>
+<dt><strong><code>dtype</code></strong> :&ensp;<code>dtype object</code></dt>
+<dd>Describes the format of the elements in the array.</dd>
+<dt><strong><code>flags</code></strong> :&ensp;<code>dict</code></dt>
+<dd>Dictionary containing information related to memory use, e.g.,
+'C_CONTIGUOUS', 'OWNDATA', 'WRITEABLE', etc.</dd>
+<dt><strong><code>flat</code></strong> :&ensp;<code>numpy.flatiter object</code></dt>
+<dd>Flattened version of the array as an iterator.
+The iterator
+allows assignments, e.g., <code>x.flat = 3</code> (See <code>ndarray.flat</code> for
+assignment examples; TODO).</dd>
+<dt><strong><code>imag</code></strong> :&ensp;<code>ndarray</code></dt>
+<dd>Imaginary part of the array.</dd>
+<dt><strong><code>real</code></strong> :&ensp;<code>ndarray</code></dt>
+<dd>Real part of the array.</dd>
+<dt><strong><code>size</code></strong> :&ensp;<code>int</code></dt>
+<dd>Number of elements in the array.</dd>
+<dt><strong><code>itemsize</code></strong> :&ensp;<code>int</code></dt>
+<dd>The memory use of each array element in bytes.</dd>
+<dt><strong><code>nbytes</code></strong> :&ensp;<code>int</code></dt>
+<dd>The total number of bytes required to store the array data,
+i.e., <code>itemsize * size</code>.</dd>
+<dt><strong><code>ndim</code></strong> :&ensp;<code>int</code></dt>
+<dd>The array's number of dimensions.</dd>
+<dt><strong><code>shape</code></strong> :&ensp;<code>tuple</code> of <code>ints</code></dt>
+<dd>Shape of the array.</dd>
+<dt><strong><code>strides</code></strong> :&ensp;<code>tuple</code> of <code>ints</code></dt>
+<dd>The step-size required to move from one element to the next in
+memory. For example, a contiguous <code>(3, 4)</code> array of type
+<code>int16</code> in C-order has strides <code>(8, 2)</code>.
+This implies that
+to move from element to element in memory requires jumps of 2 bytes.
+To move from row-to-row, one needs to jump 8 bytes at a time
+(<code>2 * 4</code>).</dd>
+<dt><strong><code>ctypes</code></strong> :&ensp;<code>ctypes object</code></dt>
+<dd>Class containing properties of the array needed for interaction
+with ctypes.</dd>
+<dt><strong><code>base</code></strong> :&ensp;<code>ndarray</code></dt>
+<dd>If the array is a view into another array, that array is its <code>base</code>
+(unless that array is also a view).
+The <code>base</code> array is where the
+array data is actually stored.</dd>
+</dl>
+<h2 id="see-also">See Also</h2>
+<dl>
+<dt><code>array</code></dt>
+<dd>Construct an array.</dd>
+<dt><code>zeros</code></dt>
+<dd>Create an array, each element of which is zero.</dd>
+<dt><code>empty</code></dt>
+<dd>Create an array, but leave its allocated memory unchanged (i.e., it contains "garbage").</dd>
+<dt><code>dtype</code></dt>
+<dd>Create a data-type.</dd>
+<dt><code>numpy.typing.NDArray</code></dt>
+<dd>An ndarray alias :term:<code>generic &lt;generic type&gt;</code> w.r.t. its <code>dtype.type &lt;numpy.dtype.type&gt;</code>.</dd>
+</dl>
+<h2 id="notes">Notes</h2>
+<p>There are two modes of creating an array using <code>__new__</code>:</p>
+<ol>
+<li>If <code>buffer</code> is None, then only <code>shape</code>, <code>dtype</code>, and <code>order</code>
+are used.</li>
+<li>If <code>buffer</code> is an object exposing the buffer interface, then
+all keywords are interpreted.</li>
+</ol>
+<p>No <code>__init__</code> method is needed because the array is fully initialized
+after the <code>__new__</code> method.</p>
+<h2 id="examples">Examples</h2>
+<p>These examples illustrate the low-level <code>ndarray</code> constructor.
+Refer
+to the <code>See Also</code> section above for easier ways of constructing an
+ndarray.</p>
+<p>First mode, <code>buffer</code> is None:</p>
+<pre><code class="language-python-repl">&gt;&gt;&gt; np.ndarray(shape=(2,2), dtype=float, order='F')
+array([[0.0e+000, 0.0e+000], # random
+       [     nan, 2.5e-323]])
+</code></pre>
+<p>Second mode:</p>
+<pre><code class="language-python-repl">&gt;&gt;&gt; np.ndarray((2,), buffer=np.array([1,2,3]),
+...            offset=np.int_().itemsize,
+...            dtype=int) # offset = 1*itemsize, i.e. skip first element
+array([2, 3])
+</code></pre></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def data(self):
+    if self._data is not None:
+        return self._data
+    return self.soft.bits</code></pre>
+</details>
+</dd>
+<dt id="rpps.dobject.ModData.hard"><code class="name">prop <span class="ident">hard</span></code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def hard(self):
+    return self.soft.hard()</code></pre>
+</details>
+</dd>
+</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.dobject.BitObject" href="#rpps.dobject.BitObject">BitObject</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.dobject.BitObject.convert" href="#rpps.dobject.DataObject.convert">convert</a></code></li>
+<li><code><a title="rpps.dobject.BitObject.name" href="#rpps.dobject.DataObject.name">name</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="rpps.dobject.ScramData"><code class="flex name class">
+<span>class <span class="ident">ScramData</span></span>
+<span>(</span><span>data=None, meta=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Data post-scrambler</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class ScramData(BitObject):
+    &#34;&#34;&#34;Data post-scrambler&#34;&#34;&#34;</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.dobject.BitObject" href="#rpps.dobject.BitObject">BitObject</a></li>
+<li><a title="rpps.dobject.DataObject" href="#rpps.dobject.DataObject">DataObject</a></li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.dobject.BitObject" href="#rpps.dobject.BitObject">BitObject</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.dobject.BitObject.convert" href="#rpps.dobject.DataObject.convert">convert</a></code></li>
+<li><code><a title="rpps.dobject.BitObject.name" href="#rpps.dobject.DataObject.name">name</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="rpps.dobject.StreamData"><code class="flex name class">
+<span>class <span class="ident">StreamData</span></span>
+<span>(</span><span>data=None, meta=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Raw input/output data</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class StreamData(ByteObject):
+    &#34;&#34;&#34;Raw input/output data&#34;&#34;&#34;</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.dobject.ByteObject" href="#rpps.dobject.ByteObject">ByteObject</a></li>
+<li><a title="rpps.dobject.DataObject" href="#rpps.dobject.DataObject">DataObject</a></li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.dobject.ByteObject" href="#rpps.dobject.ByteObject">ByteObject</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.dobject.ByteObject.convert" href="#rpps.dobject.DataObject.convert">convert</a></code></li>
+<li><code><a title="rpps.dobject.ByteObject.name" href="#rpps.dobject.DataObject.name">name</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="rpps.dobject.SymData"><code class="flex name class">
+<span>class <span class="ident">SymData</span></span>
+<span>(</span><span>data=None, meta=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Data returned from mod.modulate</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class SymData(SymObject):
+    &#34;&#34;&#34;Data returned from mod.modulate&#34;&#34;&#34;</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.dobject.SymObject" href="#rpps.dobject.SymObject">SymObject</a></li>
+<li><a title="rpps.dobject.DataObject" href="#rpps.dobject.DataObject">DataObject</a></li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.dobject.SymObject" href="#rpps.dobject.SymObject">SymObject</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.dobject.SymObject.convert" href="#rpps.dobject.DataObject.convert">convert</a></code></li>
+<li><code><a title="rpps.dobject.SymObject.name" href="#rpps.dobject.DataObject.name">name</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="rpps.dobject.SymObject"><code class="flex name class">
+<span>class <span class="ident">SymObject</span></span>
+<span>(</span><span>data=None, meta=None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Parent DataObject class</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class SymObject(DataObject):
+    type = Type.SYM
+
+    def __str__(self):
+        return f&#34;{super().__str__()} syms&#34;</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.dobject.DataObject" href="#rpps.dobject.DataObject">DataObject</a></li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="rpps.dobject.SymData" href="#rpps.dobject.SymData">SymData</a></li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="rpps.dobject.SymObject.type"><code class="name">var <span class="ident">type</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.dobject.DataObject" href="#rpps.dobject.DataObject">DataObject</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.dobject.DataObject.convert" href="#rpps.dobject.DataObject.convert">convert</a></code></li>
+<li><code><a title="rpps.dobject.DataObject.name" href="#rpps.dobject.DataObject.name">name</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="rpps.dobject.Type"><code class="flex name class">
+<span>class <span class="ident">Type</span></span>
+<span>(</span><span>*args, **kwds)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>DataObject data data formats</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Type(Enum):
+    &#34;&#34;&#34;DataObject data data formats&#34;&#34;&#34;
+    BIT = 0
+    BYTE = 1
+    SYM = 2
+    NONE = -1</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>enum.Enum</li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="rpps.dobject.Type.BIT"><code class="name">var <span class="ident">BIT</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.dobject.Type.BYTE"><code class="name">var <span class="ident">BYTE</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.dobject.Type.NONE"><code class="name">var <span class="ident">NONE</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.dobject.Type.SYM"><code class="name">var <span class="ident">SYM</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="rpps" href="index.html">rpps</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-functions">Functions</a></h3>
+<ul class="">
+<li><code><a title="rpps.dobject.ensure_bit" href="#rpps.dobject.ensure_bit">ensure_bit</a></code></li>
+<li><code><a title="rpps.dobject.ensure_byte" href="#rpps.dobject.ensure_byte">ensure_byte</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="rpps.dobject.BitObject" href="#rpps.dobject.BitObject">BitObject</a></code></h4>
+<ul class="">
+<li><code><a title="rpps.dobject.BitObject.bin" href="#rpps.dobject.BitObject.bin">bin</a></code></li>
+<li><code><a title="rpps.dobject.BitObject.data" href="#rpps.dobject.BitObject.data">data</a></code></li>
+<li><code><a title="rpps.dobject.BitObject.type" href="#rpps.dobject.BitObject.type">type</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="rpps.dobject.ByteObject" href="#rpps.dobject.ByteObject">ByteObject</a></code></h4>
+<ul class="">
+<li><code><a title="rpps.dobject.ByteObject.data" href="#rpps.dobject.ByteObject.data">data</a></code></li>
+<li><code><a title="rpps.dobject.ByteObject.hex" href="#rpps.dobject.ByteObject.hex">hex</a></code></li>
+<li><code><a title="rpps.dobject.ByteObject.type" href="#rpps.dobject.ByteObject.type">type</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="rpps.dobject.CodingData" href="#rpps.dobject.CodingData">CodingData</a></code></h4>
+</li>
+<li>
+<h4><code><a title="rpps.dobject.DataObject" href="#rpps.dobject.DataObject">DataObject</a></code></h4>
+<ul class="two-column">
+<li><code><a title="rpps.dobject.DataObject.append" href="#rpps.dobject.DataObject.append">append</a></code></li>
+<li><code><a title="rpps.dobject.DataObject.convert" href="#rpps.dobject.DataObject.convert">convert</a></code></li>
+<li><code><a title="rpps.dobject.DataObject.data" href="#rpps.dobject.DataObject.data">data</a></code></li>
+<li><code><a title="rpps.dobject.DataObject.meta" href="#rpps.dobject.DataObject.meta">meta</a></code></li>
+<li><code><a title="rpps.dobject.DataObject.name" href="#rpps.dobject.DataObject.name">name</a></code></li>
+<li><code><a title="rpps.dobject.DataObject.to_bits" href="#rpps.dobject.DataObject.to_bits">to_bits</a></code></li>
+<li><code><a title="rpps.dobject.DataObject.to_bytes" href="#rpps.dobject.DataObject.to_bytes">to_bytes</a></code></li>
+<li><code><a title="rpps.dobject.DataObject.type" href="#rpps.dobject.DataObject.type">type</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="rpps.dobject.ModData" href="#rpps.dobject.ModData">ModData</a></code></h4>
+<ul class="">
+<li><code><a title="rpps.dobject.ModData.data" href="#rpps.dobject.ModData.data">data</a></code></li>
+<li><code><a title="rpps.dobject.ModData.hard" href="#rpps.dobject.ModData.hard">hard</a></code></li>
+<li><code><a title="rpps.dobject.ModData.soft" href="#rpps.dobject.ModData.soft">soft</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="rpps.dobject.ScramData" href="#rpps.dobject.ScramData">ScramData</a></code></h4>
+</li>
+<li>
+<h4><code><a title="rpps.dobject.StreamData" href="#rpps.dobject.StreamData">StreamData</a></code></h4>
+</li>
+<li>
+<h4><code><a title="rpps.dobject.SymData" href="#rpps.dobject.SymData">SymData</a></code></h4>
+</li>
+<li>
+<h4><code><a title="rpps.dobject.SymObject" href="#rpps.dobject.SymObject">SymObject</a></code></h4>
+<ul class="">
+<li><code><a title="rpps.dobject.SymObject.type" href="#rpps.dobject.SymObject.type">type</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="rpps.dobject.Type" href="#rpps.dobject.Type">Type</a></code></h4>
+<ul class="">
+<li><code><a title="rpps.dobject.Type.BIT" href="#rpps.dobject.Type.BIT">BIT</a></code></li>
+<li><code><a title="rpps.dobject.Type.BYTE" href="#rpps.dobject.Type.BYTE">BYTE</a></code></li>
+<li><code><a title="rpps.dobject.Type.NONE" href="#rpps.dobject.Type.NONE">NONE</a></code></li>
+<li><code><a title="rpps.dobject.Type.SYM" href="#rpps.dobject.Type.SYM">SYM</a></code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc" title="pdoc: Python API documentation generator"><cite>pdoc</cite> 0.11.1</a>.</p>
+</footer>
+</body>
+</html>

@@ -1,6 +1,8 @@
+"""Process data to/from files"""
 from .interface import Interface
 
 class File(Interface):
+    """File interface"""
     def __init__(self, meta, pipeline, baud, r_file: str, w_file: str):
         super().__init__(meta, pipeline, baud)
         self._r = r_file

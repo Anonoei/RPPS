@@ -1,9 +1,12 @@
+"""Encode and decode byte data"""
 # Encoding
 
 def bytes_to_hex(data: bytes):
+    """Convert bytes to hex"""
     return data.hex()
 
 def hex_to_bits(data):
+    """Convert hex to bits"""
     bits = ""
     for i in range(0, len(data), 2):
         int_data = int(data[i:i+2], 16)
@@ -16,12 +19,14 @@ def hex_to_bits(data):
     return bits
 
 def bytes_to_bits(data):
+    """Convert bytes to bits"""
     return hex_to_bits(bytes_to_hex(data))
 
 
 # Decoding
 
 def bits_to_hex(bits):
+    """Convert bits to hex"""
     data_hex = ""
     for i in range(0, len(bits), 8):
         int_data = int(bits[i:i+8], 2)
@@ -34,10 +39,9 @@ def bits_to_hex(bits):
     return data_hex
 
 def hex_to_bytes(data):
+    """Convert hex to bytes"""
     return bytes.fromhex(data)
 
 def bits_to_bytes(data):
+    """Convert bits to bytes"""
     return hex_to_bytes(bits_to_hex(data))
-
-class Encoding:
-    pass

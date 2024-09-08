@@ -1,6 +1,8 @@
+"""Soft decision helpers"""
 import numpy as np
 
 class SoftDecision:
+    """SoftDecision type"""
     def __init__(self, codewords=None, probabilities=None):
         if codewords is None:
             codewords = np.zeros((1, 2))
@@ -14,11 +16,13 @@ class SoftDecision:
 
     @property
     def bits(self):
+        """Return decided bits, otherwise hard bits"""
         if self.decided:
             return self._bits
         return self.hard()
 
     def decide(self, code_idx):
+        """Decide the codeword for the next bits index"""
         if self._bits is None:
             self._bits = np.zeros((1, self.codewords.shape[1]), dtype=bool)
             self._bits[0] = self.codewords[code_idx]
@@ -31,6 +35,7 @@ class SoftDecision:
         return None
 
     def hard(self):
+        """Perform a hard decision from probabilities"""
         if self._hard is None:
             max_vals = np.max(self.probabilities, axis=1)
             indices = np.argwhere(np.equal(self.probabilities, max_vals[:, None]))

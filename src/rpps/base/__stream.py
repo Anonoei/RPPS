@@ -1,4 +1,4 @@
-from .bitarray import bitarray
+from .__bitarray import bitarray
 
 class Stream:
     __slots__ = ("cache", "length")

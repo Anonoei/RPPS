@@ -1,3 +1,4 @@
+"""Repetition block coding"""
 from ..coding import Block
 
 from .. import dobject
@@ -5,6 +6,7 @@ from .. import dobject
 import numpy as np
 
 class Repetition(Block):
+    """Repetition coding implementation"""
     name = "Repetition"
     def __init__(self, count):
         super().__init__(1, count, count)

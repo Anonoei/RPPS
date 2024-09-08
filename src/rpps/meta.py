@@ -1,3 +1,4 @@
+"""Pipeline metadata"""
 import pathlib
 import json
 

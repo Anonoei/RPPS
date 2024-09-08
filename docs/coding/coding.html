@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
 <title>rpps.coding.coding API documentation</title>
-<meta name="description" content="">
+<meta name="description" content="Coding parent classes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
@@ -25,6 +25,7 @@ hljs.highlightAll();
 <h1 class="title">Module <code>rpps.coding.coding</code></h1>
 </header>
 <section id="section-intro">
+<p>Coding parent classes</p>
 </section>
 <section>
 </section>
@@ -40,12 +41,13 @@ hljs.highlightAll();
 <span>(</span><span>num, den, length)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Parent block coding</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class Block(Coding):
+    &#34;&#34;&#34;Parent block coding&#34;&#34;&#34;
     def __init__(self, num, den, length):
         super().__init__(num, den)
         self.length = length
@@ -60,50 +62,77 @@ hljs.highlightAll();
 <h3>Ancestors</h3>
 <ul class="hlist">
 <li><a title="rpps.coding.coding.Coding" href="#rpps.coding.coding.Coding">Coding</a></li>
+<li><a title="rpps.base.rpps.Pipe" href="../base/rpps.html#rpps.base.rpps.Pipe">Pipe</a></li>
 </ul>
 <h3>Subclasses</h3>
 <ul class="hlist">
 <li>rpps.coding._blk.repetition.Repetition</li>
 </ul>
-<h3>Methods</h3>
-<dl>
-<dt id="rpps.coding.coding.Block.init_meta"><code class="name flex">
-<span>def <span class="ident">init_meta</span></span>(<span>self, meta: <a title="rpps.meta.Meta" href="../meta.html#rpps.meta.Meta">Meta</a>)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.coding.coding.Coding" href="#rpps.coding.coding.Coding">Coding</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.coding.coding.Coding.decode" href="#rpps.coding.coding.Coding.decode">decode</a></code></li>
+<li><code><a title="rpps.coding.coding.Coding.encode" href="#rpps.coding.coding.Coding.encode">encode</a></code></li>
+<li><code><a title="rpps.coding.coding.Coding.init_meta" href="#rpps.coding.coding.Coding.init_meta">init_meta</a></code></li>
+</ul>
+</li>
+</ul>
 </dd>
 <dt id="rpps.coding.coding.Coding"><code class="flex name class">
 <span>class <span class="ident">Coding</span></span>
 <span>(</span><span>num, den)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Coding Pipe</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">class Coding:
+<pre><code class="python">class Coding(base.rpps.Pipe):
+    &#34;&#34;&#34;Coding Pipe&#34;&#34;&#34;
     name = &#34;Coding&#34;
+    decision = Decision.HARD
     def __init__(self, num, den):
-        self.log = Logger().Child(&#34;Coding&#34;, Level.WARN).Child(type(self).__name__, Level.TRACE)
+        self.log = Logger().Child(&#34;Coding&#34;, Level.WARN).Child(type(self).__name__, Level.WARN)
         self.num = num
         self.den = den
         self._rate = self.num/self.den
 
+    def __str__(self):
+        return f&#34;{self.name}:{self.num}/{self.den}:{self.decision}&#34;
+
     def init_meta(self, meta: Meta):
+        &#34;&#34;&#34;Initialize coding metadata&#34;&#34;&#34;
         meta.coding.fields[&#34;Name&#34;] = type(self).__name__
         meta.coding.fields[&#34;RateNum&#34;] = self.num
         meta.coding.fields[&#34;RateDen&#34;] = self.den
 
-    def encode(self, data: Stream) -&gt; bitarray:
+    def encode(self, dobj: dobject.BitObject) -&gt; dobject.CodingData:
+        &#34;&#34;&#34;Encode dobject using specified coding&#34;&#34;&#34;
         ...
 
-    def decode(self, data: bitarray) -&gt; bitarray:
-        ...</code></pre>
+    def decode(self, dobj: dobject.BitObject) -&gt; dobject.BitObject:
+        &#34;&#34;&#34;Decode dobject using specified coding&#34;&#34;&#34;
+        ...
+
+    def __matmul__(self, other):
+        if isinstance(other, dobject.ModData):
+            if self.decision == Decision.HARD:
+                other = dobject.ModData(other.hard)
+            return self.decode(other)
+        elif issubclass(type(other), dobject.DataObject):
+            return self.encode(dobject.ensure_bit(other))
+        else:
+            raise TypeError(f&#34;Cannot perform {type(self).__name__} on {type(other)}&#34;)
+
+    def __rmatmul__(self, other):
+        return self.__matmul__(other)</code></pre>
 </details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.base.rpps.Pipe" href="../base/rpps.html#rpps.base.rpps.Pipe">Pipe</a></li>
+</ul>
 <h3>Subclasses</h3>
 <ul class="hlist">
 <li><a title="rpps.coding.coding.Block" href="#rpps.coding.coding.Block">Block</a></li>
@@ -111,6 +140,10 @@ hljs.highlightAll();
 </ul>
 <h3>Class variables</h3>
 <dl>
+<dt id="rpps.coding.coding.Coding.decision"><code class="name">var <span class="ident">decision</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
 <dt id="rpps.coding.coding.Coding.name"><code class="name">var <span class="ident">name</span></code></dt>
 <dd>
 <div class="desc"></div>
@@ -119,22 +152,22 @@ hljs.highlightAll();
 <h3>Methods</h3>
 <dl>
 <dt id="rpps.coding.coding.Coding.decode"><code class="name flex">
-<span>def <span class="ident">decode</span></span>(<span>self, data: <a title="rpps.helpers.bitarray.bitarray" href="../helpers/bitarray.html#rpps.helpers.bitarray.bitarray">bitarray</a>) ‑> <a title="rpps.helpers.bitarray.bitarray" href="../helpers/bitarray.html#rpps.helpers.bitarray.bitarray">bitarray</a></span>
+<span>def <span class="ident">decode</span></span>(<span>self, dobj: <a title="rpps.dobject.BitObject" href="../dobject.html#rpps.dobject.BitObject">BitObject</a>) ‑> <a title="rpps.dobject.BitObject" href="../dobject.html#rpps.dobject.BitObject">BitObject</a></span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Decode dobject using specified coding</p></div>
 </dd>
 <dt id="rpps.coding.coding.Coding.encode"><code class="name flex">
-<span>def <span class="ident">encode</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="../helpers/stream.html#rpps.helpers.stream.Stream">Stream</a>) ‑> <a title="rpps.helpers.bitarray.bitarray" href="../helpers/bitarray.html#rpps.helpers.bitarray.bitarray">bitarray</a></span>
+<span>def <span class="ident">encode</span></span>(<span>self, dobj: <a title="rpps.dobject.BitObject" href="../dobject.html#rpps.dobject.BitObject">BitObject</a>) ‑> <a title="rpps.dobject.CodingData" href="../dobject.html#rpps.dobject.CodingData">CodingData</a></span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Encode dobject using specified coding</p></div>
 </dd>
 <dt id="rpps.coding.coding.Coding.init_meta"><code class="name flex">
 <span>def <span class="ident">init_meta</span></span>(<span>self, meta: <a title="rpps.meta.Meta" href="../meta.html#rpps.meta.Meta">Meta</a>)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Initialize coding metadata</p></div>
 </dd>
 </dl>
 </dd>
@@ -143,13 +176,13 @@ hljs.highlightAll();
 <span>(</span><span>num, den)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Parent convolutional coding</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class Convolutional(Coding):
-
+    &#34;&#34;&#34;Parent convolutional coding&#34;&#34;&#34;
     def init_meta(self, meta: Meta):
         from .meta import ConvolutionalCodingMeta
         meta.coding = ConvolutionalCodingMeta()  # type: ignore
@@ -159,16 +192,49 @@ hljs.highlightAll();
 <h3>Ancestors</h3>
 <ul class="hlist">
 <li><a title="rpps.coding.coding.Coding" href="#rpps.coding.coding.Coding">Coding</a></li>
+<li><a title="rpps.base.rpps.Pipe" href="../base/rpps.html#rpps.base.rpps.Pipe">Pipe</a></li>
 </ul>
 <h3>Subclasses</h3>
 <ul class="hlist">
 <li>rpps.coding._cnv.viterbi.Viterbi</li>
 </ul>
-<h3>Methods</h3>
-<dl>
-<dt id="rpps.coding.coding.Convolutional.init_meta"><code class="name flex">
-<span>def <span class="ident">init_meta</span></span>(<span>self, meta: <a title="rpps.meta.Meta" href="../meta.html#rpps.meta.Meta">Meta</a>)</span>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.coding.coding.Coding" href="#rpps.coding.coding.Coding">Coding</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.coding.coding.Coding.decode" href="#rpps.coding.coding.Coding.decode">decode</a></code></li>
+<li><code><a title="rpps.coding.coding.Coding.encode" href="#rpps.coding.coding.Coding.encode">encode</a></code></li>
+<li><code><a title="rpps.coding.coding.Coding.init_meta" href="#rpps.coding.coding.Coding.init_meta">init_meta</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="rpps.coding.coding.Decision"><code class="flex name class">
+<span>class <span class="ident">Decision</span></span>
+<span>(</span><span>*args, **kwds)</span>
 </code></dt>
+<dd>
+<div class="desc"><p>Coding decision type</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Decision(Enum):
+    &#34;&#34;&#34;Coding decision type&#34;&#34;&#34;
+    HARD = 0
+    SOFT = 1</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>enum.Enum</li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="rpps.coding.coding.Decision.HARD"><code class="name">var <span class="ident">HARD</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.coding.coding.Decision.SOFT"><code class="name">var <span class="ident">SOFT</span></code></dt>
 <dd>
 <div class="desc"></div>
 </dd>
@@ -191,13 +257,11 @@ hljs.highlightAll();
 <ul>
 <li>
 <h4><code><a title="rpps.coding.coding.Block" href="#rpps.coding.coding.Block">Block</a></code></h4>
-<ul class="">
-<li><code><a title="rpps.coding.coding.Block.init_meta" href="#rpps.coding.coding.Block.init_meta">init_meta</a></code></li>
-</ul>
 </li>
 <li>
 <h4><code><a title="rpps.coding.coding.Coding" href="#rpps.coding.coding.Coding">Coding</a></code></h4>
 <ul class="">
+<li><code><a title="rpps.coding.coding.Coding.decision" href="#rpps.coding.coding.Coding.decision">decision</a></code></li>
 <li><code><a title="rpps.coding.coding.Coding.decode" href="#rpps.coding.coding.Coding.decode">decode</a></code></li>
 <li><code><a title="rpps.coding.coding.Coding.encode" href="#rpps.coding.coding.Coding.encode">encode</a></code></li>
 <li><code><a title="rpps.coding.coding.Coding.init_meta" href="#rpps.coding.coding.Coding.init_meta">init_meta</a></code></li>
@@ -206,8 +270,12 @@ hljs.highlightAll();
 </li>
 <li>
 <h4><code><a title="rpps.coding.coding.Convolutional" href="#rpps.coding.coding.Convolutional">Convolutional</a></code></h4>
+</li>
+<li>
+<h4><code><a title="rpps.coding.coding.Decision" href="#rpps.coding.coding.Decision">Decision</a></code></h4>
 <ul class="">
-<li><code><a title="rpps.coding.coding.Convolutional.init_meta" href="#rpps.coding.coding.Convolutional.init_meta">init_meta</a></code></li>
+<li><code><a title="rpps.coding.coding.Decision.HARD" href="#rpps.coding.coding.Decision.HARD">HARD</a></code></li>
+<li><code><a title="rpps.coding.coding.Decision.SOFT" href="#rpps.coding.coding.Decision.SOFT">SOFT</a></code></li>
 </ul>
 </li>
 </ul>

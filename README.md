@@ -64,6 +64,8 @@ if __name__ == "__main__":
 ## Contributing
  1. `git clone https://github.com/Anonoei/RPPS`
  2. `cd RPPS`
- 3. `python3 builder.py -b -l` build and install rpps locally
+ 3. `git branch -c feature/<your feature>`
+ 4. `python3 builder.py -b -l` build and install rpps locally
     - This also installs deps, and dev_deps automatically
- 4. run `python3 tests/dev.py`
+ 5. run `python3 tests/dev.py`
+ 6. Check out the `dev` branch for latest changes

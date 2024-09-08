@@ -1,9 +1,11 @@
+"""File format helpers"""
 import os
 import numpy as np
 
 from ..process import find_rate
 
 class Format:
+    """File Format parent class"""
     byte_count = 0
     _cache = {
         "read_time": 0.0,
@@ -18,6 +20,7 @@ class Format:
         return str(type(self).__name__)
 
     def init(self, path, meta, count, max_ittr):
+        """Initialize the format"""
         if not self._last_path == path:
             self._last_path = path
             if max_ittr == -1:
@@ -31,29 +34,36 @@ class Format:
 
     @property
     def cache(self):
+        """Get the formats cache"""
         return self._cache
 
     @property
     def cur_time(self):
+        """Get relative time for current iteration"""
         return self._cache["block_time"] * self._cache["cur_ittr"]
 
     @property
     def block_time(self):
+        """Get file time per block"""
         return self._cache["block_time"]
 
     @property
     def read_time(self):
+        """Get total file time"""
         return self._cache["read_time"]
 
     @property
     def block(self):
+        """Get current block"""
         return self._cache["cur_ittr"]
 
     @property
     def blocks(self):
+        """Get max block"""
         return self._cache["max_ittr"]
 
     def read(self, meta, path: str, count: int, offset: int = 0, skip=1, max_ittr=-1):
+        """Read next block from file"""
         if not self._last_path == path:
             if max_ittr == -1:
                 max_ittr = os.path.getsize(path) // count
@@ -76,6 +86,7 @@ class Format:
         ...
 
 class cf32(Format):
+    """Complex Float32"""
     byte_count = 32
 
     @staticmethod
@@ -87,6 +98,7 @@ class cf32(Format):
         return syms
 
 class cf64(Format):
+    """Complex Float64"""
     byte_count = 64
 
     @staticmethod

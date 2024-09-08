@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
 <title>rpps API documentation</title>
-<meta name="description" content="Initialize RPPS">
+<meta name="description" content="RF Parameter Processor Suite …">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
@@ -25,46 +25,57 @@ hljs.highlightAll();
 <h1 class="title">Package <code>rpps</code></h1>
 </header>
 <section id="section-intro">
-<p>Initialize RPPS</p>
+<p>RF Parameter Processor Suite</p>
+<p>RPPS is a generic signal processor/generator library.</p>
+<p>Github: <a href="https://github.com/Anonoei/RPPS">https://github.com/Anonoei/RPPS</a></p>
+<p>PyPI: <a href="https://pypi.org/project/rpps/">https://pypi.org/project/rpps/</a></p>
 </section>
 <section>
 <h2 class="section-title" id="header-submodules">Sub-modules</h2>
 <dl>
+<dt><code class="name"><a title="rpps.base" href="base/index.html">rpps.base</a></code></dt>
+<dd>
+<div class="desc"><p>Basic/Generic objects</p></div>
+</dd>
 <dt><code class="name"><a title="rpps.coding" href="coding/index.html">rpps.coding</a></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>FEC/ECC encoders and decoders</p></div>
+</dd>
+<dt><code class="name"><a title="rpps.dobject" href="dobject.html">rpps.dobject</a></code></dt>
+<dd>
+<div class="desc"><p>Containers for data to ensure we can track where it came from</p></div>
 </dd>
 <dt><code class="name"><a title="rpps.file" href="file.html">rpps.file</a></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Wrapper for processing files</p></div>
 </dd>
 <dt><code class="name"><a title="rpps.freq" href="freq/index.html">rpps.freq</a></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Frequency domain helpers</p></div>
 </dd>
 <dt><code class="name"><a title="rpps.helpers" href="helpers/index.html">rpps.helpers</a></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Generic helpers</p></div>
+</dd>
+<dt><code class="name"><a title="rpps.inter" href="inter/index.html">rpps.inter</a></code></dt>
+<dd>
+<div class="desc"><p>Interfaces for data</p></div>
 </dd>
 <dt><code class="name"><a title="rpps.meta" href="meta.html">rpps.meta</a></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Pipeline metadata</p></div>
 </dd>
 <dt><code class="name"><a title="rpps.mod" href="mod/index.html">rpps.mod</a></code></dt>
 <dd>
-<div class="desc"></div>
-</dd>
-<dt><code class="name"><a title="rpps.pipeline" href="pipeline.html">rpps.pipeline</a></code></dt>
-<dd>
-<div class="desc"></div>
+<div class="desc"><p>(De-)Modulation implementations</p></div>
 </dd>
 <dt><code class="name"><a title="rpps.process" href="process/index.html">rpps.process</a></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Processing helpers</p></div>
 </dd>
 <dt><code class="name"><a title="rpps.viz" href="viz/index.html">rpps.viz</a></code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Visualization helpers</p></div>
 </dd>
 </dl>
 </section>
@@ -82,13 +93,15 @@ hljs.highlightAll();
 <ul id="index">
 <li><h3><a href="#header-submodules">Sub-modules</a></h3>
 <ul>
+<li><code><a title="rpps.base" href="base/index.html">rpps.base</a></code></li>
 <li><code><a title="rpps.coding" href="coding/index.html">rpps.coding</a></code></li>
+<li><code><a title="rpps.dobject" href="dobject.html">rpps.dobject</a></code></li>
 <li><code><a title="rpps.file" href="file.html">rpps.file</a></code></li>
 <li><code><a title="rpps.freq" href="freq/index.html">rpps.freq</a></code></li>
 <li><code><a title="rpps.helpers" href="helpers/index.html">rpps.helpers</a></code></li>
+<li><code><a title="rpps.inter" href="inter/index.html">rpps.inter</a></code></li>
 <li><code><a title="rpps.meta" href="meta.html">rpps.meta</a></code></li>
 <li><code><a title="rpps.mod" href="mod/index.html">rpps.mod</a></code></li>
-<li><code><a title="rpps.pipeline" href="pipeline.html">rpps.pipeline</a></code></li>
 <li><code><a title="rpps.process" href="process/index.html">rpps.process</a></code></li>
 <li><code><a title="rpps.viz" href="viz/index.html">rpps.viz</a></code></li>
 </ul>

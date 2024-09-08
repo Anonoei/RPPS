@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
-<title>rpps.helpers.progress API documentation</title>
-<meta name="description" content="">
+<title>rpps.inter.interface API documentation</title>
+<meta name="description" content="Defines interface bindings">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
@@ -22,9 +22,10 @@ hljs.highlightAll();
 <main>
 <article id="content">
 <header>
-<h1 class="title">Module <code>rpps.helpers.progress</code></h1>
+<h1 class="title">Module <code>rpps.inter.interface</code></h1>
 </header>
 <section id="section-intro">
+<p>Defines interface bindings</p>
 </section>
 <section>
 </section>
@@ -35,56 +36,94 @@ hljs.highlightAll();
 <section>
 <h2 class="section-title" id="header-classes">Classes</h2>
 <dl>
-<dt id="rpps.helpers.progress.progress"><code class="flex name class">
-<span>class <span class="ident">progress</span></span>
+<dt id="rpps.inter.interface.Interface"><code class="flex name class">
+<span>class <span class="ident">Interface</span></span>
+<span>(</span><span>meta, pipeline, baud=None)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Parent interface class</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">class progress:
-    _name = &#34;&#34;
-    _start = 0.0
+<pre><code class="python">class Interface:
+    &#34;&#34;&#34;Parent interface class&#34;&#34;&#34;
+    def __init__(self, meta, pipeline, baud=None):
+        self.meta = meta
+        self.pipeline = pipeline
 
-    @staticmethod
-    def _make_bar(name: str, percent: float, message: str=&#34;&#34;, chars=30, fill=&#34;X&#34;, blank=&#34;.&#34;) -&gt; str:
-        if not name == progress._name:
-            progress._name = name
-            progress._start = time.perf_counter()
-        fill_chars = int(chars * percent)
-        blank_chars = chars - fill_chars
-        return f&#34; |{fill * fill_chars}{blank * blank_chars}| &#34;\
-            f&#34;{time.perf_counter() - progress._start:.2f}s &#34;\
-            f&#34;{percent*100:.1f}%&#34;
+        self._r_thread = threading.Thread(target=self.read)
+        self._w_thread = threading.Thread(target=self.baud)
+        self._r_buffer = []
 
+        if meta.inter.get(&#34;Baud&#34;, None) is None:
+            meta.inter = InterMeta()
+            meta.inter[&#34;Baud&#34;] = baud
 
-    @staticmethod
-    def bar_percent(name: str, percent: float, message: str=&#34;&#34;, chars=30, fill=&#34;X&#34;, blank=&#34;.&#34;):
-        return progress._make_bar(name, percent, message, chars, fill, blank) +\
-            &#34;: &#34; \
-            f&#34;{message}&#34;
+        if meta.inter.fields.get(&#34;Baud&#34;, None) is None:
+            raise Exception(&#34;No baud rate specified!&#34;)
 
-    @staticmethod
-    def bar(name: str, cur: int, tot: int, message: str=&#34;&#34;, chars=30, fill=&#34;X&#34;, blank=&#34;.&#34;):
-        return progress._make_bar(name, (cur / tot), message, chars, fill, blank) +\
-            f&#34; {cur:.1f}/{tot:.1f}: &#34;\
-            f&#34;{message}&#34;</code></pre>
+    def start(self):
+        &#34;&#34;&#34;Start read/write threads&#34;&#34;&#34;
+        self._r_thread.start()
+        self._w_thread.start()
+
+    def read(self):
+        &#34;&#34;&#34;Check and read new data&#34;&#34;&#34;
+        while True:
+            data = self._read()
+            if data is None:
+                continue
+            input(f&#34;Got data {data}!&#34;)
+            self.pipeline.dec(data)
+            self._r_buffer.insert(0, data)
+            print(f&#34;Buffer is {len(self._r_buffer)}: {self._r_buffer[0]}&#34;)
+
+    def baud(self):
+        &#34;&#34;&#34;Write data at baud rate&#34;&#34;&#34;
+        while True:
+            time.sleep(self.meta.inter[&#34;Baud&#34;]/1000)
+            # self._write(self.pipeline.enc(Stream.from_bytes(0x7E.to_bytes())))
+
+    def write(self, data):
+        &#34;&#34;&#34;Write data to interface&#34;&#34;&#34;
+        self._write(self.pipeline.enc(data))
+
+    def _read(self):
+        return None
+
+    def _write(self, data):
+        return None</code></pre>
 </details>
-<h3>Static methods</h3>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="rpps.inter.file.File" href="file.html#rpps.inter.file.File">File</a></li>
+</ul>
+<h3>Methods</h3>
 <dl>
-<dt id="rpps.helpers.progress.progress.bar"><code class="name flex">
-<span>def <span class="ident">bar</span></span>(<span>name: str, cur: int, tot: int, message: str = '', chars=30, fill='X', blank='.')</span>
+<dt id="rpps.inter.interface.Interface.baud"><code class="name flex">
+<span>def <span class="ident">baud</span></span>(<span>self)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Write data at baud rate</p></div>
 </dd>
-<dt id="rpps.helpers.progress.progress.bar_percent"><code class="name flex">
-<span>def <span class="ident">bar_percent</span></span>(<span>name: str, percent: float, message: str = '', chars=30, fill='X', blank='.')</span>
+<dt id="rpps.inter.interface.Interface.read"><code class="name flex">
+<span>def <span class="ident">read</span></span>(<span>self)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Check and read new data</p></div>
+</dd>
+<dt id="rpps.inter.interface.Interface.start"><code class="name flex">
+<span>def <span class="ident">start</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Start read/write threads</p></div>
+</dd>
+<dt id="rpps.inter.interface.Interface.write"><code class="name flex">
+<span>def <span class="ident">write</span></span>(<span>self, data)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Write data to interface</p></div>
 </dd>
 </dl>
 </dd>
@@ -98,16 +137,18 @@ hljs.highlightAll();
 <ul id="index">
 <li><h3>Super-module</h3>
 <ul>
-<li><code><a title="rpps.helpers" href="index.html">rpps.helpers</a></code></li>
+<li><code><a title="rpps.inter" href="index.html">rpps.inter</a></code></li>
 </ul>
 </li>
 <li><h3><a href="#header-classes">Classes</a></h3>
 <ul>
 <li>
-<h4><code><a title="rpps.helpers.progress.progress" href="#rpps.helpers.progress.progress">progress</a></code></h4>
+<h4><code><a title="rpps.inter.interface.Interface" href="#rpps.inter.interface.Interface">Interface</a></code></h4>
 <ul class="">
-<li><code><a title="rpps.helpers.progress.progress.bar" href="#rpps.helpers.progress.progress.bar">bar</a></code></li>
-<li><code><a title="rpps.helpers.progress.progress.bar_percent" href="#rpps.helpers.progress.progress.bar_percent">bar_percent</a></code></li>
+<li><code><a title="rpps.inter.interface.Interface.baud" href="#rpps.inter.interface.Interface.baud">baud</a></code></li>
+<li><code><a title="rpps.inter.interface.Interface.read" href="#rpps.inter.interface.Interface.read">read</a></code></li>
+<li><code><a title="rpps.inter.interface.Interface.start" href="#rpps.inter.interface.Interface.start">start</a></code></li>
+<li><code><a title="rpps.inter.interface.Interface.write" href="#rpps.inter.interface.Interface.write">write</a></code></li>
 </ul>
 </li>
 </ul>

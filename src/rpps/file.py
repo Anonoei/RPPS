@@ -1,3 +1,4 @@
+"""Wrapper for processing files"""
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colormaps

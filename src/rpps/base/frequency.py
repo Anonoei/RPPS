@@ -1,3 +1,4 @@
+"""Float/Int to Freq converter"""
 import re
 
 class Frequency:
@@ -25,21 +26,26 @@ class Frequency:
 
     @property
     def raw(self):
+        """Return the raw freq value"""
         return self.freq
 
     @property
     def short(self):
+        """Return the shorthand freq"""
         return self.freq / self.mult
 
     @property
     def str(self):
+        """Return the shorthand freq and unit"""
         return format(self.freq / self.mult, ".2f") + self.unit
 
     @property
     def unit(self):
+        """Return the frequency unit"""
         return self.label.upper() + "Hz"
 
     def init(self, freq=None):
+        """Initialize the frequency object"""
         if freq is not None:
             self.freq = freq
 

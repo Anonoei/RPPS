@@ -1,3 +1,4 @@
+"""Defines interface bindings"""
 import threading
 import time
 
@@ -5,6 +6,7 @@ from .meta import InterMeta
 #from .. import Stream
 
 class Interface:
+    """Parent interface class"""
     def __init__(self, meta, pipeline, baud=None):
         self.meta = meta
         self.pipeline = pipeline
@@ -21,10 +23,12 @@ class Interface:
             raise Exception("No baud rate specified!")
 
     def start(self):
+        """Start read/write threads"""
         self._r_thread.start()
         self._w_thread.start()
 
     def read(self):
+        """Check and read new data"""
         while True:
             data = self._read()
             if data is None:
@@ -35,13 +39,17 @@ class Interface:
             print(f"Buffer is {len(self._r_buffer)}: {self._r_buffer[0]}")
 
     def baud(self):
+        """Write data at baud rate"""
         while True:
             time.sleep(self.meta.inter["Baud"]/1000)
-            self._write(self.pipeline.enc(Stream.from_bytes(0x7E.to_bytes())))
+            # self._write(self.pipeline.enc(Stream.from_bytes(0x7E.to_bytes())))
 
     def write(self, data):
+        """Write data to interface"""
         self._write(self.pipeline.enc(data))
 
-    def _read(self) -> bytes: ...
+    def _read(self):
+        return None
 
-    def _write(self, data): ...
+    def _write(self, data):
+        return None

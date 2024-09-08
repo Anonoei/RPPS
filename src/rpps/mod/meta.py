@@ -1,8 +1,10 @@
+"""Modulation meta helpers"""
 from ..base._meta import _Meta
 
 from collections import OrderedDict
 
 class ModMeta(_Meta):
+    """Modulation meta class"""
     __slots__ = "fields"
 
     def __init__(self):
@@ -17,6 +19,7 @@ class ModMeta(_Meta):
 
 
 def Construct(j: dict):
+    """Construct ModMeta from json"""
     meta = ModMeta()
     meta.from_json(j)
     return meta

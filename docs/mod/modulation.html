@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
 <title>rpps.mod.modulation API documentation</title>
-<meta name="description" content="">
+<meta name="description" content="Modulation parent classes">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
@@ -25,6 +25,7 @@ hljs.highlightAll();
 <h1 class="title">Module <code>rpps.mod.modulation</code></h1>
 </header>
 <section id="section-intro">
+<p>Modulation parent classes</p>
 </section>
 <section>
 </section>
@@ -40,17 +41,32 @@ hljs.highlightAll();
 <span>(</span><span>mapping=None)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Amplitude-Phase-shift keying parent</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class APSK(Modulation):
-    pass</code></pre>
+    &#34;&#34;&#34;Amplitude-Phase-shift keying parent&#34;&#34;&#34;</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
 <li><a title="rpps.mod.modulation.Modulation" href="#rpps.mod.modulation.Modulation">Modulation</a></li>
+<li><a title="rpps.base.rpps.Pipe" href="../base/rpps.html#rpps.base.rpps.Pipe">Pipe</a></li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.mod.modulation.Modulation" href="#rpps.mod.modulation.Modulation">Modulation</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.mod.modulation.Modulation.demodulate" href="#rpps.mod.modulation.Modulation.demodulate">demodulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.draw_refs" href="#rpps.mod.modulation.Modulation.draw_refs">draw_refs</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.get_maps" href="#rpps.mod.modulation.Modulation.get_maps">get_maps</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.init_meta" href="#rpps.mod.modulation.Modulation.init_meta">init_meta</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.load" href="#rpps.mod.modulation.Modulation.load">load</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.modulate" href="#rpps.mod.modulation.Modulation.modulate">modulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.set_mapping" href="#rpps.mod.modulation.Modulation.set_mapping">set_mapping</a></code></li>
+</ul>
+</li>
 </ul>
 </dd>
 <dt id="rpps.mod.modulation.ASK"><code class="flex name class">
@@ -58,17 +74,32 @@ hljs.highlightAll();
 <span>(</span><span>mapping=None)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Amplitude-shift keying parent</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class ASK(Modulation):
-    pass</code></pre>
+    &#34;&#34;&#34;Amplitude-shift keying parent&#34;&#34;&#34;</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
 <li><a title="rpps.mod.modulation.Modulation" href="#rpps.mod.modulation.Modulation">Modulation</a></li>
+<li><a title="rpps.base.rpps.Pipe" href="../base/rpps.html#rpps.base.rpps.Pipe">Pipe</a></li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.mod.modulation.Modulation" href="#rpps.mod.modulation.Modulation">Modulation</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.mod.modulation.Modulation.demodulate" href="#rpps.mod.modulation.Modulation.demodulate">demodulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.draw_refs" href="#rpps.mod.modulation.Modulation.draw_refs">draw_refs</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.get_maps" href="#rpps.mod.modulation.Modulation.get_maps">get_maps</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.init_meta" href="#rpps.mod.modulation.Modulation.init_meta">init_meta</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.load" href="#rpps.mod.modulation.Modulation.load">load</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.modulate" href="#rpps.mod.modulation.Modulation.modulate">modulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.set_mapping" href="#rpps.mod.modulation.Modulation.set_mapping">set_mapping</a></code></li>
+</ul>
+</li>
 </ul>
 </dd>
 <dt id="rpps.mod.modulation.FSK"><code class="flex name class">
@@ -76,17 +107,32 @@ hljs.highlightAll();
 <span>(</span><span>mapping=None)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Frequency-shift keying parent</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class FSK(Modulation):
-    pass</code></pre>
+    &#34;&#34;&#34;Frequency-shift keying parent&#34;&#34;&#34;</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
 <li><a title="rpps.mod.modulation.Modulation" href="#rpps.mod.modulation.Modulation">Modulation</a></li>
+<li><a title="rpps.base.rpps.Pipe" href="../base/rpps.html#rpps.base.rpps.Pipe">Pipe</a></li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.mod.modulation.Modulation" href="#rpps.mod.modulation.Modulation">Modulation</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.mod.modulation.Modulation.demodulate" href="#rpps.mod.modulation.Modulation.demodulate">demodulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.draw_refs" href="#rpps.mod.modulation.Modulation.draw_refs">draw_refs</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.get_maps" href="#rpps.mod.modulation.Modulation.get_maps">get_maps</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.init_meta" href="#rpps.mod.modulation.Modulation.init_meta">init_meta</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.load" href="#rpps.mod.modulation.Modulation.load">load</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.modulate" href="#rpps.mod.modulation.Modulation.modulate">modulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.set_mapping" href="#rpps.mod.modulation.Modulation.set_mapping">set_mapping</a></code></li>
+</ul>
+</li>
 </ul>
 </dd>
 <dt id="rpps.mod.modulation.Modulation"><code class="flex name class">
@@ -94,15 +140,17 @@ hljs.highlightAll();
 <span>(</span><span>mapping=None)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Modulation Pipe</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
-<pre><code class="python">class Modulation:
+<pre><code class="python">class Modulation(base.rpps.Pipe):
+    &#34;&#34;&#34;Modulation Pipe&#34;&#34;&#34;
     __slots__ = (&#34;log&#34;, &#34;constellation&#34;, &#34;mapping&#34;)
     name = &#34;Modulation&#34;
     points = Points([])
+    maps = Maps([])
 
     def __init__(self, mapping = None):  # type: ignore
         self.log = Logger().Child(&#34;Modulation&#34;).Child(type(self).name)
@@ -113,9 +161,15 @@ hljs.highlightAll();
             self.constellation.mapping =  Mapping(mapping)
 
     def set_mapping(self, mapping: Mapping):
+        &#34;&#34;&#34;Set modulation mapping&#34;&#34;&#34;
         self.constellation.mapping = mapping
 
+    def get_maps(self):
+        &#34;&#34;&#34;Get available maps&#34;&#34;&#34;
+        return self.maps
+
     def init_meta(self, meta):
+        &#34;&#34;&#34;Initialize modulation meta&#34;&#34;&#34;
         if self.constellation.mapping is None:
             raise Exception(&#34;A mapping must be defined before modulating&#34;)
         from .meta import ModMeta
@@ -124,15 +178,34 @@ hljs.highlightAll();
         meta.mod.fields[&#34;Type&#34;] = type(self).name[-3:]
         meta.mod.fields[&#34;Map&#34;] = self.constellation.mapping.str()
 
-    def demodulate(self, symbols: np.ndarray, meta=Meta()):
+    def demodulate(self, syms: dobject.SymObject) -&gt; dobject.ModData:
+        &#34;&#34;&#34;Convert IQ samples to bits&#34;&#34;&#34;
         ...
 
-    def modulate(self, data: Stream, meta=Meta()):
+    def modulate(self, dobj: dobject.BitObject) -&gt; dobject.SymData:
+        &#34;&#34;&#34;Convert bits to IQ samples&#34;&#34;&#34;
         ...
 
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
-        ...</code></pre>
+        &#34;&#34;&#34;Draw constellation points on viz&#34;&#34;&#34;
+        ...
+
+    @staticmethod
+    def load(name, obj):
+        &#34;&#34;&#34;Load modulation from json&#34;&#34;&#34;
+        ...
+
+    def __rmatmul__(self, other):
+        if isinstance(other, dobject.SymObject):
+            return self.demodulate(other)
+        elif isinstance(other, dobject.DataObject):
+            return self.modulate(dobject.ensure_bit(other))
+        raise TypeError(f&#34;Cannot perform {type(self).__name__} on {type(other)}&#34;)</code></pre>
 </details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="rpps.base.rpps.Pipe" href="../base/rpps.html#rpps.base.rpps.Pipe">Pipe</a></li>
+</ul>
 <h3>Subclasses</h3>
 <ul class="hlist">
 <li><a title="rpps.mod.modulation.APSK" href="#rpps.mod.modulation.APSK">APSK</a></li>
@@ -143,6 +216,10 @@ hljs.highlightAll();
 </ul>
 <h3>Class variables</h3>
 <dl>
+<dt id="rpps.mod.modulation.Modulation.maps"><code class="name">var <span class="ident">maps</span></code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
 <dt id="rpps.mod.modulation.Modulation.name"><code class="name">var <span class="ident">name</span></code></dt>
 <dd>
 <div class="desc"></div>
@@ -150,6 +227,15 @@ hljs.highlightAll();
 <dt id="rpps.mod.modulation.Modulation.points"><code class="name">var <span class="ident">points</span></code></dt>
 <dd>
 <div class="desc"></div>
+</dd>
+</dl>
+<h3>Static methods</h3>
+<dl>
+<dt id="rpps.mod.modulation.Modulation.load"><code class="name flex">
+<span>def <span class="ident">load</span></span>(<span>name, obj)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Load modulation from json</p></div>
 </dd>
 </dl>
 <h3>Instance variables</h3>
@@ -170,34 +256,40 @@ hljs.highlightAll();
 <h3>Methods</h3>
 <dl>
 <dt id="rpps.mod.modulation.Modulation.demodulate"><code class="name flex">
-<span>def <span class="ident">demodulate</span></span>(<span>self, symbols: numpy.ndarray, meta=&lt;Meta: ...cf64&gt;)</span>
+<span>def <span class="ident">demodulate</span></span>(<span>self, syms: <a title="rpps.dobject.SymObject" href="../dobject.html#rpps.dobject.SymObject">SymObject</a>) ‑> <a title="rpps.dobject.ModData" href="../dobject.html#rpps.dobject.ModData">ModData</a></span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Convert IQ samples to bits</p></div>
 </dd>
 <dt id="rpps.mod.modulation.Modulation.draw_refs"><code class="name flex">
 <span>def <span class="ident">draw_refs</span></span>(<span>self, points: bool = True, ref: bool = True, ax=None)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Draw constellation points on viz</p></div>
+</dd>
+<dt id="rpps.mod.modulation.Modulation.get_maps"><code class="name flex">
+<span>def <span class="ident">get_maps</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Get available maps</p></div>
 </dd>
 <dt id="rpps.mod.modulation.Modulation.init_meta"><code class="name flex">
 <span>def <span class="ident">init_meta</span></span>(<span>self, meta)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Initialize modulation meta</p></div>
 </dd>
 <dt id="rpps.mod.modulation.Modulation.modulate"><code class="name flex">
-<span>def <span class="ident">modulate</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="../helpers/stream.html#rpps.helpers.stream.Stream">Stream</a>, meta=&lt;Meta: ...cf64&gt;)</span>
+<span>def <span class="ident">modulate</span></span>(<span>self, dobj: <a title="rpps.dobject.BitObject" href="../dobject.html#rpps.dobject.BitObject">BitObject</a>) ‑> <a title="rpps.dobject.SymData" href="../dobject.html#rpps.dobject.SymData">SymData</a></span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Convert bits to IQ samples</p></div>
 </dd>
 <dt id="rpps.mod.modulation.Modulation.set_mapping"><code class="name flex">
 <span>def <span class="ident">set_mapping</span></span>(<span>self, mapping: <a title="rpps.mod.constellation.Mapping" href="constellation.html#rpps.mod.constellation.Mapping">Mapping</a>)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Set modulation mapping</p></div>
 </dd>
 </dl>
 </dd>
@@ -206,12 +298,16 @@ hljs.highlightAll();
 <span>(</span><span>mapping=None)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Phase-shift keying parent</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class PSK(Modulation):
+    &#34;&#34;&#34;Phase-shift keying parent&#34;&#34;&#34;
+
+    def __str__(self):
+        return f&#34;{type(self).__name__}:{self.constellation.mapping.str()})&#34;
 
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         if ax is None:
@@ -237,65 +333,84 @@ hljs.highlightAll();
             y = radius * np.sin(angle)
             ax.plot(x, y, &#34;g&#34;)
 
-    def demodulate(self, symbols: np.ndarray, meta=Meta()):
-        data = self.constellation.demodulate(symbols, meta)
+    def demodulate(self, syms: dobject.SymData):
+        data = self.constellation.demodulate(syms)
+        return data
 
-        return data, meta
+    def modulate(self, dobj: dobject.BitObject):
+        syms = self.constellation.modulate(dobj)
+        self.init_meta(dobj.meta)
+        return syms
 
-    def modulate(self, data: Stream, meta=Meta()):
-        symbols = self.constellation.modulate(data, meta)
+    @staticmethod
+    def load(name, obj):
+        def load_complex(comp):
+            c = []
+            for num in comp:
+                c.append(num[&#34;real&#34;] + num[&#34;imag&#34;] * 1j)
+            return c
+        pnts = load_complex(obj[&#34;Points&#34;])
 
-        self.init_meta(meta)
-        return symbols, meta</code></pre>
+        maps = [Mapping(m[&#34;map&#34;], m[&#34;comment&#34;]) for m in obj[&#34;Maps&#34;]]
+
+        impl = type(
+            name,
+            (PSK,),
+            dict(name=name, points=Points(pnts), maps=Maps(maps))
+        )()
+        return impl</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
 <li><a title="rpps.mod.modulation.Modulation" href="#rpps.mod.modulation.Modulation">Modulation</a></li>
+<li><a title="rpps.base.rpps.Pipe" href="../base/rpps.html#rpps.base.rpps.Pipe">Pipe</a></li>
 </ul>
-<h3>Subclasses</h3>
+<h3>Inherited members</h3>
 <ul class="hlist">
-<li>rpps.mod._psk.bpsk.BPSK</li>
-<li>rpps.mod._psk.epsk.EPSK</li>
-<li>rpps.mod._psk.qpsk.QPSK</li>
+<li><code><b><a title="rpps.mod.modulation.Modulation" href="#rpps.mod.modulation.Modulation">Modulation</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.mod.modulation.Modulation.demodulate" href="#rpps.mod.modulation.Modulation.demodulate">demodulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.draw_refs" href="#rpps.mod.modulation.Modulation.draw_refs">draw_refs</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.get_maps" href="#rpps.mod.modulation.Modulation.get_maps">get_maps</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.init_meta" href="#rpps.mod.modulation.Modulation.init_meta">init_meta</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.load" href="#rpps.mod.modulation.Modulation.load">load</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.modulate" href="#rpps.mod.modulation.Modulation.modulate">modulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.set_mapping" href="#rpps.mod.modulation.Modulation.set_mapping">set_mapping</a></code></li>
 </ul>
-<h3>Methods</h3>
-<dl>
-<dt id="rpps.mod.modulation.PSK.demodulate"><code class="name flex">
-<span>def <span class="ident">demodulate</span></span>(<span>self, symbols: numpy.ndarray, meta=&lt;Meta: ...cf64&gt;)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt id="rpps.mod.modulation.PSK.draw_refs"><code class="name flex">
-<span>def <span class="ident">draw_refs</span></span>(<span>self, points: bool = True, ref: bool = True, ax=None)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-<dt id="rpps.mod.modulation.PSK.modulate"><code class="name flex">
-<span>def <span class="ident">modulate</span></span>(<span>self, data: <a title="rpps.helpers.stream.Stream" href="../helpers/stream.html#rpps.helpers.stream.Stream">Stream</a>, meta=&lt;Meta: ...cf64&gt;)</span>
-</code></dt>
-<dd>
-<div class="desc"></div>
-</dd>
-</dl>
+</li>
+</ul>
 </dd>
 <dt id="rpps.mod.modulation.QAM"><code class="flex name class">
 <span>class <span class="ident">QAM</span></span>
 <span>(</span><span>mapping=None)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Quadrature-Amplitude modulation parent</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class QAM(Modulation):
-    pass</code></pre>
+    &#34;&#34;&#34;Quadrature-Amplitude modulation parent&#34;&#34;&#34;</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
 <li><a title="rpps.mod.modulation.Modulation" href="#rpps.mod.modulation.Modulation">Modulation</a></li>
+<li><a title="rpps.base.rpps.Pipe" href="../base/rpps.html#rpps.base.rpps.Pipe">Pipe</a></li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="rpps.mod.modulation.Modulation" href="#rpps.mod.modulation.Modulation">Modulation</a></b></code>:
+<ul class="hlist">
+<li><code><a title="rpps.mod.modulation.Modulation.demodulate" href="#rpps.mod.modulation.Modulation.demodulate">demodulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.draw_refs" href="#rpps.mod.modulation.Modulation.draw_refs">draw_refs</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.get_maps" href="#rpps.mod.modulation.Modulation.get_maps">get_maps</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.init_meta" href="#rpps.mod.modulation.Modulation.init_meta">init_meta</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.load" href="#rpps.mod.modulation.Modulation.load">load</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.modulate" href="#rpps.mod.modulation.Modulation.modulate">modulate</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.set_mapping" href="#rpps.mod.modulation.Modulation.set_mapping">set_mapping</a></code></li>
+</ul>
+</li>
 </ul>
 </dd>
 </dl>
@@ -328,9 +443,12 @@ hljs.highlightAll();
 <li><code><a title="rpps.mod.modulation.Modulation.constellation" href="#rpps.mod.modulation.Modulation.constellation">constellation</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.demodulate" href="#rpps.mod.modulation.Modulation.demodulate">demodulate</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.draw_refs" href="#rpps.mod.modulation.Modulation.draw_refs">draw_refs</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.get_maps" href="#rpps.mod.modulation.Modulation.get_maps">get_maps</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.init_meta" href="#rpps.mod.modulation.Modulation.init_meta">init_meta</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.load" href="#rpps.mod.modulation.Modulation.load">load</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.log" href="#rpps.mod.modulation.Modulation.log">log</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.mapping" href="#rpps.mod.modulation.Modulation.mapping">mapping</a></code></li>
+<li><code><a title="rpps.mod.modulation.Modulation.maps" href="#rpps.mod.modulation.Modulation.maps">maps</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.modulate" href="#rpps.mod.modulation.Modulation.modulate">modulate</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.name" href="#rpps.mod.modulation.Modulation.name">name</a></code></li>
 <li><code><a title="rpps.mod.modulation.Modulation.points" href="#rpps.mod.modulation.Modulation.points">points</a></code></li>
@@ -339,11 +457,6 @@ hljs.highlightAll();
 </li>
 <li>
 <h4><code><a title="rpps.mod.modulation.PSK" href="#rpps.mod.modulation.PSK">PSK</a></code></h4>
-<ul class="">
-<li><code><a title="rpps.mod.modulation.PSK.demodulate" href="#rpps.mod.modulation.PSK.demodulate">demodulate</a></code></li>
-<li><code><a title="rpps.mod.modulation.PSK.draw_refs" href="#rpps.mod.modulation.PSK.draw_refs">draw_refs</a></code></li>
-<li><code><a title="rpps.mod.modulation.PSK.modulate" href="#rpps.mod.modulation.PSK.modulate">modulate</a></code></li>
-</ul>
 </li>
 <li>
 <h4><code><a title="rpps.mod.modulation.QAM" href="#rpps.mod.modulation.QAM">QAM</a></code></h4>

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
 <title>rpps.mod.meta API documentation</title>
-<meta name="description" content="">
+<meta name="description" content="Modulation meta helpers">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
@@ -25,6 +25,7 @@ hljs.highlightAll();
 <h1 class="title">Module <code>rpps.mod.meta</code></h1>
 </header>
 <section id="section-intro">
+<p>Modulation meta helpers</p>
 </section>
 <section>
 </section>
@@ -37,7 +38,7 @@ hljs.highlightAll();
 <span>def <span class="ident">Construct</span></span>(<span>j: dict)</span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Construct ModMeta from json</p></div>
 </dd>
 </dl>
 </section>
@@ -48,12 +49,13 @@ hljs.highlightAll();
 <span>class <span class="ident">ModMeta</span></span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Modulation meta class</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class ModMeta(_Meta):
+    &#34;&#34;&#34;Modulation meta class&#34;&#34;&#34;
     __slots__ = &#34;fields&#34;
 
     def __init__(self):
@@ -68,7 +70,7 @@ hljs.highlightAll();
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
-<li>rpps._meta._Meta</li>
+<li>rpps.base._meta._Meta</li>
 </ul>
 <h3>Instance variables</h3>
 <dl>

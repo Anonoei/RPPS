@@ -1,8 +1,10 @@
+"""Coding metadata helpers"""
 from ..base._meta import _Meta
 
 from collections import OrderedDict
 
 class CodingMeta(_Meta):
+    """Parent coding Meta"""
     __slots__ = ("fields")
 
     def __init__(self):
@@ -18,6 +20,7 @@ class CodingMeta(_Meta):
 
 
 class BlockCodingMeta(CodingMeta):
+    """Block coding meta"""
     __slots__ = ("fields")
     def __init__(self):
         self.fields = OrderedDict(
@@ -32,6 +35,7 @@ class BlockCodingMeta(CodingMeta):
 
 
 class ConvolutionalCodingMeta(CodingMeta):
+    """Convolutional coding meta"""
     __slots__ = ("fields")
 
 def Construct(j: dict):

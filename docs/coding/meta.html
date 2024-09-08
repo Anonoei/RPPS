@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
 <meta name="generator" content="pdoc3 0.11.1">
 <title>rpps.coding.meta API documentation</title>
-<meta name="description" content="">
+<meta name="description" content="Coding metadata helpers">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
@@ -25,6 +25,7 @@ hljs.highlightAll();
 <h1 class="title">Module <code>rpps.coding.meta</code></h1>
 </header>
 <section id="section-intro">
+<p>Coding metadata helpers</p>
 </section>
 <section>
 </section>
@@ -48,12 +49,13 @@ hljs.highlightAll();
 <span>class <span class="ident">BlockCodingMeta</span></span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Block coding meta</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class BlockCodingMeta(CodingMeta):
+    &#34;&#34;&#34;Block coding meta&#34;&#34;&#34;
     __slots__ = (&#34;fields&#34;)
     def __init__(self):
         self.fields = OrderedDict(
@@ -69,7 +71,7 @@ hljs.highlightAll();
 <h3>Ancestors</h3>
 <ul class="hlist">
 <li><a title="rpps.coding.meta.CodingMeta" href="#rpps.coding.meta.CodingMeta">CodingMeta</a></li>
-<li>rpps._meta._Meta</li>
+<li>rpps.base._meta._Meta</li>
 </ul>
 <h3>Inherited members</h3>
 <ul class="hlist">
@@ -84,12 +86,13 @@ hljs.highlightAll();
 <span>class <span class="ident">CodingMeta</span></span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Parent coding Meta</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class CodingMeta(_Meta):
+    &#34;&#34;&#34;Parent coding Meta&#34;&#34;&#34;
     __slots__ = (&#34;fields&#34;)
 
     def __init__(self):
@@ -105,7 +108,7 @@ hljs.highlightAll();
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
-<li>rpps._meta._Meta</li>
+<li>rpps.base._meta._Meta</li>
 </ul>
 <h3>Subclasses</h3>
 <ul class="hlist">
@@ -143,18 +146,19 @@ dict(one=1, two=2)</p></div>
 <span>class <span class="ident">ConvolutionalCodingMeta</span></span>
 </code></dt>
 <dd>
-<div class="desc"></div>
+<div class="desc"><p>Convolutional coding meta</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class ConvolutionalCodingMeta(CodingMeta):
+    &#34;&#34;&#34;Convolutional coding meta&#34;&#34;&#34;
     __slots__ = (&#34;fields&#34;)</code></pre>
 </details>
 <h3>Ancestors</h3>
 <ul class="hlist">
 <li><a title="rpps.coding.meta.CodingMeta" href="#rpps.coding.meta.CodingMeta">CodingMeta</a></li>
-<li>rpps._meta._Meta</li>
+<li>rpps.base._meta._Meta</li>
 </ul>
 <h3>Inherited members</h3>
 <ul class="hlist">
