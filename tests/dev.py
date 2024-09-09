@@ -9,20 +9,22 @@ def main():
     mod = rp.mod.load("QPSK")
     mod.set_mapping(mod.get_maps()[0])
     ecc = rp.coding.name("BLK", "Repetition", 3)
-    scr = rp.scram.load("fdt", "fib")
+    scr = rp.scram.load("fdt", "galois")
 
     print(f"Mod: {mod}")
     print(f"ECC: {ecc}")
     print(f"SCR: {scr}")
+    print()
 
     enc_msg = rp.dobject.StreamData(b"Hello World!")
-    syms = enc_msg * scr @ ecc @ mod  # Encode data with ecc, and mod. Get the symbols
+    print(f"enc_msg: {enc_msg.hex}")
+    syms = enc_msg * scr @ ecc @ mod
 
-    data = syms @ mod @ ecc / scr  # Read the symbols
+    data = syms @ mod @ ecc / scr
 
     dec_msg = rp.dobject.StreamData(data)
-    print(f"{enc_msg.hex == dec_msg.hex}")  # Check decoded data is what you encoded
-
+    print(f"dec_msg: {dec_msg.hex}")
+    print(f"Data is the same: {enc_msg.hex == dec_msg.hex}")
 
 if __name__ == "__main__":
     # pr = cProfile.Profile()

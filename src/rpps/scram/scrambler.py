@@ -8,6 +8,7 @@ from pyboiler.logger import Logger, Level
 from . import Meta
 from . import base
 from . import dobject
+from . import lfsr
 
 
 class Scram(base.rpps.Pipe):
@@ -43,51 +44,45 @@ class Scram(base.rpps.Pipe):
 
 
 class Feedthrough(Scram):
-    seed = np.ndarray((16,), dtype=bool)
-    taps = np.ndarray((4,), dtype=int)
-
+    def __init__(self, scram_lfsr: lfsr.LFSR, descram_lfsr: lfsr.LFSR):
+        super().__init__()
+        self.s_lfsr = scram_lfsr
+        self.d_lfsr = descram_lfsr
     def __str__(self):
-        return f"{type(self).__name__}:{"-".join([str(i) for i in self.taps])}"
+        return f"{type(self).__name__}:{self.s_lfsr}"
 
-    def scram(self, dobj: dobject.BitObject, _cache={}):
-        if _cache.get("lfsr", None) is None:
-            _cache["lfsr"] = np.copy(self.seed)  # Initialize the scrambler state
+    def reset(self):
+        self.s_lfsr.reset()
+        self.d_lfsr.reset()
 
+    def scram(self, dobj: dobject.BitObject):
         scrambled_data = np.empty_like(dobj.data, dtype=bool)
 
+        # print(f"{hex(int(''.join([str(b) for b in self.s_lfsr.lfsr.astype(int)]),2))} / {self.s_lfsr.lfsr.astype(int)}")
         for i, bit in enumerate(dobj.data):
-            # Xor taps sequentially
-            new_bit = np.bitwise_xor.reduce(_cache["lfsr"][self.taps - 1]) & 1
-            # shift one place to the right, [1,0,1,0,1,#] >> 1 = [#,1,0,1,0,1]
-            _cache["lfsr"][1:] = _cache["lfsr"][:-1]
-            _cache["lfsr"][0] = new_bit  # set left-most bit
-            # output right-most bit
-            scrambled_data[i] = _cache["lfsr"][-1] ^ bit
+            scrambled_data[i] = self.s_lfsr.get_bit() ^ bit
+            # input(f"{i}: {hex(int(''.join([str(b) for b in self.s_lfsr.lfsr.astype(int)]),2))} / {self.s_lfsr.lfsr.astype(int)}")
 
         return dobject.ScramData(scrambled_data)
 
-    def descram(self, dobj: dobject.BitObject, _cache={}):
-        if _cache.get("lfsr", None) is None:
-            _cache["lfsr"] = np.copy(self.seed)  # Initialize the scrambler state
-
+    def descram(self, dobj: dobject.BitObject):
         descrambled_data = np.empty_like(dobj.data, dtype=bool)
 
+        # print(f"{hex(int(''.join([str(b) for b in self.s_lfsr.lfsr.astype(int)]),2))} / {self.s_lfsr.lfsr.astype(int)}")
         for i, bit in enumerate(dobj.data):
-            # Xor taps sequentially
-            new_bit = np.bitwise_xor.reduce(_cache["lfsr"][self.taps - 1]) & 1
-            # shift one place to the right, [1,0,1,0,1,#] >> 1 = [#,1,0,1,0,1]
-            _cache["lfsr"][1:] = _cache["lfsr"][:-1]
-            _cache["lfsr"][0] = new_bit  # set left-most bit
-            # output right-most bit
-            descrambled_data[i] = _cache["lfsr"][-1] ^ bit
+            descrambled_data[i] = self.d_lfsr.get_bit() ^ bit
+            # input(f"{i}: {hex(int(''.join([str(b) for b in self.s_lfsr.lfsr.astype(int)]),2))} / {self.s_lfsr.lfsr.astype(int)}")
 
         return dobject.BitObject(descrambled_data)
 
     @staticmethod
     def load(name, obj):
-        i_s = np.array(obj["seed"], dtype=bool)
-        i_t = np.array(obj["taps"], dtype=int)
-        impl = type(name, (Feedthrough,), dict(name=name, seed=i_s, taps=i_t))()
+        i_lfsr = getattr(lfsr, obj["type"])
+        i_seed = np.array(obj["seed"], dtype=bool)
+        i_poly = np.array(obj["poly"], dtype=int)
+        i_s_lfsr = i_lfsr(np.copy(i_seed), np.copy(i_poly))
+        i_d_lfsr = i_lfsr(np.copy(i_seed), np.copy(i_poly))
+        impl = type(name, (Feedthrough,), dict())(i_s_lfsr, i_d_lfsr)
         return impl
 
 

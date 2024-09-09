@@ -9,4 +9,5 @@ from ..meta import Meta
 
 from .serial import identify, load
 
+from . import lfsr
 from .scrambler import Scram
