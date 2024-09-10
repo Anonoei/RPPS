@@ -6,6 +6,8 @@ from ..meta import Meta
 
 # -----
 
+from . import conv
+
 from .coding import Coding, Block, Convolutional
 
 from .blk import *
