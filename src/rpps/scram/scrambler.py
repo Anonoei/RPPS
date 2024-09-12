@@ -58,20 +58,16 @@ class Feedthrough(Scram):
     def scram(self, dobj: dobject.BitObject):
         scrambled_data = np.empty_like(dobj.data, dtype=bool)
 
-        # print(f"{hex(int(''.join([str(b) for b in self.s_lfsr.lfsr.astype(int)]),2))} / {self.s_lfsr.lfsr.astype(int)}")
         for i, bit in enumerate(dobj.data):
             scrambled_data[i] = self.s_lfsr.get_bit() ^ bit
-            # input(f"{i}: {hex(int(''.join([str(b) for b in self.s_lfsr.lfsr.astype(int)]),2))} / {self.s_lfsr.lfsr.astype(int)}")
 
         return dobject.ScramData(scrambled_data)
 
     def descram(self, dobj: dobject.BitObject):
         descrambled_data = np.empty_like(dobj.data, dtype=bool)
 
-        # print(f"{hex(int(''.join([str(b) for b in self.s_lfsr.lfsr.astype(int)]),2))} / {self.s_lfsr.lfsr.astype(int)}")
         for i, bit in enumerate(dobj.data):
             descrambled_data[i] = self.d_lfsr.get_bit() ^ bit
-            # input(f"{i}: {hex(int(''.join([str(b) for b in self.s_lfsr.lfsr.astype(int)]),2))} / {self.s_lfsr.lfsr.astype(int)}")
 
         return dobject.BitObject(descrambled_data)
 

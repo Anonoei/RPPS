@@ -6,9 +6,6 @@ class LFSR:
         self._seed = seed
         self.lfsr = seed
 
-    def __copy__(self):
-        return self
-
     def __str__(self):
         return f"{type(self).__name__}"
 
@@ -26,9 +23,6 @@ class fibonacci(LFSR):
         super().__init__(seed)
         self.taps = taps
 
-    def __copy__(self):
-        return fibonacci(np.copy(self._seed), np.copy(self.taps))
-
     def __str__(self):
         return f"{super().__str__()}:{self.taps}"
 
@@ -44,9 +38,6 @@ class fibonacci(LFSR):
 class Galois(LFSR):
     __slots__ = ("_poly", "toggle")
     name = "Galois"
-
-    def __copy__(self):
-        return type(self)(np.copy(self._seed), np.copy(self._poly))
 
     def __init__(self, seed, toggle):
         super().__init__(seed)
