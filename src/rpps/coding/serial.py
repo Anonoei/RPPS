@@ -17,7 +17,9 @@ def init(name: str, obj: dict) -> coding.Coding:
     """Initialize coding"""
     if obj["base"] == "blk":
         return coding.Block.load(name, obj)
-    raise NotImplementedError(f"Unknown scrambler: {name}, {obj}")
+    elif obj["base"] == "cnv":
+        return coding.Convolutional.load(name, obj)
+    raise NotImplementedError(f"Unknown coding: {name}, {obj}")
 
 
 def load(folder: str, name: str) -> coding.Coding:

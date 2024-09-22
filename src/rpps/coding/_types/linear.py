@@ -1,6 +1,8 @@
 import numpy as np
 
-class linear:
+from ._code import _code
+
+class linear(_code):
     def __init__(self, generator, check):
         self.generator = generator
         self.check = np.transpose(check)

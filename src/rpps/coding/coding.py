@@ -20,22 +20,23 @@ class Coding(base.rpps.Pipe):
     """Coding Pipe"""
     name = "Coding"
     decision = Decision.HARD
-    def __init__(self, backend):
+    def __init__(self, e_impl, d_impl):
         self.log = Logger().Child("Coding", Level.WARN).Child(type(self).__name__, Level.WARN)
-        self.backend = backend
+        self._enc = e_impl
+        self._dec = d_impl
 
     def __str__(self) -> str:
-        return f"{self.name}:{self.decision.name}:{type(self.backend).__name__}:{self.num}/{self.den}"
+        return f"{self.name}:{self.decision.name}:{type(self._enc).__name__}:{self.num}/{self.den}"
 
     @property
     def num(self):
         """Return number of data bits"""
-        return self.backend.num
+        return self._enc.num
 
     @property
     def den(self):
         """Return number of encoded bits"""
-        return self.backend.den
+        return self._enc.den
 
     @property
     def rate(self):
@@ -68,33 +69,33 @@ class Coding(base.rpps.Pipe):
 class Block(Coding):
     """Parent block coding"""
 
-    def encode(self, dobj: dobject.BitObject) -> dobject.CodingData:
+    def encode(self, dobj):
         """Encode dobject using specified coding"""
         # print(f"Data: {self.backend.num} / total: {self.backend.den}")
-        rate = (self.backend.num/self.backend.den)
+        rate = (self._enc.num/self._enc.den)
         retr_len = int(len(dobj) / rate)
-        itr_cnt = len(dobj)//self.backend.num
+        itr_cnt = len(dobj)//self._enc.num
         data = np.zeros((retr_len,), dtype=bool)
 
-        inps = self.backend.num
-        oups = self.backend.den
+        inps = self._enc.num
+        oups = self._enc.den
 
         for i in range(0, itr_cnt, 1):
-            data[i*oups : (i+1)*oups] = self.backend.encode(dobj.data[i*inps: (i+1)*inps])
+            data[i*oups : (i+1)*oups] = self._enc.encode(dobj.data[i*inps: (i+1)*inps])
         return dobject.CodingData(data)
 
-    def decode(self, dobj: dobject.BitObject) -> dobject.BitObject:
+    def decode(self, dobj):
         """Decode dobject using specified coding"""
-        rate = (self.backend.num/self.backend.den)
+        rate = (self._dec.num/self._dec.den)
         retr_len = int(len(dobj) * rate)
-        itr_cnt = len(dobj) // self.backend.den
+        itr_cnt = len(dobj) // self._dec.den
         data = np.zeros((retr_len,), dtype=bool)
 
-        inps = self.backend.den
-        oups = self.backend.num
+        inps = self._dec.den
+        oups = self._dec.num
 
         for i in range(0, itr_cnt, 1):
-            data[i*oups : (i+1)*oups] = self.backend.decode(dobj.data[i*inps: (i+1)*inps])
+            data[i*oups : (i+1)*oups] = self._dec.decode(dobj.data[i*inps: (i+1)*inps])
         return dobject.BitObject(data)
 
     @staticmethod
@@ -104,45 +105,48 @@ class Block(Coding):
         if obj["type"] == "linear":
             gen = np.array(obj["generator"], dtype=bool)
             chk = np.array(obj["check"], dtype=bool)
+            i_code = i_code(gen, chk)
+
             impl = type(name, (Block,), dict())
             impl.name = name
-            return impl(i_code(gen, chk))
+            return impl(i_code, i_code)
         if obj["type"] == "repeat":
+            i_code = i_code(obj["count"])
+
             impl = type(name, (Block,), dict())
             impl.name = name
-            return impl(i_code(obj["count"]))
+            return impl(i_code, i_code)
         raise NotImplementedError(f"{name} is not implemented")
 
 class Convolutional(Coding):
     """Parent convolutional coding"""
-    def __init__(self, k, passthrough, polys):
-        self.input_size = k
-        assert len(passthrough) == polys.shape[0]
-        self.passthrough = passthrough
-        self.polys = polys
-        self.output_size = polys.shape[0]
-        self.register = np.zeros((self.output_size), dtype=bool)
 
-    def code(self, bits):
-        assert len(bits) == self.input_size
+    def encode(self, dobj):
+        rate = self._enc.num / self._enc.den
+        retr_len = int(len(dobj) / rate)
+        itr_cnt = len(dobj) // self._enc.num
+        data = np.zeros((retr_len,), dtype=bool)
 
-        output = np.zeros(self.output_size, dtype=bool)
-        for i, p in enumerate(self.polys):
-            if self.passthrough[i]:
-                output[i] = bits[i]
-                continue
-            output[i] = np.bitwise_xor.reduce(self.register[p])
+        inps = self._enc.num
+        oups = self._enc.den
 
-        self.register[0] = bits[0]
-        self.register = np.roll(self.register, 1)
-        return output
+        for i in range(0, itr_cnt, 1):
+            data[i*oups : (i+1)*oups] = self._enc.encode(dobj.data[i*inps: (i+1)*inps])
+        return dobject.CodingData(data)
+
+    def decode(self, dobj):
+        pass
 
     @staticmethod
     def load(name, obj):
-        i_code = getattr(types, obj["type"])
+        if obj["type"] == "split":
+            # i_d_code = getattr(types, obj["decode"]["type"])
+            i_e_code = getattr(types, obj["encode"]["type"])
+            gen = np.array(obj["encode"]["generator"], dtype=bool)
 
-        if obj["type"] == "linear":
-            gen = np.array(obj["generator"], dtype=bool)
-            chk = np.array(obj["check"], dtype=bool)
-            return type(name, (Block,), dict())(i_code(gen, chk))
+            i_e_code = i_e_code(1, 3, gen, obj["encode"]["constraint"])
+
+            impl = type(name, (Convolutional,), dict())
+            impl.name = name
+            return impl(i_e_code, i_e_code)
         raise NotImplementedError(f"{name} is not implemented")

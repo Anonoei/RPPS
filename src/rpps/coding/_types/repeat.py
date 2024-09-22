@@ -1,6 +1,8 @@
 from .. import dobject
 
-class repeat:
+from ._code import _code
+
+class repeat(_code):
     def __init__(self, count):
         self.num = 1
         self.den = count
