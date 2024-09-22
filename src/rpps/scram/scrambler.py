@@ -1,7 +1,6 @@
 """Modulation parent classes"""
-
+from abc import abstractmethod
 import numpy as np
-import matplotlib.pyplot as plt
 
 from pyboiler.logger import Logger, Level
 
@@ -21,13 +20,18 @@ class Scram(base.rpps.Pipe):
     def __str__(self):
         return f"{type(self).__name__}"
 
+    @abstractmethod
     def scram(self, dobj: dobject.BitObject) -> dobject.ScramData:
         """Encode dobject using specified scram"""
-        ...
 
+    @abstractmethod
     def descram(self, dobj: dobject.BitObject) -> dobject.BitObject:
         """Decode dobject using specified scram"""
-        ...
+
+    @staticmethod
+    @abstractmethod
+    def load(name: str, obj: dict):
+        """Load modulation from json"""
 
     def __rmul__(self, other):
         return self.scram(dobject.ensure_bit(other))
@@ -37,6 +41,7 @@ class Scram(base.rpps.Pipe):
 
 
 class Feedthrough(Scram):
+    """Feedthrough scrambler"""
     def __init__(self, scram_lfsr: lfsr.LFSR, descram_lfsr: lfsr.LFSR):
         super().__init__()
         self.s_lfsr = scram_lfsr
@@ -45,6 +50,7 @@ class Feedthrough(Scram):
         return f"{type(self).__name__}:{self.s_lfsr}"
 
     def reset(self):
+        """Reset LFSR"""
         self.s_lfsr.reset()
         self.d_lfsr.reset()
 

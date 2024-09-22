@@ -1,4 +1,6 @@
 """RPPS parent classes"""
 
-class Pipe:
+from abc import ABC
+
+class Pipe(ABC):
     """Parent class for RPPS implementations"""

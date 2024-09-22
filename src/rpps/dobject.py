@@ -148,6 +148,7 @@ class ByteObject(DataObject):
 
 class SymObject(DataObject):
     type = Type.SYM
+    data = np.array([], dtype=np.complex64)
 
     def __str__(self):
         return f"{super().__str__()} syms"

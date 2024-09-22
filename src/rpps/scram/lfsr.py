@@ -24,7 +24,7 @@ class fibonacci(LFSR):
         self.taps = taps
 
     def __str__(self):
-        return f"{super().__str__()}:{self.taps}"
+        return f"{super().__str__()}:{self.taps.tolist()}"
 
     def get_bit(self):
         # Xor taps sequentially

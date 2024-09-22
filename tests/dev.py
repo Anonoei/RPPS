@@ -11,22 +11,21 @@ def main():
     print(f"Mod: {mod}")
     print(f"ECC: {ecc}")
     print(f"SCR: {scr}")
-    print()
 
     enc_msg = rp.dobject.StreamData(b"Hello World!")
     print(f"enc_msg: {enc_msg.hex}")
-    syms = enc_msg * scr
-    syms = syms + ecc
-    syms = syms @ mod
-    data = syms @ mod
-    data = data - ecc
-    data = data / scr
+    syms = enc_msg * scr * ecc * mod
+
+    print()
+
+    data = syms / mod / ecc / scr
 
     dec_msg = rp.dobject.StreamData(data)
     print(f"dec_msg: {dec_msg.hex}")
     print(f"Data is the same: {enc_msg.hex == dec_msg.hex}")
 
 if __name__ == "__main__":
+    # import cProfile, pstats
     # pr = cProfile.Profile()
     # pr.enable()
     main()

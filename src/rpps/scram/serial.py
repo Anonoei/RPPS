@@ -18,8 +18,7 @@ def init(name: str, obj: dict) -> scrambler.Scram:
         return scrambler.Feedthrough.load(name, obj)
     elif obj["base"] == "adt":
         return scrambler.Additive.load(name, obj)
-    return scrambler.Scram()
-
+    raise NotImplementedError(f"Unknown scrambler: {name}, {obj}")
 
 def load(folder: str, name: str) -> scrambler.Scram:
     """Load a scrambler from a file name"""

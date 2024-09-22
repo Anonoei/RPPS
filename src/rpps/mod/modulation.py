@@ -1,10 +1,10 @@
 """Modulation parent classes"""
-import numpy as np
+from abc import abstractmethod
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pyboiler.logger import Logger, Level
+from pyboiler.logger import Logger
 
 from . import base
 from . import dobject
@@ -36,29 +36,28 @@ class Modulation(base.rpps.Pipe):
         """Get available maps"""
         return self.maps
 
+    @abstractmethod
     def demodulate(self, syms: dobject.SymObject) -> dobject.ModData:
         """Convert IQ samples to bits"""
-        ...
 
+    @abstractmethod
     def modulate(self, dobj: dobject.BitObject) -> dobject.SymData:
         """Convert bits to IQ samples"""
-        ...
 
+    @abstractmethod
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         """Draw constellation points on viz"""
-        ...
 
     @staticmethod
-    def load(name, obj):
+    @abstractmethod
+    def load(name: str, obj: dict):
         """Load modulation from json"""
-        ...
 
-    def __rmatmul__(self, other):
-        if issubclass(type(other), dobject.SymObject):
-            return self.demodulate(other)
-        elif issubclass(type(other), dobject.BitObject):
-            return self.modulate(dobject.ensure_bit(other))
-        raise TypeError(f"Cannot perform {type(self).__name__} on {type(other)}")
+    def __rmul__(self, other):
+        return self.modulate(dobject.ensure_bit(other))
+
+    def __rtruediv__(self, other):
+        return self.demodulate(other)
 
 
 class PSK(Modulation):
@@ -91,11 +90,11 @@ class PSK(Modulation):
             y = radius * np.sin(angle)
             ax.plot(x, y, "g")
 
-    def demodulate(self, syms: dobject.SymData):
+    def demodulate(self, syms):
         data = self.constellation.demodulate(syms)
         return data
 
-    def modulate(self, dobj: dobject.BitObject):
+    def modulate(self, dobj):
         syms = self.constellation.modulate(dobj)
         return syms
 

@@ -107,7 +107,7 @@ class Constellation:
     """Constellation implementation"""
     __slots__ = ("log", "_points", "_mapping", "_bps")
 
-    def __init__(self, points: Points, mapping = Mapping(), log=Logger().Child("Modulation")):
+    def __init__(self, points: Points, mapping: Mapping = Mapping(), log=Logger().Child("Modulation")):
         self.log = log.Child("Constellation", Level.WARN)
         if not isinstance(points, Points):
             points = Points(points)
@@ -133,7 +133,7 @@ class Constellation:
 
     @points.setter
     def points(self, points):
-        self._points = np.array(points)
+        self._points = Points(np.array(points))
         self._bps = len(self.points) // 2
 
     @property
@@ -157,7 +157,7 @@ class Constellation:
         symbols = self.to_symbols(points, noise=noise)
         return symbols
 
-    def demodulate(self, syms: dobject.SymData):
+    def demodulate(self, syms: dobject.SymObject):
         """Demodulate IQ symbols to ModData"""
         # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
         distances = np.zeros((len(syms.data), len(self.points)), dtype=np.float16)

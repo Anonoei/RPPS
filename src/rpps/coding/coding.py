@@ -1,4 +1,8 @@
 """Coding parent classes"""
+from abc import abstractmethod
+from enum import Enum
+import numpy as np
+
 from pyboiler.logger import Logger, Level
 
 from . import base
@@ -6,8 +10,6 @@ from . import dobject
 
 from . import _types as types
 
-from enum import Enum
-import numpy as np
 
 class Decision(Enum):
     """Coding decision type"""
@@ -18,27 +20,45 @@ class Coding(base.rpps.Pipe):
     """Coding Pipe"""
     name = "Coding"
     decision = Decision.HARD
-    def __init__(self, num, den):
+    def __init__(self, backend):
         self.log = Logger().Child("Coding", Level.WARN).Child(type(self).__name__, Level.WARN)
-        self.num = num
-        self.den = den
-        self._rate = self.num/self.den
+        self.backend = backend
 
     def __str__(self) -> str:
-        return f"{self.name}:{self.num}/{self.den}:{self.decision}"
+        return f"{self.name}:{self.decision.name}:{type(self.backend).__name__}:{self.num}/{self.den}"
 
+    @property
+    def num(self):
+        """Return number of data bits"""
+        return self.backend.num
+
+    @property
+    def den(self):
+        """Return number of encoded bits"""
+        return self.backend.den
+
+    @property
+    def rate(self):
+        """Return bits/parity rate"""
+        return self.num/self.den
+
+    @abstractmethod
     def encode(self, dobj: dobject.BitObject) -> dobject.CodingData:
         """Encode dobject using specified coding"""
-        ...
 
+    @abstractmethod
     def decode(self, dobj: dobject.BitObject) -> dobject.BitObject:
         """Decode dobject using specified coding"""
-        ...
 
-    def __radd__(self, other):
+    @staticmethod
+    @abstractmethod
+    def load(name: str, obj: dict):
+        """Load coding from json"""
+
+    def __rmul__(self, other):
         return self.encode(dobject.ensure_bit(other))
 
-    def __rsub__(self, other):
+    def __rtruediv__(self, other):
         if issubclass(type(other), dobject.ModData):
             if self.decision == Decision.HARD:
                 other = dobject.ModData(other.hard)
@@ -47,10 +67,6 @@ class Coding(base.rpps.Pipe):
 
 class Block(Coding):
     """Parent block coding"""
-    def __init__(self, backend):
-        self.backend = backend
-        self.length = self.backend.den
-        super().__init__(self.backend.num, self.backend.den)
 
     def encode(self, dobj: dobject.BitObject) -> dobject.CodingData:
         """Encode dobject using specified coding"""

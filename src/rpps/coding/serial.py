@@ -17,7 +17,7 @@ def init(name: str, obj: dict) -> coding.Coding:
     """Initialize coding"""
     if obj["base"] == "blk":
         return coding.Block.load(name, obj)
-    return coding.Coding(1,1)
+    raise NotImplementedError(f"Unknown scrambler: {name}, {obj}")
 
 
 def load(folder: str, name: str) -> coding.Coding:
@@ -29,6 +29,6 @@ def load(folder: str, name: str) -> coding.Coding:
     return init(name, code)
 
 
-def generate(type):
+def generate(t_str):
     """Generate coding matrixes"""
-    return getattr(types, f"generate_{type}")
+    return getattr(types, f"generate_{t_str}")
