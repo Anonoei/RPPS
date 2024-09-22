@@ -5,5 +5,10 @@
         "dobject",
         "Feedthrough",
         "QPSK"
-    ]
+    ],
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportOperatorIssue": "information",
+        "reportIncompatibleMethodOverride": "information",
+        "reportPossiblyUnboundVariable": false
+    },
 }

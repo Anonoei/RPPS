@@ -7,7 +7,7 @@ from .helpers import Formats, Format
 
 
 class file:
-    fmt = Format()
+    fmt = Format
 
     @staticmethod
     def get_format():

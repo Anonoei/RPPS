@@ -16,22 +16,11 @@ def main():
     enc_msg = rp.dobject.StreamData(b"Hello World!")
     print(f"enc_msg: {enc_msg.hex}")
     syms = enc_msg * scr
-    print(syms)
     syms = syms + ecc
-    print(syms)
     syms = syms @ mod
-    print(syms)
-    # syms = enc_msg * scr + ecc @ mod
-
-    print()
-
     data = syms @ mod
-    print(data)
     data = data - ecc
-    print(data)
     data = data / scr
-    print(data)
-    # data = syms @ mod - ecc / scr
 
     dec_msg = rp.dobject.StreamData(data)
     print(f"dec_msg: {dec_msg.hex}")

@@ -13,7 +13,7 @@ def phasor(symbols, meta: Meta, ax=None):
     ax.scatter(np.real(symbols), np.imag(symbols), s=5, c="b")
 
     ax.grid(True)
-    ax.set_title(f"Phasor Diagram ({meta.mod.short()})")
+    ax.set_title(f"Phasor Diagram")
     ax.set_title("Time Domain", loc="left")
     ax.set_title(f"{len(symbols)} symbols", loc="right")
     ax.set_xlabel("I")
@@ -42,7 +42,7 @@ def quadrature(symbols, meta: Meta, ax=None):
     ax.plot(real + imag, ".-", label="Constructed")
 
     plt.grid(True)
-    ax.set_title(f"{meta.mod.short()} Quadrature Signal")
+    ax.set_title("Quadrature Signal")
     ax.set_title("Time Domain", loc="left")
     ax.set_title(f"{len(symbols)} symbols", loc="right")
     ax.set_xlabel("Time")

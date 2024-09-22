@@ -2,7 +2,6 @@
 
 from ..coding import Convolutional, Decision
 
-from .. import Meta
 from .. import base
 from .. import dobject
 
@@ -53,7 +52,7 @@ class Hard(Viterbi):
         encoded_data = dobj.data.reshape(-1, self.den)
         print(f"Decoding {encoded_data.astype(int)}")
 
-        decoded_data = decoded_data.reshape(-1)
+        decoded_data = encoded_data.reshape(-1)
         self.log.trace(f"Decoded to {decoded_data}")
         return dobject.BitObject(decoded_data)
 

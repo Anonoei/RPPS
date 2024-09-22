@@ -1,7 +1,8 @@
 """Visualization helpers"""
 # Import helpers/globals
 from ..mod import identify, load
-Meta = object()
+class Meta:
+    pass
 
 # -----
 

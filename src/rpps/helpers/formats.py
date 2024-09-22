@@ -1,10 +1,11 @@
 """File format helpers"""
 import os
 import numpy as np
+from abc import ABC, abstractmethod
 
 from ..process import find_rate
 
-class Format:
+class Format(ABC):
     """File Format parent class"""
     byte_count = 0
     _cache = {
@@ -82,15 +83,16 @@ class Format:
             offset = (offset + type(self).byte_count) * skip
 
     @staticmethod
+    @abstractmethod
     def _read(path: str, count: int, offset: int):
-        ...
+        pass
 
 class cf32(Format):
     """Complex Float32"""
     byte_count = 32
 
     @staticmethod
-    def _read(path: str, count, offset):
+    def _read(path, count, offset):
         count = count*2
         syms = np.fromfile(path, offset=offset, count=count, dtype=np.float16)
         syms = syms.astype(np.float32)  # Expand float16s to float32s

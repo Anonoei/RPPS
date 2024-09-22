@@ -10,15 +10,13 @@ def _window(symbols):
     return symbols * np.hamming(len(symbols))  # apply a Hamming window
 
 def _pre_process(symbols, meta: Meta):
-    sample_rate = meta.freq.fields.get("SampleRate", 300)  # sample rate
+    sample_rate = 300  # sample rate
     samps = len(symbols)  # number of samples to simulate
 
     y = _window(symbols)
     y = np.fft.fft(y)
 
     x = np.arange(sample_rate / -2.0, sample_rate / 2.0, sample_rate / samps)  # start, stop, step
-    if meta.freq.fields.get("CenterFreq", None) is not None:
-        x = x + meta.freq.fields["CenterFreq"]
     return x, y
 
 def psd(symbols, meta: Meta, ax=None, _cache={}):
@@ -28,7 +26,7 @@ def psd(symbols, meta: Meta, ax=None, _cache={}):
         ax = fig.add_subplot()
     x, y = _pre_process(symbols, meta)
 
-    y = np.abs(np.fft.fftshift(y)) **2 / (len(symbols) * (meta.freq.fields.get("SampleRate", 300))) # Convert to power
+    y = np.abs(np.fft.fftshift(y)) **2 / (len(symbols) * 300) # Convert to power
     y = 10.0 * np.log10(y) # Convert to log
 
     if _cache.get("x", None) == (x[0], x[-1]):
@@ -98,7 +96,7 @@ def spectrogram(symbol_list, meta: Meta, fmt: Format, ax=None):
     z_max = -np.inf
     for sym in symbol_list:
         _, z_item = _pre_process(sym, meta)
-        z_item = np.abs(z_item) ** 2 / (len(sym) * (meta.freq.fields.get("SampleRate", 300)))
+        z_item = np.abs(z_item) ** 2 / (len(sym) * 300)
         z_item = 10.0 * np.log10(z_item)
         z.append(z_item)
         z_min = min(np.append(z_item, z_min))
