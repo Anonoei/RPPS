@@ -5,8 +5,7 @@ from ._code import _code
 class rs(_code):
 
     def __init__(self, num: int, den: int):
-        self.num = num
-        self.den = den
+        super().__init__(num, den)
 
     def encode(self, bits):
         pass

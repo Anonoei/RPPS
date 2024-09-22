@@ -2,23 +2,34 @@ import numpy as np
 
 from ._code import _code
 
+from ..blocker import block, unblock
+
 class linear(_code):
     def __init__(self, generator, check):
+        super().__init__(generator.shape[0], generator.shape[1])
         self.generator = generator
         self.check = np.transpose(check)
-
-        self.num = generator.shape[0]
-        self.den = generator.shape[1]
-
     def encode(self, bits: np.ndarray):
-        encoded = np.matmul(bits.astype(int), self.generator)
-        return encoded % 2
+        blocks = block(bits, self.num)
+
+        encoded = np.empty((len(blocks), self.den), dtype=int)
+        for i, blk in enumerate(blocks):
+            encoded[i] = np.matmul(blk.astype(int), self.generator)
+        encoded = unblock(encoded) % 2
+        return encoded.astype(bool)
 
     def decode(self, bits: np.ndarray):
-        decoded = np.matmul(bits.astype(int), self.check)
+        blocks = block(bits, self.den)
+
+        decoded = np.empty((len(blocks), self.den - self.num), dtype=int)
+
+        for i, blk in enumerate(blocks):
+            decoded[i] = np.matmul(blk.astype(int), self.check)
+
+        decoded = unblock(decoded)
         parity_bits = decoded % 2
         if sum(parity_bits) == 0:
-            return bits[0:self.num]
+            return unblock(blocks[:,0:self.num])
         print(f"{parity_bits}")
         raise NotImplementedError("Bit error!")
 

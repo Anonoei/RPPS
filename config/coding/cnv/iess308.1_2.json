@@ -1,0 +1,13 @@
+{
+  "base": "cnv",
+  "type": "split",
+  "encode": {
+    "type": "conv",
+    "constraint": 7,
+    "generator": [
+      [1, 0, 1, 1, 0, 1, 1],
+      [1, 1, 1, 1, 0, 0, 1]
+    ]
+  },
+  "decode": {}
+}

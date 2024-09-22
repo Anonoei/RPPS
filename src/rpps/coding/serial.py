@@ -3,7 +3,7 @@ from pyboiler.config import config
 import json
 
 from . import coding
-from . import _types as types
+from . import types as types
 
 def identify():
     """Identify available coding types"""

@@ -7,8 +7,9 @@ from pyboiler.logger import Logger, Level
 
 from . import base
 from . import dobject
+from .blocker import unblock
 
-from . import _types as types
+from . import types as types
 
 
 class Decision(Enum):
@@ -71,32 +72,11 @@ class Block(Coding):
 
     def encode(self, dobj):
         """Encode dobject using specified coding"""
-        # print(f"Data: {self.backend.num} / total: {self.backend.den}")
-        rate = (self._enc.num/self._enc.den)
-        retr_len = int(len(dobj) / rate)
-        itr_cnt = len(dobj)//self._enc.num
-        data = np.zeros((retr_len,), dtype=bool)
-
-        inps = self._enc.num
-        oups = self._enc.den
-
-        for i in range(0, itr_cnt, 1):
-            data[i*oups : (i+1)*oups] = self._enc.encode(dobj.data[i*inps: (i+1)*inps])
-        return dobject.CodingData(data)
+        return dobject.CodingData(self._enc.encode(dobj.data))
 
     def decode(self, dobj):
         """Decode dobject using specified coding"""
-        rate = (self._dec.num/self._dec.den)
-        retr_len = int(len(dobj) * rate)
-        itr_cnt = len(dobj) // self._dec.den
-        data = np.zeros((retr_len,), dtype=bool)
-
-        inps = self._dec.den
-        oups = self._dec.num
-
-        for i in range(0, itr_cnt, 1):
-            data[i*oups : (i+1)*oups] = self._dec.decode(dobj.data[i*inps: (i+1)*inps])
-        return dobject.BitObject(data)
+        return dobject.BitObject(self._dec.decode(dobj.data))
 
     @staticmethod
     def load(name, obj):
@@ -122,31 +102,29 @@ class Convolutional(Coding):
     """Parent convolutional coding"""
 
     def encode(self, dobj):
-        rate = self._enc.num / self._enc.den
-        retr_len = int(len(dobj) / rate)
-        itr_cnt = len(dobj) // self._enc.num
-        data = np.zeros((retr_len,), dtype=bool)
-
-        inps = self._enc.num
-        oups = self._enc.den
-
-        for i in range(0, itr_cnt, 1):
-            data[i*oups : (i+1)*oups] = self._enc.encode(dobj.data[i*inps: (i+1)*inps])
-        return dobject.CodingData(data)
+        return dobject.CodingData(self._enc.encode(dobj.data))
 
     def decode(self, dobj):
-        pass
+        return dobject.BitObject(self._dec.decode(dobj.data))
 
     @staticmethod
     def load(name, obj):
         if obj["type"] == "split":
-            # i_d_code = getattr(types, obj["decode"]["type"])
             i_e_code = getattr(types, obj["encode"]["type"])
-            gen = np.array(obj["encode"]["generator"], dtype=bool)
+            i_d_code = getattr(types, obj["decode"]["type"])
 
-            i_e_code = i_e_code(1, 3, gen, obj["encode"]["constraint"])
+            i_e_num = obj["encode"]["num"]
+            i_e_den = obj["encode"]["den"]
+            i_e_gen = np.array(obj["encode"]["generator"], dtype=bool)
+            i_e_con = obj["encode"]["constraint"]
+            i_e_code = i_e_code(i_e_num, i_e_den, i_e_gen, i_e_con)
+
+            i_d_num = obj["decode"]["num"]
+            i_d_den = obj["decode"]["den"]
+            i_d_con = obj["decode"]["constraint"]
+            i_d_code = i_d_code(i_d_num, i_d_den, i_d_con)
 
             impl = type(name, (Convolutional,), dict())
             impl.name = name
-            return impl(i_e_code, i_e_code)
+            return impl(i_e_code, i_d_code)
         raise NotImplementedError(f"{name} is not implemented")
