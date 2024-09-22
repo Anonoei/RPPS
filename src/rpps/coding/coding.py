@@ -24,7 +24,7 @@ class Coding(base.rpps.Pipe):
         self.den = den
         self._rate = self.num/self.den
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name}:{self.num}/{self.den}:{self.decision}"
 
     def encode(self, dobj: dobject.BitObject) -> dobject.CodingData:
@@ -35,10 +35,10 @@ class Coding(base.rpps.Pipe):
         """Decode dobject using specified coding"""
         ...
 
-    def __add__(self, other):
+    def __radd__(self, other):
         return self.encode(dobject.ensure_bit(other))
 
-    def __sub__(self, other):
+    def __rsub__(self, other):
         if issubclass(type(other), dobject.ModData):
             if self.decision == Decision.HARD:
                 other = dobject.ModData(other.hard)
@@ -88,7 +88,9 @@ class Block(Coding):
         if obj["type"] == "linear":
             gen = np.array(obj["generator"], dtype=bool)
             chk = np.array(obj["check"], dtype=bool)
-            return type(name, (Block,), dict())(i_code(gen, chk))
+            impl = type(name, (Block,), dict())
+            impl.name = name
+            return impl(i_code(gen, chk))
         raise NotImplementedError(f"{name} is not implemented")
 
 class Convolutional(Coding):

@@ -3,6 +3,7 @@
         "descrambled",
         "dobj",
         "dobject",
-        "Feedthrough"
+        "Feedthrough",
+        "QPSK"
     ]
 }

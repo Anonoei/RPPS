@@ -24,6 +24,8 @@ def load(folder: str, name: str) -> coding.Coding:
     """Load a coding from a file name"""
     code = json.loads((config().PATH_CONFIG / "coding" / folder / f"{name.lower()}.json").read_text())  # type: ignore
 
+    if "." in name:
+        name = name.split(".")[0]
     return init(name, code)
 
 

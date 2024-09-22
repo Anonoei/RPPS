@@ -54,9 +54,9 @@ class Modulation(base.rpps.Pipe):
         ...
 
     def __rmatmul__(self, other):
-        if isinstance(other, dobject.SymObject):
+        if issubclass(type(other), dobject.SymObject):
             return self.demodulate(other)
-        elif isinstance(other, dobject.DataObject):
+        elif issubclass(type(other), dobject.BitObject):
             return self.modulate(dobject.ensure_bit(other))
         raise TypeError(f"Cannot perform {type(self).__name__} on {type(other)}")
 
@@ -65,7 +65,7 @@ class PSK(Modulation):
     """Phase-shift keying parent"""
 
     def __str__(self):
-        return f"{type(self).__name__}:{self.constellation.mapping.str()})"
+        return f"{type(self).__name__}:{self.constellation.mapping.str()}"
 
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         if ax is None:

@@ -2,13 +2,11 @@ import numpy as np
 
 class linear:
     def __init__(self, generator, check):
-        input(np.matmul(generator, check))
         self.generator = generator
         self.check = np.transpose(check)
 
         self.num = generator.shape[0]
         self.den = generator.shape[1]
-
 
     def encode(self, bits: np.ndarray):
         encoded = np.matmul(bits.astype(int), self.generator)

@@ -153,8 +153,8 @@ class Constellation:
     def modulate(self, dobj: dobject.BitObject, noise: bool = True):
         """Modulate BitObject to IQ symbols"""
         indexes = self.index(dobj)
-        points = self.map(indexes, dobj.meta)
-        symbols = self.to_symbols(points, dobj.meta, noise=noise)
+        points = self.map(indexes)
+        symbols = self.to_symbols(points, noise=noise)
         return symbols
 
     def demodulate(self, syms: dobject.SymData):
@@ -207,7 +207,7 @@ class Constellation:
         self.log.trace(f"Indexes are {indexes}")
         return indexes
 
-    def map(self, indexes, meta):
+    def map(self, indexes):
         """Convert indexes to self.mapping values"""
         self.log.trace(f"Using mapping: {self.mapping}")
         points = []
@@ -220,7 +220,7 @@ class Constellation:
         self.log.trace(f"Points are {points}")
         return points
 
-    def to_symbols(self, points, meta, noise: bool = False):
+    def to_symbols(self, points, noise: bool = False):
         """Convert mapping values to symbols"""
         points = np.array(points)
         symbols = self.points[points]
@@ -231,7 +231,6 @@ class Constellation:
             symbols = symbols + n * np.sqrt(0.01) # noise power of 0.01
 
         symbols = symbols.astype(np.complex64)
-        meta.fmt = type(symbols[0]).__name__
         # self.log.trace(f"Symbols are: {symbols}")
         return dobject.SymData(symbols)
 
