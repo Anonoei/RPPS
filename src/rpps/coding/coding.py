@@ -1,7 +1,6 @@
 """Coding parent classes"""
 from pyboiler.logger import Logger, Level
 
-from . import Meta
 from . import base
 from . import dobject
 
@@ -27,12 +26,6 @@ class Coding(base.rpps.Pipe):
 
     def __str__(self):
         return f"{self.name}:{self.num}/{self.den}:{self.decision}"
-
-    def init_meta(self, meta: Meta):
-        """Initialize coding metadata"""
-        meta.coding.fields["Name"] = type(self).__name__
-        meta.coding.fields["RateNum"] = self.num
-        meta.coding.fields["RateDen"] = self.den
 
     def encode(self, dobj: dobject.BitObject) -> dobject.CodingData:
         """Encode dobject using specified coding"""
@@ -88,13 +81,6 @@ class Block(Coding):
             data[i*oups : (i+1)*oups] = self.backend.decode(dobj.data[i*inps: (i+1)*inps])
         return dobject.BitObject(data)
 
-    def init_meta(self, meta: Meta):
-        from .meta import BlockCodingMeta
-        meta.coding = BlockCodingMeta()  # type: ignore
-        meta.coding.fields["Type"] = "BLK"
-        meta.coding.fields["Length"] = self.length
-        super().init_meta(meta)
-
     @staticmethod
     def load(name, obj):
         i_code = getattr(types, obj["type"])
@@ -107,11 +93,6 @@ class Block(Coding):
 
 class Convolutional(Coding):
     """Parent convolutional coding"""
-    def init_meta(self, meta: Meta):
-        from .meta import ConvolutionalCodingMeta
-        meta.coding = ConvolutionalCodingMeta()  # type: ignore
-        meta.coding.fields["Type"] = "CNV"
-        super().init_meta(meta)
     def __init__(self, k, passthrough, polys):
         self.input_size = k
         assert len(passthrough) == polys.shape[0]

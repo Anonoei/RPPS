@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 
 from pyboiler.logger import Logger, Level
 
-from . import Meta
 from . import base
 from . import dobject
 
@@ -36,16 +35,6 @@ class Modulation(base.rpps.Pipe):
     def get_maps(self):
         """Get available maps"""
         return self.maps
-
-    def init_meta(self, meta):
-        """Initialize modulation meta"""
-        if self.constellation.mapping is None:
-            raise Exception("A mapping must be defined before modulating")
-        from .meta import ModMeta
-        meta.mod = ModMeta()
-        meta.mod.fields["Name"] = type(self).name[:-3]
-        meta.mod.fields["Type"] = type(self).name[-3:]
-        meta.mod.fields["Map"] = self.constellation.mapping.str()
 
     def demodulate(self, syms: dobject.SymObject) -> dobject.ModData:
         """Convert IQ samples to bits"""
@@ -108,7 +97,6 @@ class PSK(Modulation):
 
     def modulate(self, dobj: dobject.BitObject):
         syms = self.constellation.modulate(dobj)
-        self.init_meta(dobj.meta)
         return syms
 
     @staticmethod

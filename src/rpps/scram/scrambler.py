@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 
 from pyboiler.logger import Logger, Level
 
-from . import Meta
 from . import base
 from . import dobject
 from . import lfsr
@@ -21,12 +20,6 @@ class Scram(base.rpps.Pipe):
 
     def __str__(self):
         return f"{type(self).__name__}"
-
-    def init_meta(self, meta: Meta):
-        """Initialize scram metadata"""
-        meta.coding.fields["Name"] = type(self).__name__
-        meta.coding.fields["RateNum"] = None
-        meta.coding.fields["RateDen"] = None
 
     def scram(self, dobj: dobject.BitObject) -> dobject.ScramData:
         """Encode dobject using specified scram"""

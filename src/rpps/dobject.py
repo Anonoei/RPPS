@@ -4,7 +4,6 @@ from enum import Enum
 import numpy as np
 
 from .base.soft import SoftDecision
-from .meta import Meta
 
 class Type(Enum):
     """DataObject data data formats"""
@@ -14,24 +13,20 @@ class Type(Enum):
     NONE = -1
 def ensure_bit(dobj):
     """Ensure DataObject is using bits"""
-    return BitObject(dobj, dobj.meta)
+    return BitObject(dobj)
 
 def ensure_byte(dobj):
     """Ensure DataObject is using bytes"""
-    return ByteObject(dobj, dobj.meta)
+    return ByteObject(dobj)
 
 class DataObject:
     """Parent DataObject class"""
     type = Type.NONE
 
     data = []
-    meta = None
 
-    def __init__(self, data=None, meta=None):
-        if not isinstance(meta, Meta):
-            meta = Meta()
+    def __init__(self, data=None):
         self.convert(data)
-        self.meta = meta
 
     def __str__(self):
         return f"{self.name()}:{self.type}:{len(self)}"

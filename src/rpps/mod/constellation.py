@@ -6,7 +6,6 @@ from pyboiler.logger import Logger, Level
 
 from . import base
 from . import dobject
-from . import Meta
 
 
 class Mapping:

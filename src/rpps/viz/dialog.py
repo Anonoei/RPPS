@@ -3,7 +3,7 @@ from tkinter import Tk
 from tkinter import filedialog
 
 
-def get_file(title: str=None, filetypes=None):
+def get_file(title: str="", filetypes=None):
     """Prompts for file selection"""
     root = Tk()
     root.withdraw()
