@@ -6,6 +6,7 @@ def main():
     mod = rp.mod.load("QPSK")
     mod.set_mapping(mod.get_maps()[0])
     ecc = rp.coding.load("blk", "hamming.7_4")
+    # ecc = rp.coding.load("blk", "repeat.3")
     scr = rp.scram.load("fdt", "v35")
 
     print(f"Mod: {mod}")

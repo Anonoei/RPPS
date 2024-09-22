@@ -13,12 +13,13 @@ import rpps as rp
 def main():
     mod = rp.mod.load("QPSK")
     mod.set_mapping(mod.get_maps()[0])
-    ecc = rp.coding.name("BLK", "Repetition", 3)
+    ecc = rp.coding.load("blk", "hamming.7_4")
+    scr = rp.scram.load("fdt", "v35")
 
     enc_msg = rp.dobject.StreamData(b"Hello World!")
 
-    f_pipe = lambda inp:inp @ ecc @ mod
-    r_pipe = lambda syms:syms @ mod @ ecc
+    f_pipe = lambda inp:inp * scr * ecc * mod
+    r_pipe = lambda syms:syms / mod / ecc / scr
 
     syms = f_pipe(enc_msg) # Encode data with ecc, and mod. Get the symbols
 
@@ -36,11 +37,11 @@ if __name__ == "__main__":
 2. In your project, `import rpps as rp`
 
 ## Roadmap
- - [ ] [Interfaces](https://github.com/Anonoei/RPPS/tree/main/src/rpps/inter)
-   - [X] File
+ - [ ] [Interfaces]()
+   - [ ] File
    - [ ] (Linux only) tun/tap
    - [ ] Socket
- - [ ] [Pre-processing](https://github.com/Anonoei/RPPS/tree/main/src/rpps/process)
+ - [ ] [Pre-processing]()
    - [ ] Filters
    - [ ] Pulse Shaping
  - [ ] [Modulation](https://github.com/Anonoei/RPPS/tree/main/src/rpps/mod)
@@ -55,13 +56,16 @@ if __name__ == "__main__":
  - [ ] [Coding](https://github.com/Anonoei/RPPS/tree/main/src/rpps/coding)
    - [ ] Block
      - [X] Repetition
-     - [ ] LDPC
+     - [X] Hamming
      - [ ] TPC
+     - [ ] LDPC
    - [ ] Convolutional
      - [ ] Viterbi
- - [ ] De-scramble
-   - [ ] v.35
- - [ ] De-frame
+ - [ ] [Scram](https://github.com/Anonoei/RPPS/tree/main/src/rpps/scram)
+   - [X] fibonacci
+   - [X] galois
+   - [X] V.35
+ - [ ] Frame
    - [ ] HDLC
    - [ ] PPP
 

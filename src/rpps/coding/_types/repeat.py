@@ -1,27 +1,26 @@
-import numpy as np
-
 from .. import dobject
 
 class repeat:
     def __init__(self, count):
-        self.count = count
+        self.num = 1
+        self.den = count
 
     def encode(self, dobj: dobject.BitObject):
         encoded_data = dobject.CodingData()
         for bit in dobj:
-            for _ in range(self.count):
+            for _ in range(self.den):
                 encoded_data.append(bit)
-        assert len(dobj) * self.count == len(encoded_data)
+        assert len(dobj) * self.den == len(encoded_data)
         return encoded_data
 
     def decode(self, dobj: dobject.BitObject):
         decoded_data = dobject.BitObject()
-        for i in range(0, len(dobj), self.count):
-            bits = dobj[i : i + self.count]
+        for i in range(0, len(dobj), self.den):
+            bits = dobj[i : i + self.den]
             bit_sum = sum(bits)
-            if not bit_sum in (0, self.count):
-                diff = self.count - bit_sum
-                if self.count / 2 > diff:
+            if not bit_sum in (0, self.den):
+                diff = self.den - bit_sum
+                if self.den / 2 > diff:
                     bit = 1
                 else:
                     bit = 0
@@ -32,5 +31,5 @@ class repeat:
                     bit = 1
             decoded_data.append(bit)
 
-        assert len(dobj) // self.count == len(decoded_data)
+        assert len(dobj) // self.den == len(decoded_data)
         return decoded_data

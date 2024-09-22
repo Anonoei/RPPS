@@ -107,6 +107,10 @@ class Block(Coding):
             impl = type(name, (Block,), dict())
             impl.name = name
             return impl(i_code(gen, chk))
+        if obj["type"] == "repeat":
+            impl = type(name, (Block,), dict())
+            impl.name = name
+            return impl(i_code(obj["count"]))
         raise NotImplementedError(f"{name} is not implemented")
 
 class Convolutional(Coding):
