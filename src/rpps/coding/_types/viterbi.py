@@ -1,4 +1,5 @@
 """Viterbi convolutional coding"""
+
 from ..coding import Convolutional, Decision
 
 from .. import Meta
@@ -7,12 +8,16 @@ from .. import dobject
 
 import numpy as np
 
+
 class Viterbi(Convolutional):
     """Parent viterbi implementation"""
+
     name = "Viterbi"
+
 
 class Hard(Viterbi):
     """Hard decision viterbi"""
+
     decision = Decision.HARD
 
     def encode(self, dobj: dobject.BitObject):
@@ -55,4 +60,5 @@ class Hard(Viterbi):
 
 class Soft(Viterbi):
     """Soft decision viterbi"""
+
     decision = Decision.SOFT

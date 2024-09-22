@@ -54,6 +54,34 @@ class DataObject:
     def __getitem__(self, *args, **kwargs):
         return self.data.__getitem__(*args, **kwargs)
 
+    def __matmul__(self, other):
+        return other.__matmul__(self)
+
+    def __rmatmul__(self, other):
+        return other.__rmatmul__(self)
+
+    def __add__(self, other):
+        return other.__add__(self)
+
+    def __sub__(self, other):
+        return other.__sub__(self)
+
+    def __mul__(self, other):
+        return other.__mul__(self)
+
+    def __div__(self, other):
+        return other.__div__(self)
+
+    def __truediv__(self, other):
+        return other.__truediv__(self)
+
+    def __mod__(self, other):
+        return other.__mod__(self)
+
+    def __pow__(self, other):
+        return other.__pow__(self)
+
+
     def name(self):
         """Get class name"""
         return type(self).__name__

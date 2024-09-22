@@ -6,24 +6,42 @@ import rpps as rp
 import numpy as np
 
 def main():
-    enc_msg = rp.dobject.StreamData(b"Hello World!")
+    enc_msg = rp.dobject.StreamData(b"Hello world!")
     msg_bit = rp.dobject.ensure_bit(enc_msg)
+
+
+    #ecc = rp.coding.load("blk", "hamming.7_4")
+    ecc = rp.coding.generate("linear")
+    p = np.array([
+        [1,1,0],
+        [1,0,1],
+        [0,1,1],
+        [1,1,1]
+    ])
+    ecc = ecc(7, 4, p)
+    exit()
+
+    print()
+    print(f"ECC: {ecc}")
+    print()
+
+    print(msg_bit)
+
+    enc_dat = msg_bit + ecc
+    enc_dat.data[128] = not enc_dat.data[128]
+
+    print(enc_dat)
+    dec_msg = enc_dat - ecc
+    dec_msg = rp.dobject.StreamData(dec_msg)
+
     print(f"enc_msg: {enc_msg.hex}")
-    input_size = 3
-    past = np.array([1,1,1,0], dtype=bool)
-    polys = np.array([[0,0,0,0],[0,0,0,0],[0,0,0,0],[1,1,1,1]], dtype=bool)
-    conv = rp.coding.conv.Convolutional(input_size, past, polys)
-    coded = np.array([], dtype=bool)
-    for i in range(0, len(msg_bit), 3):
-        c = conv.code(msg_bit.data[i : i + 3])
-        coded = np.append(coded, c)
-    print(f"MSG bits: {len(msg_bit)} {msg_bit.data.astype(int)}")
-    print(f"CNV bits: {len(coded)} {coded.astype(int)}")
+    print(f"dec_msg: {dec_msg.hex}")
+    print(f"Data is the same: {enc_msg.hex == dec_msg.hex}")
 
     exit()
     mod = rp.mod.load("QPSK")
     mod.set_mapping(mod.get_maps()[0])
-    ecc = rp.coding.name("BLK", "Repetition", 3)
+    # ecc = rp.coding.name("BLK", "Repetition", 3)
     scr = rp.scram.load("fdt", "v35")
 
     print(f"Mod: {mod}")
