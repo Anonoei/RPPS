@@ -1,4 +1,5 @@
 {
+  "base": "PSK",
   "Points": [
     { "real": 1, "imag": 0 },
     { "real": -1, "imag": 0 }

@@ -1,6 +1,5 @@
 """Modulation de-serialization helpers"""
 from pyboiler.config import config
-import pathlib
 import json
 
 from . import coding
@@ -14,10 +13,12 @@ def identify():
     return codings
 
 
-def init(name: str, obj: dict):
+def init(name: str, obj: dict) -> coding.Coding:
+    """Initialize coding"""
     if obj["base"] == "blk":
         return coding.Block.load(name, obj)
     return coding.Coding(1,1)
+
 
 def load(folder: str, name: str) -> coding.Coding:
     """Load a coding from a file name"""
@@ -27,4 +28,5 @@ def load(folder: str, name: str) -> coding.Coding:
 
 
 def generate(type):
+    """Generate coding matrixes"""
     return getattr(types, f"generate_{type}")
