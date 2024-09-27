@@ -122,7 +122,8 @@ class Convolutional(Coding):
             i_d_num = obj["decode"]["num"]
             i_d_den = obj["decode"]["den"]
             i_d_con = obj["decode"]["constraint"]
-            i_d_code = i_d_code(i_d_num, i_d_den, i_d_con)
+            i_d_gen = np.array(obj["decode"]["generator"], dtype=bool)
+            i_d_code = i_d_code(i_d_num, i_d_den, i_d_con, i_d_gen)
 
             impl = type(name, (Convolutional,), dict())
             impl.name = name
