@@ -3,6 +3,8 @@
   "type": "split",
   "encode": {
     "type": "conv",
+    "num": 1,
+    "den": 2,
     "constraint": 7,
     "generator": [
       [1, 0, 1, 1, 0, 1, 1],
@@ -13,5 +15,14 @@
       [1, 0, 1]
     ]
   },
-  "decode": {}
+  "decode": {
+    "type": "viterbi",
+    "num": 1,
+    "den": 2,
+    "constraint": 7,
+    "generator": [
+      [1, 0, 1, 1, 0, 1, 1],
+      [1, 1, 1, 1, 0, 0, 1]
+    ]
+  }
 }
