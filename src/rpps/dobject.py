@@ -9,7 +9,7 @@ class Type(Enum):
     """DataObject data data formats"""
     BIT = 0
     BYTE = 1
-    SYM = 2
+    IQ = 2
     NONE = -1
 
 def ensure_bit(dobj):
@@ -99,7 +99,7 @@ class DataObject:
                     self.data = np.unpackbits(np.array(other))
                     return
             elif isinstance(other, np.ndarray):
-                if self.type == Type.SYM:
+                if self.type == Type.IQ:
                     self.data = other
                     return
                 if other.dtype == np.uint8:
@@ -146,8 +146,8 @@ class ByteObject(DataObject):
         return self.data.tobytes().hex()
 
 
-class SymObject(DataObject):
-    type = Type.SYM
+class IQObject(DataObject):
+    type = Type.IQ
     data = np.array([], dtype=np.complex64)
 
     def __str__(self):
@@ -190,5 +190,5 @@ class ModData(BitObject):
         self._data = value
 
 
-class SymData(SymObject):
+class IQData(IQObject):
     """Data returned from mod.modulate"""

@@ -157,7 +157,7 @@ class Constellation:
         symbols = self.to_symbols(points, noise=noise)
         return symbols
 
-    def demodulate(self, syms: dobject.SymObject):
+    def demodulate(self, syms: dobject.IQObject):
         """Demodulate IQ symbols to ModData"""
         # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
         distances = np.zeros((len(syms.data), len(self.points)), dtype=np.float16)
@@ -232,13 +232,13 @@ class Constellation:
 
         symbols = symbols.astype(np.complex64)
         # self.log.trace(f"Symbols are: {symbols}")
-        return dobject.SymData(symbols)
+        return dobject.IQData(symbols)
 
     ##############################
     #  Demodulate
     ##############################
 
-    def from_symbols(self, symbols: dobject.SymObject):
+    def from_symbols(self, symbols: dobject.IQObject):
         """Convert symbols to soft decisions"""
         # self.log.trace(f"Symbols are:\n{symbols}")
         # codewords = np.zeros((len(self.points), self._bps), dtype=bool)

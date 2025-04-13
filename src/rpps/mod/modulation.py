@@ -37,11 +37,11 @@ class Modulation(base.rpps.Pipe):
         return self.maps
 
     @abstractmethod
-    def demodulate(self, syms: dobject.SymObject) -> dobject.ModData:
+    def demodulate(self, syms: dobject.IQObject) -> dobject.ModData:
         """Convert IQ samples to bits"""
 
     @abstractmethod
-    def modulate(self, dobj: dobject.BitObject) -> dobject.SymData:
+    def modulate(self, dobj: dobject.BitObject) -> dobject.IQData:
         """Convert bits to IQ samples"""
 
     @abstractmethod
