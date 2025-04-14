@@ -10,10 +10,10 @@ from . import dobject
 
 class Mapping:
     """Constellation map"""
-    __slots__ = ("arr", "comment")
+    __slots__ = ("arr", "_comment", "_inv")
 
     def __init__(self, map=None, comment=""):
-        self.comment = comment
+        self._comment = comment
         if isinstance(map, int):
             map = np.array([0] * map)
         elif not isinstance(map, np.ndarray):
@@ -21,6 +21,7 @@ class Mapping:
         elif map is None:
             map = np.array([])
         self.arr = map
+        self._inv = False
 
     @staticmethod
     def new(map):
@@ -50,6 +51,20 @@ class Mapping:
 
     def __setitem__(self, item, val):
         self.arr[item] = val
+
+    @property
+    def inverted(self):
+        return self._inv
+
+    @inverted.setter
+    def inverted(self, val: bool):
+        self._inv = val
+
+    @property
+    def comment(self):
+        if self._inv:
+            return f"{self._comment} Inverted"
+        return f"{self._comment} Normal"
 
 
 class Maps:
@@ -118,7 +133,7 @@ class Constellation:
         self._bps = int(math.log2(len(self.points))) # Bits per symbol
 
     def __str__(self) -> str:
-        return f"Points: {self._points}, Map: {self._mapping}"
+        return f"Points: {self._points}, Map: {self._mapping}, {self._mapping.comment}"
 
     def __repr__(self) -> str:
         return f"<Constellation: {self._bps}>"
@@ -130,6 +145,24 @@ class Constellation:
     def points(self):
         """Get constellation points"""
         return self._points
+
+    @property
+    def inverted(self):
+        """ Returns if constellation is spectral inverted"""
+        return self._mapping.inverted
+    # { "real": 0.7, "imag": -0.7 },
+    # { "real": -0.7, "imag": -0.7 },
+    # { "real": 0.7, "imag": 0.7 },
+    # { "real": -0.7, "imag": 0.7 }
+    def invert(self):
+        """Spectral invert the constellation"""
+        self._mapping.inverted = not self._mapping.inverted
+        rotpoints = self._points.imag() + self._points.real() * 1j
+        swaps = np.where(self.points.arr == rotpoints)[0]
+        map1 = swaps[0:len(swaps)//2]
+        map2 = swaps[len(swaps)//2:]
+        for m1, m2 in zip(map1, map2):
+            self._mapping.arr[[m1,m2]] = self._mapping.arr[[m2,m1]]
 
     @points.setter
     def points(self, points):
