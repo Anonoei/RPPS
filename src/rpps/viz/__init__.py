@@ -10,5 +10,5 @@ from ..helpers.formats import Format
 
 from .generic import *
 from .dialog import get_file
-from .time import phasor, quadrature
+from .time import phasor, quadrature, complex, ot_complex
 from .freq import psd, phase, magnitude, spectrogram

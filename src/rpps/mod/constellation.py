@@ -192,19 +192,8 @@ class Constellation:
 
     def demodulate(self, syms: dobject.IQObject):
         """Demodulate IQ symbols to ModData"""
-        # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
-        distances = np.zeros((len(syms.data), len(self.points)), dtype=np.float16)
-
-        distances[:] = np.abs(self.points.arr - syms.data.reshape(-1, 1))
-        distances[:] = 1 - np.round(distances / distances.max(axis=0), decimals=2)
-
-        bits = np.array([bin(n)[2:].zfill(self._bps) for n in self.mapping.arr])
-        codewords = np.zeros((len(self.points), self._bps), dtype=int)
-
-        for i, b in enumerate(bits):
-            for j, c in enumerate(b):
-                codewords[i, j] = True if c == '1' else False
-
+        distances = self.from_symbols(syms)
+        codewords = self.codewords()
         mod = dobject.ModData()
         mod.soft = base.SoftDecision(codewords, distances)
 
@@ -275,6 +264,7 @@ class Constellation:
         """Convert symbols to soft decisions"""
         # self.log.trace(f"Symbols are:\n{symbols}")
         # codewords = np.zeros((len(self.points), self._bps), dtype=bool)
+        # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
         distances = np.zeros((len(symbols), len(self.points)), dtype=np.float16)
 
         distances[:] = np.abs(self.points.arr - symbols.data.reshape(-1, 1))
@@ -310,3 +300,12 @@ class Constellation:
         self.log.trace(f"Data bits are {data} / {len(data)}")
 
         return data
+
+    def codewords(self):
+        bits = np.array([bin(n)[2:].zfill(self._bps) for n in self.mapping.arr])
+        codewords = np.zeros((len(self.points), self._bps), dtype=int)
+
+        for i, b in enumerate(bits):
+            for j, c in enumerate(b):
+                codewords[i, j] = True if c == '1' else False
+        return codewords

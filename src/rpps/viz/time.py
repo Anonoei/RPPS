@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from . import Meta
 
 
-def phasor(symbols, meta: Meta, ax=None):
+def phasor(symbols, ax=None):
     """Plot phasor diagram"""
     if ax is None:
         fig = plt.figure()
@@ -26,7 +26,7 @@ def phasor(symbols, meta: Meta, ax=None):
     return fig, ax
 
 
-def quadrature(symbols, meta: Meta, ax=None):
+def quadrature(symbols, ax=None):
     """Plot I and Q"""
     if ax is None:
         fig = plt.figure()
@@ -49,4 +49,72 @@ def quadrature(symbols, meta: Meta, ax=None):
     ax.set_ylabel("Amplitude")
     ax.set_ylim(-5, 5)
     plt.legend()
+    return fig, ax
+
+def complex(symbols, ax=None):
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(projection="3d")
+
+    I = np.real(symbols)
+    Q = np.imag(symbols)
+
+    T = np.arange(len(I))
+    E = np.zeros(len(I))
+
+    ip = np.array([T,I,E])
+    qp = np.array([T,E,Q])
+
+    ax.plot(ip[0], ip[1], ip[2])
+    ax.plot(qp[0], qp[1], qp[2])
+    ax.scatter(ip[0], ip[1], qp[2])
+
+    ax.set_xlabel("Time")
+    ax.set_ylabel("I")
+    ax.set_zlabel("Q")
+    ax.set_ylim(1.2, -1.2)
+    ax.set_zlim(1.2, -1.2)
+    # ax.set_aspect("equal", adjustable="box")
+
+    plt.grid(True)
+    plt.legend()
+    return fig, ax
+
+def ot_complex(symbols, ax=None):
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(projection="3d")
+
+    I = np.real(symbols)
+    Q = np.imag(symbols)
+
+    T = np.arange(len(I))
+    E = np.zeros(len(I))
+
+    ip = np.array([T,I,E])
+    qp = np.array([T,E,Q])
+
+    ax.set_xlabel("Time")
+    ax.set_ylabel("I")
+    ax.set_zlabel("Q")
+    ax.set_ylim(1.2, -1.2)
+    ax.set_zlim(1.2, -1.2)
+    plt.grid(True)
+    plt.legend()
+
+    ip = []
+    qp = []
+    xp = []
+    ep = []
+
+    for x,y,z in zip(T,I,Q):
+        ip.append(y/2)
+        qp.append(z/2)
+        xp.append(x)
+        ep.append(0)
+        ax.plot(xp,ip,ep, color="red")
+        ax.plot(xp,ep,qp, color="blue")
+        ax.scatter(x,y,z, color="green")
+        plt.pause(0.1)
+
     return fig, ax
