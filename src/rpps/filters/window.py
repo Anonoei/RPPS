@@ -132,18 +132,16 @@ def flattop(N):
 
 # --- Sine window --- #
 # even-integer power-of-sine
-def _sine_n(N, n):
-    return _cs_nf(N, n)
 def sine0(N):
-    return _sine_n(N, 1)
+    return _cs_nf(N, 1)
 def sine2(N):
-    return _sine_n(N, 0.5, 0.5)
+    return _cs_nf(N, 0.5, 0.5)
 def sine4(N):
-    return _sine_n(N, 0.375, 0.5, 0.125)
+    return _cs_nf(N, 0.375, 0.5, 0.125)
 def sine6(N):
-    return _sine_n(N, 0.3125, 0.46875, 0.1875, 0.03125)
+    return _cs_nf(N, 0.3125, 0.46875, 0.1875, 0.03125)
 def sine8(N):
-    return _sine_n(N, 0.2734375, 0.4375, 0.21875, 0.0625, 7.8125e-3)
+    return _cs_nf(N, 0.2734375, 0.4375, 0.21875, 0.0625, 7.8125e-3)
 
 # --- Adjustable windows --- #
 def _gaus(x, N, L, sigma, p=2):
@@ -165,7 +163,7 @@ def acon_gaussian(N, sigma=0.1):
     w = _gausN(n, L, sigma) - (num/den)
     return w
 
-def gen_gaussian(N, sigma, p=2):
+def gen_gaussian(N, sigma=0.2, p=2):
     n = np.arange(0, N)
     w = np.exp(-( (n-N/2)/(sigma*N/2) )**p)
     return w
@@ -209,3 +207,8 @@ def exponential(N, D=8.69):
     t = (N/2) * (8.69/D)
     w = np.e**(-np.abs(n-N/2)*1/t)
     return w
+
+s = [k for k in globals().keys() if not k.startswith("_") and not k == "np"]
+
+def get(name):
+    return globals()[name]

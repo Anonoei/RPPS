@@ -1,9 +1,6 @@
 """Wrapper for processing files"""
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib import colormaps
 
-from .helpers import Formats, Format
+from .utils import Formats, Format
 
 
 class file:
@@ -14,7 +11,11 @@ class file:
         return file.fmt
 
     @staticmethod
-    def read(fmt, path: str, bins: int, offset: int = 0, skip=1, max_ittr=-1):
+    def read(fmt, path: str, count: int, offset: int = 0, skip=1):
         file.fmt = Formats[fmt]()
-        for sym in file.fmt.read(fmt, path, bins, offset, skip, max_ittr):
+        for sym in file.fmt.read(count, path, offset, skip):
             yield sym
+
+    @staticmethod
+    def read_list(fmt, path: str, count: int, offset: int = 0, skip=1):
+        return next(file.read(fmt, path, count, offset, skip))

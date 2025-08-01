@@ -22,7 +22,7 @@ Logger("RPPS", Level.TRACE)
 
 # Import helpers/globals
 from . import base
-from . import helpers
+from . import utils
 
 from . import dobject
 
@@ -30,8 +30,11 @@ from . import dobject
 
 from .file import file
 
+from . import filters
+from . import sync
+
 from . import scram
 from . import coding
 from . import mod
+
 from . import viz
-from . import process
