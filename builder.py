@@ -7,11 +7,9 @@ import subprocess
 import sys
 import pathlib
 
-
 def run(cmd: str, quiet: bool = False):
     print(f"Running '{cmd}'")
     os.system(cmd)
-
 
 def get_path():
     mod_file = pathlib.Path(os.path.dirname(sys.argv[0])).absolute()
@@ -21,7 +19,6 @@ def get_path():
     else:
         fpath = pathlib.Path(fpath)
     return fpath
-
 
 def main():
     parser = argparse.ArgumentParser("Python build helper")
@@ -35,14 +32,11 @@ def main():
         help="bump version [requires -r]",
     )
     actions.add_argument("-b", "--build", action="store_true", help="build module")
-    actions.add_argument(
-        "-l", "--local", action="store_true", help="install module locally"
-    )
+    actions.add_argument("-l", "--local", action="store_true", help="install module locally")
     actions.add_argument("-t", "--test", action="store_true", help="run pytest")
     actions.add_argument("-d", "--docs", action="store_true", help="generate docs")
-    actions.add_argument(
-        "-u", "--upload", action="store_true", help="upload module [requires -r]"
-    )
+    actions.add_argument("-u", "--upload", action="store_true", help="upload module [requires -r]")
+    actions.add_argument("-c", "--compile", action="store_true")
 
     parser.add_argument("-r", "--run", action="store_true", help="perform actions live")
 
@@ -96,6 +90,9 @@ def main():
             shutil.rmtree(dist)
         run(f"{sys.executable} -m build")
 
+    def cmd_compile(args):
+        run(f"{sys.executable} setup.py build_ext -i")
+
     def cmd_upload(args):
         cmd = f"{sys.executable} -m twine upload "
         if not args.run:
@@ -132,6 +129,8 @@ def main():
 
     if args.version is not None:
         cmd_version(args)
+    if args.compile:
+        cmd_compile(args)
     if args.build:
         cmd_build(args)
     if args.local:

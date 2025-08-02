@@ -1,13 +1,20 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "cython", "numpy"]
 build-backend = "setuptools.build_meta"
+
+[tools.setuptools]
+packages = ["."]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"*" = ["src/rpps/**/*.pyx"]
 
 [project]
 name = "rpps"
 version = "0.1.0"
 description = "RF Parameter Processor Suite"
 dependencies = ["pyboiler-anonoei", "numpy", "matplotlib"]
-requires-python = ">=3.6"
+requires-python = ">=3.9"
 authors = [
     {name = "Anonoei", email="dev@anonoei.com"}
 ]
