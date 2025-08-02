@@ -1,8 +1,28 @@
+"""
+Window functions
+
+Generalized properties
+- (NB) Noise bandwidth,  / Spectral leakage
+- (SL) Scalloping loss / Amplitude accuracy
+- (FR) Frequency resolution
+Ratings, (Best, Good, Fair, Poor) [5,3,1,0]
+
+Window    | NB | SL | FR |
+--------- | -- | -- | -- |
+Blackman  |  5 |  3 |  1 | *NB
+Flattop   |  3 |  5 |  0 | *SL
+Gaussian  |  1 |  3 |  1 |
+Rectangle |  0 |  0 |  5 | *FR
+Hanning   |  3 |  1 |  3 |
+Hamming   |  1 |  1 |  3 |
+Kaiser    |  3 |  3 |  1 |
+"""
 import numpy as np
 
-def rect(n: int):
+def rect(n: int): # 1st-order B-spline / 0th power-of-sine
     return np.ones(n)
 
+# --- B-spline windows --- #
 # def _bspline(N, k, L=None):
 #     # w[n] = 1 - | (n-N/2)/(L/2)|, 0 <= n <= N
 #     if L is None:
@@ -11,25 +31,22 @@ def rect(n: int):
 #     w = 1 - abs( (n-N/2)/(L/2) )
 #     return w
 
-# --- B-spline windows --- #
-def triangle(N, Lp=0):
-    n = np.arange(0, N)
+def bartlett(N, Lp=0): # 2nd-order B-spline / triangular window
+    # 0 <= Lp <= 2
     L = N + Lp
+    n = np.arange(0, N)
     w = 1 - abs( (n-N/2)/(L/2) )
     return w
-def bartlett(N):
-    return triangle(N, Lp=0)
 
-def parzen(N):
+def parzen(N): # 4th-order B-spline
     L = N+1
-
-    w = np.zeros(N)
     n0 = np.arange(0, N) - N/2
     n1i = (0 <= np.abs(n0)) & (np.abs(n0) <= L/4)
     n2i = (L/4 < np.abs(n0)) & (np.abs(n0) <= L/2)
 
     n1 = n0[n1i]
     n2 = n0[n2i]
+    w = np.zeros(N)
     w[n1i] = 1-6*( n1/(L/2) )**2 * (1-np.abs(n1)/(L/2) )
     w[n2i] = 2 * ( 1-np.abs(n2)/(L/2) )**3
     return w
@@ -37,8 +54,7 @@ def parzen(N):
 # --- Polynomial windows --- #
 def welch(N):
     n = np.arange(0, N)
-    w = 1 - ( (n-(N/2)) / (N/2) )**2
-    return w
+    return 1 - ( (n-(N/2)) / (N/2) )**2
 
 def welch_2f(N):
     n = np.arange(0, N)
@@ -49,99 +65,84 @@ def welch_2f(N):
 # --- Raised-cosine windows --- #
 def _rc(N, a0):
     n = np.arange(0, N)
-    w = a0 - (1 - a0) * np.cos( (2*np.pi*n)/N )
-    return w
+    return a0 - (1 - a0) * np.cos( (2*np.pi*n)/N )
 
-def _rc_0p(N, a0):
+def _rc_0p(N, a0): # zero phase
     n = np.arange(0, N) - N/2
-    w = a0 + (1 - a0) * np.cos( (2*np.pi*n)/N )
-    return w
+    return a0 + (1-a0)*np.cos( (2*np.pi*n)/N )
 
-def hann(N):
+def hann(N): # eq to power-of-sine 2
     return _rc(N, 0.5)
 
-def hamming(N): # "Improved" hamming
+def hamming(N): # Optimal hamming
     return _rc(N, 0.53836) # a1 = 0.46164
 
-def hamming_orig(N):
+def hamming_orig(N): # Proposed hamming
     return _rc(N, 0.54) # a1 = 0.46
 
 # --- Cosine-sum windows --- #
-def _cs_nf(N, a0, *args):
-    f = [*args]
-    if len(f) == 0:
-        w = np.repeat(a0, N)
-    else:
-        n = np.arange(0, N)
-        w = a0
-        for i, a in enumerate(f):
-            num = (i*2)+2
-            a = a*np.cos( (num*np.pi*n)/N )
-            a = -a if i % 2 == 0 else a
-            # print(f"a{i+1}, {num}, sub {i%2==0}")
-            w += a
-    return w
+def _cs_2f(N, n, a0, a1):
+    return a0 - a1*np.cos( (2*np.pi*n)/N )
+def _cs_3f(N, n, a0, a1, a2):
+    return _cs_2f(N,n,a0,a1) + a2*np.cos( (4*np.pi*n)/N )
+def _cs_4f(N, n, a0, a1, a2, a3):
+    return _cs_3f(N,n,a0,a1,a2) - a3*np.cos( (6*np.pi*n)/N )
+def _cs_5f(N, n, a0, a1, a2, a3, a4):
+    return _cs_4f(N,n,a0,a1,a2,a3) + a4*np.cos( (8*np.pi*n)/N )
 
-# def _cs_3f(N, a0, a1, a2):
-#     n = np.arange(0, N)
-#     w = a0 - a1*np.cos( (2*np.pi*n)/N ) + a2*np.cos( (4*np.pi*n)/N )
-#     return w
-
-def blackman(N):
-    alpha = 0.16
-    a0 = (1-alpha)/2
-    a1 = (1/2)
-    a2 = alpha/2
-    return _cs_nf(N, a0, a1, a2)
+def blackman(N): # "not very serious proposal", alpha=0.16
+    a0 = 0.42 # (1-alpha)/2
+    a1 = 0.5  # (1/2)
+    a2 = 0.08 # alpha/2
+    return _cs_3f(N,np.arange(0, N),a0,a1,a2)
 
 def blackman_exact(N):
-    n = np.arange(0, N)
-    a0 = 0.42659 # 7938/18608
-    a1 = 0.49656 # 9240/18608
-    a2 = 0.076849 # 1430/18606
-    return _cs_nf(N, a0, a1, a2)
+    a0 = 0.426_59  # 7938/18608
+    a1 = 0.496_56  # 9240/18608
+    a2 = 0.076_849 # 1430/18606
+    return _cs_3f(N,np.arange(0, N),a0,a1,a2)
 
 def nuttall(N):
-    a0 = 0.355768
-    a1 = 0.487396
-    a2 = 0.144232
-    a3 = 0.012604
-    return _cs_nf(N, a0, a1, a2, a3)
+    a0 = 0.355_768
+    a1 = 0.487_396
+    a2 = 0.144_232
+    a3 = 0.012_604
+    return _cs_4f(N,np.arange(0, N),a0,a1,a2,a3)
 
 def blackman_nuttall(N):
-    a0 = 0.3635819
-    a1 = 0.4891775
-    a2 = 0.1365995
-    a3 = 0.0106411
-    return _cs_nf(N, a0, a1, a2, a3)
+    a0 = 0.363_581_9
+    a1 = 0.489_177_5
+    a2 = 0.136_599_5
+    a3 = 0.010_641_1
+    return _cs_4f(N,np.arange(0, N),a0,a1,a2,a3)
 
-def blackman_harris(N):
-    a0 = 0.35875
-    a1 = 0.48829
-    a2 = 0.14128
-    a3 = 0.01168
-    return _cs_nf(N, a0, a1, a2, a3)
+def blackman_harris(N): # Minimize sidelobes
+    a0 = 0.358_75
+    a1 = 0.488_29
+    a2 = 0.141_28
+    a3 = 0.011_68
+    return _cs_4f(N,np.arange(0, N),a0,a1,a2,a3)
 
-def flattop(N):
+def flattop(N): # Minimal scalloping loss
     a0 = 0.215_578_95
     a1 = 0.416_631_58
     a2 = 0.277_263_158
     a3 = 0.083_578_947
     a4 = 0.006_947_368
-    return _cs_nf(N, a0, a1, a2, a3, a4)
+    return _cs_5f(N,np.arange(0, N),a0,a1,a2,a3,a4)
 
 # --- Sine window --- #
 # even-integer power-of-sine
 def sine0(N):
-    return _cs_nf(N, 1)
-def sine2(N):
-    return _cs_nf(N, 0.5, 0.5)
+    return rect(N)
+def sine2(N): # eq. to Hann
+    return _cs_2f(N, np.arange(0, N), 0.5, 0.5)
 def sine4(N):
-    return _cs_nf(N, 0.375, 0.5, 0.125)
+    return _cs_3f(N, np.arange(0, N), 0.375, 0.5, 0.125)
 def sine6(N):
-    return _cs_nf(N, 0.3125, 0.46875, 0.1875, 0.03125)
+    return _cs_4f(N, np.arange(0, N), 0.3125, 0.46875, 0.1875, 0.03125)
 def sine8(N):
-    return _cs_nf(N, 0.2734375, 0.4375, 0.21875, 0.0625, 7.8125e-3)
+    return _cs_5f(N, np.arange(0, N), 0.2734375, 0.4375, 0.21875, 0.0625, 7.8125e-3)
 
 # --- Adjustable windows --- #
 def _gaus(x, N, L, sigma, p=2):
@@ -154,7 +155,7 @@ def gaussian(N, sigma=0.4):
     w = np.exp( -(1/2)*( (n-N/2)/(sigma*N/2) )**2)
     return w
 
-def acon_gaussian(N, sigma=0.1):
+def acon_gaussian(N, sigma=0.1): # Approximate Confined Gaussian
     n = np.arange(0, N)
     L = N+1
 
@@ -163,7 +164,7 @@ def acon_gaussian(N, sigma=0.1):
     w = _gausN(n, L, sigma) - (num/den)
     return w
 
-def gen_gaussian(N, sigma=0.2, p=2):
+def gen_gaussian(N, sigma=0.2, p=2): # Generalized Gaussian
     n = np.arange(0, N)
     w = np.exp(-( (n-N/2)/(sigma*N/2) )**p)
     return w

@@ -21,6 +21,7 @@ def main():
 
 
 def all(f, s):
+    N = len(s)
     fig, ax = plt.subplots(1,2)
     fig.tight_layout()
     ax[0].grid(True)
@@ -43,9 +44,9 @@ def all(f, s):
     exit()
 
 def ind(f, s):
+    N = len(s)
     # w = rp.filters.window.rect(N)
     # # B-Spline
-    # w = rp.filters.window.triangle(N)
     # w = rp.filters.winfow.bartlett(N)
     # w = rp.filters.window.parzen(N)
     # # Polynomial
@@ -60,7 +61,6 @@ def ind(f, s):
     # w = rp.filters.window.blackman_harris(N)
     # w = rp.filters.window.flattop(N)
     # # Adjustable
-    # w = rp.filters.window.gaussian(N, 0.3)
     # w = rp.filters.window.acon_gaussian(N, 0.1)
     # w = rp.filters.window.gen_gaussian(N, 0.2)
     # w = rp.filters.window.tukey(N, 0.5)
