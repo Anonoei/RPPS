@@ -7,7 +7,6 @@ def show():
     """Show plots"""
     plt.show()
 
-
 def figure() -> Figure:
     """Create a new figure"""
     return plt.figure()

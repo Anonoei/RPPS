@@ -2,62 +2,56 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from . import Meta
-
-
-def phasor(symbols, ax=None):
-    """Plot phasor diagram"""
+def time(ax, samps):
     if ax is None:
-        fig = plt.figure()
-        ax = fig.add_subplot()
-    ax.scatter(np.real(symbols), np.imag(symbols), s=5, c="b")
+        fig, ax = plt.subplots()
+
+    line_c = ax.plot(samps.real_sams.imag, c="g", label="IQ")
 
     ax.grid(True)
-    ax.set_title(f"Phasor Diagram")
+    ax.set_title("Time")
     ax.set_title("Time Domain", loc="left")
-    ax.set_title(f"{len(symbols)} symbols", loc="right")
-    ax.set_xlabel("I")
-    ax.set_ylabel("Q")
-    ax.set_xlim(1.2, -1.2)
-    ax.set_ylim(1.2, -1.2)
-    ax.axhline(y=0, color="k")
-    ax.axvline(x=0, color="k")
-    ax.set_aspect("equal", adjustable="box")
-    return fig, ax
-
-
-def quadrature(symbols, ax=None):
-    """Plot I and Q"""
-    if ax is None:
-        fig = plt.figure()
-        ax = fig.add_subplot()
-
-    real = np.real(symbols)
-    imag = np.imag(symbols)
-
-    base_i = np.cos(np.arange(len(symbols))) * 0.2
-    base_q = np.sin(np.arange(len(symbols))) * 0.2
-
-    ax.plot(base_i + base_q, "-", label="Carrier")
-    ax.plot(real + imag, ".-", label="Constructed")
-
-    plt.grid(True)
-    ax.set_title("Quadrature Signal")
-    ax.set_title("Time Domain", loc="left")
-    ax.set_title(f"{len(symbols)} symbols", loc="right")
+    ax.set_title(f"{len(samps)} samples", loc="right")
     ax.set_xlabel("Time")
     ax.set_ylabel("Amplitude")
-    ax.set_ylim(-5, 5)
-    plt.legend()
-    return fig, ax
+    return line_c
 
-def complex(symbols, ax=None):
+def timeI(ax, samps):
+    if ax is None:
+        fig, ax = plt.subplots()
+
+    line_i, = ax.plot(samps.real, ".-", c="r", label="I")
+    return line_i
+
+def timeQ(ax, samps):
+    if ax is None:
+        fig, ax = plt.subplots()
+
+    line_q, = ax.plot(samps.imag, ".-", c="b", label="Q")
+    return line_q
+
+def timeIQ(ax, samps):
+    if ax is None:
+        fig, ax = plt.subplots()
+
+    line_i = timeI(ax, samps)
+    line_q = timeQ(ax, samps)
+
+    ax.grid(True)
+    ax.set_title("Time IQ")
+    ax.set_title("Time Domain", loc="left")
+    ax.set_title(f"{len(samps)} samples", loc="right")
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Amplitude")
+    return line_i, line_q
+
+def time(samps, ax=None):
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot(projection="3d")
 
-    I = np.real(symbols)
-    Q = np.imag(symbols)
+    I = np.real(samps)
+    Q = np.imag(samps)
 
     T = np.arange(len(I))
     E = np.zeros(len(I))
@@ -80,13 +74,13 @@ def complex(symbols, ax=None):
     plt.legend()
     return fig, ax
 
-def ot_complex(symbols, ax=None):
+def ot_complex(samps, ax=None):
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot(projection="3d")
 
-    I = np.real(symbols)
-    Q = np.imag(symbols)
+    I = np.real(samps)
+    Q = np.imag(samps)
 
     T = np.arange(len(I))
     E = np.zeros(len(I))
