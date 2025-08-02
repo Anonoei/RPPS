@@ -1,9 +1,13 @@
 __pycache__/
-dist/
+.pytest_cache/
 src/*
 !src/rpps
-.pytest_cache/
 
+
+dist/
+build/
+src/rpps/**/*.so
+src/rpps/**/*.pyd
 
 logs/
 data/
