@@ -1,16 +1,17 @@
-from . import utils
+from . import matrix
 
 import numpy as np
 import matplotlib.colors as colors
 
 from . import colors
 
-def Persistent(ax, psds, x=1001, y=60, style="dot"):
+def Persistent(ax, psds, x=1001, y=60, style="vec"):
     if style == "dot":
-        # mat, (amp_min, amp_max) = utils.matrix_dot(x, y, psds)
-        mat, (amp_min, amp_max) = utils.matrix_dot(x, y, psds)
-    else:
-        mat, (amp_min, amp_max) = utils.matrix_vector(x, y, psds)
+        mat, (amp_min, amp_max) = matrix.dot(x, y, psds)
+    elif style == "vec":
+        mat, (amp_min, amp_max) = matrix.vec(x, y, psds)
+    elif style == "svec":
+        mat, (amp_min, amp_max) = matrix.svec(x, y, psds)
 
     x_mul = [0.0,0.25,0.5,0.75,1.0]
     y_mul = [0.0,0.2,0.4,0.6,0.8,1.0]
