@@ -33,10 +33,11 @@ def rect(n: int): # 1st-order B-spline / 0th power-of-sine
 
 def bartlett(N, Lp=0): # 2nd-order B-spline / triangular window
     # 0 <= Lp <= 2
-    L = N + Lp
-    n = np.arange(0, N)
-    w = 1 - abs( (n-N/2)/(L/2) )
-    return w
+    # L = N + Lp
+    # n = np.arange(0, N)
+    # w = 1 - abs( (n-N/2)/(L/2) )
+    # return w
+    return np.bartlett(N)
 
 def parzen(N): # 4th-order B-spline
     L = N+1
@@ -72,13 +73,15 @@ def _rc_0p(N, a0): # zero phase
     return a0 + (1-a0)*np.cos( (2*np.pi*n)/N )
 
 def hann(N): # eq to power-of-sine 2
-    return _rc(N, 0.5)
+    # return _rc(N, 0.5)
+    return np.hanning(N)
 
 def hamming(N): # Optimal hamming
     return _rc(N, 0.53836) # a1 = 0.46164
 
 def hamming_orig(N): # Proposed hamming
-    return _rc(N, 0.54) # a1 = 0.46
+    # return _rc(N, 0.54) # a1 = 0.46
+    return np.hamming(N)
 
 # --- Cosine-sum windows --- #
 def _cs_2f(N, n, a0, a1):
@@ -91,10 +94,11 @@ def _cs_5f(N, n, a0, a1, a2, a3, a4):
     return _cs_4f(N,n,a0,a1,a2,a3) + a4*np.cos( (8*np.pi*n)/N )
 
 def blackman(N): # "not very serious proposal", alpha=0.16
-    a0 = 0.42 # (1-alpha)/2
-    a1 = 0.5  # (1/2)
-    a2 = 0.08 # alpha/2
-    return _cs_3f(N,np.arange(0, N),a0,a1,a2)
+    # a0 = 0.42 # (1-alpha)/2
+    # a1 = 0.5  # (1/2)
+    # a2 = 0.08 # alpha/2
+    # return _cs_3f(N,np.arange(0, N),a0,a1,a2)
+    return np.blackman(N)
 
 def blackman_exact(N):
     a0 = 0.426_59  # 7938/18608
@@ -199,9 +203,8 @@ def planck_taper(N, e=0.25):
     w = np.concat((w, w[::-1]))
     return w
 
-# def kaiser(N, a): # TODO
-#     n = np.arange(0, N)
-#     w = I*(np.pi*a*np.sqrt(1-((2*n)/N-1)**2))
+def kaiser(N, a):
+    return np.kaiser(N, a)
 
 def exponential(N, D=8.69):
     n = np.arange(0, N)
