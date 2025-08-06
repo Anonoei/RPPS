@@ -2,14 +2,19 @@ from . import matrix
 
 import numpy as np
 import matplotlib.colors as colors
+import matplotlib as mpl
 
 from . import colors
 
-def Persistent(ax, psds, x=1001, y=60, style="vec"):
+def Persistent(ax, psds, x=1001, y=60, style="cvec"):
     if style == "dot":
         mat, (amp_min, amp_max) = matrix.dot(x, y, psds)
+    elif style == "cdot":
+        mat, (amp_min, amp_max) = matrix.cdot(x, y, psds)
     elif style == "vec":
         mat, (amp_min, amp_max) = matrix.vec(x, y, psds)
+    elif style == "cvec":
+        mat, (amp_min, amp_max) = matrix.cvec(x, y, psds)
     elif style == "svec":
         mat, (amp_min, amp_max) = matrix.svec(x, y, psds)
 
@@ -25,14 +30,18 @@ def Persistent(ax, psds, x=1001, y=60, style="vec"):
 
     mat = mat / np.max(mat)
 
-    im = ax.imshow(mat, cmap=colors.hot,
-        origin="lower", vmin=0, vmax=1,
-        aspect="auto",
-        interpolation="none", resample=False,
-        animated=True
-    )
-    # ax.figure.colorbar(im, pad=0.01)
-    ax.set_xticks(x_tick, x_text)
-    ax.set_yticks(y_tick, y_text)
-    ax.grid(True, alpha=0.2)
+    if isinstance(ax, mpl.image.AxesImage):
+        ax.set_data(mat) # Only update the data if able
+        im = ax
+    else:
+        im = ax.imshow(mat, cmap=colors.hot,
+            origin="lower", vmin=0, vmax=1,
+            aspect="auto",
+            interpolation="nearest", resample=False,
+            animated=True, rasterized=True
+        )
+        ax.figure.colorbar(im, pad=0.01)
+        ax.set_xticks(x_tick, x_text)
+        ax.set_yticks(y_tick, y_text)
+        ax.grid(True, alpha=0.2)
     return im
