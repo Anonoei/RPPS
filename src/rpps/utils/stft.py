@@ -1,6 +1,6 @@
 import numpy as np
 
-from .psd import psd as _psd
+from . import psd as _psd
 
 def stft(samples, nfft, overlap=0.8, win_func=np.hamming):
     overlap = 1-overlap
@@ -24,10 +24,12 @@ def stft(samples, nfft, overlap=0.8, win_func=np.hamming):
         out[:,i] = np.fft.fft(segment*win_func(nfft))
     return out
 
-def psd(samples, Fs=1):
+def psd(samples, Fs=1, vbw_hz=None):
     out = np.zeros_like(samples, dtype=np.float32)
     for i in range(samples.shape[1]):
         y = np.abs(samples[:,i])**2 / (len(samples)*Fs)
         y = np.fft.fftshift(10.0*np.log10(y))
+        if vbw_hz is not None:
+            y = _psd.vbw(y, Fs, vbw_hz)
         out[:,i] = y
     return out

@@ -13,8 +13,3 @@ def fft(samps):
 
 def freq_axis(count, sr, cf=0):
     return np.arange(-sr/2.0, sr/2.0, sr/count) + cf
-
-def vbw(samps, sr, vbw):
-    smooth = vbw/(sr / len(samps))
-    sigma = filters.gaussian.fwhm2sigma(smooth)
-    return filters.gaussian.gaussian(samps, sigma)
