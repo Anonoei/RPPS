@@ -1,12 +1,11 @@
 """Modulation parent classes"""
-import numpy as np
+from abc import abstractmethod
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pyboiler.logger import Logger, Level
+from pyboiler.logger import Logger
 
-from . import Meta
 from . import base
 from . import dobject
 
@@ -21,9 +20,38 @@ class Modulation(base.rpps.Pipe):
     points = Points([])
     maps = Maps([])
 
-    def __init__(self, mapping = None):  # type: ignore
+    def __init__(self):  # type: ignore
         self.log = Logger().Child("Modulation").Child(type(self).name)
 
+    def demodulate(self, syms: dobject.IQObject) -> dobject.ModData:
+        """Convert IQ samples to bits"""
+        raise NotImplementedError()
+
+    def modulate(self, dobj: dobject.BitObject) -> dobject.IQData:
+        """Convert bits to IQ samples"""
+        raise NotImplementedError()
+
+    def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
+        """Draw constellation points on viz"""
+        raise NotImplementedError()
+
+    @staticmethod
+    def load(name: str, obj: dict):
+        """Load modulation from json"""
+        raise NotImplementedError()
+
+    def __rmul__(self, other):
+        return self.modulate(dobject.ensure_bit(other))
+
+    def __rtruediv__(self, other):
+        return self.demodulate(other)
+
+
+class PSK(Modulation):
+    """Phase-shift keying parent"""
+
+    def __init__(self, mapping = None):
+        super().__init__()
         self.constellation = Constellation(type(self).points, log=self.log)
 
         if mapping is not None:
@@ -37,46 +65,8 @@ class Modulation(base.rpps.Pipe):
         """Get available maps"""
         return self.maps
 
-    def init_meta(self, meta):
-        """Initialize modulation meta"""
-        if self.constellation.mapping is None:
-            raise Exception("A mapping must be defined before modulating")
-        from .meta import ModMeta
-        meta.mod = ModMeta()
-        meta.mod.fields["Name"] = type(self).name[:-3]
-        meta.mod.fields["Type"] = type(self).name[-3:]
-        meta.mod.fields["Map"] = self.constellation.mapping.str()
-
-    def demodulate(self, syms: dobject.SymObject) -> dobject.ModData:
-        """Convert IQ samples to bits"""
-        ...
-
-    def modulate(self, dobj: dobject.BitObject) -> dobject.SymData:
-        """Convert bits to IQ samples"""
-        ...
-
-    def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
-        """Draw constellation points on viz"""
-        ...
-
-    @staticmethod
-    def load(name, obj):
-        """Load modulation from json"""
-        ...
-
-    def __rmatmul__(self, other):
-        if isinstance(other, dobject.SymObject):
-            return self.demodulate(other)
-        elif isinstance(other, dobject.DataObject):
-            return self.modulate(dobject.ensure_bit(other))
-        raise TypeError(f"Cannot perform {type(self).__name__} on {type(other)}")
-
-
-class PSK(Modulation):
-    """Phase-shift keying parent"""
-
     def __str__(self):
-        return f"{type(self).__name__}:{self.constellation.mapping.str()})"
+        return f"{type(self).__name__}:{self.constellation.mapping.str()}"
 
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         if ax is None:
@@ -102,13 +92,12 @@ class PSK(Modulation):
             y = radius * np.sin(angle)
             ax.plot(x, y, "g")
 
-    def demodulate(self, syms: dobject.SymData):
-        data = self.constellation.demodulate(syms)
+    def demodulate(self, samps):
+        data = self.constellation.demodulate(samps)
         return data
 
-    def modulate(self, dobj: dobject.BitObject):
+    def modulate(self, dobj):
         syms = self.constellation.modulate(dobj)
-        self.init_meta(dobj.meta)
         return syms
 
     @staticmethod
@@ -118,7 +107,13 @@ class PSK(Modulation):
             for num in comp:
                 c.append(num["real"] + num["imag"] * 1j)
             return c
-        pnts = load_complex(obj["Points"])
+        def load_magpha(comp):
+            c = []
+            for num in comp:
+                c.append(num["mag"] * np.exp(1j * np.deg2rad(num["pha"])))
+            return c
+
+        pnts = load_magpha(obj["Points"])
 
         maps = [Mapping(m["map"], m["comment"]) for m in obj["Maps"]]
 
@@ -136,6 +131,21 @@ class ASK(Modulation):
 
 class FSK(Modulation):
     """Frequency-shift keying parent"""
+
+    def __str__(self):
+        return f"{type(self).__name__}:{self.constellation.mapping.str()}"
+
+    def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
+        ...
+
+    def demodulate(self, samps):
+        # see https://wiki.gnuradio.org/index.php/Quadrature_Demod
+        samps = 0.5 * np.angle(samps[0:-1] * np.conj(samps[1:]))
+        # return dobject.ModData(samps)
+        return samps
+
+    def modulate(self, dobj):
+        raise NotImplementedError()
 
 
 class APSK(Modulation):

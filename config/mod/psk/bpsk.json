@@ -1,7 +1,8 @@
 {
+  "base": "PSK",
   "Points": [
-    { "real": 1, "imag": 0 },
-    { "real": -1, "imag": 0 }
+    { "mag": 1, "pha": 0 },
+    { "mag": 1, "pha": 180 }
   ],
   "Maps": [
     { "map": [0, 1], "comment": "R000" },

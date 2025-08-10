@@ -1,28 +1,25 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "numpy"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "rpps"
-version = "0.1.0"
+version = "0.2.0"
 description = "RF Parameter Processor Suite"
-dependencies = ["pyboiler-anonoei", "numpy", "matplotlib"]
-requires-python = ">=3.6"
-authors = [
-    {name = "Anonoei", email="dev@anonoei.com"}
-]
 readme = "README.md"
-keywords = ["anonoei", "dsp", "sdr"]
+requires-python = ">=3.8"
+authors = [
+    {name = "Anonoei", email="to+dev@an0.cx"}
+]
 classifiers = [
     "Development Status :: 4 - Beta",
-
     "Intended Audience :: Developers",
-
-    "License :: OSI Approved :: MIT License",
 
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
+keywords = ["anonoei", "dsp", "sdr"]
+dependencies = ["pyboiler-anonoei", "numpy", "matplotlib"]
 
 [project.urls]
 Homepage = "https://github.com/anonoei/RPPS"
@@ -35,7 +32,7 @@ Source = "https://github.com/anonoei/RPPS"
 dev = ["twine", "build", "bumpver", "pytest", "pdoc3"]
 
 [tool.bumpver]
-current_version = "0.1.0"
+current_version = "0.2.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message = "bump version {old_version} -> {new_version}"
 tag_message = "{new_version}"

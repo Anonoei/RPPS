@@ -3,19 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
-<meta name="generator" content="pdoc3 0.11.1">
+<meta name="generator" content="pdoc3 0.11.6">
 <title>rpps.mod.constellation API documentation</title>
 <meta name="description" content="IQ/Constellation implementation">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
-<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:1.5em;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:2em 0 .50em 0}h3{font-size:1.4em;margin:1.6em 0 .7em 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .2s ease-in-out}a:visited{color:#503}a:hover{color:#b62}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900;font-weight:bold}pre code{font-size:.8em;line-height:1.4em;padding:1em;display:block}code{background:#f3f3f3;font-family:"DejaVu Sans Mono",monospace;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em 1em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:1.5em;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:2em 0 .50em 0}h3{font-size:1.4em;margin:1.6em 0 .7em 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .2s ease-in-out}a:visited{color:#503}a:hover{color:#b62}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900;font-weight:bold}pre code{font-size:.8em;line-height:1.4em;padding:1em;display:block}code{background:#f3f3f3;font-family:"DejaVu Sans Mono",monospace;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source > summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible;min-width:max-content}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em 1em;margin:1em 0}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
 <style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul ul{padding-left:1em}.toc > ul > li{margin-top:.5em}}</style>
 <style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha512-D9gUyxqja7hBtkWpPWGt9wfbfaMGVt9gnyCvYa+jojwwPHLCzUm5i8rpk7vD7wNee9bA35eYIjobYPaQuKS1MQ==" crossorigin></script>
 <script>window.addEventListener('DOMContentLoaded', () => {
 hljs.configure({languages: ['bash', 'css', 'diff', 'graphql', 'ini', 'javascript', 'json', 'plaintext', 'python', 'python-repl', 'rust', 'shell', 'sql', 'typescript', 'xml', 'yaml']});
 hljs.highlightAll();
+/* Collapse source docstrings */
+setTimeout(() => {
+[...document.querySelectorAll('.hljs.language-python > .hljs-string')]
+.filter(el => el.innerHTML.length > 200 && ['"""', "'''"].includes(el.innerHTML.substring(0, 3)))
+.forEach(el => {
+let d = document.createElement('details');
+d.classList.add('hljs-string');
+d.innerHTML = '<summary>"""</summary>' + el.innerHTML.substring(3);
+el.replaceWith(d);
+});
+}, 100);
 })</script>
 </head>
 <body>
@@ -38,10 +49,10 @@ hljs.highlightAll();
 <dl>
 <dt id="rpps.mod.constellation.Constellation"><code class="flex name class">
 <span>class <span class="ident">Constellation</span></span>
-<span>(</span><span>points: <a title="rpps.mod.constellation.Points" href="#rpps.mod.constellation.Points">Points</a>, mapping=None, log=&lt;pyboiler.logger._Logger object&gt;)</span>
+<span>(</span><span>points: <a title="rpps.mod.constellation.Points" href="#rpps.mod.constellation.Points">Points</a>,<br>mapping: <a title="rpps.mod.constellation.Mapping" href="#rpps.mod.constellation.Mapping">Mapping</a> = (None,
+Normal),<br>log=&lt;pyboiler.logger._Logger object&gt;)</span>
 </code></dt>
 <dd>
-<div class="desc"><p>Constellation implementation</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
@@ -50,7 +61,7 @@ hljs.highlightAll();
     &#34;&#34;&#34;Constellation implementation&#34;&#34;&#34;
     __slots__ = (&#34;log&#34;, &#34;_points&#34;, &#34;_mapping&#34;, &#34;_bps&#34;)
 
-    def __init__(self, points: Points, mapping = None, log=Logger().Child(&#34;Modulation&#34;)):
+    def __init__(self, points: Points, mapping: Mapping = Mapping(), log=Logger().Child(&#34;Modulation&#34;)):
         self.log = log.Child(&#34;Constellation&#34;, Level.WARN)
         if not isinstance(points, Points):
             points = Points(points)
@@ -61,7 +72,7 @@ hljs.highlightAll();
         self._bps = int(math.log2(len(self.points))) # Bits per symbol
 
     def __str__(self) -&gt; str:
-        return f&#34;Points: {self._points}, Map: {self._mapping}&#34;
+        return f&#34;Points: {self._points}, Map: {self._mapping}, {self._mapping.comment}&#34;
 
     def __repr__(self) -&gt; str:
         return f&#34;&lt;Constellation: {self._bps}&gt;&#34;
@@ -74,9 +85,27 @@ hljs.highlightAll();
         &#34;&#34;&#34;Get constellation points&#34;&#34;&#34;
         return self._points
 
+    @property
+    def inverted(self):
+        &#34;&#34;&#34; Returns if constellation is spectral inverted&#34;&#34;&#34;
+        return self._mapping.inverted
+    # { &#34;real&#34;: 0.7, &#34;imag&#34;: -0.7 },
+    # { &#34;real&#34;: -0.7, &#34;imag&#34;: -0.7 },
+    # { &#34;real&#34;: 0.7, &#34;imag&#34;: 0.7 },
+    # { &#34;real&#34;: -0.7, &#34;imag&#34;: 0.7 }
+    def invert(self):
+        &#34;&#34;&#34;Spectral invert the constellation&#34;&#34;&#34;
+        self._mapping.inverted = not self._mapping.inverted
+        rotpoints = self._points.imag() + self._points.real() * 1j
+        swaps = np.where(self.points.arr == rotpoints)[0]
+        map1 = swaps[0:len(swaps)//2]
+        map2 = swaps[len(swaps)//2:]
+        for m1, m2 in zip(map1, map2):
+            self._mapping.arr[[m1,m2]] = self._mapping.arr[[m2,m1]]
+
     @points.setter
     def points(self, points):
-        self._points = np.array(points)
+        self._points = Points(np.array(points))
         self._bps = len(self.points) // 2
 
     @property
@@ -96,25 +125,15 @@ hljs.highlightAll();
     def modulate(self, dobj: dobject.BitObject, noise: bool = True):
         &#34;&#34;&#34;Modulate BitObject to IQ symbols&#34;&#34;&#34;
         indexes = self.index(dobj)
-        points = self.map(indexes, dobj.meta)
-        symbols = self.to_symbols(points, dobj.meta, noise=noise)
+        points = self.map(indexes)
+        symbols = self.to_symbols(points, noise=noise)
         return symbols
 
-    def demodulate(self, syms: dobject.SymData):
+    def demodulate(self, syms: dobject.IQObject):
         &#34;&#34;&#34;Demodulate IQ symbols to ModData&#34;&#34;&#34;
-        # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
-        distances = np.zeros((len(syms.data), len(self.points)), dtype=np.float16)
-
-        distances[:] = np.abs(self.points.arr - syms.data.reshape(-1, 1))
-        distances[:] = 1 - np.round(distances / distances.max(axis=0), decimals=2)
-
-        bits = np.array([bin(n)[2:].zfill(self._bps) for n in self.mapping.arr])
-        codewords = np.zeros((len(self.points), self._bps), dtype=int)
-
-        for i, b in enumerate(bits):
-            for j, c in enumerate(b):
-                codewords[i, j] = True if c == &#39;1&#39; else False
-
+        syms.data /= np.max(syms.data) # normalize
+        distances = self.from_symbols(syms)
+        codewords = self.codewords()
         mod = dobject.ModData()
         mod.soft = base.SoftDecision(codewords, distances)
 
@@ -150,7 +169,7 @@ hljs.highlightAll();
         self.log.trace(f&#34;Indexes are {indexes}&#34;)
         return indexes
 
-    def map(self, indexes, meta):
+    def map(self, indexes):
         &#34;&#34;&#34;Convert indexes to self.mapping values&#34;&#34;&#34;
         self.log.trace(f&#34;Using mapping: {self.mapping}&#34;)
         points = []
@@ -163,7 +182,7 @@ hljs.highlightAll();
         self.log.trace(f&#34;Points are {points}&#34;)
         return points
 
-    def to_symbols(self, points, meta, noise: bool = False):
+    def to_symbols(self, points, noise: bool = False):
         &#34;&#34;&#34;Convert mapping values to symbols&#34;&#34;&#34;
         points = np.array(points)
         symbols = self.points[points]
@@ -174,18 +193,18 @@ hljs.highlightAll();
             symbols = symbols + n * np.sqrt(0.01) # noise power of 0.01
 
         symbols = symbols.astype(np.complex64)
-        meta.fmt = type(symbols[0]).__name__
         # self.log.trace(f&#34;Symbols are: {symbols}&#34;)
-        return dobject.SymData(symbols)
+        return dobject.IQData(symbols)
 
     ##############################
     #  Demodulate
     ##############################
 
-    def from_symbols(self, symbols: dobject.SymObject):
+    def from_symbols(self, symbols: dobject.IQObject):
         &#34;&#34;&#34;Convert symbols to soft decisions&#34;&#34;&#34;
         # self.log.trace(f&#34;Symbols are:\n{symbols}&#34;)
         # codewords = np.zeros((len(self.points), self._bps), dtype=bool)
+        # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
         distances = np.zeros((len(symbols), len(self.points)), dtype=np.float16)
 
         distances[:] = np.abs(self.points.arr - symbols.data.reshape(-1, 1))
@@ -220,13 +239,22 @@ hljs.highlightAll();
 
         self.log.trace(f&#34;Data bits are {data} / {len(data)}&#34;)
 
-        return data</code></pre>
+        return data
+
+    def codewords(self):
+        bits = np.array([bin(n)[2:].zfill(self._bps) for n in self.mapping.arr])
+        codewords = np.zeros((len(self.points), self._bps), dtype=int)
+
+        for i, b in enumerate(bits):
+            for j, c in enumerate(b):
+                codewords[i, j] = True if c == &#39;1&#39; else False
+        return codewords</code></pre>
 </details>
+<div class="desc"><p>Constellation implementation</p></div>
 <h3>Instance variables</h3>
 <dl>
 <dt id="rpps.mod.constellation.Constellation.bits_per_symbol"><code class="name">prop <span class="ident">bits_per_symbol</span></code></dt>
 <dd>
-<div class="desc"><p>Get bits per symbol</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
@@ -236,14 +264,224 @@ def bits_per_symbol(self):
     &#34;&#34;&#34;Get bits per symbol&#34;&#34;&#34;
     return self._bps</code></pre>
 </details>
+<div class="desc"><p>Get bits per symbol</p></div>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.inverted"><code class="name">prop <span class="ident">inverted</span></code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def inverted(self):
+    &#34;&#34;&#34; Returns if constellation is spectral inverted&#34;&#34;&#34;
+    return self._mapping.inverted</code></pre>
+</details>
+<div class="desc"><p>Returns if constellation is spectral inverted</p></div>
 </dd>
 <dt id="rpps.mod.constellation.Constellation.log"><code class="name">var <span class="ident">log</span></code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Constellation:
+    &#34;&#34;&#34;Constellation implementation&#34;&#34;&#34;
+    __slots__ = (&#34;log&#34;, &#34;_points&#34;, &#34;_mapping&#34;, &#34;_bps&#34;)
+
+    def __init__(self, points: Points, mapping: Mapping = Mapping(), log=Logger().Child(&#34;Modulation&#34;)):
+        self.log = log.Child(&#34;Constellation&#34;, Level.WARN)
+        if not isinstance(points, Points):
+            points = Points(points)
+        self._points = points
+
+        self._mapping = mapping
+
+        self._bps = int(math.log2(len(self.points))) # Bits per symbol
+
+    def __str__(self) -&gt; str:
+        return f&#34;Points: {self._points}, Map: {self._mapping}, {self._mapping.comment}&#34;
+
+    def __repr__(self) -&gt; str:
+        return f&#34;&lt;Constellation: {self._bps}&gt;&#34;
+
+    def __len__(self) -&gt; int:
+        return len(self._points)
+
+    @property
+    def points(self):
+        &#34;&#34;&#34;Get constellation points&#34;&#34;&#34;
+        return self._points
+
+    @property
+    def inverted(self):
+        &#34;&#34;&#34; Returns if constellation is spectral inverted&#34;&#34;&#34;
+        return self._mapping.inverted
+    # { &#34;real&#34;: 0.7, &#34;imag&#34;: -0.7 },
+    # { &#34;real&#34;: -0.7, &#34;imag&#34;: -0.7 },
+    # { &#34;real&#34;: 0.7, &#34;imag&#34;: 0.7 },
+    # { &#34;real&#34;: -0.7, &#34;imag&#34;: 0.7 }
+    def invert(self):
+        &#34;&#34;&#34;Spectral invert the constellation&#34;&#34;&#34;
+        self._mapping.inverted = not self._mapping.inverted
+        rotpoints = self._points.imag() + self._points.real() * 1j
+        swaps = np.where(self.points.arr == rotpoints)[0]
+        map1 = swaps[0:len(swaps)//2]
+        map2 = swaps[len(swaps)//2:]
+        for m1, m2 in zip(map1, map2):
+            self._mapping.arr[[m1,m2]] = self._mapping.arr[[m2,m1]]
+
+    @points.setter
+    def points(self, points):
+        self._points = Points(np.array(points))
+        self._bps = len(self.points) // 2
+
+    @property
+    def mapping(self):
+        &#34;&#34;&#34;Get constellation mapping&#34;&#34;&#34;
+        return self._mapping
+
+    @mapping.setter
+    def mapping(self, map: Mapping):
+        self._mapping = map
+
+    @property
+    def bits_per_symbol(self):
+        &#34;&#34;&#34;Get bits per symbol&#34;&#34;&#34;
+        return self._bps
+
+    def modulate(self, dobj: dobject.BitObject, noise: bool = True):
+        &#34;&#34;&#34;Modulate BitObject to IQ symbols&#34;&#34;&#34;
+        indexes = self.index(dobj)
+        points = self.map(indexes)
+        symbols = self.to_symbols(points, noise=noise)
+        return symbols
+
+    def demodulate(self, syms: dobject.IQObject):
+        &#34;&#34;&#34;Demodulate IQ symbols to ModData&#34;&#34;&#34;
+        syms.data /= np.max(syms.data) # normalize
+        distances = self.from_symbols(syms)
+        codewords = self.codewords()
+        mod = dobject.ModData()
+        mod.soft = base.SoftDecision(codewords, distances)
+
+        return mod
+
+    ##############################
+    #  Modulate
+    ##############################
+
+    def index(self, dobj: dobject.BitObject):
+        &#34;&#34;&#34;Convert bits to indexes&#34;&#34;&#34;
+        self.log.trace(f&#34;Data is {dobj.data}&#34;)
+        self.log.trace(f&#34;Bits per symbol: {self._bps} / {len(dobj)}&#34;)
+
+        padding = len(dobj) % self._bps
+        if not padding == 0:
+
+            for _ in range(0, (self._bps - padding)):
+                dobj.append(0)
+            self.log.trace(f&#34;Padded by {self._bps - padding}: {len(dobj)}&#34;)
+        num_symbols = len(dobj) // self._bps
+
+        self.log.trace(f&#34;Data requires {num_symbols} indexes to encode&#34;)
+        self.log.trace(f&#34;Data is: {dobj}&#34;)
+
+        indexes = np.split(dobj.data, num_symbols)
+        indexes = [int(&#34;&#34;.join(data.astype(int).astype(str)), 2) for data in indexes]
+        # indexes = []
+        # for i in range(0, len(data.bin), self._bps):
+        #    bit_int = int(data.bin[i:i+self._bps], 2)
+        #    indexes.append(int(bit_int))
+
+        self.log.trace(f&#34;Indexes are {indexes}&#34;)
+        return indexes
+
+    def map(self, indexes):
+        &#34;&#34;&#34;Convert indexes to self.mapping values&#34;&#34;&#34;
+        self.log.trace(f&#34;Using mapping: {self.mapping}&#34;)
+        points = []
+        for idx in indexes:
+            points.append(
+                int(
+                    np.where(self.mapping.arr == idx)[0][0]
+                )
+            )
+        self.log.trace(f&#34;Points are {points}&#34;)
+        return points
+
+    def to_symbols(self, points, noise: bool = False):
+        &#34;&#34;&#34;Convert mapping values to symbols&#34;&#34;&#34;
+        points = np.array(points)
+        symbols = self.points[points]
+        self.log.trace(f&#34;Symbols are:\n{symbols} / {len(symbols)}&#34;)
+        # Add noise
+        if noise:
+            n = (np.random.randn(len(symbols)) + 1j*np.random.randn(len(symbols)))/np.sqrt(2) # AWGN with unity power
+            symbols = symbols + n * np.sqrt(0.01) # noise power of 0.01
+
+        symbols = symbols.astype(np.complex64)
+        # self.log.trace(f&#34;Symbols are: {symbols}&#34;)
+        return dobject.IQData(symbols)
+
+    ##############################
+    #  Demodulate
+    ##############################
+
+    def from_symbols(self, symbols: dobject.IQObject):
+        &#34;&#34;&#34;Convert symbols to soft decisions&#34;&#34;&#34;
+        # self.log.trace(f&#34;Symbols are:\n{symbols}&#34;)
+        # codewords = np.zeros((len(self.points), self._bps), dtype=bool)
+        # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
+        distances = np.zeros((len(symbols), len(self.points)), dtype=np.float16)
+
+        distances[:] = np.abs(self.points.arr - symbols.data.reshape(-1, 1))
+        distances[:] = 1 - np.round(distances / distances.max(axis=0), decimals=2)
+        self.log.trace(f&#34;Points are {distances} / Demodulated {len(distances)} symbols&#34;)
+        return distances
+
+    def unmap(self, points, meta):
+        &#34;&#34;&#34;Convert points to map indexes&#34;&#34;&#34;
+        self.log.trace(f&#34;Using mapping: {self.mapping}&#34;)
+        indexes = []
+        for pnt in points:
+            indexes.append(int(self.mapping[pnt]))
+        self.log.trace(f&#34;Indexes are {indexes}&#34;)
+        return indexes
+
+    def unindex(self, indexes, meta):
+        &#34;&#34;&#34;Convert indexes to bits&#34;&#34;&#34;
+        self.log.trace(f&#34;Bits per symbol: {self._bps}&#34;)
+        bits = &#34;&#34;
+        for ind in indexes:
+            bits += bin(ind)[2:].zfill(self._bps)
+
+        padding = len(bits) % 8
+        if not padding == 0:
+            self.log.trace(f&#34;Unpadding by {padding}&#34;)
+            bits = bits[:-padding]
+
+        data = dobject.ModData(np.array([int(bit) for bit in bits], dtype=bool))
+
+        # data = Stream.from_bin(bits, len(bits))
+
+        self.log.trace(f&#34;Data bits are {data} / {len(data)}&#34;)
+
+        return data
+
+    def codewords(self):
+        bits = np.array([bin(n)[2:].zfill(self._bps) for n in self.mapping.arr])
+        codewords = np.zeros((len(self.points), self._bps), dtype=int)
+
+        for i, b in enumerate(bits):
+            for j, c in enumerate(b):
+                codewords[i, j] = True if c == &#39;1&#39; else False
+        return codewords</code></pre>
+</details>
 <div class="desc"></div>
 </dd>
 <dt id="rpps.mod.constellation.Constellation.mapping"><code class="name">prop <span class="ident">mapping</span></code></dt>
 <dd>
-<div class="desc"><p>Get constellation mapping</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
@@ -253,10 +491,10 @@ def mapping(self):
     &#34;&#34;&#34;Get constellation mapping&#34;&#34;&#34;
     return self._mapping</code></pre>
 </details>
+<div class="desc"><p>Get constellation mapping</p></div>
 </dd>
 <dt id="rpps.mod.constellation.Constellation.points"><code class="name">prop <span class="ident">points</span></code></dt>
 <dd>
-<div class="desc"><p>Get constellation points</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
@@ -266,56 +504,239 @@ def points(self):
     &#34;&#34;&#34;Get constellation points&#34;&#34;&#34;
     return self._points</code></pre>
 </details>
+<div class="desc"><p>Get constellation points</p></div>
 </dd>
 </dl>
 <h3>Methods</h3>
 <dl>
-<dt id="rpps.mod.constellation.Constellation.demodulate"><code class="name flex">
-<span>def <span class="ident">demodulate</span></span>(<span>self, syms: <a title="rpps.dobject.SymData" href="../dobject.html#rpps.dobject.SymData">SymData</a>)</span>
+<dt id="rpps.mod.constellation.Constellation.codewords"><code class="name flex">
+<span>def <span class="ident">codewords</span></span>(<span>self)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def codewords(self):
+    bits = np.array([bin(n)[2:].zfill(self._bps) for n in self.mapping.arr])
+    codewords = np.zeros((len(self.points), self._bps), dtype=int)
+
+    for i, b in enumerate(bits):
+        for j, c in enumerate(b):
+            codewords[i, j] = True if c == &#39;1&#39; else False
+    return codewords</code></pre>
+</details>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.demodulate"><code class="name flex">
+<span>def <span class="ident">demodulate</span></span>(<span>self,<br>syms: <a title="rpps.dobject.IQObject" href="../dobject.html#rpps.dobject.IQObject">IQObject</a>)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def demodulate(self, syms: dobject.IQObject):
+    &#34;&#34;&#34;Demodulate IQ symbols to ModData&#34;&#34;&#34;
+    syms.data /= np.max(syms.data) # normalize
+    distances = self.from_symbols(syms)
+    codewords = self.codewords()
+    mod = dobject.ModData()
+    mod.soft = base.SoftDecision(codewords, distances)
+
+    return mod</code></pre>
+</details>
 <div class="desc"><p>Demodulate IQ symbols to ModData</p></div>
 </dd>
 <dt id="rpps.mod.constellation.Constellation.from_symbols"><code class="name flex">
-<span>def <span class="ident">from_symbols</span></span>(<span>self, symbols: <a title="rpps.dobject.SymObject" href="../dobject.html#rpps.dobject.SymObject">SymObject</a>)</span>
+<span>def <span class="ident">from_symbols</span></span>(<span>self,<br>symbols: <a title="rpps.dobject.IQObject" href="../dobject.html#rpps.dobject.IQObject">IQObject</a>)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def from_symbols(self, symbols: dobject.IQObject):
+    &#34;&#34;&#34;Convert symbols to soft decisions&#34;&#34;&#34;
+    # self.log.trace(f&#34;Symbols are:\n{symbols}&#34;)
+    # codewords = np.zeros((len(self.points), self._bps), dtype=bool)
+    # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
+    distances = np.zeros((len(symbols), len(self.points)), dtype=np.float16)
+
+    distances[:] = np.abs(self.points.arr - symbols.data.reshape(-1, 1))
+    distances[:] = 1 - np.round(distances / distances.max(axis=0), decimals=2)
+    self.log.trace(f&#34;Points are {distances} / Demodulated {len(distances)} symbols&#34;)
+    return distances</code></pre>
+</details>
 <div class="desc"><p>Convert symbols to soft decisions</p></div>
 </dd>
 <dt id="rpps.mod.constellation.Constellation.index"><code class="name flex">
-<span>def <span class="ident">index</span></span>(<span>self, dobj: <a title="rpps.dobject.BitObject" href="../dobject.html#rpps.dobject.BitObject">BitObject</a>)</span>
+<span>def <span class="ident">index</span></span>(<span>self,<br>dobj: <a title="rpps.dobject.BitObject" href="../dobject.html#rpps.dobject.BitObject">BitObject</a>)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def index(self, dobj: dobject.BitObject):
+    &#34;&#34;&#34;Convert bits to indexes&#34;&#34;&#34;
+    self.log.trace(f&#34;Data is {dobj.data}&#34;)
+    self.log.trace(f&#34;Bits per symbol: {self._bps} / {len(dobj)}&#34;)
+
+    padding = len(dobj) % self._bps
+    if not padding == 0:
+
+        for _ in range(0, (self._bps - padding)):
+            dobj.append(0)
+        self.log.trace(f&#34;Padded by {self._bps - padding}: {len(dobj)}&#34;)
+    num_symbols = len(dobj) // self._bps
+
+    self.log.trace(f&#34;Data requires {num_symbols} indexes to encode&#34;)
+    self.log.trace(f&#34;Data is: {dobj}&#34;)
+
+    indexes = np.split(dobj.data, num_symbols)
+    indexes = [int(&#34;&#34;.join(data.astype(int).astype(str)), 2) for data in indexes]
+    # indexes = []
+    # for i in range(0, len(data.bin), self._bps):
+    #    bit_int = int(data.bin[i:i+self._bps], 2)
+    #    indexes.append(int(bit_int))
+
+    self.log.trace(f&#34;Indexes are {indexes}&#34;)
+    return indexes</code></pre>
+</details>
 <div class="desc"><p>Convert bits to indexes</p></div>
 </dd>
-<dt id="rpps.mod.constellation.Constellation.map"><code class="name flex">
-<span>def <span class="ident">map</span></span>(<span>self, indexes, meta)</span>
+<dt id="rpps.mod.constellation.Constellation.invert"><code class="name flex">
+<span>def <span class="ident">invert</span></span>(<span>self)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def invert(self):
+    &#34;&#34;&#34;Spectral invert the constellation&#34;&#34;&#34;
+    self._mapping.inverted = not self._mapping.inverted
+    rotpoints = self._points.imag() + self._points.real() * 1j
+    swaps = np.where(self.points.arr == rotpoints)[0]
+    map1 = swaps[0:len(swaps)//2]
+    map2 = swaps[len(swaps)//2:]
+    for m1, m2 in zip(map1, map2):
+        self._mapping.arr[[m1,m2]] = self._mapping.arr[[m2,m1]]</code></pre>
+</details>
+<div class="desc"><p>Spectral invert the constellation</p></div>
+</dd>
+<dt id="rpps.mod.constellation.Constellation.map"><code class="name flex">
+<span>def <span class="ident">map</span></span>(<span>self, indexes)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def map(self, indexes):
+    &#34;&#34;&#34;Convert indexes to self.mapping values&#34;&#34;&#34;
+    self.log.trace(f&#34;Using mapping: {self.mapping}&#34;)
+    points = []
+    for idx in indexes:
+        points.append(
+            int(
+                np.where(self.mapping.arr == idx)[0][0]
+            )
+        )
+    self.log.trace(f&#34;Points are {points}&#34;)
+    return points</code></pre>
+</details>
 <div class="desc"><p>Convert indexes to self.mapping values</p></div>
 </dd>
 <dt id="rpps.mod.constellation.Constellation.modulate"><code class="name flex">
-<span>def <span class="ident">modulate</span></span>(<span>self, dobj: <a title="rpps.dobject.BitObject" href="../dobject.html#rpps.dobject.BitObject">BitObject</a>, noise: bool = True)</span>
+<span>def <span class="ident">modulate</span></span>(<span>self,<br>dobj: <a title="rpps.dobject.BitObject" href="../dobject.html#rpps.dobject.BitObject">BitObject</a>,<br>noise: bool = True)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def modulate(self, dobj: dobject.BitObject, noise: bool = True):
+    &#34;&#34;&#34;Modulate BitObject to IQ symbols&#34;&#34;&#34;
+    indexes = self.index(dobj)
+    points = self.map(indexes)
+    symbols = self.to_symbols(points, noise=noise)
+    return symbols</code></pre>
+</details>
 <div class="desc"><p>Modulate BitObject to IQ symbols</p></div>
 </dd>
 <dt id="rpps.mod.constellation.Constellation.to_symbols"><code class="name flex">
-<span>def <span class="ident">to_symbols</span></span>(<span>self, points, meta, noise: bool = False)</span>
+<span>def <span class="ident">to_symbols</span></span>(<span>self, points, noise: bool = False)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def to_symbols(self, points, noise: bool = False):
+    &#34;&#34;&#34;Convert mapping values to symbols&#34;&#34;&#34;
+    points = np.array(points)
+    symbols = self.points[points]
+    self.log.trace(f&#34;Symbols are:\n{symbols} / {len(symbols)}&#34;)
+    # Add noise
+    if noise:
+        n = (np.random.randn(len(symbols)) + 1j*np.random.randn(len(symbols)))/np.sqrt(2) # AWGN with unity power
+        symbols = symbols + n * np.sqrt(0.01) # noise power of 0.01
+
+    symbols = symbols.astype(np.complex64)
+    # self.log.trace(f&#34;Symbols are: {symbols}&#34;)
+    return dobject.IQData(symbols)</code></pre>
+</details>
 <div class="desc"><p>Convert mapping values to symbols</p></div>
 </dd>
 <dt id="rpps.mod.constellation.Constellation.unindex"><code class="name flex">
 <span>def <span class="ident">unindex</span></span>(<span>self, indexes, meta)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def unindex(self, indexes, meta):
+    &#34;&#34;&#34;Convert indexes to bits&#34;&#34;&#34;
+    self.log.trace(f&#34;Bits per symbol: {self._bps}&#34;)
+    bits = &#34;&#34;
+    for ind in indexes:
+        bits += bin(ind)[2:].zfill(self._bps)
+
+    padding = len(bits) % 8
+    if not padding == 0:
+        self.log.trace(f&#34;Unpadding by {padding}&#34;)
+        bits = bits[:-padding]
+
+    data = dobject.ModData(np.array([int(bit) for bit in bits], dtype=bool))
+
+    # data = Stream.from_bin(bits, len(bits))
+
+    self.log.trace(f&#34;Data bits are {data} / {len(data)}&#34;)
+
+    return data</code></pre>
+</details>
 <div class="desc"><p>Convert indexes to bits</p></div>
 </dd>
 <dt id="rpps.mod.constellation.Constellation.unmap"><code class="name flex">
 <span>def <span class="ident">unmap</span></span>(<span>self, points, meta)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def unmap(self, points, meta):
+    &#34;&#34;&#34;Convert points to map indexes&#34;&#34;&#34;
+    self.log.trace(f&#34;Using mapping: {self.mapping}&#34;)
+    indexes = []
+    for pnt in points:
+        indexes.append(int(self.mapping[pnt]))
+    self.log.trace(f&#34;Indexes are {indexes}&#34;)
+    return indexes</code></pre>
+</details>
 <div class="desc"><p>Convert points to map indexes</p></div>
 </dd>
 </dl>
@@ -325,17 +746,16 @@ def points(self):
 <span>(</span><span>map=None, comment='')</span>
 </code></dt>
 <dd>
-<div class="desc"><p>Constellation map</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
 </summary>
 <pre><code class="python">class Mapping:
     &#34;&#34;&#34;Constellation map&#34;&#34;&#34;
-    __slots__ = (&#34;arr&#34;, &#34;comment&#34;)
+    __slots__ = (&#34;arr&#34;, &#34;_comment&#34;, &#34;_inv&#34;)
 
     def __init__(self, map=None, comment=&#34;&#34;):
-        self.comment = comment
+        self._comment = comment
         if isinstance(map, int):
             map = np.array([0] * map)
         elif not isinstance(map, np.ndarray):
@@ -343,6 +763,7 @@ def points(self):
         elif map is None:
             map = np.array([])
         self.arr = map
+        self._inv = False
 
     @staticmethod
     def new(map):
@@ -371,20 +792,53 @@ def points(self):
         return self.arr[item]
 
     def __setitem__(self, item, val):
-        self.arr[item] = val</code></pre>
+        self.arr[item] = val
+
+    @property
+    def inverted(self):
+        return self._inv
+
+    @inverted.setter
+    def inverted(self, val: bool):
+        self._inv = val
+
+    @property
+    def comment(self):
+        if self._inv:
+            return f&#34;{self._comment} Inverted&#34;
+        return f&#34;{self._comment} Normal&#34;</code></pre>
 </details>
+<div class="desc"><p>Constellation map</p></div>
 <h3>Static methods</h3>
 <dl>
 <dt id="rpps.mod.constellation.Mapping.empty"><code class="name flex">
 <span>def <span class="ident">empty</span></span>(<span>length: int)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@staticmethod
+def empty(length: int):
+    &#34;&#34;&#34;Create a new empty mapping&#34;&#34;&#34;
+    return Mapping(length)</code></pre>
+</details>
 <div class="desc"><p>Create a new empty mapping</p></div>
 </dd>
 <dt id="rpps.mod.constellation.Mapping.new"><code class="name flex">
 <span>def <span class="ident">new</span></span>(<span>map)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@staticmethod
+def new(map):
+    &#34;&#34;&#34;Create a new mapping&#34;&#34;&#34;
+    return Mapping(map)</code></pre>
+</details>
 <div class="desc"><p>Create a new mapping</p></div>
 </dd>
 </dl>
@@ -392,10 +846,94 @@ def points(self):
 <dl>
 <dt id="rpps.mod.constellation.Mapping.arr"><code class="name">var <span class="ident">arr</span></code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Mapping:
+    &#34;&#34;&#34;Constellation map&#34;&#34;&#34;
+    __slots__ = (&#34;arr&#34;, &#34;_comment&#34;, &#34;_inv&#34;)
+
+    def __init__(self, map=None, comment=&#34;&#34;):
+        self._comment = comment
+        if isinstance(map, int):
+            map = np.array([0] * map)
+        elif not isinstance(map, np.ndarray):
+            map = np.array(map)
+        elif map is None:
+            map = np.array([])
+        self.arr = map
+        self._inv = False
+
+    @staticmethod
+    def new(map):
+        &#34;&#34;&#34;Create a new mapping&#34;&#34;&#34;
+        return Mapping(map)
+
+    @staticmethod
+    def empty(length: int):
+        &#34;&#34;&#34;Create a new empty mapping&#34;&#34;&#34;
+        return Mapping(length)
+
+    def str(self):
+        &#34;&#34;&#34;Return map values as str&#34;&#34;&#34;
+        return &#34;-&#34;.join(self.arr.astype(str))
+
+    def __len__(self):
+        return len(self.arr)
+
+    def __str__(self):
+        return str(self.arr)
+
+    def __repr__(self):
+        return f&#34;({str(self)}, {self.comment})&#34;
+
+    def __getitem__(self, item):
+        return self.arr[item]
+
+    def __setitem__(self, item, val):
+        self.arr[item] = val
+
+    @property
+    def inverted(self):
+        return self._inv
+
+    @inverted.setter
+    def inverted(self, val: bool):
+        self._inv = val
+
+    @property
+    def comment(self):
+        if self._inv:
+            return f&#34;{self._comment} Inverted&#34;
+        return f&#34;{self._comment} Normal&#34;</code></pre>
+</details>
 <div class="desc"></div>
 </dd>
-<dt id="rpps.mod.constellation.Mapping.comment"><code class="name">var <span class="ident">comment</span></code></dt>
+<dt id="rpps.mod.constellation.Mapping.comment"><code class="name">prop <span class="ident">comment</span></code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def comment(self):
+    if self._inv:
+        return f&#34;{self._comment} Inverted&#34;
+    return f&#34;{self._comment} Normal&#34;</code></pre>
+</details>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.mod.constellation.Mapping.inverted"><code class="name">prop <span class="ident">inverted</span></code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">@property
+def inverted(self):
+    return self._inv</code></pre>
+</details>
 <div class="desc"></div>
 </dd>
 </dl>
@@ -405,6 +943,14 @@ def points(self):
 <span>def <span class="ident">str</span></span>(<span>self)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def str(self):
+    &#34;&#34;&#34;Return map values as str&#34;&#34;&#34;
+    return &#34;-&#34;.join(self.arr.astype(str))</code></pre>
+</details>
 <div class="desc"><p>Return map values as str</p></div>
 </dd>
 </dl>
@@ -414,7 +960,6 @@ def points(self):
 <span>(</span><span>maps)</span>
 </code></dt>
 <dd>
-<div class="desc"><p>Collection of constellation mappings</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
@@ -438,10 +983,34 @@ def points(self):
     def __setitem__(self, item, val):
         self.maps[item] = val</code></pre>
 </details>
+<div class="desc"><p>Collection of constellation mappings</p></div>
 <h3>Instance variables</h3>
 <dl>
 <dt id="rpps.mod.constellation.Maps.maps"><code class="name">var <span class="ident">maps</span></code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Maps:
+    &#34;&#34;&#34;Collection of constellation mappings&#34;&#34;&#34;
+    __slots__ = (&#34;maps&#34;)
+
+    def __init__(self, maps):
+        self.maps = maps
+
+    def __str__(self):
+        return str(self.maps)
+
+    def __len__(self):
+        return len(self.maps)
+
+    def __getitem__(self, item):
+        return self.maps[item]
+
+    def __setitem__(self, item, val):
+        self.maps[item] = val</code></pre>
+</details>
 <div class="desc"></div>
 </dd>
 </dl>
@@ -451,7 +1020,6 @@ def points(self):
 <span>(</span><span>points)</span>
 </code></dt>
 <dd>
-<div class="desc"><p>Complex points</p></div>
 <details class="source">
 <summary>
 <span>Expand source code</span>
@@ -467,7 +1035,7 @@ def points(self):
         return len(self.arr)
 
     def __str__(self):
-        return str(self.arr)
+        return f&#34;{self.arr}&#34;
 
     def __getitem__(self, item):
         return self.arr[item]
@@ -487,10 +1055,46 @@ def points(self):
         &#34;&#34;&#34;Get point degrees&#34;&#34;&#34;
         return np.angle(self.arr, deg=True)</code></pre>
 </details>
+<div class="desc"><p>Complex points</p></div>
 <h3>Instance variables</h3>
 <dl>
 <dt id="rpps.mod.constellation.Points.arr"><code class="name">var <span class="ident">arr</span></code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Points:
+    &#34;&#34;&#34;Complex points&#34;&#34;&#34;
+    __slots__ = (&#34;arr&#34;)
+
+    def __init__(self, points):
+        self.arr = np.array(points)
+
+    def __len__(self):
+        return len(self.arr)
+
+    def __str__(self):
+        return f&#34;{self.arr}&#34;
+
+    def __getitem__(self, item):
+        return self.arr[item]
+
+    def __setitem__(self, item, val):
+        self.arr[item] = val
+
+    def real(self):
+        &#34;&#34;&#34;Get real from points&#34;&#34;&#34;
+        return np.real(self.arr)
+
+    def imag(self):
+        &#34;&#34;&#34;Get imag from points&#34;&#34;&#34;
+        return np.imag(self.arr)
+
+    def degrees(self):
+        &#34;&#34;&#34;Get point degrees&#34;&#34;&#34;
+        return np.angle(self.arr, deg=True)</code></pre>
+</details>
 <div class="desc"></div>
 </dd>
 </dl>
@@ -500,18 +1104,42 @@ def points(self):
 <span>def <span class="ident">degrees</span></span>(<span>self)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def degrees(self):
+    &#34;&#34;&#34;Get point degrees&#34;&#34;&#34;
+    return np.angle(self.arr, deg=True)</code></pre>
+</details>
 <div class="desc"><p>Get point degrees</p></div>
 </dd>
 <dt id="rpps.mod.constellation.Points.imag"><code class="name flex">
 <span>def <span class="ident">imag</span></span>(<span>self)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def imag(self):
+    &#34;&#34;&#34;Get imag from points&#34;&#34;&#34;
+    return np.imag(self.arr)</code></pre>
+</details>
 <div class="desc"><p>Get imag from points</p></div>
 </dd>
 <dt id="rpps.mod.constellation.Points.real"><code class="name flex">
 <span>def <span class="ident">real</span></span>(<span>self)</span>
 </code></dt>
 <dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def real(self):
+    &#34;&#34;&#34;Get real from points&#34;&#34;&#34;
+    return np.real(self.arr)</code></pre>
+</details>
 <div class="desc"><p>Get real from points</p></div>
 </dd>
 </dl>
@@ -535,9 +1163,12 @@ def points(self):
 <h4><code><a title="rpps.mod.constellation.Constellation" href="#rpps.mod.constellation.Constellation">Constellation</a></code></h4>
 <ul class="two-column">
 <li><code><a title="rpps.mod.constellation.Constellation.bits_per_symbol" href="#rpps.mod.constellation.Constellation.bits_per_symbol">bits_per_symbol</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.codewords" href="#rpps.mod.constellation.Constellation.codewords">codewords</a></code></li>
 <li><code><a title="rpps.mod.constellation.Constellation.demodulate" href="#rpps.mod.constellation.Constellation.demodulate">demodulate</a></code></li>
 <li><code><a title="rpps.mod.constellation.Constellation.from_symbols" href="#rpps.mod.constellation.Constellation.from_symbols">from_symbols</a></code></li>
 <li><code><a title="rpps.mod.constellation.Constellation.index" href="#rpps.mod.constellation.Constellation.index">index</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.invert" href="#rpps.mod.constellation.Constellation.invert">invert</a></code></li>
+<li><code><a title="rpps.mod.constellation.Constellation.inverted" href="#rpps.mod.constellation.Constellation.inverted">inverted</a></code></li>
 <li><code><a title="rpps.mod.constellation.Constellation.log" href="#rpps.mod.constellation.Constellation.log">log</a></code></li>
 <li><code><a title="rpps.mod.constellation.Constellation.map" href="#rpps.mod.constellation.Constellation.map">map</a></code></li>
 <li><code><a title="rpps.mod.constellation.Constellation.mapping" href="#rpps.mod.constellation.Constellation.mapping">mapping</a></code></li>
@@ -550,10 +1181,11 @@ def points(self):
 </li>
 <li>
 <h4><code><a title="rpps.mod.constellation.Mapping" href="#rpps.mod.constellation.Mapping">Mapping</a></code></h4>
-<ul class="">
+<ul class="two-column">
 <li><code><a title="rpps.mod.constellation.Mapping.arr" href="#rpps.mod.constellation.Mapping.arr">arr</a></code></li>
 <li><code><a title="rpps.mod.constellation.Mapping.comment" href="#rpps.mod.constellation.Mapping.comment">comment</a></code></li>
 <li><code><a title="rpps.mod.constellation.Mapping.empty" href="#rpps.mod.constellation.Mapping.empty">empty</a></code></li>
+<li><code><a title="rpps.mod.constellation.Mapping.inverted" href="#rpps.mod.constellation.Mapping.inverted">inverted</a></code></li>
 <li><code><a title="rpps.mod.constellation.Mapping.new" href="#rpps.mod.constellation.Mapping.new">new</a></code></li>
 <li><code><a title="rpps.mod.constellation.Mapping.str" href="#rpps.mod.constellation.Mapping.str">str</a></code></li>
 </ul>
@@ -579,7 +1211,7 @@ def points(self):
 </nav>
 </main>
 <footer id="footer">
-<p>Generated by <a href="https://pdoc3.github.io/pdoc" title="pdoc: Python API documentation generator"><cite>pdoc</cite> 0.11.1</a>.</p>
+<p>Generated by <a href="https://pdoc3.github.io/pdoc" title="pdoc: Python API documentation generator"><cite>pdoc</cite> 0.11.6</a>.</p>
 </footer>
 </body>
 </html>

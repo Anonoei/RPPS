@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
+<meta name="generator" content="pdoc3 0.11.6">
+<title>rpps.viz.rt.matrix API documentation</title>
+<meta name="description" content="">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:1.5em;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:2em 0 .50em 0}h3{font-size:1.4em;margin:1.6em 0 .7em 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .2s ease-in-out}a:visited{color:#503}a:hover{color:#b62}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900;font-weight:bold}pre code{font-size:.8em;line-height:1.4em;padding:1em;display:block}code{background:#f3f3f3;font-family:"DejaVu Sans Mono",monospace;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source > summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible;min-width:max-content}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em 1em;margin:1em 0}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul ul{padding-left:1em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha512-D9gUyxqja7hBtkWpPWGt9wfbfaMGVt9gnyCvYa+jojwwPHLCzUm5i8rpk7vD7wNee9bA35eYIjobYPaQuKS1MQ==" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => {
+hljs.configure({languages: ['bash', 'css', 'diff', 'graphql', 'ini', 'javascript', 'json', 'plaintext', 'python', 'python-repl', 'rust', 'shell', 'sql', 'typescript', 'xml', 'yaml']});
+hljs.highlightAll();
+/* Collapse source docstrings */
+setTimeout(() => {
+[...document.querySelectorAll('.hljs.language-python > .hljs-string')]
+.filter(el => el.innerHTML.length > 200 && ['"""', "'''"].includes(el.innerHTML.substring(0, 3)))
+.forEach(el => {
+let d = document.createElement('details');
+d.classList.add('hljs-string');
+d.innerHTML = '<summary>"""</summary>' + el.innerHTML.substring(3);
+el.replaceWith(d);
+});
+}, 100);
+})</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>rpps.viz.rt.matrix</code></h1>
+</header>
+<section id="section-intro">
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-functions">Functions</h2>
+<dl>
+<dt id="rpps.viz.rt.matrix.cdot"><code class="name flex">
+<span>def <span class="ident">cdot</span></span>(<span>x, y, psds, yt=0.05, yb=0.05)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def cdot(x, y, psds, yt=0.05, yb=0.05):
+    hist, (amp_min, amp_max) = dot(x, y, psds, yt, yb)
+    return _fill(hist), (amp_min, amp_max)</code></pre>
+</details>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.viz.rt.matrix.cvec"><code class="name flex">
+<span>def <span class="ident">cvec</span></span>(<span>x, y, psds, yt=0.05, yb=0.05, interp=10)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def cvec(x, y, psds, yt=0.05, yb=0.05, interp=10):
+    hist, (amp_min, amp_max) = vec(x, y, psds, yt, yb, interp)
+    return _fill(hist), (amp_min, amp_max)</code></pre>
+</details>
+<div class="desc"></div>
+</dd>
+<dt id="rpps.viz.rt.matrix.dot"><code class="name flex">
+<span>def <span class="ident">dot</span></span>(<span>x, y, psds, yt=0.05, yb=0.05)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def dot(x, y, psds, yt=0.05, yb=0.05):
+    &#34;&#34;&#34;Dot Matrix
+    Each PSD&#39;s x/y mapped to histogram x/y
+    &#34;&#34;&#34;
+    hist = np.zeros((y, x), dtype=np.int8)
+
+    amp_min, amp_max = np.min(psds), np.max(psds)
+    amp_min = amp_min*(1+yb) if amp_min &lt; 0 else amp_min*(1-yb)
+    amp_max = amp_max*(1-yt) if amp_max &lt; 0 else amp_max*(1+yt)
+
+    amp_rng = abs(abs(amp_max) - abs(amp_min))
+    amp_off = amp_min if amp_min &gt; 0 else -amp_min
+
+    x_ratio = x/psds.shape[0]
+    y_ratio = y/amp_rng
+
+    x_idx = np.floor(np.arange(0, psds.shape[0])*x_ratio).astype(int)
+    y_idx = np.floor((psds+amp_off)*y_ratio).astype(int)
+
+    for i in range(psds.shape[1]):
+        hist[y_idx[:,i], x_idx] += 1
+    return hist, (amp_min, amp_max)</code></pre>
+</details>
+<div class="desc"><p>Dot Matrix
+Each PSD's x/y mapped to histogram x/y</p></div>
+</dd>
+<dt id="rpps.viz.rt.matrix.sdot"><code class="name flex">
+<span>def <span class="ident">sdot</span></span>(<span>x, y, psds, yt=0.05, yb=0.05)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def sdot(x, y, psds, yt=0.05, yb=0.05):
+    &#34;&#34;&#34;(Slow) Dot Matrix
+    Map each PSD to the matrix, then merge each matrix
+    &#34;&#34;&#34;
+    mats, (amp_min, amp_max) = _matrix_dot(x, y, psds, yt=0.05, yb=0.05)
+    return _merge(mats), (amp_min, amp_max)</code></pre>
+</details>
+<div class="desc"><p>(Slow) Dot Matrix
+Map each PSD to the matrix, then merge each matrix</p></div>
+</dd>
+<dt id="rpps.viz.rt.matrix.svec"><code class="name flex">
+<span>def <span class="ident">svec</span></span>(<span>x, y, psds, yt=0.05, yb=0.05)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def svec(x, y, psds, yt=0.05, yb=0.05):
+    &#34;&#34;&#34;(Slow) Vector Matrix
+    On each matrix, insert 1s between x-1&#39;s y and x&#39;s y
+    &#34;&#34;&#34;
+    mats, (amp_min, amp_max) = _matrix_dot(x, y, psds, yt=0.05, yb=0.05)
+    for i in range(mats.shape[0]):
+        mats[i] = dot_vector(mats[i])
+    return _merge(mats), (amp_min, amp_max)</code></pre>
+</details>
+<div class="desc"><p>(Slow) Vector Matrix
+On each matrix, insert 1s between x-1's y and x's y</p></div>
+</dd>
+<dt id="rpps.viz.rt.matrix.vec"><code class="name flex">
+<span>def <span class="ident">vec</span></span>(<span>x, y, psds, yt=0.05, yb=0.05, interp=32)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def vec(x, y, psds, yt=0.05, yb=0.05, interp=32):
+    &#34;&#34;&#34;Vector Matrix
+    Interpolate between PSD x/y to mimic vector matrix
+    &#34;&#34;&#34;
+    y_int = np.zeros((psds.shape[0]*interp, psds.shape[1]))
+    t = np.arange(psds.shape[0])*interp
+    t_int = np.arange(psds.shape[0]*interp)-1
+    for i in range(psds.shape[1]):
+        y_int[:,i] = np.interp(t_int, t, psds[:,i])
+    return dot(x, y, y_int, yt, yb)</code></pre>
+</details>
+<div class="desc"><p>Vector Matrix
+Interpolate between PSD x/y to mimic vector matrix</p></div>
+</dd>
+</dl>
+</section>
+<section>
+</section>
+</article>
+<nav id="sidebar">
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="rpps.viz.rt" href="index.html">rpps.viz.rt</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-functions">Functions</a></h3>
+<ul class="two-column">
+<li><code><a title="rpps.viz.rt.matrix.cdot" href="#rpps.viz.rt.matrix.cdot">cdot</a></code></li>
+<li><code><a title="rpps.viz.rt.matrix.cvec" href="#rpps.viz.rt.matrix.cvec">cvec</a></code></li>
+<li><code><a title="rpps.viz.rt.matrix.dot" href="#rpps.viz.rt.matrix.dot">dot</a></code></li>
+<li><code><a title="rpps.viz.rt.matrix.sdot" href="#rpps.viz.rt.matrix.sdot">sdot</a></code></li>
+<li><code><a title="rpps.viz.rt.matrix.svec" href="#rpps.viz.rt.matrix.svec">svec</a></code></li>
+<li><code><a title="rpps.viz.rt.matrix.vec" href="#rpps.viz.rt.matrix.vec">vec</a></code></li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc" title="pdoc: Python API documentation generator"><cite>pdoc</cite> 0.11.6</a>.</p>
+</footer>
+</body>
+</html>
