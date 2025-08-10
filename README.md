@@ -62,8 +62,9 @@ for samps in sink(num_samps):
    - [ ] (Linux only) tun/tap
    - [ ] Socket
  - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/filters)
-   - [ ] Pulse Shaping
-   - [ ] Window functions
+   - [X] Pulse Shaping
+   - [X] Window functions
+ - [X] [Sample](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sample)
  - [ ] [Sync](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sync)
    - [ ] Frequency
    - [ ] Phase
