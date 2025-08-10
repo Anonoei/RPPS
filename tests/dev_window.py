@@ -31,7 +31,7 @@ def all(f, s):
     ax[1].set_xlim(f[0], f[-1])
     ax[1].set_ylim(-130, 0)
 
-    for window in rp.filters.window.s:
+    for window in rp.filters.Window.s():
         w = rp.filters.window.get(window)(N)
         sw = s * w
         sw /= 100

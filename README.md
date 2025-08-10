@@ -2,7 +2,6 @@
  RF Parameter Processor Suite
 
 RPPS is a generic signal processor/generator library.
-
  - [Documentation](https://anonoei.github.io/RPPS/)
  - [PyPI](https://pypi.org/project/rpps/)
 
@@ -37,22 +36,23 @@ if __name__ == "__main__":
 2. In your project, `import rpps as rp`
 
 ## Roadmap
- - [ ] [Interfaces]()
-   - [ ] File
+ - [ ] [Serial](https://github.com/Anonoei/RPPS/tree/main/src/rpps/serial)
+   - [X] File
    - [ ] (Linux only) tun/tap
    - [ ] Socket
- - [ ] [Pre-processing]()
-   - [ ] Filters
+ - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/filters)
    - [ ] Pulse Shaping
- - [ ] [Modulation](https://github.com/Anonoei/RPPS/tree/main/src/rpps/mod)
-   - [ ] PSK
-     - [X] BPSK
-     - [X] QPSK
-     - [X] 8PSK
+   - [ ] Window functions
+ - [ ] [Sync](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sync)
+   - [ ] Frequency
+   - [ ] Phase
+   - [ ] Time
+ - [ ] [Mod](https://github.com/Anonoei/RPPS/tree/main/src/rpps/mod)
+   - [X] PSK
    - [ ] QAM
    - [ ] APSK
    - [ ] ASK
-   - [ ] FSK
+   - [X] FSK
  - [ ] [Coding](https://github.com/Anonoei/RPPS/tree/main/src/rpps/coding)
    - [ ] Block
      - [X] Repetition
@@ -68,6 +68,9 @@ if __name__ == "__main__":
  - [ ] Frame
    - [ ] HDLC
    - [ ] PPP
+ - [ ] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz)
+   - [X] Real-Time (STFT)
+   - [X] Over-Time
 
 ## Contributing
  1. `git clone https://github.com/Anonoei/RPPS`

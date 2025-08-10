@@ -1,14 +1,16 @@
 {
     "cSpell.words": [
+        "rpps",
+        "dobj",
+        "dobject",
         "APSK",
+        "QPSK",
         "demodulate",
         "descram",
         "descrambled",
-        "dobj",
-        "dobject",
         "Feedthrough",
-        "QPSK",
-        "rpps"
+        "samps",
+        "syms"
     ],
     "python.analysis.diagnosticSeverityOverrides": {
         "reportOperatorIssue": "information",
