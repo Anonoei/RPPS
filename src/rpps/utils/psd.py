@@ -1,5 +1,5 @@
 import numpy as np
-from .. import filters
+from ..filters.impl import gaussian
 
 def psd(samps, Fs=1, vbw_hz=None):
     y = np.abs(np.fft.fft(samps))**2 / (len(samps)*Fs)
@@ -10,5 +10,5 @@ def psd(samps, Fs=1, vbw_hz=None):
 
 def vbw(samps, Fs, vbw):
     smooth = vbw/(Fs / len(samps))
-    sigma = filters.gaussian.fwhm2sigma(smooth)
-    return filters.gaussian.gaussian(samps, sigma)
+    sigma = gaussian.fwhm2sigma(smooth)
+    return gaussian.gaussian(samps, sigma)

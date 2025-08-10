@@ -15,48 +15,82 @@ a[n] = a[n-1] + μ * e[n]
 
 import numpy as np
 
-class AGC_lin:
-    def __init__(self, R, mu):
-        self.R = R
-        self.mu = mu
-        self.ref = 0.0
+class _AGC:
+    __slots__ = (
+        "target",
+        "gain", "err",
+        "max", "min"
+    )
+
+    def __init__(self, target, min_gain=-np.inf, max_gain=np.inf):
+        self.target = target
+        self.gain = 0.0
         self.err = 0.0
+        self.max = max_gain
+        self.min = min_gain
+
+    def _run(self, sample):
+        ...
 
     def run(self, sample):
-        e = self.R - self.ref*np.abs(sample)
-        a = self.ref + self.mu*e
-        self.err = e
-        self.ref = a
-        return self.ref*sample
+        self._run(sample)
+        self.norm()
+        return self.gain*sample
 
-class AGC_log:
-    def __init__(self, R, mu):
-        self.R = R
+    def burst(self, samples, n=30):
+        out = np.zeros(len(samples))
+        avg = np.convolve(samples, np.ones(n), mode="same")/n
+        for i, sample in enumerate(avg):
+            out[i] = self.run(sample)
+        return out
+
+    def norm(self):
+        self.gain = self.gain if self.gain < self.max else self.max
+        self.gain = self.gain if self.gain > self.min else self.min
+        # self.gain = np.clip(gain, self.min, self.max)
+        # self.gain = np.min(self.gain, self.max)
+        # self.gain = np.max(self.gain, self.min)
+
+class AGC_lin(_AGC):
+    __slots__ = ("mu")
+    def __init__(self, target, mu):
+        super().__init__(target)
         self.mu = mu
-        self.ref = 1.0
-        self.err = 0.0
 
-    def run(self, sample):
-        e = np.log(self.R) - np.log(abs(self.ref*np.abs(sample)))
-        a = np.exp(np.log(self.ref) + self.mu*e)
-        self.err = e
-        self.ref = a
-        return self.ref*sample
+    def _run(self, sample):
+        pwr = np.abs(sample)
+        self.err = self.target - self.gain*pwr
+        self.gain += self.mu*self.err
 
-class AGC_FF:
-    def __init__(self, R):
-        self.R = R
+class AGC_log(_AGC):
+    __slots__ = ("mu")
+    def __init__(self, target, mu):
+        super().__init__(target)
+        self.mu = mu
+        self.gain = 1.0
 
-    def run(self, samples, n=30):
-        B = np.abs(samples)
-        avg = np.convolve(B, np.ones(n), mode="same")/n
-        a = self.R/avg
-        return a*samples
+    def _run(self, sample):
+        pwr = np.abs(sample)
+        self.err = np.log(self.target) - np.log(abs(self.gain*pwr))
+        self.gain = np.exp(np.log(self.gain) + self.mu*self.err)
+
+class AGC2(_AGC):
+    __slots__ = ("agc")
+    def __init__(self, target, mu):
+        super().__init__(target)
+        # self.mu = mu
+        self.agc = AGC_log(target, mu)
+
+    def _run(self, sample):
+        self.agc._run(sample)
+        self.agc._run(sample)
+        self.gain = self.agc.gain
+        self.err = self.agc.err
 
 if __name__ == "__main__":
-    agc = AGC_log(1, 0.1)
+    agc = AGC2(1, 0.5)
     t = np.arange(0,1000,1)
-    y = np.exp(2j*np.pi*(1/20)*t)
+    y = 1*np.exp(2j*np.pi*(1/20)*t)
     y[251:500] *= 0.1
     y[500:750] *= 1.5
     y[750:] *= 0.4
@@ -66,7 +100,7 @@ if __name__ == "__main__":
     err = np.zeros(len(y))
     for i, amp in enumerate(y):
         out[i] = agc.run(amp)
-        gain[i] = agc.ref
+        gain[i] = agc.gain
         err[i] = agc.err
     import matplotlib.pyplot as plt
     fig, axs = plt.subplots(3,1)

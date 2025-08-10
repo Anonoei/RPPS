@@ -1,6 +1,5 @@
 from . import binary
 from . import interp
-from . import upsample
 from . import stft
 
 from .psd import psd
