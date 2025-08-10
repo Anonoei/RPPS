@@ -9,7 +9,7 @@ Github: https://github.com/Anonoei/RPPS
 PyPI: https://pypi.org/project/rpps/
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Anonoei <dev@anonoei.com>"
 
 from pyboiler.logger import Logger, Level
