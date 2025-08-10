@@ -5,10 +5,12 @@ def psd(samps, Fs=1, vbw_hz=None):
     y = np.abs(np.fft.fft(samps))**2 / (len(samps)*Fs)
     y = np.fft.fftshift(10.0*np.log10(y))
     if vbw_hz is not None:
-        y = vbw(y, Fs, vbw_hz)
+        smooth = vbw_calc(len(samps), Fs, vbw_hz)
+        y = vbw(y, smooth)
     return y
 
-def vbw(samps, Fs, vbw):
-    smooth = vbw/(Fs / len(samps))
-    sigma = gaussian.fwhm2sigma(smooth)
-    return gaussian.gaussian(samps, sigma)
+def vbw_calc(N, Fs, vbw_hz):
+    return vbw_hz/(Fs / N)
+
+def vbw(samps, smooth):
+    return gaussian.gaussian(samps, gaussian.fwhm2sigma(smooth))
