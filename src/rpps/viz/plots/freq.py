@@ -26,12 +26,13 @@ def psd(ax, samps, Fs=1, cf=0, vbw_hz=None):
         ax.set_xlim(x[0], x[-1])
     return line
 
-def psdreal(ax, samps, Fs=1, vbw_hz=None):
+def psdreal(ax, samps, Fs=1, cf=0, vbw_hz=None):
     if ax is None:
         fig, ax = plt.subplots()
     y = utils.psd(samps.real, Fs, vbw_hz)
     y = y[len(y)//2:]
-    x = np.arange(0, Fs, Fs/len(y))
+    x = freq_axis(len(y), Fs, cf)
+    # x = np.arange(0, Fs, Fs/len(y)) + cf
 
     if isinstance(ax, mpl.lines.Line2D):
         ax.set_data(x, y)

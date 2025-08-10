@@ -2,17 +2,32 @@ import rpps as rp
 import numpy as np
 import matplotlib.pyplot as plt
 
+from rpps.viz.plots import freq
+
 def main():
-    enc_msg = rp.dobject.StreamData(b"Hello world!")
+    # num_samps = 1024*8
+    num_samps = 1024*2
+    Fs = 250_000
+    sink = rp.serial.File("f32","data/fm_rds_250k_1Msamples.iq")
+    samps = sink.read(num_samps)
 
-    mod = rp.mod.load("QPSK")
-    mod.set_mapping(mod.get_maps()[0])
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="3d")
+    # lines = ax
+    # exit()
+    # writer = rp.viz.save.FFmpegMP4(fig, fps, "video_time3d.mp4")
+    # writer.open()
 
-    mod.draw_refs()
+    for samps in sink(num_samps):
+        # samps *= rp.filters.window.blackman(len(samps))
+        # lines = rp.viz.freq.psd_minmax(lines, samps, Fs, 1000)
+        samps *= 10
+        ax = rp.viz.ot.time.IQ3d(samps, Fs, ax)
+        break
+        # rp.viz.pause(0.01)
+        ax.cla()
 
-    mod.constellation.invert()
-    mod.draw_refs()
-    plt.show()
+    # writer.close()
 
 if __name__ == "__main__":
     main()

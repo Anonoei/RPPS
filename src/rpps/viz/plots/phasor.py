@@ -5,13 +5,13 @@ import matplotlib.pyplot as plt
 def phasor(ax, syms):
     if ax is None:
         fig, ax = plt.subplots()
-    snip = syms / np.max(syms)
+    snip = syms / np.max(syms.real)
 
     if isinstance(ax, mpl.lines.Line2D):
         ax.set_data(np.real(snip), np.imag(snip))
         line = ax
     else:
-        line, = ax.plot(np.real(snip), np.imag(snip), ".", c="b")
+        line, = ax.plot(np.real(snip), np.imag(snip), ".", c="g")
         # ax.axhline(y=0, color="k")
         # ax.axvline(x=0, color="k")
 

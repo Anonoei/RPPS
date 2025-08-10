@@ -13,9 +13,9 @@ class Prop:
 
     nfft = 1024
     overlap = 0.8
-    window = rp.filters.window.blackman
+    window = rp.filters.Window("blackman")
     hist_x, hist_y = 1001, 600
-    vbw = 2500
+    vbw = 1000
 
 def rt_sdot(psds):
     return rp.viz.rt.matrix.sdot(Prop.hist_x, Prop.hist_y, psds)

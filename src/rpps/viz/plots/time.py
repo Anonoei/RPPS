@@ -1,20 +1,29 @@
 """Time domain viz helpers"""
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 def I(ax, samps):
     if ax is None:
         fig, ax = plt.subplots()
 
-    line_i, = ax.plot(samps.real, ".-", c="r", label="I")
-    return line_i
+    if isinstance(ax, mpl.lines.Line2D):
+        ax.set_ydata(samps.real)
+        line = ax
+    else:
+        line, = ax.plot(samps.real, ".-", c="r", label="I")
+    return line
 
 def Q(ax, samps):
     if ax is None:
         fig, ax = plt.subplots()
 
-    line_q, = ax.plot(samps.imag, ".-", c="b", label="Q")
-    return line_q
+    if isinstance(ax, mpl.lines.Line2D):
+        ax.set_ydata(samps.imag)
+        line = ax
+    else:
+        line, = ax.plot(samps.imag, ".-", c="b", label="Q")
+    return line
 
 def mag(ax, samps):
     if ax is None:
@@ -34,15 +43,23 @@ def IQ(ax, samps):
     if ax is None:
         fig, ax = plt.subplots()
 
-    line_i = I(ax, samps)
-    line_q = Q(ax, samps)
+    if isinstance(ax, tuple):
+        line_i = ax[0]
+        line_q = ax[1]
+    else:
+        line_i = ax
+        line_q = ax
+        ax.grid(True)
+        ax.set_title("Time IQ")
+        ax.set_title("Time Domain", loc="left")
+        ax.set_title(f"{len(samps)} samples", loc="right")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Amplitude")
+        ax.set_xlim(0, len(samps))
 
-    ax.grid(True)
-    ax.set_title("Time IQ")
-    ax.set_title("Time Domain", loc="left")
-    ax.set_title(f"{len(samps)} samples", loc="right")
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Amplitude")
+    line_i = I(line_i, samps)
+    line_q = Q(line_q, samps)
+
     return line_i, line_q
 
 def IQ3d(samps, ax=None):

@@ -4,7 +4,6 @@ plt.style.use('dark_background')
 
 from .dialog import get_file
 from .base import show, figure, subplot, subplots, ion, ioff, cla, pause
-from . import blit
 
 from .plots import eye
 from .plots import freq
