@@ -1,7 +1,6 @@
-from . import gaussian
-from . import shaping
+from .filter import Filter
 
-from . import window
-from . import moving_average
+from .filters import low_pass, high_pass, band_pass, band_stop
+from .shift import ShiftFreq
 
-from .filters import low_pass, high_pass
+from .window import Window

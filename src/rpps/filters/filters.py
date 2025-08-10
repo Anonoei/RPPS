@@ -1,34 +1,28 @@
 import numpy as np
 
-def _delta(taps):
-    h = np.zeros(taps)
-    h[taps//2+1] = 1
-    return h
+from .impl.designer import designer
+from .filter import Filter, Meta
 
-def _kern_square(taps, cut_off):
-    h = np.zeros(taps)
-    h[taps//2:taps//2+cut_off*2] = 1
-    return h
+class ConvFilter(Filter):
+    __slots__ = ("filt")
+    def __init__(self, filt):
+        self.filt = filt
 
-def _kern_exp(taps, cut_off):
-    t = np.arange(cut_off*2, 0, -1)
-    h = np.zeros(taps)
-    h[taps//2:taps//2+cut_off*2] = t**2
-    return h
+    def run(self, samples):
+        return np.convolve(samples, self.filt, mode="valid")
 
-def low_pass(taps, cut_off):
-    t = np.arange(-taps//2+1,0)/cut_off
-    h = np.sinc(t)
-    h = np.concat((h, [np.sinc(0)], h[::-1]))
-    h = h * np.hamming(taps)
-    h = h/cut_off
-    return h
+    def __radd__(self, meta: Meta):
+        meta.obj = self.run(meta.obj)
+        return meta
 
-def high_pass(taps, cut_off):
-    t = np.arange(-taps//2,0)/cut_off
-    h = np.sinc(t)
-    h = np.concat((h[:-1], h[::-1]))
-    h = h * np.hamming(taps)
-    h = h/cut_off
-    h = _delta(taps) - h
-    return h
+def low_pass(taps, cutoff, fs=None):
+    return ConvFilter(designer(taps, cutoff, fs=fs, pass_zero=True))
+
+def high_pass(taps, cutoff, fs=None):
+    return ConvFilter(designer(taps, cutoff, fs=fs, pass_zero=False))
+
+def band_pass(taps, cut1, cut2, fs=None):
+    return ConvFilter(designer(taps, [cut1, cut2], fs=fs, pass_zero=False))
+
+def band_stop(taps, cut1, cut2, fs=None):
+    return ConvFilter(designer(taps, [cut1, cut2], fs=fs, pass_zero=False))
