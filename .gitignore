@@ -1,9 +1,15 @@
 __pycache__/
-dist/
+.pytest_cache/
+.python-version
+
 src/*
 !src/rpps
-.pytest_cache/
+# Cython libs
+src/rpps/**/*.so
+src/rpps/**/*.pyd
 
+build/
+dist/
 
 logs/
 data/

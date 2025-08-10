@@ -4,34 +4,30 @@ from enum import Enum
 import numpy as np
 
 from .base.soft import SoftDecision
-from .meta import Meta
 
 class Type(Enum):
     """DataObject data data formats"""
     BIT = 0
     BYTE = 1
-    SYM = 2
+    IQ = 2
     NONE = -1
+
 def ensure_bit(dobj):
     """Ensure DataObject is using bits"""
-    return BitObject(dobj, dobj.meta)
+    return BitObject(dobj)
 
 def ensure_byte(dobj):
     """Ensure DataObject is using bytes"""
-    return ByteObject(dobj, dobj.meta)
+    return ByteObject(dobj)
 
 class DataObject:
     """Parent DataObject class"""
     type = Type.NONE
 
     data = []
-    meta = None
 
-    def __init__(self, data=None, meta=None):
-        if not isinstance(meta, Meta):
-            meta = Meta()
+    def __init__(self, data=None):
         self.convert(data)
-        self.meta = meta
 
     def __str__(self):
         return f"{self.name()}:{self.type}:{len(self)}"
@@ -103,7 +99,7 @@ class DataObject:
                     self.data = np.unpackbits(np.array(other))
                     return
             elif isinstance(other, np.ndarray):
-                if self.type == Type.SYM:
+                if self.type == Type.IQ:
                     self.data = other
                     return
                 if other.dtype == np.uint8:
@@ -150,8 +146,9 @@ class ByteObject(DataObject):
         return self.data.tobytes().hex()
 
 
-class SymObject(DataObject):
-    type = Type.SYM
+class IQObject(DataObject):
+    type = Type.IQ
+    data = np.array([], dtype=np.complex64)
 
     def __str__(self):
         return f"{super().__str__()} syms"
@@ -193,5 +190,5 @@ class ModData(BitObject):
         self._data = value
 
 
-class SymData(SymObject):
+class IQData(IQObject):
     """Data returned from mod.modulate"""

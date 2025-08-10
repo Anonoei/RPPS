@@ -6,15 +6,14 @@ from pyboiler.logger import Logger, Level
 
 from . import base
 from . import dobject
-from . import Meta
 
 
 class Mapping:
     """Constellation map"""
-    __slots__ = ("arr", "comment")
+    __slots__ = ("arr", "_comment", "_inv")
 
     def __init__(self, map=None, comment=""):
-        self.comment = comment
+        self._comment = comment
         if isinstance(map, int):
             map = np.array([0] * map)
         elif not isinstance(map, np.ndarray):
@@ -22,6 +21,7 @@ class Mapping:
         elif map is None:
             map = np.array([])
         self.arr = map
+        self._inv = False
 
     @staticmethod
     def new(map):
@@ -51,6 +51,20 @@ class Mapping:
 
     def __setitem__(self, item, val):
         self.arr[item] = val
+
+    @property
+    def inverted(self):
+        return self._inv
+
+    @inverted.setter
+    def inverted(self, val: bool):
+        self._inv = val
+
+    @property
+    def comment(self):
+        if self._inv:
+            return f"{self._comment} Inverted"
+        return f"{self._comment} Normal"
 
 
 class Maps:
@@ -83,7 +97,7 @@ class Points:
         return len(self.arr)
 
     def __str__(self):
-        return str(self.arr)
+        return f"{self.arr}"
 
     def __getitem__(self, item):
         return self.arr[item]
@@ -108,7 +122,7 @@ class Constellation:
     """Constellation implementation"""
     __slots__ = ("log", "_points", "_mapping", "_bps")
 
-    def __init__(self, points: Points, mapping = None, log=Logger().Child("Modulation")):
+    def __init__(self, points: Points, mapping: Mapping = Mapping(), log=Logger().Child("Modulation")):
         self.log = log.Child("Constellation", Level.WARN)
         if not isinstance(points, Points):
             points = Points(points)
@@ -119,7 +133,7 @@ class Constellation:
         self._bps = int(math.log2(len(self.points))) # Bits per symbol
 
     def __str__(self) -> str:
-        return f"Points: {self._points}, Map: {self._mapping}"
+        return f"Points: {self._points}, Map: {self._mapping}, {self._mapping.comment}"
 
     def __repr__(self) -> str:
         return f"<Constellation: {self._bps}>"
@@ -132,9 +146,27 @@ class Constellation:
         """Get constellation points"""
         return self._points
 
+    @property
+    def inverted(self):
+        """ Returns if constellation is spectral inverted"""
+        return self._mapping.inverted
+    # { "real": 0.7, "imag": -0.7 },
+    # { "real": -0.7, "imag": -0.7 },
+    # { "real": 0.7, "imag": 0.7 },
+    # { "real": -0.7, "imag": 0.7 }
+    def invert(self):
+        """Spectral invert the constellation"""
+        self._mapping.inverted = not self._mapping.inverted
+        rotpoints = self._points.imag() + self._points.real() * 1j
+        swaps = np.where(self.points.arr == rotpoints)[0]
+        map1 = swaps[0:len(swaps)//2]
+        map2 = swaps[len(swaps)//2:]
+        for m1, m2 in zip(map1, map2):
+            self._mapping.arr[[m1,m2]] = self._mapping.arr[[m2,m1]]
+
     @points.setter
     def points(self, points):
-        self._points = np.array(points)
+        self._points = Points(np.array(points))
         self._bps = len(self.points) // 2
 
     @property
@@ -154,25 +186,15 @@ class Constellation:
     def modulate(self, dobj: dobject.BitObject, noise: bool = True):
         """Modulate BitObject to IQ symbols"""
         indexes = self.index(dobj)
-        points = self.map(indexes, dobj.meta)
-        symbols = self.to_symbols(points, dobj.meta, noise=noise)
+        points = self.map(indexes)
+        symbols = self.to_symbols(points, noise=noise)
         return symbols
 
-    def demodulate(self, syms: dobject.SymData):
+    def demodulate(self, syms: dobject.IQObject):
         """Demodulate IQ symbols to ModData"""
-        # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
-        distances = np.zeros((len(syms.data), len(self.points)), dtype=np.float16)
-
-        distances[:] = np.abs(self.points.arr - syms.data.reshape(-1, 1))
-        distances[:] = 1 - np.round(distances / distances.max(axis=0), decimals=2)
-
-        bits = np.array([bin(n)[2:].zfill(self._bps) for n in self.mapping.arr])
-        codewords = np.zeros((len(self.points), self._bps), dtype=int)
-
-        for i, b in enumerate(bits):
-            for j, c in enumerate(b):
-                codewords[i, j] = True if c == '1' else False
-
+        syms.data /= np.max(syms.data) # normalize
+        distances = self.from_symbols(syms)
+        codewords = self.codewords()
         mod = dobject.ModData()
         mod.soft = base.SoftDecision(codewords, distances)
 
@@ -208,7 +230,7 @@ class Constellation:
         self.log.trace(f"Indexes are {indexes}")
         return indexes
 
-    def map(self, indexes, meta):
+    def map(self, indexes):
         """Convert indexes to self.mapping values"""
         self.log.trace(f"Using mapping: {self.mapping}")
         points = []
@@ -221,7 +243,7 @@ class Constellation:
         self.log.trace(f"Points are {points}")
         return points
 
-    def to_symbols(self, points, meta, noise: bool = False):
+    def to_symbols(self, points, noise: bool = False):
         """Convert mapping values to symbols"""
         points = np.array(points)
         symbols = self.points[points]
@@ -232,18 +254,18 @@ class Constellation:
             symbols = symbols + n * np.sqrt(0.01) # noise power of 0.01
 
         symbols = symbols.astype(np.complex64)
-        meta.fmt = type(symbols[0]).__name__
         # self.log.trace(f"Symbols are: {symbols}")
-        return dobject.SymData(symbols)
+        return dobject.IQData(symbols)
 
     ##############################
     #  Demodulate
     ##############################
 
-    def from_symbols(self, symbols: dobject.SymObject):
+    def from_symbols(self, symbols: dobject.IQObject):
         """Convert symbols to soft decisions"""
         # self.log.trace(f"Symbols are:\n{symbols}")
         # codewords = np.zeros((len(self.points), self._bps), dtype=bool)
+        # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
         distances = np.zeros((len(symbols), len(self.points)), dtype=np.float16)
 
         distances[:] = np.abs(self.points.arr - symbols.data.reshape(-1, 1))
@@ -279,3 +301,12 @@ class Constellation:
         self.log.trace(f"Data bits are {data} / {len(data)}")
 
         return data
+
+    def codewords(self):
+        bits = np.array([bin(n)[2:].zfill(self._bps) for n in self.mapping.arr])
+        codewords = np.zeros((len(self.points), self._bps), dtype=int)
+
+        for i, b in enumerate(bits):
+            for j, c in enumerate(b):
+                codewords[i, j] = True if c == '1' else False
+        return codewords

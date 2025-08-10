@@ -4,13 +4,7 @@ class Stream:
     __slots__ = ("cache", "length")
 
     def __init__(self):
-        self.cache = {
-            "bin": None,
-            "hex": None,
-            "bytes": None,
-            "int": None,
-            "bitarray": None,
-        }
+        self.cache = {}
         self.length = None
 
     def __str__(self):
@@ -22,11 +16,11 @@ class Stream:
         return self.length if self.length is not None else 0
 
     def __repr__(self):
-        return f"<Stream data>"
+        return "<Stream data>"
 
     @property
     def bin(self):
-        if self.cache["bin"] is None:
+        if self.cache.get("bin", None) is None:
             # self.cache["bin"] = Encoding._pad(bin(self.cache["int"])[2:], 8)
             self.cache["bin"] = "".join([item for item in self.bitarray.astype(str)])
         return self.cache["bin"]
@@ -37,7 +31,7 @@ class Stream:
 
     @property
     def hex(self):
-        if self.cache["hex"] is None:
+        if self.cache.get("hex", None) is None:
             self.cache["hex"] = Stream._pad(hex(self.cache["int"])[2:], 2)
         return self.cache["hex"]
 
@@ -47,8 +41,8 @@ class Stream:
 
     @property
     def bytes(self):
-        if self.cache["bytes"] is None:
-            if self.cache["hex"] is None:
+        if self.cache.get("bytes", None) is None:
+            if self.cache.get("hex", None) is None:
                 return None
             self.cache["bytes"] = bytes.fromhex(self.cache["hex"])
         return self.cache["bytes"]
@@ -63,7 +57,7 @@ class Stream:
 
     @property
     def bitarray(self):
-        if self.cache["bitarray"] is None:
+        if self.cache.get("bitarray", None) is None:
             self.cache["bitarray"] = bitarray.from_encoding(self)
         return self.cache["bitarray"]
 

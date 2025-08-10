@@ -2,29 +2,54 @@
  RF Parameter Processor Suite
 
 RPPS is a generic signal processor/generator library.
-
  - [Documentation](https://anonoei.github.io/RPPS/)
  - [PyPI](https://pypi.org/project/rpps/)
 
-## Example Usage
+## Examples & Demos
+
+### Example Usage
+- [file](https://github.com/Anonoei/RPPS/tree/main/tests/example.py)
 ```
 import rpps as rp
 
-def main():
-    mod = rp.mod.name("QPSK", 0) # Use QPSK modulation, with mapping 0
-    ecc = rp.coding.name("BLK", "Repetition", 3) # Use Repetition coding, with rate of 2
+mod = rp.mod.load("QPSK")
+mod.set_mapping(mod.get_maps()[0])
+ecc = rp.coding.load("blk", "hamming.7_4")
+scr = rp.scram.load("fdt", "v35")
 
-    pipeline = rp.Pipeline(mod, ecc) # Initialize a processing pipeline
+enc_msg = rp.dobject.StreamData(b"Hello World!")
 
-    enc_msg = b"Test" # Define the data to process
-    syms = pipeline.enc(enc_msg) # Encode data with ecc, and mod. Get the symbols
-    path = pipeline.meta.serialize(syms) # Serialize the symbols to file
+f_pipe = lambda inp:inp * scr * ecc * mod
+r_pipe = lambda syms:syms / mod / ecc / scr
 
-    data = pipeline.from_file(path) # Read the symbols and metadata from file, use the same pipeline processing
-    print(data) # Check decoded data is what you encoded
+syms = f_pipe(enc_msg) # Encode data with ecc, and mod. Get the symbols
 
-if __name__ == "__main__":
-  main()
+data = r_pipe(syms) # Read the symbols
+
+dec_msg = rp.dobject.StreamData(data)
+print(f"{enc_msg.hex == dec_msg.hex}") # Check decoded data is what you encoded
+
+```
+
+### Real-time spectrum
+![RT](/media/example_rt.jpg?raw=true "Real-time Persistent Spectrum")
+- [file](https://github.com/Anonoei/RPPS/tree/main/tests/example_rt.py)
+```
+import rpps as rp
+
+sink = rp.serial.File(<format>, <path>)
+meta = rp.Meta(Fs=<>, cf=<>)
+sweep_time, display = 10, 50 # ms
+num_samps = int((sweep_time/1000)*meta.Fs)
+nfft, overlap, vbw = 1024, 0.8, 1000
+window = "blackman"
+fig, ax = plt.subplots()
+im = ax
+for samps in sink(num_samps):
+    snips = rp.utils.stft.stft(samps, nfft, overlap, window)
+    psds = rp.utils.stft.psd(snips, meta.Fs, vbw)
+    im = rp.viz.rt.Persistent(im, psds)
+    plt.pause(display/1000)
 ```
 
 ## Install
@@ -32,34 +57,42 @@ if __name__ == "__main__":
 2. In your project, `import rpps as rp`
 
 ## Roadmap
- - [ ] [Interfaces](https://github.com/Anonoei/RPPS/tree/main/src/rpps/inter)
+ - [ ] [Serial](https://github.com/Anonoei/RPPS/tree/main/src/rpps/serial)
    - [X] File
    - [ ] (Linux only) tun/tap
    - [ ] Socket
- - [ ] [Pre-processing](https://github.com/Anonoei/RPPS/tree/main/src/rpps/process)
-   - [ ] Filters
-   - [ ] Pulse Shaping
- - [ ] [Modulation](https://github.com/Anonoei/RPPS/tree/main/src/rpps/mod)
-   - [ ] PSK
-     - [X] BPSK
-     - [X] QPSK
-     - [X] 8PSK
+ - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/filters)
+   - [X] Pulse Shaping
+   - [X] Window functions
+ - [X] [Sample](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sample)
+ - [ ] [Sync](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sync)
+   - [ ] Frequency
+   - [ ] Phase
+   - [ ] Time
+ - [ ] [Mod](https://github.com/Anonoei/RPPS/tree/main/src/rpps/mod)
+   - [X] PSK
    - [ ] QAM
    - [ ] APSK
    - [ ] ASK
-   - [ ] FSK
+   - [X] FSK
  - [ ] [Coding](https://github.com/Anonoei/RPPS/tree/main/src/rpps/coding)
    - [ ] Block
      - [X] Repetition
-     - [ ] LDPC
+     - [X] Hamming
      - [ ] TPC
+     - [ ] LDPC
    - [ ] Convolutional
      - [ ] Viterbi
- - [ ] De-scramble
-   - [ ] v.35
- - [ ] De-frame
+ - [ ] [Scram](https://github.com/Anonoei/RPPS/tree/main/src/rpps/scram)
+   - [X] fibonacci
+   - [X] galois
+   - [X] V.35
+ - [ ] Frame
    - [ ] HDLC
    - [ ] PPP
+ - [ ] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz)
+   - [X] Real-Time (STFT)
+   - [X] Over-Time
 
 ## Contributing
  1. `git clone https://github.com/Anonoei/RPPS`

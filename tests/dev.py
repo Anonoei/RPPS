@@ -1,43 +1,42 @@
-import time
-import cProfile
-import pstats
-
 import rpps as rp
+import numpy as np
+import matplotlib.pyplot as plt
 
 def main():
+    enc_msg = rp.dobject.StreamData(b"Hello world!")
+
     mod = rp.mod.load("QPSK")
     mod.set_mapping(mod.get_maps()[0])
-    ecc = rp.coding.name("BLK", "Repetition", 3)
+    ecc = rp.coding.load("blk", "repeat.3")
+    # scr = rp.scram.load("fdt", "v35")
 
-    enc_msg = rp.dobject.StreamData(b"Hello World!")
+    # print(f"Mod: {mod}")
+    # print(f"ECC: {ecc}")
+    # # print(f"SCR: {scr}")
+
+    # m_pipe = lambda msg, ecc=ecc, mod=mod: msg*ecc*mod
+    # d_pipe = lambda sym, ecc=ecc, mod=mod: sym/mod/ecc
 
     print(f"enc_msg: {enc_msg.hex}")
-    # f_pipe = lambda inp:inp @ ecc @ mod
-    # r_pipe = lambda inp:inp @ mod @ ecc
+    # syms = m_pipe(enc_msg)
+    # print(f"Got syms {syms}")
+    # print()
+    # data = d_pipe(syms)
 
-    print(f"Running {ecc}")
-    coded = enc_msg @ ecc
-    print(f"coded: {coded}")
-    print(f"Running {mod}")
-    syms = coded @ mod
-    print(f"syms: {syms}")
+    print(mod.constellation)
+    syms = enc_msg*ecc*mod
 
-    print(f"Running {mod}")
-    demod = syms @ mod
-    print(f"demod: {demod}")
-    print(f"Running {ecc}")
-    decode = demod @ ecc
-    print(f"decode: {decode}")
+    rp.viz.ot_complex(syms)
+    plt.show()
 
-    dec_msg = rp.dobject.StreamData(decode)
+    mod.constellation.invert()
+
+    print(mod.constellation)
+    data = syms/mod/ecc
+    dec_msg = rp.dobject.StreamData(data)
 
     print(f"dec_msg: {dec_msg.hex}")
-    print(f"{enc_msg.hex} == {dec_msg.hex} : {enc_msg.hex == dec_msg.hex}")
+    print(f"Data is the same: {enc_msg.hex == dec_msg.hex}")
 
 if __name__ == "__main__":
-    # pr = cProfile.Profile()
-    # pr.enable()
     main()
-    # pr.disable()
-    # ps = pstats.Stats(pr).sort_stats(pstats.SortKey.CUMULATIVE)
-    # ps.print_stats()

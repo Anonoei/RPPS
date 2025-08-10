@@ -1,15 +1,17 @@
 """Visualization helpers"""
-# Import helpers/globals
-# from ..base.bitarray import bitarray
-# from ..base.stream import Stream
-from ..meta import Meta
-from ..mod import identify, load
+import matplotlib.pyplot as plt
+plt.style.use('dark_background')
 
-# -----
-
-from ..helpers.formats import Format
-
-from .generic import *
 from .dialog import get_file
-from .time import phasor, quadrature
-from .freq import psd, phase, magnitude, spectrogram
+from .base import show, figure, subplot, subplots, ion, ioff, cla, pause
+
+from .plots import eye
+from .plots import freq
+from .plots import spectrogram
+from .plots import time
+from .plots.phasor import phasor
+
+from . import ot
+from . import rt
+
+from . import save
