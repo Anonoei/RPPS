@@ -97,7 +97,7 @@ class Points:
         return len(self.arr)
 
     def __str__(self):
-        return str(self.arr)
+        return f"{self.arr}"
 
     def __getitem__(self, item):
         return self.arr[item]
@@ -192,6 +192,7 @@ class Constellation:
 
     def demodulate(self, syms: dobject.IQObject):
         """Demodulate IQ symbols to ModData"""
+        syms.data /= np.max(syms.data) # normalize
         distances = self.from_symbols(syms)
         codewords = self.codewords()
         mod = dobject.ModData()

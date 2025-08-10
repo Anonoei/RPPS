@@ -20,9 +20,38 @@ class Modulation(base.rpps.Pipe):
     points = Points([])
     maps = Maps([])
 
-    def __init__(self, mapping = None):  # type: ignore
+    def __init__(self):  # type: ignore
         self.log = Logger().Child("Modulation").Child(type(self).name)
 
+    def demodulate(self, syms: dobject.IQObject) -> dobject.ModData:
+        """Convert IQ samples to bits"""
+        raise NotImplementedError()
+
+    def modulate(self, dobj: dobject.BitObject) -> dobject.IQData:
+        """Convert bits to IQ samples"""
+        raise NotImplementedError()
+
+    def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
+        """Draw constellation points on viz"""
+        raise NotImplementedError()
+
+    @staticmethod
+    def load(name: str, obj: dict):
+        """Load modulation from json"""
+        raise NotImplementedError()
+
+    def __rmul__(self, other):
+        return self.modulate(dobject.ensure_bit(other))
+
+    def __rtruediv__(self, other):
+        return self.demodulate(other)
+
+
+class PSK(Modulation):
+    """Phase-shift keying parent"""
+
+    def __init__(self, mapping = None):
+        super().__init__()
         self.constellation = Constellation(type(self).points, log=self.log)
 
         if mapping is not None:
@@ -35,33 +64,6 @@ class Modulation(base.rpps.Pipe):
     def get_maps(self):
         """Get available maps"""
         return self.maps
-
-    @abstractmethod
-    def demodulate(self, syms: dobject.IQObject) -> dobject.ModData:
-        """Convert IQ samples to bits"""
-
-    @abstractmethod
-    def modulate(self, dobj: dobject.BitObject) -> dobject.IQData:
-        """Convert bits to IQ samples"""
-
-    @abstractmethod
-    def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
-        """Draw constellation points on viz"""
-
-    @staticmethod
-    @abstractmethod
-    def load(name: str, obj: dict):
-        """Load modulation from json"""
-
-    def __rmul__(self, other):
-        return self.modulate(dobject.ensure_bit(other))
-
-    def __rtruediv__(self, other):
-        return self.demodulate(other)
-
-
-class PSK(Modulation):
-    """Phase-shift keying parent"""
 
     def __str__(self):
         return f"{type(self).__name__}:{self.constellation.mapping.str()}"
@@ -90,8 +92,8 @@ class PSK(Modulation):
             y = radius * np.sin(angle)
             ax.plot(x, y, "g")
 
-    def demodulate(self, syms):
-        data = self.constellation.demodulate(syms)
+    def demodulate(self, samps):
+        data = self.constellation.demodulate(samps)
         return data
 
     def modulate(self, dobj):
@@ -105,7 +107,13 @@ class PSK(Modulation):
             for num in comp:
                 c.append(num["real"] + num["imag"] * 1j)
             return c
-        pnts = load_complex(obj["Points"])
+        def load_magpha(comp):
+            c = []
+            for num in comp:
+                c.append(num["mag"] * np.exp(1j * np.deg2rad(num["pha"])))
+            return c
+
+        pnts = load_magpha(obj["Points"])
 
         maps = [Mapping(m["map"], m["comment"]) for m in obj["Maps"]]
 
@@ -123,6 +131,21 @@ class ASK(Modulation):
 
 class FSK(Modulation):
     """Frequency-shift keying parent"""
+
+    def __str__(self):
+        return f"{type(self).__name__}:{self.constellation.mapping.str()}"
+
+    def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
+        ...
+
+    def demodulate(self, samps):
+        # see https://wiki.gnuradio.org/index.php/Quadrature_Demod
+        samps = 0.5 * np.angle(samps[0:-1] * np.conj(samps[1:]))
+        # return dobject.ModData(samps)
+        return samps
+
+    def modulate(self, dobj):
+        raise NotImplementedError()
 
 
 class APSK(Modulation):
