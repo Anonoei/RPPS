@@ -1,7 +1,6 @@
 """(De-)Modulation implementations"""
 # Import helpers/globals
 from .. import base
-from .. import dobject
 
 # -----
 

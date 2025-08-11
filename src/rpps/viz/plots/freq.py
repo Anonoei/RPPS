@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from ... import utils
 from ..utils import fft, freq_axis, bins
 
-def psd(ax, samps, Fs=1, cf=0, vbw_hz=None):
+def psd(ax, samps, Fs=1.0, cf=0.0, vbw_hz=None):
     if ax is None:
         fig, ax = plt.subplots()
     x = freq_axis(len(samps), Fs, cf)

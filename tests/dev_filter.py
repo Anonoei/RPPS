@@ -2,8 +2,6 @@ import rpps as rp
 import numpy as np
 import matplotlib.pyplot as plt
 
-# From https://pysdr.org/content/rds.html
-
 def main():
     num_samps = 256
     sink = rp.serial.File("f32", "data/fm_rds_250k_1Msamples.iq")

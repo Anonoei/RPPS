@@ -19,6 +19,7 @@ def main():
     freq_sync = rp.sync.Sync(rp.sync.Costas(8.0, 0.02, order=2)) # Fine Frequency correction
 
     fig, ax = plt.subplots(2)
+    fig.tight_layout()
     ax_t = ax[1]
     ax_p = ax[0]
 
@@ -32,7 +33,7 @@ def main():
         print(meta)
         ax_t = rp.viz.time.IQ(ax_t, meta.obj)
         ax_p = rp.viz.phasor(ax_p, meta.obj)
-        plt.pause(0.1)
+        plt.pause(0.5)
         # ax[0].cla()
         # ax[1].cla()
         meta.reset()

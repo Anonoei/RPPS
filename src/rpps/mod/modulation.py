@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from pyboiler.logger import Logger
 
 from . import base
-from . import dobject
+from ..base import Analog, Mod, Digital, ptype, dtype
 
 from .constellation import Mapping, Points, Maps
 from .constellation import Constellation
@@ -23,11 +23,11 @@ class Modulation(base.rpps.Pipe):
     def __init__(self):  # type: ignore
         self.log = Logger().Child("Modulation").Child(type(self).name)
 
-    def demodulate(self, syms: dobject.IQObject) -> dobject.ModData:
+    def demodulate(self, data):
         """Convert IQ samples to bits"""
         raise NotImplementedError()
 
-    def modulate(self, dobj: dobject.BitObject) -> dobject.IQData:
+    def modulate(self, data):
         """Convert bits to IQ samples"""
         raise NotImplementedError()
 
@@ -40,12 +40,11 @@ class Modulation(base.rpps.Pipe):
         """Load modulation from json"""
         raise NotImplementedError()
 
-    def __rmul__(self, other):
-        return self.modulate(dobject.ensure_bit(other))
+    def __rmul__(self, data):
+        return self.modulate(data)
 
-    def __rtruediv__(self, other):
-        return self.demodulate(other)
-
+    def __rtruediv__(self, data):
+        return self.demodulate(data)
 
 class PSK(Modulation):
     """Phase-shift keying parent"""
@@ -92,13 +91,17 @@ class PSK(Modulation):
             y = radius * np.sin(angle)
             ax.plot(x, y, "g")
 
-    def demodulate(self, samps):
-        data = self.constellation.demodulate(samps)
-        return data
+    def demodulate(self, data):
+        codewords, distances = self.constellation.demodulate(data.data)
 
-    def modulate(self, dobj):
-        syms = self.constellation.modulate(dobj)
-        return syms
+        d = Mod((codewords, distances))
+        return d
+
+    def modulate(self, data: Digital):
+        data.data = self.constellation.modulate(data.data)
+        data.DT = dtype.symbols
+        data.PT = ptype.SYMBOLS
+        return data
 
     @staticmethod
     def load(name, obj):
@@ -141,10 +144,9 @@ class FSK(Modulation):
     def demodulate(self, samps):
         # see https://wiki.gnuradio.org/index.php/Quadrature_Demod
         samps = 0.5 * np.angle(samps[0:-1] * np.conj(samps[1:]))
-        # return dobject.ModData(samps)
         return samps
 
-    def modulate(self, dobj):
+    def modulate(self, data):
         raise NotImplementedError()
 
 

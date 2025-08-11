@@ -5,8 +5,6 @@ import numpy as np
 from pyboiler.logger import Logger, Level
 
 from . import base
-from . import dobject
-
 
 class Mapping:
     """Constellation map"""
@@ -183,50 +181,41 @@ class Constellation:
         """Get bits per symbol"""
         return self._bps
 
-    def modulate(self, dobj: dobject.BitObject, noise: bool = True):
+    def modulate(self, data):
         """Modulate BitObject to IQ symbols"""
-        indexes = self.index(dobj)
+        indexes = self.index(data)
         points = self.map(indexes)
-        symbols = self.to_symbols(points, noise=noise)
+        symbols = self.to_symbols(points)
         return symbols
 
-    def demodulate(self, syms: dobject.IQObject):
+    def demodulate(self, syms):
         """Demodulate IQ symbols to ModData"""
-        syms.data /= np.max(syms.data) # normalize
+        syms /= np.max(syms) # normalize
         distances = self.from_symbols(syms)
         codewords = self.codewords()
-        mod = dobject.ModData()
-        mod.soft = base.SoftDecision(codewords, distances)
-
-        return mod
+        return codewords, distances
 
     ##############################
     #  Modulate
     ##############################
-
-    def index(self, dobj: dobject.BitObject):
+    def index(self, data):
         """Convert bits to indexes"""
-        self.log.trace(f"Data is {dobj.data}")
-        self.log.trace(f"Bits per symbol: {self._bps} / {len(dobj)}")
+        self.log.trace(f"Data is {data}")
+        self.log.trace(f"Bits per symbol: {self._bps} / {len(data)}")
 
-        padding = len(dobj) % self._bps
+        padding = len(data) % self._bps
         if not padding == 0:
 
             for _ in range(0, (self._bps - padding)):
-                dobj.append(0)
-            self.log.trace(f"Padded by {self._bps - padding}: {len(dobj)}")
-        num_symbols = len(dobj) // self._bps
+                data = np.append(data, 0)
+            self.log.trace(f"Padded by {self._bps - padding}: {len(data)}")
+        num_symbols = len(data) // self._bps
 
         self.log.trace(f"Data requires {num_symbols} indexes to encode")
-        self.log.trace(f"Data is: {dobj}")
+        self.log.trace(f"Data is: {data}")
 
-        indexes = np.split(dobj.data, num_symbols)
+        indexes = np.split(data, num_symbols)
         indexes = [int("".join(data.astype(int).astype(str)), 2) for data in indexes]
-        # indexes = []
-        # for i in range(0, len(data.bin), self._bps):
-        #    bit_int = int(data.bin[i:i+self._bps], 2)
-        #    indexes.append(int(bit_int))
-
         self.log.trace(f"Indexes are {indexes}")
         return indexes
 
@@ -243,25 +232,19 @@ class Constellation:
         self.log.trace(f"Points are {points}")
         return points
 
-    def to_symbols(self, points, noise: bool = False):
+    def to_symbols(self, points):
         """Convert mapping values to symbols"""
         points = np.array(points)
         symbols = self.points[points]
         self.log.trace(f"Symbols are:\n{symbols} / {len(symbols)}")
-        # Add noise
-        if noise:
-            n = (np.random.randn(len(symbols)) + 1j*np.random.randn(len(symbols)))/np.sqrt(2) # AWGN with unity power
-            symbols = symbols + n * np.sqrt(0.01) # noise power of 0.01
-
         symbols = symbols.astype(np.complex64)
         # self.log.trace(f"Symbols are: {symbols}")
-        return dobject.IQData(symbols)
+        return symbols
 
     ##############################
     #  Demodulate
     ##############################
-
-    def from_symbols(self, symbols: dobject.IQObject):
+    def from_symbols(self, symbols):
         """Convert symbols to soft decisions"""
         # self.log.trace(f"Symbols are:\n{symbols}")
         # codewords = np.zeros((len(self.points), self._bps), dtype=bool)
@@ -273,7 +256,7 @@ class Constellation:
         self.log.trace(f"Points are {distances} / Demodulated {len(distances)} symbols")
         return distances
 
-    def unmap(self, points, meta):
+    def unmap(self, points):
         """Convert points to map indexes"""
         self.log.trace(f"Using mapping: {self.mapping}")
         indexes = []
@@ -282,7 +265,7 @@ class Constellation:
         self.log.trace(f"Indexes are {indexes}")
         return indexes
 
-    def unindex(self, indexes, meta):
+    def unindex(self, indexes):
         """Convert indexes to bits"""
         self.log.trace(f"Bits per symbol: {self._bps}")
         bits = ""
@@ -294,9 +277,7 @@ class Constellation:
             self.log.trace(f"Unpadding by {padding}")
             bits = bits[:-padding]
 
-        data = dobject.ModData(np.array([int(bit) for bit in bits], dtype=bool))
-
-        # data = Stream.from_bin(bits, len(bits))
+        data = np.array([int(bit) for bit in bits], dtype=bool)
 
         self.log.trace(f"Data bits are {data} / {len(data)}")
 

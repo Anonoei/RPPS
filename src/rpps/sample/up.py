@@ -45,3 +45,14 @@ class Sinc(Upsample):
         meta.obj = self.run(meta.obj)
         meta.Fs *= self.ratio
         return meta
+
+class Zeros(Upsample):
+    def run(self, samples):
+        up = np.zeros(len(samples)*self.ratio, dtype=samples.dtype)
+        up[::self.ratio] = samples[::1]
+        return up
+
+    def __radd__(self, meta: Meta):
+        meta.obj = self.run(meta.obj)
+        meta.Fs *= self.ratio
+        return meta

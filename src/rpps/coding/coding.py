@@ -6,7 +6,7 @@ import numpy as np
 from pyboiler.logger import Logger, Level
 
 from . import base
-from . import dobject
+from ..base import Analog, Digital, ptype, dtype
 from .blocker import unblock
 
 from . import types as types
@@ -44,39 +44,37 @@ class Coding(base.rpps.Pipe):
         """Return bits/parity rate"""
         return self.num/self.den
 
-    @abstractmethod
-    def encode(self, dobj: dobject.BitObject) -> dobject.CodingData:
-        """Encode dobject using specified coding"""
+    def encode(self, data):
+        """Encode data using specified coding"""
+        data.as_bits()
+        data.data = self._enc.encode(data.data)
+        data.PT = ptype.CODED
+        data.DT = dtype.bits
+        return data
 
-    @abstractmethod
-    def decode(self, dobj: dobject.BitObject) -> dobject.BitObject:
-        """Decode dobject using specified coding"""
+    def decode(self, data):
+        """Decode data using specified coding"""
+        data.data = self._dec.decode(data.data)
+        data.PT = ptype.CODED
+        data.DT = dtype.bits
+        return data
 
     @staticmethod
     @abstractmethod
     def load(name: str, obj: dict):
         """Load coding from json"""
 
-    def __rmul__(self, other):
-        return self.encode(dobject.ensure_bit(other))
+    def __rmul__(self, data):
+        return self.encode(data)
 
-    def __rtruediv__(self, other):
-        if issubclass(type(other), dobject.ModData):
-            if self.decision == Decision.HARD:
-                other = dobject.ModData(other.hard)
-        return self.decode(other)
-
+    def __rtruediv__(self, data):
+        if isinstance(data, Analog):
+            if self.decision == Decision.HARD: # TODO: fix this
+                data = Analog(data, ptype.MAPPED_HARD)
+        return self.decode(data)
 
 class Block(Coding):
     """Parent block coding"""
-
-    def encode(self, dobj):
-        """Encode dobject using specified coding"""
-        return dobject.CodingData(self._enc.encode(dobj.data))
-
-    def decode(self, dobj):
-        """Decode dobject using specified coding"""
-        return dobject.BitObject(self._dec.decode(dobj.data))
 
     @staticmethod
     def load(name, obj):
@@ -100,12 +98,6 @@ class Block(Coding):
 
 class Convolutional(Coding):
     """Parent convolutional coding"""
-
-    def encode(self, dobj):
-        return dobject.CodingData(self._enc.encode(dobj.data))
-
-    def decode(self, dobj):
-        return dobject.BitObject(self._dec.decode(dobj.data))
 
     @staticmethod
     def load(name, obj):

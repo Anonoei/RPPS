@@ -5,7 +5,7 @@ import numpy as np
 from pyboiler.logger import Logger, Level
 
 from . import base
-from . import dobject
+from ..base import Analog, Digital, ptype, dtype
 from . import lfsr
 
 
@@ -21,23 +21,23 @@ class Scram(base.rpps.Pipe):
         return f"{type(self).__name__}"
 
     @abstractmethod
-    def scram(self, dobj: dobject.BitObject) -> dobject.ScramData:
-        """Encode dobject using specified scram"""
+    def scram(self, data):
+        """Encode data using specified scram"""
 
     @abstractmethod
-    def descram(self, dobj: dobject.BitObject) -> dobject.BitObject:
-        """Decode dobject using specified scram"""
+    def descram(self, data):
+        """Decode data using specified scram"""
 
     @staticmethod
     @abstractmethod
     def load(name: str, obj: dict):
         """Load modulation from json"""
 
-    def __rmul__(self, other):
-        return self.scram(dobject.ensure_bit(other))
+    def __rmul__(self, data):
+        return self.scram(data)
 
-    def __rtruediv__(self, other):
-        return self.descram(dobject.ensure_bit(other))
+    def __rtruediv__(self, data):
+        return self.descram(data)
 
 
 class Feedthrough(Scram):
@@ -54,21 +54,29 @@ class Feedthrough(Scram):
         self.s_lfsr.reset()
         self.d_lfsr.reset()
 
-    def scram(self, dobj: dobject.BitObject):
-        scrambled_data = np.empty_like(dobj.data, dtype=bool)
+    def scram(self, data):
+        data.as_bits()
+        scr_data = np.empty_like(data.data, dtype=bool)
 
-        for i, bit in enumerate(dobj.data):
-            scrambled_data[i] = self.s_lfsr.get_bit() ^ bit
+        for i, bit in enumerate(data.data):
+            scr_data[i] = self.s_lfsr.get_bit() ^ bit
 
-        return dobject.ScramData(scrambled_data)
+        data.data = scr_data
+        data.DT = dtype.bits
+        data.PT = ptype.CODED
+        return data
 
-    def descram(self, dobj: dobject.BitObject):
-        descrambled_data = np.empty_like(dobj.data, dtype=bool)
+    def descram(self, data):
+        data.as_bits()
+        scr_data = np.empty_like(data.data, dtype=bool)
 
-        for i, bit in enumerate(dobj.data):
-            descrambled_data[i] = self.d_lfsr.get_bit() ^ bit
+        for i, bit in enumerate(data.data):
+            scr_data[i] = self.d_lfsr.get_bit() ^ bit
 
-        return dobject.BitObject(descrambled_data)
+        data.data = scr_data
+        data.DT = dtype.bits
+        data.PT = ptype.CODED
+        return data
 
     @staticmethod
     def load(name, obj):

@@ -17,7 +17,7 @@ mod.set_mapping(mod.get_maps()[0])
 ecc = rp.coding.load("blk", "hamming.7_4")
 scr = rp.scram.load("fdt", "v35")
 
-enc_msg = rp.dobject.StreamData(b"Hello World!")
+enc_msg = rp.Data(b"Hello World!")
 
 f_pipe = lambda inp:inp * scr * ecc * mod
 r_pipe = lambda syms:syms / mod / ecc / scr
@@ -26,7 +26,7 @@ syms = f_pipe(enc_msg) # Encode data with ecc, and mod. Get the symbols
 
 data = r_pipe(syms) # Read the symbols
 
-dec_msg = rp.dobject.StreamData(data)
+dec_msg = rp.Data(data)
 print(f"{enc_msg.hex == dec_msg.hex}") # Check decoded data is what you encoded
 
 ```

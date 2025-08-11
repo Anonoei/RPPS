@@ -1,7 +1,7 @@
 import numpy as np
 from ..filters.impl import gaussian
 
-def psd(samps, Fs=1, vbw_hz=None):
+def psd(samps, Fs: float = 1, vbw_hz=None):
     y = np.abs(np.fft.fft(samps))**2 / (len(samps)*Fs)
     y = np.fft.fftshift(10.0*np.log10(y))
     if vbw_hz is not None:
@@ -9,8 +9,8 @@ def psd(samps, Fs=1, vbw_hz=None):
         y = vbw(y, smooth)
     return y
 
-def vbw_calc(N, Fs, vbw_hz):
+def vbw_calc(N: int, Fs: float, vbw_hz: float):
     return vbw_hz/(Fs / N)
 
-def vbw(samps, smooth):
+def vbw(samps, smooth: float):
     return gaussian.gaussian(samps, gaussian.fwhm2sigma(smooth))

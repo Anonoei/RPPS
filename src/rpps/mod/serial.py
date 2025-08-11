@@ -17,7 +17,7 @@ def init(name, obj: dict) -> modulation.Modulation:
     return getattr(modulation, obj["base"]).load(name, obj)
 
 
-def load(name: str) -> modulation.Modulation:
+def load(name: str):
     """Load a modulation from a file name"""
     folder = name[-3:].lower()
 
