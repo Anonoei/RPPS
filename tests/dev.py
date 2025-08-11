@@ -20,10 +20,12 @@ def main():
     print(mod.constellation)
     syms = enc_msg*ecc*scr*mod
 
-    upsample = rp.sample.up.Zeros(4)
+    upsample = rp.sample.up.Zeros(2)
     pulse = rp.filters.ShapingRRC(101, 4, 0.35)
+    shift = rp.filters.ShiftFreq(13_000)
 
     syms.data = pulse.run(upsample.run(syms.data))
+    syms.data = shift.run(syms.data, 250_000)
 
     rp.viz.ot.time.IQ3d(syms.data)
     # rp.viz.phasor(None, syms.data)
