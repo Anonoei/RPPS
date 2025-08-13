@@ -20,14 +20,24 @@ def main():
     print(mod.constellation)
     syms = enc_msg*ecc*scr*mod
 
-    upsample = rp.sample.up.Zeros(2)
-    pulse = rp.filters.ShapingRRC(101, 4, 0.35)
-    shift = rp.filters.ShiftFreq(13_000)
+    shift = rp.filters.ShiftFreq(25)
 
-    syms.data = pulse.run(upsample.run(syms.data))
-    syms.data = shift.run(syms.data, 250_000)
+    sps = 8
+    pulse = rp.filters.ShapingMatRRC(12, sps, beta=0.35)
+    shaped = pulse.burst(syms.data)
 
-    rp.viz.ot.time.IQ3d(syms.data)
+    # syms.data = shift.run(syms.data, 250_000)
+    # rp.viz.time.IQ(None, pulse.pulse)
+    # plt.show()
+    # exit()
+
+    # rp.viz.ot.time.IQ3d(syms.data)
+    fig, ax = plt.subplots()
+    t = np.arange(0, 256)*sps
+    t_p = np.arange(0, 256*sps)
+    ax.plot(t, syms.data[:256].real, ".-")
+    ax.plot(t_p, shaped[:256*sps].real, ".-")
+    # rp.viz.time.I(ax, syms.data[:256])
     # rp.viz.phasor(None, syms.data)
     plt.show()
 
