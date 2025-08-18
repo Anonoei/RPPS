@@ -1,38 +1,24 @@
 import numpy as np
 
-from ._code import _code
+from ._code import _code, err
 
 from ..blocker import block, unblock
 
 class repeat(_code):
-    def __init__(self, count):
-        super().__init__(1, count)
+    def __init__(self, log, count):
+        super().__init__(log, f"{count}", 1, count)
 
     def encode(self, bits: np.ndarray):
-        blocks = block(bits, self.num)
-
-        encoded = np.empty((len(blocks), self.den), dtype=bool)
-
-        for i, blk in enumerate(blocks):
-            encoded[i,:] = np.repeat(blk, self.den)
-
-        encoded = unblock(encoded).astype(bool)
-
-        assert len(encoded) == len(bits) * self.den
+        self.log.trace(f"encoding {len(bits)}")
+        encoded = np.repeat(bits, self.den)
+        self.log.trace(f"encoded {len(encoded)}")
         return encoded
 
     def decode(self, bits: np.ndarray):
         blocks = block(bits, self.den)
+        self.log.trace(f"decoding {len(bits)}, {blocks.shape}")
 
-        decoded = np.empty((len(blocks), self.num), dtype=bool)
-
-        codewords = np.array([np.zeros(self.den, dtype=bool), np.ones(self.den, dtype=bool)])
-
-        for i, blk in enumerate(blocks):
-            dist = np.empty((2))
-            for j, code in enumerate(codewords):
-                dist[j] = np.bitwise_xor(code, blk).sum()
-            decoded[i] = np.where(dist == dist.min())[0][0]
-        decoded = unblock(decoded).astype(bool)
-        assert len(bits) // self.den == len(decoded)
+        decoded = np.sum(blocks, axis=1)/self.den
+        decoded = np.round(decoded).astype(bits.dtype)
+        self.log.trace(f"decoded {len(decoded)}")
         return decoded

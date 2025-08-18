@@ -7,7 +7,9 @@ import matplotlib.pyplot as plt
 from pyboiler.logger import Logger
 
 from . import base
-from ..base import Analog, Mod, Digital, ptype, dtype
+from . import _config
+
+from ..base import Analog, Mod, Digital, pproc, dtype
 
 from .constellation import Mapping, Points, Maps
 from .constellation import Constellation
@@ -15,13 +17,10 @@ from .constellation import Constellation
 
 class Modulation(base.rpps.Pipe):
     """Modulation Pipe"""
-    __slots__ = ("log", "constellation", "mapping")
-    name = "Modulation"
-    points = Points([])
-    maps = Maps([])
+    __slots__ = ("log",)
 
     def __init__(self):  # type: ignore
-        self.log = Logger().Child("Modulation").Child(type(self).name)
+        self.log = Logger().Child("Modulation", _config.LOG_MOD).Child(type(self).name)
 
     def demodulate(self, data):
         """Convert IQ samples to bits"""
@@ -41,13 +40,18 @@ class Modulation(base.rpps.Pipe):
         raise NotImplementedError()
 
     def __rmul__(self, data):
+        self.log.debug(f"Modulating {data}")
         return self.modulate(data)
 
     def __rtruediv__(self, data):
+        self.log.debug(f"Demodulating {data}")
         return self.demodulate(data)
 
-class PSK(Modulation):
-    """Phase-shift keying parent"""
+class ModConstellation(Modulation):
+    __slots__ = ("constellation", "mapping")
+    name = "ModWithConstellation"
+    points = Points([])
+    maps = Maps([])
 
     def __init__(self, mapping = None):
         super().__init__()
@@ -55,6 +59,9 @@ class PSK(Modulation):
 
         if mapping is not None:
             self.constellation.mapping =  Mapping(mapping)
+
+    def __str__(self):
+        return f"{type(self).__name__}:{self.constellation.mapping.str()}"
 
     def set_mapping(self, mapping: Mapping):
         """Set modulation mapping"""
@@ -64,8 +71,15 @@ class PSK(Modulation):
         """Get available maps"""
         return self.maps
 
-    def __str__(self):
-        return f"{type(self).__name__}:{self.constellation.mapping.str()}"
+    def demodulate(self, data):
+        codewords, distances = self.constellation.demodulate(data.data)
+        d = Mod((codewords, distances), pp=pproc.MAP)
+        return d
+
+    def modulate(self, data: Digital):
+        sym = self.constellation.modulate(data.data)
+        d = Mod(sym, pp=pproc.MOD, dt=dtype.SYMBOLS)
+        return d
 
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         if ax is None:
@@ -91,18 +105,8 @@ class PSK(Modulation):
             y = radius * np.sin(angle)
             ax.plot(x, y, "g")
 
-    def demodulate(self, data):
-        codewords, distances = self.constellation.demodulate(data.data)
-
-        d = Mod((codewords, distances))
-        return d
-
-    def modulate(self, data: Digital):
-        data.data = self.constellation.modulate(data.data)
-        data.DT = dtype.symbols
-        data.PT = ptype.SYMBOLS
-        return data
-
+class PSK(ModConstellation):
+    """Phase-shift keying parent"""
     @staticmethod
     def load(name, obj):
         def load_complex(comp):
@@ -120,13 +124,10 @@ class PSK(Modulation):
 
         maps = [Mapping(m["map"], m["comment"]) for m in obj["Maps"]]
 
-        impl = type(
-            name,
-            (PSK,),
+        impl = type(name, (PSK,),
             dict(name=name, points=Points(pnts), maps=Maps(maps))
         )()
         return impl
-
 
 class ASK(Modulation):
     """Amplitude-shift keying parent"""
@@ -136,7 +137,7 @@ class FSK(Modulation):
     """Frequency-shift keying parent"""
 
     def __str__(self):
-        return f"{type(self).__name__}:{self.constellation.mapping.str()}"
+        return f"{type(self).__name__}"
 
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         ...

@@ -1,6 +1,7 @@
 from .sample import Sample, Meta
 
-from ..filters.shaping import ShapingSinc
+# from ..filters.shaping import ShapingSinc
+from ..filters import shaping
 
 import numpy as np
 
@@ -33,7 +34,7 @@ class Sinc(Upsample):
     def __init__(self, ratio):
         super().__init__(ratio)
         taps = np.max([self.ratio*12, 31])
-        self.pulse = ShapingSinc(taps, ratio, 1) # TODO: tune this
+        self.pulse = shaping.ShapingSinc(taps, ratio, 1) # TODO: tune this
 
     def run(self, samples):
         up = np.zeros(len(samples)*self.ratio, dtype=samples.dtype)

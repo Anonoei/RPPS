@@ -20,7 +20,7 @@ config().PATH_CONFIG = config().PATH_ROOT / "config" # type: ignore
 Logger("RPPS", Level.TRACE)
 
 # Import helpers/globals
-from .base.types import dtype, ptype
+from .base.types import pproc, dtype
 from .base import data
 from .base.data import Data
 from .meta import Meta

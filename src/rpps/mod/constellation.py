@@ -4,7 +4,7 @@ import numpy as np
 
 from pyboiler.logger import Logger, Level
 
-from . import base
+from . import _config
 
 class Mapping:
     """Constellation map"""
@@ -118,10 +118,10 @@ class Points:
 
 class Constellation:
     """Constellation implementation"""
-    __slots__ = ("log", "_points", "_mapping", "_bps")
+    __slots__ = ("log", "_points", "_mapping", "_bps", "_bit_mul")
 
-    def __init__(self, points: Points, mapping: Mapping = Mapping(), log=Logger().Child("Modulation")):
-        self.log = log.Child("Constellation", Level.WARN)
+    def __init__(self, points: Points, mapping: Mapping = Mapping(), log=Logger().Child("Modulation", _config.LOG_MOD)):
+        self.log = log.Child("Constellation", _config.LOG_MOD_CONST)
         if not isinstance(points, Points):
             points = Points(points)
         self._points = points
@@ -129,6 +129,13 @@ class Constellation:
         self._mapping = mapping
 
         self._bps = int(math.log2(len(self.points))) # Bits per symbol
+        self._bit_mul = np.zeros(self._bps, dtype=np.int8)
+
+        for i in range(0, self._bps):
+            if _config.BYTE_ORDER == "<":
+                self._bit_mul[self._bps-(i+1)] = 2**i
+            else:
+                self._bit_mul[i] = 2**i
 
     def __str__(self) -> str:
         return f"Points: {self._points}, Map: {self._mapping}, {self._mapping.comment}"
@@ -183,6 +190,7 @@ class Constellation:
 
     def modulate(self, data):
         """Modulate BitObject to IQ symbols"""
+        self.log.debug(f"Modulating {len(data)}, {data.dtype}")
         indexes = self.index(data)
         points = self.map(indexes)
         symbols = self.to_symbols(points)
@@ -190,8 +198,8 @@ class Constellation:
 
     def demodulate(self, syms):
         """Demodulate IQ symbols to ModData"""
-        syms /= np.max(syms) # normalize
-        distances = self.from_symbols(syms)
+        self.log.debug(f"Demodulating {len(syms)}, {syms.dtype}")
+        distances = self.distances(syms)
         codewords = self.codewords()
         return codewords, distances
 
@@ -199,46 +207,36 @@ class Constellation:
     #  Modulate
     ##############################
     def index(self, data):
-        """Convert bits to indexes"""
-        self.log.trace(f"Data is {data}")
-        self.log.trace(f"Bits per symbol: {self._bps} / {len(data)}")
+        """Convert bits to base10 representation"""
+        self.log.trace(f"index: Bits per symbol: {self._bps} / {len(data)}")
 
-        padding = len(data) % self._bps
-        if not padding == 0:
+        padded = 0
+        while not len(data) % self._bps == 0:
+            data = np.append(data, 0)
+            padded += 1
+        if not padded == 0:
+            self.log.debug(f"Padded by {padded}: {len(data)}")
+        # num_symbols = len(data) // self._bps
 
-            for _ in range(0, (self._bps - padding)):
-                data = np.append(data, 0)
-            self.log.trace(f"Padded by {self._bps - padding}: {len(data)}")
-        num_symbols = len(data) // self._bps
-
-        self.log.trace(f"Data requires {num_symbols} indexes to encode")
-        self.log.trace(f"Data is: {data}")
-
-        indexes = np.split(data, num_symbols)
-        indexes = [int("".join(data.astype(int).astype(str)), 2) for data in indexes]
-        self.log.trace(f"Indexes are {indexes}")
+        indexes = data.reshape((-1, self._bps))
+        indexes = np.multiply(indexes, self._bit_mul)
+        indexes = np.sum(indexes, axis=1)
         return indexes
 
     def map(self, indexes):
         """Convert indexes to self.mapping values"""
-        self.log.trace(f"Using mapping: {self.mapping}")
-        points = []
-        for idx in indexes:
-            points.append(
-                int(
-                    np.where(self.mapping.arr == idx)[0][0]
-                )
-            )
-        self.log.trace(f"Points are {points}")
+        self.log.trace(f"map: using map {self.mapping}")
+        points = np.empty_like(indexes)
+        for i in range(len(self.mapping)):
+            points[indexes==i] = np.where(self.mapping.arr==i)[0][0]
+        self.log.trace(f"map: mapped {len(points)} points")
         return points
 
     def to_symbols(self, points):
         """Convert mapping values to symbols"""
-        points = np.array(points)
-        symbols = self.points[points]
-        self.log.trace(f"Symbols are:\n{symbols} / {len(symbols)}")
-        symbols = symbols.astype(np.complex64)
-        # self.log.trace(f"Symbols are: {symbols}")
+        self.log.trace(f"to_sym: using {len(points)} mapped points")
+        symbols = self._points.arr[points.astype(int)].astype(np.complex64)
+        self.log.trace(f"to_sym: modulated {len(symbols)} symbols")
         return symbols
 
     ##############################
@@ -246,14 +244,15 @@ class Constellation:
     ##############################
     def from_symbols(self, symbols):
         """Convert symbols to soft decisions"""
+        self.log.trace(f"from_sym: using {len(symbols)} symbols")
         # self.log.trace(f"Symbols are:\n{symbols}")
         # codewords = np.zeros((len(self.points), self._bps), dtype=bool)
         # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
         distances = np.zeros((len(symbols), len(self.points)), dtype=np.float16)
 
-        distances[:] = np.abs(self.points.arr - symbols.data.reshape(-1, 1))
+        distances[:] = np.abs(self.points.arr - symbols.reshape(-1, 1))
         distances[:] = 1 - np.round(distances / distances.max(axis=0), decimals=2)
-        self.log.trace(f"Points are {distances} / Demodulated {len(distances)} symbols")
+        self.log.trace(f"from_sym: demodulated {len(distances)} symbols")
         return distances
 
     def unmap(self, points):
@@ -283,11 +282,32 @@ class Constellation:
 
         return data
 
-    def codewords(self):
-        bits = np.array([bin(n)[2:].zfill(self._bps) for n in self.mapping.arr])
-        codewords = np.zeros((len(self.points), self._bps), dtype=int)
+    def distances(self, symbols):
+        distances = np.zeros((len(symbols), len(self.points)), dtype=np.float16)
 
-        for i, b in enumerate(bits):
-            for j, c in enumerate(b):
-                codewords[i, j] = True if c == '1' else False
+        distances[:] = np.abs(self.points.arr - symbols.reshape(-1, 1))
+        distances[:] = 1 - np.round(distances / distances.max(axis=0), decimals=2)
+        return distances
+
+    def codewords(self):
+        # bits = np.array([bin(n)[2:].zfill(self._bps) for n in self.mapping.arr])
+        # codewords = np.zeros((len(self.points), self._bps), dtype=int)
+
+        # for i, b in enumerate(bits):
+        #     for j, c in enumerate(b):
+        #         codewords[i, j] = True if c == '1' else False
+        codewords = np.zeros((len(self.mapping.arr), self._bps), dtype=np.uint8)
+        for i, m in enumerate(self.mapping.arr):
+            if m == 0:
+                continue
+            residue = 0
+            for j in range(self._bps):
+                div = np.divide(m-residue, self._bit_mul).astype(int)
+                idx = (div==1)
+                if idx.any() == True:
+                    residue += self._bit_mul[idx]
+                    codewords[i][idx] = 1
+
+
+        # codewords = np.binary_repr(self.mapping.arr)
         return codewords

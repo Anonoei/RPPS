@@ -5,7 +5,8 @@ import numpy as np
 from pyboiler.logger import Logger, Level
 
 from . import base
-from ..base import Analog, Digital, ptype, dtype
+from . import _config
+from ..base import Analog, Mod, Digital, pproc, dtype
 from . import lfsr
 
 
@@ -13,9 +14,7 @@ class Scram(base.rpps.Pipe):
     """Scram Pipe"""
 
     def __init__(self):
-        self.log = (
-            Logger().Child("Coding", Level.WARN).Child(type(self).__name__, Level.WARN)
-        )
+        self.log = Logger().Child("Scram", _config.LOG_SCRAM).Child(type(self).__name__, _config.LOG_SCRAM)
 
     def __str__(self):
         return f"{type(self).__name__}"
@@ -34,10 +33,20 @@ class Scram(base.rpps.Pipe):
         """Load modulation from json"""
 
     def __rmul__(self, data):
-        return self.scram(data)
+        self.log.debug(f"Scrambling {data}")
+        data = data.as_bits()
+        data.data = self.scram(data.data)
+        data.PP = pproc.SCRAM
+        data.DT = dtype.BITS
+        return data
 
     def __rtruediv__(self, data):
-        return self.descram(data)
+        self.log.debug(f"Descrambling {data}")
+        data = data.as_bits()
+        data.data = self.descram(data.data)
+        data.PP = pproc.SCRAM
+        data.DT = dtype.BITS
+        return data
 
 
 class Feedthrough(Scram):
@@ -55,28 +64,20 @@ class Feedthrough(Scram):
         self.d_lfsr.reset()
 
     def scram(self, data):
-        data.as_bits()
-        scr_data = np.empty_like(data.data, dtype=bool)
+        scr_data = np.empty_like(data, dtype=bool)
 
-        for i, bit in enumerate(data.data):
+        for i, bit in enumerate(data):
             scr_data[i] = self.s_lfsr.get_bit() ^ bit
 
-        data.data = scr_data
-        data.DT = dtype.bits
-        data.PT = ptype.CODED
-        return data
+        return scr_data
 
     def descram(self, data):
-        data.as_bits()
-        scr_data = np.empty_like(data.data, dtype=bool)
+        scr_data = np.empty_like(data, dtype=bool)
 
-        for i, bit in enumerate(data.data):
+        for i, bit in enumerate(data):
             scr_data[i] = self.d_lfsr.get_bit() ^ bit
 
-        data.data = scr_data
-        data.DT = dtype.bits
-        data.PT = ptype.CODED
-        return data
+        return scr_data
 
     @staticmethod
     def load(name, obj):

@@ -1,3 +1,4 @@
+from .. import _config
 from . import err
 
 from .file import File

@@ -1,3 +1,5 @@
+from .. import _config
+
 from .sync import Sync
 
 from .baudline import find_rate

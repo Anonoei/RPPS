@@ -5,8 +5,8 @@ from ._code import _code
 from ..blocker import block, unblock
 
 class linear(_code):
-    def __init__(self, generator, check):
-        super().__init__(generator.shape[0], generator.shape[1])
+    def __init__(self, log, generator, check):
+        super().__init__(log, None, generator.shape[0], generator.shape[1])
         self.generator = generator
         self.check = np.transpose(check)
     def encode(self, bits: np.ndarray):

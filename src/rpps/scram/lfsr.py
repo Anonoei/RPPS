@@ -47,7 +47,6 @@ class Galois(LFSR):
 
     def __str__(self):
         return f"{super().__str__()}:{self._poly.astype(int)}"
-# 1110001001110000
 
 class galois_left(Galois):
     name = "Galois Left"

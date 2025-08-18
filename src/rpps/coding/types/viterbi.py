@@ -7,8 +7,8 @@ from ..blocker import block, unblock, hamming_dist
 
 class viterbi(_code):
     """Viterbi decoder"""
-    def __init__(self, num, den, constraint, generator):
-        super().__init__(num, den)
+    def __init__(self, log, num, den, constraint, generator):
+        super().__init__(log, None, num, den)
         self.con = constraint
         self.gen = generator
 

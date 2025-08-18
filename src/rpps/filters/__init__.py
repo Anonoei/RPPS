@@ -1,3 +1,5 @@
+from .. import _config
+
 from .impl import designer
 
 from .filter import Filter

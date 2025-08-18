@@ -1,29 +1,41 @@
 from enum import Enum, auto
 import numpy as np
+import numpy.typing as nt
+
+class pproc(Enum):
+    """Previous process"""
+    UNK = -1
+    SERIAL = 0
+
+    FILTER = 1
+    SYNC = 2
+
+    MOD = 4 # Modulated data
+    MAP = 5 # Demodulated data
+
+    CODING = 6
+    SCRAM = 7
 
 class dtype(Enum):
-    samples = np.complex64
-    symbols = np.complex64
-    mapped = None
-    mapped_hard = None
-    mapped_soft = None
-    bytes = np.uint8
-    bits = bool
+    """Data Type"""
+    # Analog
+    SAMPLES = (1, np.complex64)
+    SYMBOLS = (11, np.complex64)
 
-    def __str__(self):
+    # Mod
+    MAPPED = (2, None)
+    MAPPED_HARD = (21, None)
+    MAPPED_SOFT = (22, None)
+
+    # Digital
+    BITS = (3, bool)
+    BYTES = (4, np.uint8)
+
+    MSG = (5, None)
+
+    def __str__(self) -> str:
         return self.name
 
-class ptype(Enum):
-    """Data Types"""
-    UNKNOWN = -1
-    SAMPLES = 0
-    SYMBOLS = 1
-    MAPPED = 2
-    MAPPED_HARD = 21
-    MAPPED_SOFT = 22
-    CODED = 3
-    FRAME = 4
-    MSG = 9
-
-    def __str__(self):
-        return self.name
+    @property
+    def dtype(self) -> nt.DTypeLike:
+        return self.value[1]

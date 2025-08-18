@@ -1,0 +1,2 @@
+class UnalignedBlock(Exception):
+    pass

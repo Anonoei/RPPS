@@ -5,8 +5,8 @@ from ._code import _code
 from ..blocker import block, unblock
 
 class conv(_code):
-    def __init__(self, num: int, den: int, generator, constraint: int):
-        super().__init__(num, den)
+    def __init__(self, log, num: int, den: int, generator, constraint: int):
+        super().__init__(log, None, num, den)
         self.generator = generator
 
         self.register = np.zeros((constraint), dtype=bool)
