@@ -7,7 +7,7 @@ class rs(_code):
         super().__init__(log, None, num, den)
 
     def encode(self, bits):
-        pass
+        self.log.trace(f"encoding {len(bits)}")
 
     def decode(self, bits):
-        pass
+        self.log.trace(f"decoding {len(bits)}")

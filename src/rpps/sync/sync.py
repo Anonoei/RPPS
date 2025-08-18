@@ -1,4 +1,4 @@
-from ..meta import Meta
+from ..base import Meta
 
 class Sync:
     __slots__ = ("impl")

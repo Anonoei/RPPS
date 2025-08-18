@@ -48,6 +48,7 @@ class viterbi(_code):
     def decode(self, bits: np.ndarray):
         blocks = block(bits, self.den)
         trellis_length = len(blocks)
+        self.log.trace(f"decoding {len(bits)}, {blocks.shape}, trellis {trellis_length}")
 
         paths = np.empty((len(self.states), trellis_length, len(self.states)), dtype=np.complex64)
         paths[:,:,:] = np.inf + np.inf*1j

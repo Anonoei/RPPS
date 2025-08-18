@@ -14,13 +14,15 @@ Communication
   Framing [bits/bytes] - Framing data
 """
 
-from enum import Enum, auto
 import numpy as np
-from . import types
+
 from .types import pproc, dtype
+from .buffer import Buffer, Vector
 
 def Data(data):
     d = None
+    if isinstance(data, Buffer):
+        data = data._stor
     if isinstance(data, np.ndarray):
         if data.dtype == bool:
             d = Digital(data, dt=dtype.BITS)
@@ -50,6 +52,7 @@ class _Data:
 
     def __init__(self, data=None, pp=pproc.UNK, dt=None):
         self._data: np.ndarray = data # type: ignore
+        # self._data = Vector(data)
         self.PP = pp
         self.DT = dt
 
@@ -88,6 +91,10 @@ class _Data:
 
     def append(self, data):
         self._data = np.append(self._data, data)
+
+    def copy(self):
+        return type(self)(self._data, self.PP, self.DT)
+        # return type(self)(self._data._stor[:len(self._data)], self.PP, self.DT)
 
 class Analog(_Data):
     pass

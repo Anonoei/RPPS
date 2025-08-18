@@ -1,4 +1,4 @@
-from ..meta import Meta
+from ..base import Meta
 
 class Sample:
     def __radd__(self, meta: Meta):

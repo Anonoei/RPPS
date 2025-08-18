@@ -13,6 +13,7 @@ class conv(_code):
 
     def encode(self, bits):
         blocks = block(bits, self.num)
+        self.log.trace(f"encoding {len(bits)}, {blocks.shape}")
 
         encoded = np.empty((len(blocks), self.den), dtype=int)
 
@@ -26,5 +27,5 @@ class conv(_code):
             # input(f"encode {blk}: {encoded[i].astype(int)} // {self.register.astype(int)}")
 
         encoded = unblock(encoded).astype(bool)
-
+        self.log.trace(f"encoded {len(encoded)}")
         return encoded

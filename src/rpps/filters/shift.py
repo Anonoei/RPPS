@@ -1,6 +1,6 @@
 import numpy as np
 
-from ..meta import Meta
+from ..base import Meta
 from .filter import Filter
 
 class ShiftFreq(Filter):

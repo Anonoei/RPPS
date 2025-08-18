@@ -1,7 +1,6 @@
 import numpy as np
 
-from ..base.rpps import Pipe
-from ..meta import Meta
+from ..base import Meta, Pipe
 
 class Filter(Pipe):
     def __radd__(self, meta: Meta):

@@ -83,13 +83,13 @@ class Coding(base.rpps.Pipe):
         """Load coding from json"""
 
     def __rmul__(self, data):
-        self.log.debug(f"Coding {data}")
+        self._enc.log.debug(f"Coding {data}")
         data = data.as_bits()
         data = self.encode(data)
         return data
 
     def __rtruediv__(self, data):
-        self.log.debug(f"Decoding {data}")
+        self._dec.log.debug(f"Decoding {data}")
         if isinstance(data, Mod):
             if self.decision == Decision.HARD:
                 data = data.as_bits()

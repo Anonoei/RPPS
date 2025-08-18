@@ -23,11 +23,10 @@ Logger("RPPS", Level.TRACE)
 from .base.types import pproc, dtype
 from .base import data
 from .base.data import Data
-from .meta import Meta
+from .base.meta import Meta
 
 from . import base
 from . import utils
-
 
 ## Import implementations
 from . import filters
