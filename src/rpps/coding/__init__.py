@@ -6,6 +6,6 @@ from .. import _config
 # -----
 from . import err
 from . import matrix
-from .serial import identify, load, generate
+from .serial import ls, load, generate
 
 from .coding import Coding, Block, Convolutional

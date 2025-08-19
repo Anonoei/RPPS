@@ -5,8 +5,8 @@ import json
 from . import coding
 from . import types as types
 
-def identify():
-    """Identify available coding types"""
+def ls():
+    """List available coding types"""
     codings = {}
     for folder in (config().PATH_CONFIG / "coding").iterdir():  # type: ignore
         codings[folder.name] = [file.stem for file in folder.iterdir()]

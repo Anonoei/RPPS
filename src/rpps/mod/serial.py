@@ -7,8 +7,8 @@ from . import types
 from .modulation import Modulation
 from .constellation import ModConstellation
 
-def identify():
-    """Identify available modulation types"""
+def ls():
+    """List available modulation types"""
     mods = {}
     for folder in (config().PATH_CONFIG / "mod").iterdir(): # type: ignore
         mods[folder.name] = [file.stem for file in folder.iterdir()]

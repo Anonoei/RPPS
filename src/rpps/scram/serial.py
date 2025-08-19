@@ -4,8 +4,8 @@ import json
 
 from . import scrambler
 
-def identify():
-    """Identify available scram types"""
+def ls():
+    """List available scram types"""
     scrams = {}
     for folder in (config().PATH_CONFIG / "scram").iterdir():  # type: ignore
         scrams[folder.name] = [file.stem for file in folder.iterdir()]

@@ -1,3 +1,6 @@
+"""
+Example showing encoding and decoding data
+"""
 import rpps as rp
 
 mod = rp.mod.load("QPSK")

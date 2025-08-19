@@ -1,3 +1,6 @@
+"""
+Example showing Real-Time Persistent Spectrum
+"""
 import rpps as rp
 
 sink = rp.serial.File("f32","data/fm_rds_250k_1Msamples.iq")

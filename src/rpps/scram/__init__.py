@@ -6,7 +6,7 @@ from .. import _config
 
 # -----
 
-from .serial import identify, load
+from .serial import ls, load
 
 from . import lfsr
 from .scrambler import Scram
