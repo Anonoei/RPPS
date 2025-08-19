@@ -35,12 +35,12 @@ class ModConstellation(Modulation):
 
     def __radd__(self, other):
         data = super().__radd__(other)
-        data.append((self.constellation.bits_per_symbol, 1))
+        data.append((self.constellation.bits_per_symbol, 8))
         return data
 
     def __rsub__(self, other):
         data = super().__rsub__(other)
-        data.append((1, self.constellation.bits_per_symbol))
+        data.append((8, self.constellation.bits_per_symbol))
         return data
 
     def set_mapping(self, mapping: Mapping):

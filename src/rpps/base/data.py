@@ -50,18 +50,22 @@ class _Data:
         rin = np.array([t[0] for t in size])
         rou = np.array([t[1] for t in size])
 
-        mul_in = np.empty(len(size))
+        mul_in, mul_ou = np.empty(len(size)),  np.empty(len(size))
         mul_in[0] = rin[0]
         mul_in[1:] = rin[1:] * rou[:-1]
 
-        mul_ou = np.empty(len(size))
         mul_ou[0] = rou[0]
         mul_ou[1:] = rou[1:] * rin[:-1]
 
+        # print(f"  mul_in: {mul_in}")
+        # print(f"  mul_ou: {mul_ou}")
+
         mul = mul_in[1:]/mul_ou[:-1]
         min_req = int(np.ceil(np.prod(mul)))
+        # print(f"  Initial min_req: {min_req}")
         if self.DT == dtype.BYTES: # TODO: make sure this works correctly
             min_req = int(min_req/8)
+        # print(f"  Corrected min_req: {min_req}")
         return type(self)(self._data[:len(self)//min_req], self.PP, self.DT)
 
     @property
