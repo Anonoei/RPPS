@@ -17,17 +17,20 @@ mod.set_mapping(mod.get_maps()[0])
 ecc = rp.coding.load("blk", "hamming.7_4")
 scr = rp.scram.load("fdt", "v35")
 
+print(f"Mod: {mod}")
+print(f"ECC: {ecc}")
+print(f"SCR: {scr}")
+
 enc_msg = rp.Data(b"Hello World!")
 
-f_pipe = lambda inp:inp * scr * ecc * mod
-r_pipe = lambda syms:syms / mod / ecc / scr
+syms = enc_msg(scr+ecc+mod)*scr*ecc*mod # Scrambled, encoding, and modulate
+print(f" Symbols: {syms}")
+dec_msg = syms(mod-ecc-scr)/mod/ecc/scr # Demodulate, decode, and descramble
 
-syms = f_pipe(enc_msg) # Encode data with ecc, and mod. Get the symbols
-
-data = r_pipe(syms) # Read the symbols
-
-dec_msg = rp.Data(data)
+enc_msg = enc_msg.as_bytes()
+dec_msg = dec_msg.as_bytes()
 print(f"{enc_msg.hex == dec_msg.hex}") # Check decoded data is what you encoded
+
 
 ```
 
@@ -37,19 +40,22 @@ print(f"{enc_msg.hex == dec_msg.hex}") # Check decoded data is what you encoded
 ```
 import rpps as rp
 
-sink = rp.serial.File(<format>, <path>)
-meta = rp.Meta(Fs=<>, cf=<>)
+sink = rp.serial.File("f32","data/fm_rds_250k_1Msamples.iq")
+meta = rp.Meta(Fs=250e3, cf=99.5e6)
 sweep_time, display = 10, 50 # ms
 num_samps = int((sweep_time/1000)*meta.Fs)
 nfft, overlap, vbw = 1024, 0.8, 1000
 window = "blackman"
-fig, ax = plt.subplots()
+
+fig, ax = rp.viz.subplots()
+fig.tight_layout()
 im = ax
 for samps in sink(num_samps):
     snips = rp.utils.stft.stft(samps, nfft, overlap, window)
     psds = rp.utils.stft.psd(snips, meta.Fs, vbw)
+
     im = rp.viz.rt.Persistent(im, psds)
-    plt.pause(display/1000)
+    rp.viz.pause((display)/1000)
 ```
 
 ## Install
