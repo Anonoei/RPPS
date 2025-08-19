@@ -15,34 +15,10 @@ Communication
 """
 
 import numpy as np
+import typing
 
 from .types import pproc, dtype
 from .buffer import Buffer, Vector
-
-def Data(data):
-    d = None
-    if isinstance(data, Buffer):
-        data = data._stor
-    if isinstance(data, np.ndarray):
-        if data.dtype == bool:
-            d = Digital(data, dt=dtype.BITS)
-        elif data.dtype == np.uint8:
-            d = Digital(data, dt=dtype.BYTES)
-        elif data.dtype == dtype.SAMPLES.dtype:
-            d = Analog(data, dt=dtype.SAMPLES)
-        elif data.dtype == dtype.SYMBOLS.dtype:
-            d = Analog(data, dt=dtype.SYMBOLS)
-        else:
-            raise NotImplementedError(f"Cannot convert {type(data)} {data.shape} {data.dtype}")
-    elif isinstance(data, str):
-        d = Digital.from_bytes(data.encode("utf-8"), dt=dtype.BYTES)
-    elif isinstance(data, bytes):
-        d = Digital.from_bytes(data, dt=dtype.BYTES)
-
-    if d is None:
-        raise NotImplementedError(f"Cannot convert {type(data)}")
-    # print(f"Converted {type(data)} to {d}")
-    return d
 
 class _Data:
     __slots__ = (
@@ -56,6 +32,38 @@ class _Data:
         self.PP = pp
         self.DT = dt
 
+    def __str__(self):
+        return f"{self.name} ({self.PP}/{self.DT}) {len(self)}"
+
+    def __len__(self):
+        if self._data is None:
+            return 0
+        return len(self._data)
+
+    def __call__(self, size):
+        """
+        This is a jank way to ensure the correct amount of data is piped
+        Do do this correctly requires each pipe to have an input buffer and
+          wait to process until the buffer is the correct size
+        """
+        # print(f"Size: {size}")
+        rin = np.array([t[0] for t in size])
+        rou = np.array([t[1] for t in size])
+
+        mul_in = np.empty(len(size))
+        mul_in[0] = rin[0]
+        mul_in[1:] = rin[1:] * rou[:-1]
+
+        mul_ou = np.empty(len(size))
+        mul_ou[0] = rou[0]
+        mul_ou[1:] = rou[1:] * rin[:-1]
+
+        mul = mul_in[1:]/mul_ou[:-1]
+        min_req = int(np.ceil(np.prod(mul)))
+        if self.DT == dtype.BYTES: # TODO: make sure this works correctly
+            min_req = int(min_req/8)
+        return type(self)(self._data[:len(self)//min_req], self.PP, self.DT)
+
     @property
     def name(self):
         """Get class name"""
@@ -68,14 +76,6 @@ class _Data:
     @data.setter
     def data(self, data):
         self._data = data
-
-    def __str__(self):
-        return f"{self.name} ({self.PP}/{self.DT}) {len(self)}"
-
-    def __len__(self):
-        if self._data is None:
-            return 0
-        return len(self._data)
 
     def __enter__(self, *args, **kwargs):
         return self._data.__enter__(*args, **kwargs) # type: ignore
@@ -151,7 +151,7 @@ class Mod(_Data):
     def decide(self, code_idx):
         if self.DT == dtype.MAPPED_SOFT:
             if self._data is None:
-                self._data = np.zeros((1, self.code.shape[1]), dtype=dtype.bits.value) # type: ignore
+                self._data = np.zeros((1, self.code.shape[1]), dtype=dtype.BITS.dtype) # type: ignore
                 self._data[0] = self.code[code_idx] # type: ignore
                 return self._data[-1]
             elif self._data.shape[0] < self.dist.shape[0]: # type: ignore
@@ -250,3 +250,29 @@ class Digital(_Data):
                 return cls(data, pp, dt)
             raise NotImplementedError(f"Cannot convert {type(data)} {data.shape} {data.dtype} to {cls.__name__}")
         raise NotImplementedError(f"Cannot convert {type(data)} to {cls.__name__}")
+
+def Data(data) -> Digital:
+    # Setting this to Digital hides errors on client side
+    d = None
+    if isinstance(data, Buffer):
+        data = data._stor
+    if isinstance(data, np.ndarray):
+        if data.dtype == bool:
+            d = Digital(data, dt=dtype.BITS)
+        elif data.dtype == np.uint8:
+            d = Digital(data, dt=dtype.BYTES)
+        elif data.dtype == dtype.SAMPLES.dtype:
+            d = Analog(data, dt=dtype.SAMPLES)
+        elif data.dtype == dtype.SYMBOLS.dtype:
+            d = Analog(data, dt=dtype.SYMBOLS)
+        else:
+            raise NotImplementedError(f"Cannot convert {type(data)} {data.shape} {data.dtype}")
+    elif isinstance(data, str):
+        d = Digital.from_bytes(data.encode("utf-8"), dt=dtype.BYTES)
+    elif isinstance(data, bytes):
+        d = Digital.from_bytes(data, dt=dtype.BYTES)
+
+    if d is None:
+        raise NotImplementedError(f"Cannot convert {type(data)}")
+    # print(f"Converted {type(data)} to {d}")
+    return d # type: ignore

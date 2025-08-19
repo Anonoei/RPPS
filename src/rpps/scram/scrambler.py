@@ -11,7 +11,7 @@ from . import lfsr
 
 
 class Scram(base.rpps.Pipe):
-    """Scram Pipe"""
+    """Scrambler parent class"""
 
     def __init__(self):
         self.log = Logger().Child("Scram", _config.LOG_SCRAM).Child(type(self).__name__, _config.LOG_SCRAM)
@@ -19,23 +19,10 @@ class Scram(base.rpps.Pipe):
     def __str__(self):
         return f"{type(self).__name__}"
 
-    @abstractmethod
-    def scram(self, data):
-        """Encode data using specified scram"""
-
-    @abstractmethod
-    def descram(self, data):
-        """Decode data using specified scram"""
-
-    @staticmethod
-    @abstractmethod
-    def load(name: str, obj: dict):
-        """Load modulation from json"""
-
     def __rmul__(self, data):
         self.log.debug(f"Scrambling {data}")
         data = data.as_bits()
-        data.data = self.scram(data.data)
+        data.data = self.encode(data.data)
         data.PP = pproc.SCRAM
         data.DT = dtype.BITS
         return data
@@ -43,10 +30,25 @@ class Scram(base.rpps.Pipe):
     def __rtruediv__(self, data):
         self.log.debug(f"Descrambling {data}")
         data = data.as_bits()
-        data.data = self.descram(data.data)
+        data.data = self.decode(data.data)
         data.PP = pproc.SCRAM
         data.DT = dtype.BITS
         return data
+
+    def __radd__(self, other):
+        data = super().__radd__(other)
+        data.append((1,1))
+        return data
+    def __rsub__(self, other):
+        data = super().__rsub__(other)
+        data.append((1,1))
+        return data
+
+    @staticmethod
+    @abstractmethod
+    def load(name: str, obj: dict):
+        """Load modulation from json"""
+
 
 
 class Feedthrough(Scram):
@@ -63,7 +65,7 @@ class Feedthrough(Scram):
         self.s_lfsr.reset()
         self.d_lfsr.reset()
 
-    def scram(self, data):
+    def encode(self, data):
         scr_data = np.empty_like(data, dtype=bool)
 
         for i, bit in enumerate(data):
@@ -71,7 +73,7 @@ class Feedthrough(Scram):
 
         return scr_data
 
-    def descram(self, data):
+    def decode(self, data):
         scr_data = np.empty_like(data, dtype=bool)
 
         for i, bit in enumerate(data):

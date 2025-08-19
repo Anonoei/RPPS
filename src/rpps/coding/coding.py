@@ -11,6 +11,7 @@ from ..base import Analog, Mod, Digital, pproc, dtype
 from .blocker import unblock
 
 from . import types as types
+from . import matrix
 
 
 class Decision(Enum):
@@ -19,7 +20,7 @@ class Decision(Enum):
     SOFT = 1
 
 class Coding(base.rpps.Pipe):
-    """Coding Pipe"""
+    """Coding parent class"""
     __slots__ = ("log", "_enc", "_dec")
     name = "Coding"
     decision = Decision.HARD
@@ -30,35 +31,6 @@ class Coding(base.rpps.Pipe):
 
     def __str__(self) -> str:
         return f"{self.name}:{self.decision.name}:{type(self._enc).__name__}_{self.e_num}/{self.e_den}:{type(self._dec).__name__}_{self.d_num}/{self.d_den}"
-
-    @property
-    def e_num(self):
-        """Return number of encoding data bits"""
-        return self._enc.num
-    @property
-    def e_den(self):
-        """Return number of total encoded bits"""
-        return self._enc.den
-
-    @property
-    def d_num(self):
-        """Return number of decoding data bits"""
-        return self._dec.num
-
-    @property
-    def d_den(self):
-        """Return number of total decoded bits"""
-        return self._dec.den
-
-    @property
-    def e_rate(self):
-        """Return encoding bits/parity rate"""
-        return self.e_num/self.e_den
-
-    @property
-    def d_rate(self):
-        """Return decoding bits/parity rate"""
-        return self.d_num/self.d_den
 
     def encode(self, data):
         """Encode data using specified coding"""
@@ -96,6 +68,46 @@ class Coding(base.rpps.Pipe):
         data = self.decode(data) # decode may require soft/hard
         return data
 
+    def __radd__(self, other):
+        data = super().__radd__(other)
+        data.append((self.e_num, self.e_den))
+        return data
+    def __rsub__(self, other):
+        data = super().__rsub__(other)
+        data.append((self.d_den, self.d_num))
+        return data
+
+    @property
+    def e_num(self):
+        """Return number of encoding data bits"""
+        return self._enc.num
+    @property
+    def e_den(self):
+        """Return number of total encoded bits"""
+        return self._enc.den
+
+    @property
+    def d_num(self):
+        """Return number of decoding data bits"""
+        return self._dec.num
+
+    @property
+    def d_den(self):
+        """Return number of total decoded bits"""
+        return self._dec.den
+
+    @property
+    def e_rate(self):
+        """Return encoding bits/parity rate"""
+        return self.e_num/self.e_den
+
+    @property
+    def d_rate(self):
+        """Return decoding bits/parity rate"""
+        return self.d_num/self.d_den
+
+
+
 class Block(Coding):
     """Parent block coding"""
 
@@ -108,10 +120,15 @@ class Block(Coding):
         log = Logger().Child("Coding", _config.LOG_CODING).Child(name)
 
         if obj["type"] == "linear":
-            gen = np.array(obj["generator"], dtype=bool)
-            chk = np.array(obj["check"], dtype=bool)
-            i_code = i_code(log, gen, chk)
-
+            n, k = obj["code"]
+            p = obj.get("p", None)
+            if p is None:
+                g = np.array(obj["g"], dtype=bool)
+                h = np.array(obj["h"], dtype=bool)
+            else:
+                p = np.array(p, dtype=bool)
+                g,h = getattr(matrix, obj["type"])(n,k,p)
+            i_code = i_code(log, g, h)
 
             return impl(i_code, i_code)
         if obj["type"] == "repeat":
