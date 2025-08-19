@@ -58,10 +58,10 @@ class Buffer:
 
     def _insertN(self, data):
         if isinstance(data, Iterable):
-            clip = np.min([len(data), self._size-self._pnt])
-            self._stor[self._pnt:self._pnt+clip] = data[:clip]
+            clip = np.min([len(data), self._size-self._pnt]) # type: ignore
+            self._stor[self._pnt:self._pnt+clip] = data[:clip] # type: ignore
             self._pnt += clip
-            if not clip == len(data):
+            if not clip == len(data): # type: ignore
                 return clip
         else:
             self._stor[self._pnt] = data

@@ -90,23 +90,27 @@ class _Data:
         return self._data.__getitem__(*args, **kwargs)
 
     def append(self, data):
+        """Append to data"""
         self._data = np.append(self._data, data)
 
     def copy(self):
+        """Create a copy of data"""
         return type(self)(self._data, self.PP, self.DT)
         # return type(self)(self._data._stor[:len(self._data)], self.PP, self.DT)
 
 class Analog(_Data):
+    """Analog data"""
     pass
 
 class Mod(_Data):
+    """(De)Modulation data"""
     __slots__ = (
         "code", "dist",
         "decided"
     )
     def __init__(self, data=None, pp=pproc.MAP, dt=None):
         if pp == pproc.MOD:
-            self._data = data
+            self._data = data # type: ignore
             self.PP = pp
             self.DT = dt
 
@@ -117,7 +121,7 @@ class Mod(_Data):
             if isinstance(data, tuple):
                 codewords = data[0]
                 distances = data[1]
-                self._data = None
+                self._data = None  # type: ignore
                 self.PP = pproc.MAP
                 self.DT = dtype.MAPPED_SOFT
                 self.decided = False
@@ -135,20 +139,24 @@ class Mod(_Data):
             raise ValueError(f"Cannot initialize Mod from {pp}")
 
     def get_soft(self):
+        """Get codewords and distances"""
         return (self.code, self.dist)
 
     def to_analog(self):
+        """Convert to Analog"""
         if self.PP == pproc.MOD:
             return Analog(self._data, self.PP, self.DT)
         raise ValueError(f"Cannot convert Mod {self.PP}/{self.DT} to Analog!")
 
     def to_digital(self):
+        """Convert to Digital"""
         if self.PP == pproc.MAP:
             self.as_hard()
             return Digital(self._data, pp=pproc.MAP, dt=dtype.BITS)
         raise ValueError(f"Cannot convert Mod {self.PP}/{self.DT} to Digital!")
 
     def decide(self, code_idx):
+        """Make hard decisions"""
         if self.DT == dtype.MAPPED_SOFT:
             if self._data is None:
                 self._data = np.zeros((1, self.code.shape[1]), dtype=dtype.BITS.dtype) # type: ignore
@@ -162,6 +170,7 @@ class Mod(_Data):
         return None
 
     def as_hard(self):
+        """Convert to hard map"""
         if self.DT == dtype.MAPPED_SOFT:
             max_vals = np.max(self.dist, axis=1) # type: ignore
             indices = np.argwhere(np.equal(self.dist, max_vals[:, None])) # type: ignore
@@ -172,25 +181,31 @@ class Mod(_Data):
         return self
 
     def as_bits(self):
+        """Covert to Digital as bits"""
         return self.to_digital().as_bits()
 
     def as_bytes(self):
+        """Convert to Digital as bytes"""
         return self.to_digital().as_bytes()
 
 class Digital(_Data):
+    """Digital data"""
     @property
     def bin(self):
+        """Return binary representation"""
         if self.is_bit():
             return self._data.astype(int)
         raise ValueError(f"({self.PP}/{self.DT}) {self._data.dtype} cannot be shown in binary")
 
     @property
     def hex(self):
+        """Return hexadecimal implementation"""
         if self.is_byte():
             return self._data.tobytes().hex()
         raise ValueError(f"({self.PP}/{self.DT}) {self._data.dtype} cannot be shown in hex")
 
     def is_bit(self, strict=True):
+        """Check if data is bits"""
         idt = self.DT == dtype.BITS
         ndt = self._data.dtype == dtype.BITS.dtype
         if strict:
@@ -198,6 +213,7 @@ class Digital(_Data):
         else:
             return idt or ndt
     def is_byte(self, strict=True):
+        """Check if data is bytes"""
         idt = self.DT == dtype.BYTES
         ndt = self._data.dtype == dtype.BYTES.dtype
         if strict:
@@ -205,19 +221,22 @@ class Digital(_Data):
         else:
             return idt or ndt
 
+    def as_bits(self):
+        """Return self as bits"""
+        if not self.is_bit():
+            self._data = self.get_bits() # type: ignore
+            self.DT = dtype.BITS
+        return self
     def as_bytes(self):
+        """Return self as bytes"""
         if not self.is_byte():
             self._data = self.get_bytes() # type: ignore
             self.DT = dtype.BYTES
         return self
 
-    def as_bits(self):
-        if not self.is_bit():
-            self._data = self.get_bits() # type: ignore
-            self.DT = dtype.BITS
-        return self
 
     def get_bytes(self):
+        """Return self.data as bytes"""
         if self.is_bit(False):
             return np.packbits(self._data)
         elif self.is_byte(False):
@@ -226,6 +245,7 @@ class Digital(_Data):
             raise ValueError(f"({self.PP}/{self.DT}) {self._data.dtype} cannot get bytes")
 
     def get_bits(self):
+        """Return self.data as bits"""
         if self.is_bit(False):
             return self._data
         elif self.is_byte(False):
@@ -235,6 +255,7 @@ class Digital(_Data):
 
     @classmethod
     def from_bytes(cls, data, pp=pproc.UNK, dt=dtype.BYTES):
+        """Create Digital from bytes"""
         if isinstance(data, bytes):
             return cls(np.frombuffer(data, dtype=dtype.BYTES.dtype), pp, dt)
         elif isinstance(data, np.ndarray):
@@ -245,6 +266,7 @@ class Digital(_Data):
 
     @classmethod
     def from_bits(cls, data, pp=pproc.UNK, dt=dtype.BITS):
+        """Create Digital from bits"""
         if isinstance(data, np.ndarray):
             if data.dtype == dtype.BITS.dtype:
                 return cls(data, pp, dt)
@@ -252,6 +274,7 @@ class Digital(_Data):
         raise NotImplementedError(f"Cannot convert {type(data)} to {cls.__name__}")
 
 def Data(data) -> Digital:
+    """Wrapper to get correct Data type, and set PP and DT"""
     # Setting this to Digital hides errors on client side
     d = None
     if isinstance(data, Buffer):
