@@ -46,3 +46,11 @@ class Formats(Enum):
         if issubclass(self.value, IO.ComplexFormat):
             return True
         return False
+
+    @classmethod
+    def ls(cls):
+        return [fmt.name for fmt in cls]
+
+    @classmethod
+    def get(cls, name: str):
+        return cls[name]
