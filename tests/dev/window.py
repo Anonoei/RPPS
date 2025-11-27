@@ -45,27 +45,27 @@ def all(f, s):
 
 def ind(f, s):
     N = len(s)
-    # w = rp.filters.window.rect(N)
+    # w = rp.filters.Window.get("rect")(N)
     # # B-Spline
-    # w = rp.filters.winfow.bartlett(N)
-    # w = rp.filters.window.parzen(N)
+    # w = rp.filters.Window.get("bartlett")(N)
+    # w = rp.filters.Window.get("parzen")(N)
     # # Polynomial
-    # w = rp.filters.window.welch(N)
+    # w = rp.filters.Window.get("welch")(N)
     # # Raised-cosine
-    # w = rp.filters.window.hann(N)
-    w = rp.filters.window.hamming(N)
+    # w = rp.filters.Window.get("hann")(N)
+    w = rp.filters.Window.get("hamming")(N)
     # # Cosine-sum
-    # w = rp.filters.window.blackman(N)
-    # w = rp.filters.window.nuttall(N)
-    # w = rp.filters.window.blackman_nuttall(N)
-    # w = rp.filters.window.blackman_harris(N)
-    # w = rp.filters.window.flattop(N)
+    # w = rp.filters.Window.get("blackman")(N)
+    # w = rp.filters.Window.get("nuttall")(N)
+    # w = rp.filters.Window.get("blackman_nuttall")(N)
+    # w = rp.filters.Window.get("blackman_harris")(N)
+    # w = rp.filters.Window.get("flattop")(N)
     # # Adjustable
-    # w = rp.filters.window.acon_gaussian(N, 0.1)
-    # w = rp.filters.window.gen_gaussian(N, 0.2)
-    # w = rp.filters.window.tukey(N, 0.5)
-    # w = rp.filters.window.planck_taper(N,0.25)
-    # w = rp.filters.window.exponential(N, 60)
+    # w = rp.filters.Window.get("acon_gaussian")(N, 0.1)
+    # w = rp.filters.Window.get("gen_gaussian(")N, 0.2)
+    # w = rp.filters.Window.get("tukey")(N, 0.5)
+    # w = rp.filters.Window.get("planck_taper")(N,0.25)
+    # w = rp.filters.Window.get("exponential")(N, 60)
     s *= w
     s /= 100
 

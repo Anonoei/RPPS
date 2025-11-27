@@ -32,9 +32,9 @@ class _TED:
         self.clock = self.Inputs - 1
 
     def revert(self, preserve: bool):
-        if self.clock == 0 and not self.preserve:
+        if self.clock == 0 and not preserve:
             self.err = self.prev_err
-        self.clock_rev()
+        self._clock_rev()
 
     def sync_reset(self):
         self.err = 0.0

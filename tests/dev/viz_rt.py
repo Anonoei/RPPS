@@ -74,7 +74,7 @@ def speed(sink):
     plt.show()
 
 def main():
-    sink = rp.serial.File("f32","data/fm_rds_250k_1Msamples.iq")
+    sink = rp.serial.File("cf64","data/fm_rds_250k_1Msamples.iq")
     # speed(sink)
     loop(sink)
 

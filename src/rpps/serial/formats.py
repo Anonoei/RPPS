@@ -1,45 +1,48 @@
-"""File format helpers"""
 from enum import Enum
 
-import numpy as np
-
-def from_i8(samples):
-    """Returns samples as int8"""
-    samps = np.array(samples, dtype=np.int8)
-    return samps.astype(np.float32).view(dtype=np.complex64)
-
-def from_i16(samples):
-    """Returns sampkes as int16"""
-    samps = np.array(samples, dtype=np.int16)
-    return samps.astype(np.float32).view(dtype=np.complex64)
-
-def from_f16(samples):
-    """Returns samples as float16"""
-    samps = np.array(samples, dtype=np.float16)
-    return samps.astype(np.float32).view(dtype=np.complex64)
-
-def from_f32(samples):
-    """Returns samples as float32"""
-    samps = np.array(samples, dtype=np.float32)
-    return samps.view(dtype=np.complex64)
-
-def from_f64(samples):
-    """Returns samples as float32"""
-    samps = np.array(samples, dtype=np.float64)
-    return samps.view(dtype=np.complex128)
+from . import io as IO
 
 class Formats(Enum):
-    """Generic data formats"""
-    i8  = (2, from_i8)
-    i16 = (4, from_i16)
-    f16 = (4, from_f16)
-    f32 = (8, from_f32)
-    f64 = (16, from_f64)
+    """IO Format wrapper"""
+    # Integer
+    i8 = IO.i8
+    i16 = IO.i16
+    i32 = IO.i32
+    ui8 = IO.ui8
+    ui16 = IO.ui16
+    ui32 = IO.ui32
+    i4 = IO.i4
+    # Float
+    f16 = IO.f16
+    f32 = IO.f32
+    f64 = IO.f64
+    # Complex
+    ci8 = IO.ci8
+    ci16 = IO.ci16
+    ci32 = IO.ci32
+    cf32 = IO.cf32
+    cf64 = IO.cf64
+    cf128 = IO.cf128
 
+    def read(self, io, count):
+        """Input as format"""
+        return self.value.read(io, count)
+
+    def write(self, io, data):
+        """Output as format"""
+        self.value.write(io, data)
+
+    @property
+    def bits(self):
+        """Return size of format in bits"""
+        return self.value.SIZE
+
+    @property
     def bytes(self):
-        """Returns how many bytes each complex value takes"""
-        return self.value[0]
-
-    def read(self, samples):
-        """Convert samples to format"""
-        return self.value[1](samples)
+        """Return size of format in bytes"""
+        return self.value.SIZE // 8
+    @property
+    def is_complex(self):
+        if issubclass(self.value, IO.ComplexFormat):
+            return True
+        return False

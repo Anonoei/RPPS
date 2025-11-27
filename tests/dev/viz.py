@@ -8,7 +8,7 @@ def main():
     # num_samps = 1024*8
     num_samps = 1024*2
     Fs = 250_000
-    sink = rp.serial.File("f32","data/fm_rds_250k_1Msamples.iq")
+    sink = rp.serial.File("cf64","data/fm_rds_250k_1Msamples.iq")
     samps = sink.read(num_samps)
 
     fig = plt.figure()

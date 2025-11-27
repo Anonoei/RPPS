@@ -32,7 +32,7 @@ def psd(samples, Fs=1, vbw_hz=None):
         y = np.abs(samples[:,i])**2 / (len(samples)*Fs)
         y = np.fft.fftshift(10.0*np.log10(y))
         if vbw_hz is not None:
-            smooth = _psd.vbw_calc(samples.shape[0], Fs, vbw_hz)
-            y = _psd.vbw(y, smooth)
+            smooth = _psd.vbw_calc(samples.shape[0], Fs, vbw_hz) # type: ignore
+            y = _psd.vbw(y, smooth) # type: ignore
         out[:,i] = y
     return out

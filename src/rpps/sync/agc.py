@@ -104,8 +104,8 @@ if __name__ == "__main__":
         err[i] = agc.err
     import matplotlib.pyplot as plt
     fig, axs = plt.subplots(3,1)
-    axs[0].plot(t, y.real)
-    axs[0].plot(t, out.real)
+    axs[0].plot(t, y.real) # type: ignore
+    axs[0].plot(t, out.real) # type: ignore
     axs[1].plot(t, gain)
     axs[2].plot(t, err)
     plt.show()

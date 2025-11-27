@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 def main():
     num_samps = 1024*8
-    sink = rp.serial.File("f32", "data/fm_rds_250k_1Msamples.iq")
+    sink = rp.serial.File("cf64", "data/fm_rds_250k_1Msamples.iq")
     meta = rp.Meta(Fs=250e3, cf=99.5e6)
 
     mod = rp.mod.FSK()
