@@ -1,6 +1,6 @@
 """Encode and decode byte data"""
-# Encoding
 
+# Encoding
 def bytes_to_hex(data: bytes):
     """Convert bytes to hex"""
     return data.hex()
@@ -24,7 +24,6 @@ def bytes_to_bits(data):
 
 
 # Decoding
-
 def bits_to_hex(bits):
     """Convert bits to hex"""
     data_hex = ""

@@ -6,31 +6,57 @@ def make_id(size: int):
     return idm
 
 def linear(n: int, k: int, p: np.ndarray):
-    # n: length
-    # k: data_bits
-    # p: parity matrix
-    d = n-k # redundant
+    """Create linear block code G and H matrices
 
-    if not (p.shape == (k,d) or p.shape == (d,k)):
-        raise IndexError(f"p must be shape ({k},{d}) or ({d},{k})")
+    Args:
+        n (int): block length
+        k (int): message length
+        p (int): parity matrix
+          p must be shaped for the G matrix
 
-    # print(f"Linear Matrix [{n}, {k}, {d}]")
+    Returns:
+        G: Generator matrix
+        H: Parity-check matrix
+    """
+    d = n-k # parity bits
 
     if not p.shape == (k,d):
-        p = p.T
-    g_id = make_id(k)
-    g_matrix = np.zeros((k,n))
+        raise IndexError(f"p must be shape ({k},{d})!")
+    G_id = make_id(k)
+    G = np.zeros((k,n))
     for i in range(k):
-        g_matrix[i,0:k] = g_id[i]
-        g_matrix[i,k:] = p[i]
-    # print(f"generator:\n{g_matrix.astype(int)}")
+        G[i,0:k] = G_id[i]
+        G[i,k:] = p[i]
 
     if not p.shape == (d,k):
         p = p.T
-    c_id = make_id(d)
-    h_matrix = np.zeros((d,n))
+    H_id = make_id(d)
+    H = np.zeros((d,n))
     for i in range(d):
-        h_matrix[i,0:k] = p[i]
-        h_matrix[i,k:] = c_id[i]
-    # print(f"parity check:\n{h_matrix.astype(int)}")
-    return g_matrix, h_matrix
+        H[i,0:k] = p[i]
+        H[i,k:] = H_id[i]
+    return G, H
+
+def linear_p(n, k, G=None, H=None):
+    """Create parity matrix from G or H matrices
+
+    Args:
+        n (int): block length
+        k (int): message length
+        G: generator matrix
+        H: parity-check matrix
+
+    Returns:
+        p: parity-check matrix
+    """
+    d = n-k # parity bits
+
+    if not G is None:
+        p = np.zeros((k,d))
+        for i in range(k):
+            p[i] = G[i,k:]
+    elif not H is None:
+        p = np.zeros((d,k))
+        for i in range(d):
+            p[i] = H[i,0:k]
+    return p

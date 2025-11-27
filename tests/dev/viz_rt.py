@@ -13,7 +13,7 @@ class Prop:
 
     nfft = 1024
     overlap = 0.8
-    window = rp.filters.Window("blackman")
+    window = "blackman"
     hist_x, hist_y = 1001, 600
     vbw = 1000
 
@@ -84,9 +84,9 @@ def loop(sink):
     fig.tight_layout()
     im = ax
     # bm = rp.viz.blit.BlitManager(fig)
-    # fps = (1000/Prop.samp_show)
-    # writer = rp.viz.save.FFmpegMP4(fig, fps, "video_vector.mp4")
-    # writer.open()
+    fps = (1000/Prop.samp_show)
+    writer = rp.viz.save.FFmpegMP4(fig, fps, "video_vector.mp4")
+    writer.open()
     loop_sum = 0
     loop_count = 0
     loop_min = np.inf
@@ -102,7 +102,7 @@ def loop(sink):
         ax.set_title(f"Playback {Prop.samp_time}:{Prop.samp_show}ms", loc="left")
         ax.set_title(f"{snips.shape[1]}*{Prop.nfft} FFTs")
         ts = (time.perf_counter()-ts)*1000
-        # writer.grab_frame()
+        writer.grab_frame()
         print(f"Loop {sink.percent*100:.2f}%: {ts:.2f}ms")
         loop_sum += ts
         loop_count += 1
@@ -111,8 +111,8 @@ def loop(sink):
         if loop_max < ts:
             loop_max = ts
         # plt.pause((samp_show-ts)/1000)
-        plt.pause((Prop.samp_show-ts)/1000)
-    # writer.close()
+        # plt.pause((Prop.samp_show-ts)/1000)
+    writer.close()
     print(f"{loop_sum/1000:.1f}s total ({loop_count} loops) / {(loop_sum/loop_count):.2f}ms mean per loop")
     print(f"Min: {loop_min:.2f}, Max: {loop_max:.2f}")
 

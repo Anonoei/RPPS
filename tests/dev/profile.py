@@ -1,6 +1,6 @@
 import cProfile, pstats
 
-from .dev import main
+from ..dev import main
 
 if __name__ == "__main__":
     pr = cProfile.Profile()

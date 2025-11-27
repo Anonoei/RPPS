@@ -13,14 +13,16 @@ def main():
     ecc = rp.coding.load("blk", "hamming.7_4")
     scr = rp.scram.load("fdt", "v35")
 
-    print(f"Mod: {mod}")
-    print(f"ECC: {ecc}")
-    print(f"SCR: {scr}")
+    # print(f"Mod: {mod}")
+    # print(f"ECC: {ecc}")
+    # print(f"SCR: {scr}")
+
+    # print(enc_msg(scr+ecc+mod))
 
     syms = enc_msg(scr+ecc+mod)*scr*ecc*mod
-    print(f"Encoded to {syms}")
+    # print(f"Encoded to {syms}")
 
-    dec_msg = syms/mod/ecc/scr
+    dec_msg = syms(mod-ecc-scr)/mod/ecc/scr
 
     dec_msg = dec_msg.as_bytes()
     enc_msg = enc_msg.as_bytes()

@@ -16,9 +16,9 @@ def mod_bits(bits, points):
 def map_bits(bits, points, sps):
     if points == 2:
         # 0 1
-        x = np.array([])
+        x = np.array([], dtype=np.complex64)
         for bit in bits:
-            pulse = np.zeros(sps)
+            pulse = np.zeros(sps, dtype=np.float32)
             pulse[0] = bit*2-1
             x = np.concatenate((x, pulse))
         return x
@@ -27,8 +27,8 @@ def map_bits(bits, points, sps):
         # 2 3
         x = np.array([], dtype=np.complex64)
         for bit in bits:
-            pulseI = np.zeros(sps)
-            pulseQ = np.zeros(sps)
+            pulseI = np.zeros(sps, dtype=np.float32)
+            pulseQ = np.zeros(sps, dtype=np.float32)
             if bit % 2 == 0:
                 pulseI[0] = -1
                 pulseQ[0] = -(bit-1)
@@ -52,11 +52,11 @@ def delay(samps, offset: 0.4):
     h = np.sinc(n - offset) # calc filter taps
     h *= np.hamming(N) # window the filter to make sure it decays to 0 on both sides
     h /= np.sum(h) # normalize to get unity gain, we don't want to change the amplitude/power
-    return np.convolve(samps, h, mode="same") # apply filter
+    return np.convolve(samps, h, mode="same").astype(np.complex64) # apply filter
 
 def offset(samps, offset, Ts):
     t = np.arange(0, Ts*len(samps), Ts) # create time vector
-    return samps * np.exp(1j*2*np.pi*offset*t) # perform freq shift
+    return (samps * np.exp(1j*2*np.pi*offset*t)).astype(np.complex64) # perform freq shift
 
 def rrc(taps, sps, beta=0.35):
     t = np.arange(-taps//2,0)/sps
@@ -67,4 +67,18 @@ def rrc(taps, sps, beta=0.35):
     h = (sin_arg+cos_arg)/denom
 
     h = np.concat((h, [1+beta*(4/np.pi -1)], h[::-1]))
+    h = h * np.hamming(len(h))
+    return h.astype(np.complex64)
+
+def low_pass(taps, cut_off):
+    t = np.arange(-taps//2+1,0)/cut_off
+    h = np.sinc(t)
+    h = np.concat((h, [np.sinc(0)], h[::-1]))
+    h = h * np.hamming(taps)
+    h = h/cut_off
     return h
+
+def moving_average(a, n=3):
+    ret = np.cumsum(a, dtype=a.dtype)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n-1:]/n

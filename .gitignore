@@ -1,15 +1,28 @@
+data/
+logs/
+
+# Byte-compiled / optimized / DLL files
 __pycache__/
-.pytest_cache/
-.python-version
 
-src/*
-!src/rpps
-# Cython libs
-src/rpps/**/*.so
-src/rpps/**/*.pyd
+# C extensions
+*.so
+*.pyd
 
+# Distribution / packaging
 build/
 dist/
+*.egg-info/
 
+# Misc
 logs/
-data/
+.python-version
+.pytest_cache/
+
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+!*.code-workspace
