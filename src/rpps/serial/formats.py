@@ -17,12 +17,12 @@ class Formats(Enum):
     f32 = IO.f32
     f64 = IO.f64
     # Complex
-    ci8 = IO.ci8
-    ci16 = IO.ci16
-    ci32 = IO.ci32
+    ci4 = cs4 = IO.ci4
+    ci8 = cs8 = IO.ci8
+    ci16 = cs16 = IO.ci16
+
     cf32 = IO.cf32
     cf64 = IO.cf64
-    cf128 = IO.cf128
 
     def read(self, io, count):
         """Input as format"""

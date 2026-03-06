@@ -13,6 +13,7 @@ class ConvFilter(Filter):
 
     def __radd__(self, meta: Meta):
         meta.obj = self.run(meta.obj)
+        meta.finish()
         return meta
 
 def low_pass(taps, cutoff, fs=None):

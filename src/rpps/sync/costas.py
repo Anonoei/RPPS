@@ -12,7 +12,8 @@ def _o4(sym):
 
 class Costas:
     __slots__ = (
-        "alpha", "beta", "err_func",
+        "alpha", "beta",
+        "err_func",
         "freq", "pha"
     )
     def __init__(self, alpha, beta, order=2):
@@ -26,13 +27,6 @@ class Costas:
         self.pha = 0.0
         self.freq = 0.0
 
-    def burst(self, meta: Meta):
-        out = np.zeros(len(meta.obj), dtype=meta.obj.dtype)
-        for i, sym in enumerate(meta.obj):
-            out[i] = self.run(sym)
-        meta.obj = out
-        return meta
-
     def run(self, sym):
         out = sym * np.exp(-1j*self.pha)
         error = self.err_func(out)
@@ -40,8 +34,15 @@ class Costas:
         self.freq += (self.beta * error)
         self.pha += self.freq + (self.alpha * error)
 
-        # while self.pha >= 2*np.pi:
-        #     self.pha -= 2*np.pi
-        # while self.pha < 0:
-        #     self.pha += 2*np.pi
+        while self.pha >= 2*np.pi:
+            self.pha -= 2*np.pi
+        while self.pha < 0:
+            self.pha += 2*np.pi
         return out
+
+    def burst(self, meta: Meta):
+        out = np.zeros(len(meta.obj), dtype=meta.obj.dtype)
+        for i, sym in enumerate(meta.obj):
+            out[i] = self.run(sym)
+        meta.obj = out
+        return meta

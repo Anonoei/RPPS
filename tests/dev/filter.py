@@ -7,7 +7,9 @@ def main():
     sink = rp.serial.File("cf64", "data/fm_rds_250k_1Msamples.iq")
     meta = rp.Meta(Fs=250e3, cf=99.5e6)
 
+    sink.open()
     samps = sink.read(num_samps)
+    sink.close()
     low_pass = rp.filters.low_pass(101, 7.5e3, meta.Fs) # Lowpass, isolate RDS
     low_pass = low_pass.filt
 
@@ -33,6 +35,13 @@ def main():
 
     fig, ax = plt.subplots(3, 2)
     fig.tight_layout()
+
+    ax[0,0].set_title("Low Pass")
+    ax[0,1].set_title("High Pass")
+
+    ax[0,0].set_ylabel("exp")
+    ax[1,0].set_ylabel("sqr")
+    ax[2,0].set_ylabel("sinc")
 
     ax[0,0].plot(t, lp_exp, "o")
     ax[1,0].plot(t, lp_sqr, "o")

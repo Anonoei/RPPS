@@ -15,6 +15,15 @@ class Resample(Sample):
         cutoff = 1/min_rate
         self.low_pass = low_pass(101, cutoff)
 
+    def run(self, samples):
+        raise NotImplementedError()
+
+    def __radd__(self, meta: Meta):
+        meta.obj = self.run(meta.obj)
+        meta.op.Fs *= self.up/self.down
+        meta.finish()
+        return meta
+
 class Polyphase(Resample):
     def run(self, samples):
         out = np.zeros(len(samples)*self.up, dtype=samples.dtype)
@@ -22,8 +31,3 @@ class Polyphase(Resample):
         out = self.low_pass.run(out)
         out = out[::1*self.down]
         return out
-
-    def __radd__(self, meta: Meta):
-        meta.obj = self.run(meta.obj)
-        meta.Fs *= self.up/self.down
-        return meta

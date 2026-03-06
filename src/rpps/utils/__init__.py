@@ -4,6 +4,7 @@ from . import interp
 from . import stft
 
 from .psd import psd
+from .signal import Signal, find_signals
 
 """Processing helpers"""
 from .rate import find_rate

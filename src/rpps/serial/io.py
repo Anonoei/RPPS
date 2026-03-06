@@ -24,7 +24,8 @@ class Format:
 
     @classmethod
     def _read(cls, io, count, dtype):
-        return np.frombuffer(io.read(int(cls.bytes()*count)), dtype=dtype)
+        count = int(cls.bytes()*count) if not count == -1 else -1
+        return np.frombuffer(io.read(count), dtype=dtype)
 
 # --- Integers --- #
 class i8(Format):
@@ -111,28 +112,31 @@ class ComplexFormat(Format):
     def read(cls, io, count):
         raise NotImplementedError()
 
-class ci8(ComplexFormat):
-    """Complex int8 (i4, i4)"""
+class ci4(ComplexFormat):
+    """Complex int4 (i4, i4)"""
     SIZE = 8
     BASE = i4
     @classmethod
     def read(cls, io, count):
-        return cls.BASE.read(io, count*2).astype(np.float32).view(dtype=np.complex64)
+        count = count*2 if not count == -1 else -1
+        return cls.BASE.read(io, count).astype(np.float32).view(dtype=np.complex64)
 
-class ci16(ComplexFormat):
-    """Complex int16 (i8, i8)"""
+class ci8(ComplexFormat):
+    """Complex int8 (i8, i8)"""
     SIZE = 16
     BASE = i8
     @classmethod
     def read(cls, io, count):
-        return cls.BASE.read(io, count*2).astype(np.float32).view(dtype=np.complex64)
-class ci32(ComplexFormat):
-    """Complex int32 (i16, i16)"""
+        count = count*2 if not count == -1 else -1
+        return cls.BASE.read(io, count).astype(np.float32).view(dtype=np.complex64)
+class ci16(ComplexFormat):
+    """Complex int16 (i16, i16)"""
     SIZE = 32
     BASE = i16
     @classmethod
     def read(cls, io, count):
-        return cls.BASE.read(io, count*2).astype(np.float32).view(dtype=np.complex64)
+        count = count*2 if not count == -1 else -1
+        return cls.BASE.read(io, count).astype(np.float32).view(dtype=np.complex64)
 
 class cf32(ComplexFormat):
     """Complex float32 (f16, f16)"""
@@ -140,7 +144,8 @@ class cf32(ComplexFormat):
     BASE = f16
     @classmethod
     def read(cls, io, count):
-        return cls.BASE.read(io, count*2).astype(np.float32).view(dtype=np.complex64)
+        count = count*2 if not count == -1 else -1
+        return cls.BASE.read(io, count).astype(np.float16).view(dtype=np.complex64)
 
 class cf64(ComplexFormat):
     """Complex float64 (f32, f32)"""
@@ -148,7 +153,8 @@ class cf64(ComplexFormat):
     BASE = f32
     @classmethod
     def read(cls, io, count):
-        return cls.BASE.read(io, count*2).view(dtype=np.complex64)
+        count = count*2 if not count == -1 else -1
+        return cls.BASE.read(io, count).view(dtype=np.complex64)
 
 class cf128(ComplexFormat):
     """Complex float128 (f64, f64)"""
@@ -156,4 +162,5 @@ class cf128(ComplexFormat):
     BASE = f64
     @classmethod
     def read(cls, io, count):
-        return cls.BASE.read(io, count*2).view(dtype=np.complex128)
+        count = count*2 if not count == -1 else -1
+        return cls.BASE.read(io, count).view(dtype=np.complex128)

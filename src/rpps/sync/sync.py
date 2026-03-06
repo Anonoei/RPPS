@@ -6,8 +6,10 @@ class Sync:
         self.impl = impl
     def __radd__(self, meta: Meta):
         meta = self.impl.burst(meta)
+        meta.finish()
         return meta
 
     def __rsub__(self, meta: Meta):
         meta = self.impl.burst(meta)
+        meta.finish()
         return meta

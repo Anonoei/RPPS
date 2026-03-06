@@ -27,7 +27,6 @@ class File:
             self.f.close()
 
     def read(self, count):
-        count *= 2
         if self.cur_samp + count > self.max_samp:
             raise err.Overflow(f"{self.cur_samp}+{count} > {self.max_samp}")
         samps = self.fmt.read(self.f, count)

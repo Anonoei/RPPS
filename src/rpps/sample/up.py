@@ -10,6 +10,14 @@ class Upsample(Sample):
     def __init__(self, ratio):
         self.ratio = ratio
 
+    def run(self, samples):
+        raise NotImplementedError()
+
+    def __radd__(self, meta: Meta):
+        meta.obj = self.run(meta.obj)
+        meta.Fs *= self.ratio
+        return meta
+
 class FFT(Upsample):
     def run(self, samples):
         frq = np.fft.fft(samples)
@@ -24,11 +32,6 @@ class FFT(Upsample):
         up = np.fft.ifft(up)
         return up
 
-    def __radd__(self, meta: Meta):
-        meta.obj = self.run(meta.obj)
-        meta.Fs *= self.ratio
-        return meta
-
 class Sinc(Upsample):
     __slots__ = ("pulse")
     def __init__(self, ratio):
@@ -38,22 +41,12 @@ class Sinc(Upsample):
 
     def run(self, samples):
         up = np.zeros(len(samples)*self.ratio, dtype=samples.dtype)
-        up[::self.ratio] = samples[::1]
+        up[::self.ratio] = samples
         up = self.pulse.run(up)
         return up
-
-    def __radd__(self, meta: Meta):
-        meta.obj = self.run(meta.obj)
-        meta.Fs *= self.ratio
-        return meta
 
 class Zeros(Upsample):
     def run(self, samples):
         up = np.zeros(len(samples)*self.ratio, dtype=samples.dtype)
         up[::self.ratio] = samples[::1]
         return up
-
-    def __radd__(self, meta: Meta):
-        meta.obj = self.run(meta.obj)
-        meta.Fs *= self.ratio
-        return meta

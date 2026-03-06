@@ -1,7 +1,6 @@
 import numpy as np
 
 def fpa(samples, Ts):
-    Fs = 1/Ts
     l = len(samples)
     frq = np.fft.fftshift(np.abs(np.fft.fft(samples**4)))
     f_max = np.argmax(frq)

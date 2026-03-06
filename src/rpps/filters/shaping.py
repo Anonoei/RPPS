@@ -8,6 +8,7 @@ class ShapingFilter(Filter):
         return np.convolve(samples, self.pulse, mode="same")
     def __radd__(self, meta: Meta):
         meta.obj = self.run(meta.obj)
+        meta.finish()
         return meta
 
 class ShapingRRC(ShapingFilter):
@@ -37,18 +38,29 @@ class ShapingRRC(ShapingFilter):
         #             (np.pi*t[i2]/sps* (1 - (4*beta*t[i2]/sps)**2))
         #         )
 
+        if taps is None:
+            taps = sps*25
+            if taps % 2 == 0:
+                taps += 1
+            # print(f"sps {sps} has taps {taps}")
 
-        t = np.arange(-taps//2,0)/sps # only generate half the pulse
-        sin_arg = np.sin(np.pi*t*(1-beta))
-        cos_arg = 4*beta*t*np.cos(np.pi*t*(1+beta))
-        denom = np.pi*t*(1-(4*beta*t)**2)
+
+        t = np.arange(-taps//2,0, dtype=np.float32)/sps # only generate half the pulse
+        sin_arg = np.sin(np.pi * t * (1.0 - beta))
+        cos_arg = 4.0 * beta * t * np.cos(np.pi * t * (1 + beta))
+        # denom = np.pi * t * (1.0 - (4.0 * beta * t)**2)
+        denom = np.pi * t * (1.0 - 16.0 * (beta * t) * (beta * t))
         h = 1/sps*(sin_arg+cos_arg)/denom
 
         h = np.concat((h, [1/sps*(1+beta*(4/np.pi -1))], h[::-1]))
-        h = h * np.hanning(len(h))
-        hc = np.zeros(len(h), dtype=np.complex64)
-        hc = h+1j*h
-        self.pulse = gain*hc
+        # hc = np.zeros(len(h), dtype=np.complex64)
+        # hc = h+1j*h
+        # import matplotlib.pyplot as plt
+        # plt.figure()
+        # plt.plot(h)
+        # plt.show()
+        # exit()
+        self.pulse = gain*h
 
 class ShapingRC(ShapingFilter):
     def __init__(self, taps, sps, beta=0.35, gain=1.0):
@@ -65,28 +77,28 @@ class ShapingRC(ShapingFilter):
         h = np.sinc(t/sps) * numer/denom
 
         h = np.concat((h[:-1], h[::-1]))
-        h = h * np.hanning(len(h))
-        hc = np.zeros(len(h), dtype=np.complex64)
-        hc = h+1j*h
+        # hc = np.zeros(len(h), dtype=np.complex64)
+        # hc = h+1j*h
 
-        self.pulse = gain*hc
+        self.pulse = gain*h
 
 class ShapingSinc(ShapingFilter):
     def __init__(self, taps, sps, gain=1.0):
-        t = np.arange(-taps//2,1)/sps
+        t = np.arange(-taps//2,taps//2)/sps
         h = np.sinc(t)
-        h = np.concat((h[:-1], h[::-1]))
-        h = h * np.hanning(len(h))
-        hc = np.zeros(len(h), dtype=np.complex64)
-        hc = h+1j*h
-        self.pulse = gain*hc
+        # h = np.concat((h[:-1], h[::-1]))
+        # h = h * np.hanning(len(h))
+        # hc = np.zeros(len(h), dtype=np.complex64)
+        # hc = h+1j*h
+        # hc = h+1j*h
+        self.pulse = gain*h
 
 class ShapingRect(ShapingFilter):
     def __init__(self, taps, sps, gain=1.0):
         h = np.ones(taps)
-        hc = np.zeros(len(h), dtype=np.complex64)
-        hc = h+1j*h
-        self.pulse = gain*hc
+        # hc = np.zeros(len(h), dtype=np.complex64)
+        # hc = h+1j*h
+        self.pulse = gain*h
 
 
 class ShapingMatRRC(ShapingFilter):

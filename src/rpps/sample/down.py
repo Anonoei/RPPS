@@ -11,5 +11,7 @@ class Decimate(Downsample):
 
     def __radd__(self, meta: Meta):
         meta.obj = self.run(meta.obj)
-        meta.Fs /= self.ratio
+        meta.op.Fs /= self.ratio
+        meta.op.sps /= self.ratio
+        meta.finish()
         return meta

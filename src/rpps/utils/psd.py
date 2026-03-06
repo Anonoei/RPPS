@@ -3,10 +3,11 @@ from ..filters.impl import gaussian
 
 def psd(samps, Fs: float = 1, vbw_hz=None):
     """Perform Power Spectral Density"""
-    y = np.abs(np.fft.fft(samps))**2 / (len(samps)*Fs)
+    N = len(samps)
+    y = np.abs(np.fft.fft(samps))**2 / (N*Fs)
     y = np.fft.fftshift(10.0*np.log10(y))
     if vbw_hz is not None:
-        smooth = vbw_calc(len(samps), Fs, vbw_hz)
+        smooth = vbw_calc(N, Fs, vbw_hz)
         y = vbw(y, smooth)
     return y
 
