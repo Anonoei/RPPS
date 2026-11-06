@@ -1,15 +1,30 @@
 import numpy as np
 
-from .filter import Filter, Meta
+from .filter import FIR, Meta
 
-class ShapingFilter(Filter):
+def rrc_pulse(t, beta=0.35):
+    """Root-raised-cosine pulse, t in symbols. Handles the t=0 and |t|=1/(4*beta) limits"""
+    t = np.asarray(t, dtype=np.float64)
+    out = np.empty_like(t)
+    at0 = np.abs(t) < 1e-9
+    atS = np.abs(np.abs(t) - 1/(4*beta)) < 1e-9 if beta > 0 else np.zeros_like(at0)
+    rest = ~(at0 | atS)
+    out[at0] = 1.0 + beta*(4/np.pi - 1)
+    out[atS] = beta/np.sqrt(2) * (
+        (1 + 2/np.pi) * np.sin(np.pi/(4*beta)) + (1 - 2/np.pi) * np.cos(np.pi/(4*beta))
+    )
+    tr = t[rest]
+    out[rest] = (np.sin(np.pi*tr*(1 - beta)) + 4*beta*tr*np.cos(np.pi*tr*(1 + beta))) \
+        / (np.pi*tr*(1 - (4*beta*tr)**2))
+    return out
+
+class ShapingFilter(FIR):
     __slots__ = ("pulse")
+    def make_taps(self, meta):
+        return self.pulse
     def run(self, samples):
+        """One-shot (stateless) filtering"""
         return np.convolve(samples, self.pulse, mode="same")
-    def __radd__(self, meta: Meta):
-        meta.obj = self.run(meta.obj)
-        meta.finish()
-        return meta
 
 class ShapingRRC(ShapingFilter):
     def __init__(self, taps, sps, beta=0.35, gain=1.0):
@@ -47,8 +62,7 @@ class ShapingRRC(ShapingFilter):
 
         t = np.arange(-taps//2,0, dtype=np.float32)/sps # only generate half the pulse
         sin_arg = np.sin(np.pi * t * (1.0 - beta))
-        cos_arg = 4.0 * beta * t * np.cos(np.pi * t * (1 + beta))
-        # denom = np.pi * t * (1.0 - (4.0 * beta * t)**2)
+        cos_arg = 4.0 * beta * t * np.cos(np.pi * t * (1.0 + beta))
         denom = np.pi * t * (1.0 - 16.0 * (beta * t) * (beta * t))
         h = 1/sps*(sin_arg+cos_arg)/denom
 
@@ -128,14 +142,13 @@ class ShapingMatRRC(ShapingFilter):
 
         returns (N, N*sps) RRC matrix
         """
-        t = tmat - poff - 1e-9
-        sin_arg = np.sin(np.pi * t * (1.0 - beta))
-        cos_arg = 4.0 * beta * t * np.cos(np.pi * t * (1 + beta))
-        denom = np.pi * t * (1.0 - 16.0 * (beta * t) * (beta * t))
-        return (sin_arg + cos_arg) / denom
+        return rrc_pulse(tmat - poff, beta)
 
     def run(self, samples):
         return np.matmul(samples, self.pulse)
+
+    def step(self, samples, st, meta):
+        return self.run(samples)
 
     def burst(self, samples):
         out = np.zeros(len(samples)*self.sps, dtype=samples.dtype)
@@ -152,3 +165,18 @@ class ShapingMatRRC(ShapingFilter):
                 pulsed = self.run(segment)
                 out[i*(self.N*self.sps):] = pulsed[:num_pulse*self.sps]
         return out
+
+
+class ShapingBiphase(ShapingFilter):
+    """Matched filter for biphase (Manchester) symbols: first half +1, second half -1
+
+    One symbol is meta.isps samples, so this takes sps from Meta when the stream starts.
+    """
+    def __init__(self, gain=1.0):
+        self.gain = gain
+
+    def make_taps(self, meta):
+        sps = meta.isps
+        h = np.ones(sps)
+        h[sps//2:] = -1.0
+        return self.gain * h / sps

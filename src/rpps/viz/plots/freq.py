@@ -4,7 +4,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches # for draw_signals
 
-from ... import utils
+from ... import dsp
 from ..utils import fft, freq_axis, bins
 
 def psd(ax, samps, Fs=1.0, cf=0.0, vbw_hz=None):
@@ -12,7 +12,7 @@ def psd(ax, samps, Fs=1.0, cf=0.0, vbw_hz=None):
         fig, ax = plt.subplots()
     N = len(samps)
     x = freq_axis(N, Fs, cf)
-    y = utils.psd(samps, Fs, vbw_hz)
+    y = dsp.psd(samps, Fs, vbw_hz)
 
     if isinstance(ax, mpl.lines.Line2D):
         ax.set_data(x, y)
@@ -40,7 +40,7 @@ def psd_signals(ax, samps, signals, Fs=1.0, cf=0.0, vbw_hz = None):
     if ax is None:
         fig, ax = plt.subplots()
     x = freq_axis(len(samps), Fs, cf)
-    y = utils.psd(samps, Fs, vbw_hz)
+    y = dsp.psd(samps, Fs, vbw_hz)
     ax.locator_params(axis="x", nbins=5)
     ax.locator_params(axis="y", nbins=10)
     ax.grid(True, alpha=0.2)
@@ -59,7 +59,7 @@ def psd_signals(ax, samps, signals, Fs=1.0, cf=0.0, vbw_hz = None):
 def psdreal(ax, samps, Fs=1, cf=0, vbw_hz=None):
     if ax is None:
         fig, ax = plt.subplots()
-    y = utils.psd(samps.real, Fs, vbw_hz)
+    y = dsp.psd(samps.real, Fs, vbw_hz)
     y = y[len(y)//2:]
     x = freq_axis(len(y), Fs, cf)
     # x = np.arange(0, Fs, Fs/len(y)) + cf

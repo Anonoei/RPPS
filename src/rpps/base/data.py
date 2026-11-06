@@ -19,18 +19,33 @@ import typing
 
 from .types import pproc, dtype
 from .buffer import Buffer, Vector
+from .rpps import FLUSH
 
 class _Data:
     __slots__ = (
         "_data",
-        "PP", "DT"
+        "PP", "DT", "ctx"
     )
 
-    def __init__(self, data=None, pp=pproc.UNK, dt=None):
+    def __init__(self, data=None, pp=pproc.UNK, dt=None, ctx=None):
         self._data: np.ndarray = data # type: ignore
-        # self._data = Vector(data)
         self.PP = pp
         self.DT = dt
+        self.ctx = {} if ctx is None else ctx # Stream state the stages carry between calls (see `derive`)
+
+    @property
+    def flush(self):
+        """Is this the end of the stream? Stages hold a partial block for the next data unless it is: then a
+        partial last block is padded (encoding) or dropped (decoding), and the stages finish (a terminated conv code's tail)"""
+        return bool(self.ctx.get(FLUSH, False))
+
+    @flush.setter
+    def flush(self, value):
+        self.ctx[FLUSH] = bool(value)
+
+    def derive(self, data, pp, dt, cls=None, ctx=None):
+        """New data of this stream: the stages never modify their input. `ctx` is the stream state they updated"""
+        return (cls or type(self))(data, pp, dt, dict(self.ctx) if ctx is None else ctx)
 
     def __str__(self):
         return f"{self.name} ({self.PP}/{self.DT}) {len(self)}"
@@ -39,34 +54,6 @@ class _Data:
         if self._data is None:
             return 0
         return len(self._data)
-
-    def __call__(self, size):
-        """
-        This is a jank way to ensure the correct amount of data is piped
-        Do do this correctly requires each pipe to have an input buffer and
-          wait to process until the buffer is the correct size
-        """
-        # print(f"Size: {size}")
-        rin = np.array([t[0] for t in size])
-        rou = np.array([t[1] for t in size])
-
-        mul_in, mul_ou = np.empty(len(size)),  np.empty(len(size))
-        mul_in[0] = rin[0]
-        mul_in[1:] = rin[1:] * rou[:-1]
-
-        mul_ou[0] = rou[0]
-        mul_ou[1:] = rou[1:] * rin[:-1]
-
-        # print(f"  mul_in: {mul_in}")
-        # print(f"  mul_ou: {mul_ou}")
-
-        mul = mul_in[1:]/mul_ou[:-1]
-        min_req = int(np.ceil(np.prod(mul)))
-        # print(f"  Initial min_req: {min_req}")
-        if self.DT == dtype.BYTES: # TODO: make sure this works correctly
-            min_req = int(min_req/8)
-        # print(f"  Corrected min_req: {min_req}")
-        return type(self)(self._data[:len(self)//min_req], self.PP, self.DT)
 
     @property
     def name(self):
@@ -98,89 +85,63 @@ class _Data:
         self._data = np.append(self._data, data)
 
     def copy(self):
-        """Create a copy of data"""
-        return type(self)(self._data, self.PP, self.DT)
-        # return type(self)(self._data._stor[:len(self._data)], self.PP, self.DT)
+        """Create a copy of data (the stream state is copied too)"""
+        return type(self)(self._data, self.PP, self.DT, dict(self.ctx))
 
 class Analog(_Data):
     """Analog data"""
     pass
 
 class Mod(_Data):
-    """(De)Modulation data"""
-    __slots__ = (
-        "code", "dist",
-        "decided"
-    )
-    def __init__(self, data=None, pp=pproc.MAP, dt=None):
-        if pp == pproc.MOD:
-            self._data = data # type: ignore
-            self.PP = pp
-            self.DT = dt
+    """(De)Modulation data
 
-            self.code = None
-            self.dist = None
-            self.decided = None
-        elif pp == pproc.MAP:
-            if isinstance(data, tuple):
-                codewords = data[0]
-                distances = data[1]
-                self._data = None  # type: ignore
-                self.PP = pproc.MAP
-                self.DT = dtype.MAPPED_SOFT
-                self.decided = False
-            else:
-                codewords = None
-                distances = None
-                self._data: np.ndarray = data # type: ignore
-                self.PP = pproc.MAP
-                self.DT = dtype.MAPPED_HARD
-                self.decided = True
-
-            self.code = codewords
-            self.dist = distances
-        else:
+    Modulated: complex symbols (pp MOD).
+    Demodulated (pp MAP): either hard bits (MAPPED_HARD), or one LLR per bit (LLR). An LLR is
+    log(P(bit=0)/P(bit=1)), so positive means 0 and the magnitude is the confidence.
+    """
+    def __init__(self, data=None, pp=pproc.MAP, dt=None, ctx=None):
+        if pp == pproc.MAP and dt is None:
+            dt = dtype.LLR if np.asarray(data).dtype.kind == "f" else dtype.MAPPED_HARD
+        elif pp not in (pproc.MOD, pproc.MAP):
             raise ValueError(f"Cannot initialize Mod from {pp}")
+        super().__init__(data, pp, dt, ctx)
 
-    def get_soft(self):
-        """Get codewords and distances"""
-        return (self.code, self.dist)
+    def bits(self):
+        """Hard decided bits, leaving this data as it is"""
+        if self.PP != pproc.MAP:
+            raise ValueError(f"Cannot get bits of Mod {self.PP}/{self.DT}!")
+        return self._data < 0 if self.DT == dtype.LLR else self._data.astype(bool)
+
+    @property
+    def is_soft(self):
+        """Does this carry LLRs (rather than hard bits)"""
+        return self.DT == dtype.LLR
+
+    def get_soft(self, hard_llr=None):
+        """Per-bit LLRs. Hard bits give +-hard_llr if it's set, otherwise None"""
+        if self.is_soft:
+            return self._data
+        if hard_llr is not None and self.DT == dtype.MAPPED_HARD:
+            return hard_llr * (1.0 - 2.0*self._data.astype(np.float32))
+        return None
 
     def to_analog(self):
         """Convert to Analog"""
         if self.PP == pproc.MOD:
-            return Analog(self._data, self.PP, self.DT)
+            return Analog(self._data, self.PP, self.DT, self.ctx)
         raise ValueError(f"Cannot convert Mod {self.PP}/{self.DT} to Analog!")
 
     def to_digital(self):
         """Convert to Digital"""
         if self.PP == pproc.MAP:
             self.as_hard()
-            return Digital(self._data, pp=pproc.MAP, dt=dtype.BITS)
+            return Digital(self._data, pp=pproc.MAP, dt=dtype.BITS, ctx=self.ctx)
         raise ValueError(f"Cannot convert Mod {self.PP}/{self.DT} to Digital!")
 
-    def decide(self, code_idx):
-        """Make hard decisions"""
-        if self.DT == dtype.MAPPED_SOFT:
-            if self._data is None:
-                self._data = np.zeros((1, self.code.shape[1]), dtype=dtype.BITS.dtype) # type: ignore
-                self._data[0] = self.code[code_idx] # type: ignore
-                return self._data[-1]
-            elif self._data.shape[0] < self.dist.shape[0]: # type: ignore
-                self._data = np.append(self._data, self.code[code_idx], axis=1) # type: ignore
-                if self._data.shape[0] == self.dist.shape[0]: # type: ignore
-                    self.decided = True
-                return self._data[-1]
-        return None
-
     def as_hard(self):
-        """Convert to hard map"""
-        if self.DT == dtype.MAPPED_SOFT:
-            max_vals = np.max(self.dist, axis=1) # type: ignore
-            indices = np.argwhere(np.equal(self.dist, max_vals[:, None])) # type: ignore
-            self._data = self.code[indices[:,1]].reshape(-1).astype(bool) # type: ignore
-            self.code = None
-            self.dist = None
+        """Make hard decisions: bit 1 where the LLR is negative"""
+        if self.DT == dtype.LLR:
+            self._data = self._data < 0
             self.DT = dtype.MAPPED_HARD
         return self
 
@@ -239,6 +200,10 @@ class Digital(_Data):
         return self
 
 
+    def bits(self):
+        """The data as bits, leaving this data as it is"""
+        return self.get_bits()
+
     def get_bytes(self):
         """Return self.data as bytes"""
         if self.is_bit(False):
@@ -258,48 +223,53 @@ class Digital(_Data):
             raise ValueError(f"({self.PP}/{self.DT}) {self._data.dtype} cannot get bits")
 
     @classmethod
-    def from_bytes(cls, data, pp=pproc.UNK, dt=dtype.BYTES):
+    def from_bytes(cls, data, pp=pproc.UNK, dt=dtype.BYTES, ctx=None):
         """Create Digital from bytes"""
         if isinstance(data, bytes):
-            return cls(np.frombuffer(data, dtype=dtype.BYTES.dtype), pp, dt)
+            return cls(np.frombuffer(data, dtype=dtype.BYTES.dtype), pp, dt, ctx)
         elif isinstance(data, np.ndarray):
             if data.dtype == dtype.BYTES.dtype:
-                return cls(data, pp, dt)
+                return cls(data, pp, dt, ctx)
             raise NotImplementedError(f"Cannot convert {type(data)} {data.shape} {data.dtype} to {cls.__name__}")
         raise NotImplementedError(f"Cannot convert {type(data)} to {cls.__name__}")
 
     @classmethod
-    def from_bits(cls, data, pp=pproc.UNK, dt=dtype.BITS):
+    def from_bits(cls, data, pp=pproc.UNK, dt=dtype.BITS, ctx=None):
         """Create Digital from bits"""
         if isinstance(data, np.ndarray):
             if data.dtype == dtype.BITS.dtype:
-                return cls(data, pp, dt)
+                return cls(data, pp, dt, ctx)
             raise NotImplementedError(f"Cannot convert {type(data)} {data.shape} {data.dtype} to {cls.__name__}")
         raise NotImplementedError(f"Cannot convert {type(data)} to {cls.__name__}")
 
-def Data(data) -> Digital:
-    """Wrapper to get correct Data type, and set PP and DT"""
+def Data(data, ctx=None, flush=False) -> Digital:
+    """Wrapper to get correct Data type, and set PP and DT
+
+    ctx: the stream state of earlier data (`out.ctx`) to continue a stream in chunks
+    flush: this ends the stream. Otherwise a partial last block is held for the next data; flushed, it is padded (encode) or dropped (decode)
+    """
     # Setting this to Digital hides errors on client side
     d = None
+    ctx = dict(ctx) if ctx else {}
+    ctx[FLUSH] = bool(flush)
     if isinstance(data, Buffer):
         data = data._stor
     if isinstance(data, np.ndarray):
         if data.dtype == bool:
-            d = Digital(data, dt=dtype.BITS)
+            d = Digital(data, dt=dtype.BITS, ctx=ctx)
         elif data.dtype == np.uint8:
-            d = Digital(data, dt=dtype.BYTES)
+            d = Digital(data, dt=dtype.BYTES, ctx=ctx)
         elif data.dtype == dtype.SAMPLES.dtype:
-            d = Analog(data, dt=dtype.SAMPLES)
+            d = Analog(data, dt=dtype.SAMPLES, ctx=ctx)
         elif data.dtype == dtype.SYMBOLS.dtype:
-            d = Analog(data, dt=dtype.SYMBOLS)
+            d = Analog(data, dt=dtype.SYMBOLS, ctx=ctx)
         else:
             raise NotImplementedError(f"Cannot convert {type(data)} {data.shape} {data.dtype}")
     elif isinstance(data, str):
-        d = Digital.from_bytes(data.encode("utf-8"), dt=dtype.BYTES)
+        d = Digital.from_bytes(data.encode("utf-8"), dt=dtype.BYTES, ctx=ctx)
     elif isinstance(data, bytes):
-        d = Digital.from_bytes(data, dt=dtype.BYTES)
+        d = Digital.from_bytes(data, dt=dtype.BYTES, ctx=ctx)
 
     if d is None:
         raise NotImplementedError(f"Cannot convert {type(data)}")
-    # print(f"Converted {type(data)} to {d}")
     return d # type: ignore

@@ -22,15 +22,40 @@ class _Meta:
     def sr(self):
         return self.Fs/self.sps
 
+    @property
+    def isps(self):
+        return int(round(self.sps,0))
+
+class _Stream:
+    """Information that follows the stream across loops of processing"""
+    __slots__ = ("blocks", "delay", "det")
+    def __init__(self):
+        self.blocks = 0 # Loops of processing started
+        self.delay = 0.0 # Accumulated group delay, in seconds
+        self.det = None # Detection result (baud, modulation, timing, cfo...), see rpps.analysis.modulation
+
 class Meta:
+    """Signal information shared by every DSP operation
+
+    Three tiers:
+        _init/op/state: Fs, sps, cf. Per loop, `reset()` returns them to the source values
+        stream: Stream-wide info (group delay, block count). Survives `reset()`
+        ctx: Per-stage carried state (filter history, oscillator phase, loop filters...).
+            Survives `reset()`. Stage settings stay on the stage, its state lives here.
+    `restart()` clears everything for a new stream.
+    """
     __slots__ = (
         "_init", "op", "state",
+        "ctx", "stream",
         "obj"
     )
     def __init__(self, Fs=1.0, sps=0.0, cf=0.0):
         self._init = _Meta(Fs, sps, cf)
         self.op = _Meta(Fs, sps, cf)
         self.state = _Meta(Fs, sps, cf)
+
+        self.ctx = {}
+        self.stream = _Stream()
 
         self.obj: np.ndarray = None # type: ignore
 
@@ -51,6 +76,10 @@ class Meta:
         self.op.sps = sps
 
     @property
+    def isps(self):
+        return self.state.isps
+
+    @property
     def cf(self):
         return self.state.cf
     @cf.setter
@@ -59,8 +88,39 @@ class Meta:
         self.op.cf = cf
 
     def reset(self):
+        """Start a new loop of processing. Carried stage state and stream info are kept"""
         self.state.set(self._init.Fs, self._init.sps, self._init.cf)
         self.op.set(self._init.Fs, self._init.sps, self._init.cf)
+        self.stream.blocks += 1
+
+    def restart(self):
+        """Start a new stream. Drops all carried stage state"""
+        self.reset()
+        self.ctx.clear()
+        self.stream = _Stream()
+
+    def calibrate_sps(self, sps):
+        """Declare the sps at the current stage of the chain
+
+        `reset()` restores the source values each loop, so the source sps is derived from the
+        current sps through the Fs ratio (decimation/resampling scale both).
+        """
+        self._init.sps = sps * self._init.Fs / self.state.Fs
+        self.state.sps = sps
+        self.op.sps = sps
+
+    def state_of(self, stage):
+        """Get (creating on first use) the carried state of a stage"""
+        try:
+            return self.ctx[stage]
+        except KeyError:
+            st = self.ctx[stage] = stage.new_state(self)
+            return st
+
+    @property
+    def delay(self):
+        """Accumulated group delay in seconds"""
+        return self.stream.delay
 
     def set(self, Fs=None, sps=None, cf=None):
         Fs = self.Fs if Fs is None else Fs

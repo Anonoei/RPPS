@@ -24,7 +24,7 @@ class Modulation(base.rpps.Pipe):
 
     def __rmul__(self, data):
         self.log.debug(f"Modulating {data}")
-        return self.encode(data)
+        return self.encode(data)  # Bits become symbols; a partial last symbol is carried or padded (see Data)
 
     def __rtruediv__(self, data):
         self.log.debug(f"Demodulating {data}")

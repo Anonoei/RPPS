@@ -5,6 +5,9 @@ import numpy as np
 from pyboiler.logger import Logger
 
 from ... import _config
+from ...math.prob import logsumexp, mixture_variance
+
+_MIN_VAR = 1e-6 # Floor for noise variances: a noiseless input still gives finite LLRs
 
 class Mapping:
     """Constellation map"""
@@ -196,12 +199,10 @@ class Constellation:
         symbols = self.to_symbols(points)
         return symbols
 
-    def demodulate(self, syms):
-        """Demodulate IQ symbols to ModData"""
+    def demodulate(self, syms, maxlog=False):
+        """Demodulate IQ symbols to one LLR per bit, log(P(0)/P(1)): positive means 0. The noise level is estimated"""
         self.log.debug(f"Demodulating {len(syms)}, {syms.dtype}")
-        distances = self.distances(syms)
-        codewords = self.codewords()
-        return codewords, distances
+        return self.llr(syms, maxlog=maxlog)
 
     ##############################
     #  Modulate
@@ -242,19 +243,6 @@ class Constellation:
     ##############################
     #  Demodulate
     ##############################
-    def from_symbols(self, symbols):
-        """Convert symbols to soft decisions"""
-        self.log.trace(f"from_sym: using {len(symbols)} symbols")
-        # self.log.trace(f"Symbols are:\n{symbols}")
-        # codewords = np.zeros((len(self.points), self._bps), dtype=bool)
-        # Distances[i] are values 0-1 of how far away sym[i] was from each constellation point
-        distances = np.zeros((len(symbols), len(self.points)), dtype=np.float16)
-
-        distances[:] = np.abs(self.points.arr - symbols.reshape(-1, 1))
-        distances[:] = 1 - np.round(distances / distances.max(axis=0), decimals=2)
-        self.log.trace(f"from_sym: demodulated {len(distances)} symbols")
-        return distances
-
     def unmap(self, points):
         """Convert points to map indexes"""
         self.log.trace(f"Using mapping: {self.mapping}")
@@ -282,32 +270,41 @@ class Constellation:
 
         return data
 
-    def distances(self, symbols):
-        distances = np.zeros((len(symbols), len(self.points)), dtype=np.float16)
+    def labels(self):
+        """Bits of every constellation point under the current mapping: (points, bits per symbol), first bit first"""
+        arr = np.asarray(self.mapping.arr).astype(np.int64)
+        return ((arr[:, None] // self._bit_mul.astype(np.int64)[None, :]) & 1).astype(np.uint8)
 
-        distances[:] = np.abs(self.points.arr - symbols.reshape(-1, 1))
-        distances[:] = 1 - np.round(distances / distances.max(axis=0), decimals=2)
-        return distances
+    def estimate_noise(self, syms, iters=8):
+        """Noise variance E|n|^2 of received symbols (assumes the constellation has unit mean power and the gain is right)
 
-    def codewords(self):
-        # bits = np.array([bin(n)[2:].zfill(self._bps) for n in self.mapping.arr])
-        # codewords = np.zeros((len(self.points), self._bps), dtype=int)
+        Expectation-maximisation over the Gaussian mixture of the constellation points
+        """
+        y = np.asarray(syms, dtype=np.complex128).reshape(-1, 1)
+        d2 = np.abs(y - self.points.arr[None, :])**2
+        return 2*mixture_variance(d2, iters, _MIN_VAR) # E|n|^2 is twice the variance per real dimension
 
-        # for i, b in enumerate(bits):
-        #     for j, c in enumerate(b):
-        #         codewords[i, j] = True if c == '1' else False
-        codewords = np.zeros((len(self.mapping.arr), self._bps), dtype=np.uint8)
-        for i, m in enumerate(self.mapping.arr):
-            if m == 0:
-                continue
-            residue = 0
-            for j in range(self._bps):
-                div = np.divide(m-residue, self._bit_mul).astype(int)
-                idx = (div==1)
-                if idx.any() == True:
-                    residue += self._bit_mul[idx]
-                    codewords[i][idx] = 1
+    def llr(self, syms, noise_var=None, maxlog=False):
+        """Per-bit log-likelihood ratios of received symbols, log(P(bit=0)/P(bit=1)), positive means 0
 
+        noise_var: complex noise variance E|n|^2 of the symbols, estimated from them when None (the demodulator
+            always does; passing it is for tests). LLRs are only calibrated when this is right: decoders that are scale-invariant (Viterbi, min-sum LDPC) don't care,
+            log-MAP decoders do
+        maxlog: use the nearest point of each bit value rather than summing over all of them
 
-        # codewords = np.binary_repr(self.mapping.arr)
-        return codewords
+        Returns a flat array, symbol after symbol, bits in the order `index` packs them
+        """
+        syms = np.asarray(syms, dtype=np.complex128).reshape(-1)
+        if noise_var is None:
+            noise_var = self.estimate_noise(syms)
+        noise_var = max(float(noise_var), 2*_MIN_VAR)
+        logp = -np.abs(syms[:, None] - self.points.arr[None, :])**2/noise_var # (N, points)
+        lab = self.labels().astype(bool)
+        out = np.empty((len(syms), self._bps), dtype=np.float32)
+        for j in range(self._bps):
+            one = lab[:, j]
+            if maxlog:
+                out[:, j] = logp[:, ~one].max(axis=1) - logp[:, one].max(axis=1)
+            else:
+                out[:, j] = logsumexp(logp[:, ~one]) - logsumexp(logp[:, one])
+        return out.reshape(-1)

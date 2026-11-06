@@ -11,8 +11,13 @@ print("Coding")
 for k, v in rp.coding.ls().items():
     print(f"  {k}: {', '.join(v)}")
 
+
 print("Scram")
 for k, v in rp.scram.ls().items():
+    print(f"  {k}: {', '.join(v)}")
+
+print("Encapsulation")
+for k, v in rp.encap.ls().items():
     print(f"  {k}: {', '.join(v)}")
 
 print("Window Functions")

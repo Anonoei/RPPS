@@ -6,11 +6,13 @@ from .utils.constellation import Mapping, Points, Maps
 from .utils.constellation import Constellation
 
 from ..base import Mod, pproc, dtype
+from ..base.rpps import align
 
 class ModConstellation(Modulation):
     """(De)mod using a constellation"""
     __slots__ = ("constellation", "mapping")
     name = "ModWithConstellation"
+    maxlog = False # Max-log LLRs (nearest point) instead of the exact sum. The noise level is always estimated from the symbols
     points = Points([])
     maps = Maps([])
 
@@ -25,23 +27,15 @@ class ModConstellation(Modulation):
         return f"{type(self).__name__}:{self.constellation.mapping.str()}"
 
     def encode(self, data):
-        sym = self.constellation.modulate(data.data)
-        d = Mod(sym, pp=pproc.MOD, dt=dtype.SYMBOLS)
-        return d
+        ctx = dict(data.ctx)
+        bits = align(ctx, (self, True), data.bits(), self.constellation.bits_per_symbol, pad=True)
+        sym = self.constellation.modulate(bits) if len(bits) else np.zeros(0, dtype=dtype.SYMBOLS.dtype)
+        return data.derive(sym, pproc.MOD, dtype.SYMBOLS, Mod, ctx)
+
     def decode(self, data):
-        codewords, distances = self.constellation.demodulate(data.data)
-        d = Mod((codewords, distances), pp=pproc.MAP)
-        return d
-
-    def __radd__(self, other):
-        data = super().__radd__(other)
-        data.append((self.constellation.bits_per_symbol, 8))
-        return data
-
-    def __rsub__(self, other):
-        data = super().__rsub__(other)
-        data.append((8, self.constellation.bits_per_symbol))
-        return data
+        syms = data.data
+        llr = self.constellation.demodulate(syms, maxlog=self.maxlog) if len(syms) else np.zeros(0, dtype=dtype.LLR.dtype)
+        return data.derive(llr, pproc.MAP, dtype.LLR, Mod)
 
     def set_mapping(self, mapping: Mapping):
         """Set modulation mapping"""

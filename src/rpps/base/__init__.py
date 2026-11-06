@@ -8,5 +8,4 @@ from .types import pproc, dtype
 from .meta import Meta
 
 from .frequency import Frequency
-from .soft import SoftDecision
 from .rpps import *

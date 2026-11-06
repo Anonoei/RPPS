@@ -1,7 +1,4 @@
-from ..base import Meta
+from ..base import Meta, Stage
 
-class Sample:
-    def __radd__(self, meta: Meta):
-        raise NotImplementedError()
-    def __rsub__(self, meta: Meta):
-        raise NotImplementedError()
+class Sample(Stage):
+    pass

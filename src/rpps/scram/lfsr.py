@@ -1,16 +1,28 @@
+import copy
+
 import numpy as np
 
 class LFSR:
     __slots__ = ("_seed", "lfsr")
     def __init__(self, seed):
-        self._seed = seed
-        self.lfsr = seed
+        self._seed = np.array(seed, copy=True)
+        self.lfsr = np.array(seed, copy=True)
 
     def __str__(self):
         return f"{type(self).__name__}"
 
     def reset(self):
-        self.lfsr = self._seed
+        self.lfsr = self._seed.copy()
+
+    def clone(self):
+        """Independent copy, in its current state"""
+        return copy.deepcopy(self)
+
+    def fresh(self):
+        """Independent copy, at the seed"""
+        c = self.clone()
+        c.reset()
+        return c
 
     def get_bit(self):
         ...
@@ -36,7 +48,7 @@ class fibonacci(LFSR):
         return self.lfsr[-1]
 
 class Galois(LFSR):
-    __slots__ = ("_poly", "toggle")
+    __slots__ = ("_poly", "toggle", "toggle_rev")
     name = "Galois"
 
     def __init__(self, seed, toggle):
@@ -44,6 +56,7 @@ class Galois(LFSR):
         self._poly = toggle
         self.toggle = np.zeros((len(seed),), bool)
         self.toggle[len(seed) - toggle] = True
+        self.toggle_rev = self.toggle[::-1].copy() # The same polynomial, register mirrored (for the left-shifting form)
 
     def __str__(self):
         return f"{super().__str__()}:{self._poly.astype(int)}"
@@ -52,11 +65,11 @@ class galois_left(Galois):
     name = "Galois Left"
     def get_bit(self):
         lsb = self.lfsr[0]
-        self.lfsr[1:] = self.lfsr[:-1]  # clock LFSR
-        self.lfsr[0] = 0
+        self.lfsr[:-1] = self.lfsr[1:]  # clock LFSR towards the output end
+        self.lfsr[-1] = 0
 
         if lsb:
-            self.lfsr = np.bitwise_xor(self.lfsr, self.toggle)
+            self.lfsr = np.bitwise_xor(self.lfsr, self.toggle_rev)
         return lsb
 
 

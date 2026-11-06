@@ -1,9 +1,18 @@
 import numpy as np
 
-from .. import err
 from ... import _config
 
+REGISTRY = {}
+
+def register(name):
+    """Register a code implementation under the config "type" it is loaded from"""
+    def deco(cls):
+        REGISTRY[name] = cls
+        return cls
+    return deco
+
 class _code:
+    soft = False # Does decode() make use of LLR input (otherwise it takes hard decisions)
     def __init__(self, log, name, num, den):
         if name is None:
             name = f"{num}_{den}"

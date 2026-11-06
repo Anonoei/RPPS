@@ -1,14 +1,25 @@
 import numpy as np
 
-from ._code import _code
+from ._code import _code, register
 
 from ..blocker import block, unblock
 
+@register("linear")
 class linear(_code):
     def __init__(self, log, generator, check):
         super().__init__(log, None, generator.shape[0], generator.shape[1])
         self.generator = generator
         self.check = np.transpose(check)
+    @classmethod
+    def from_config(cls, log, obj):
+        from .. import matrix
+        if obj.get("p") is None: # Explicit generator and check matrices: (n, k) are their shape
+            g, h = np.array(obj["g"], dtype=bool), np.array(obj["h"], dtype=bool)
+        else: # Parity block only
+            n, k = obj["code"]
+            g, h = matrix.linear(n, k, np.array(obj["p"], dtype=bool))
+        return cls(log, g, h)
+
     def encode(self, bits: np.ndarray):
         blocks = block(bits, self.num)
         self.log.trace(f"encoding {len(bits)}, {blocks.shape}")

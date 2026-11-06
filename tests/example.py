@@ -5,7 +5,7 @@ import rpps as rp
 
 mod = rp.mod.load("QPSK")
 mod.set_mapping(mod.get_maps()[0])
-ecc = rp.coding.load("blk", "hamming.7_4")
+ecc = rp.coding.load("block", "hamming.7_4")
 scr = rp.scram.load("fdt", "v35")
 
 print(f"Mod: {mod}")
@@ -14,9 +14,9 @@ print(f"SCR: {scr}")
 
 enc_msg = rp.Data(b"Hello World!")
 
-syms = enc_msg(scr+ecc+mod)*scr*ecc*mod # Scrambled, encoding, and modulate
+syms = enc_msg * scr * ecc * mod # Scrambled, encoding, and modulate
 print(f" Symbols: {syms}")
-dec_msg = syms(mod-ecc-scr)/mod/ecc/scr # Demodulate, decode, and descramble
+dec_msg = syms / mod / ecc / scr # Demodulate, decode, and descramble
 
 enc_msg = enc_msg.as_bytes()
 dec_msg = dec_msg.as_bytes()

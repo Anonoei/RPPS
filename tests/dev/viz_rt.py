@@ -38,8 +38,8 @@ def rt_cvec(psds):
 
 def speed(sink):
     samps = sink.read(Prop.num_samps)
-    snips = rp.utils.stft.stft(samps, Prop.nfft, Prop.overlap, Prop.window)
-    psds = rp.utils.stft.psd(snips, Prop.Fs, Prop.vbw)
+    snips = rp.dsp.stft.stft(samps, Prop.nfft, Prop.overlap, Prop.window)
+    psds = rp.dsp.stft.psd(snips, Prop.Fs, Prop.vbw)
 
     count = 100
 
@@ -84,9 +84,10 @@ def loop(sink):
     fig.tight_layout()
     im = ax
     # bm = rp.viz.blit.BlitManager(fig)
-    fps = (1000/Prop.samp_show)
-    writer = rp.viz.save.FFmpegMP4(fig, fps, "video_vector.mp4")
-    writer.open()
+    # fps = (1000/Prop.samp_show)
+    writer = None
+    # writer = rp.viz.save.FFmpegMP4(fig, fps, "video_vector.mp4")
+    # writer.open()
     loop_sum = 0
     loop_count = 0
     loop_min = np.inf
@@ -94,15 +95,15 @@ def loop(sink):
 
     for samps in sink(Prop.num_samps):
         ts = time.perf_counter()
-        snips = rp.utils.stft.stft(samps, Prop.nfft, Prop.overlap, Prop.window)
-        psds = rp.utils.stft.psd(snips, Prop.Fs, Prop.vbw)
+        snips = rp.dsp.stft.stft(samps, Prop.nfft, Prop.overlap, Prop.window)
+        psds = rp.dsp.stft.psd(snips, Prop.Fs, Prop.vbw)
 
         im = rp.viz.rt.Persistent(im, psds, Prop.hist_x, Prop.hist_y)
         ax.set_title(f"{sink.cur_samp/Prop.Fs:.2f}s / {sink.percent*100:.2f}%", loc="right")
         ax.set_title(f"Playback {Prop.samp_time}:{Prop.samp_show}ms", loc="left")
         ax.set_title(f"{snips.shape[1]}*{Prop.nfft} FFTs")
         ts = (time.perf_counter()-ts)*1000
-        writer.grab_frame()
+        # writer.grab_frame()
         print(f"Loop {sink.percent*100:.2f}%: {ts:.2f}ms")
         loop_sum += ts
         loop_count += 1
@@ -110,9 +111,9 @@ def loop(sink):
             loop_min = ts
         if loop_max < ts:
             loop_max = ts
-        # plt.pause((samp_show-ts)/1000)
-        # plt.pause((Prop.samp_show-ts)/1000)
-    writer.close()
+        plt.pause((Prop.samp_show-ts)/1000)
+    if writer is not None:
+        writer.close()
     print(f"{loop_sum/1000:.1f}s total ({loop_count} loops) / {(loop_sum/loop_count):.2f}ms mean per loop")
     print(f"Min: {loop_min:.2f}, Max: {loop_max:.2f}")
 

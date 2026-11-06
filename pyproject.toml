@@ -7,7 +7,7 @@ name = "rpps"
 version = "0.2.0"
 description = "RF Parameter Processor Suite"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 authors = [
     {name = "Anonoei", email="to+dev@an0.cx"}
 ]
@@ -49,3 +49,8 @@ push = false
     'version = "{version}"'
 ]
 "src/rpps/__init__.py" = ["{version}"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+pythonpath = ["src"]
+markers = ["slow: takes more than a few seconds"]

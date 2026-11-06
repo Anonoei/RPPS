@@ -1,20 +1,19 @@
 import numpy as np
 
 from .impl.designer import designer
-from .filter import Filter, Meta
+from .filter import FIR, Meta
 
-class ConvFilter(Filter):
+class ConvFilter(FIR):
     __slots__ = ("filt")
     def __init__(self, filt):
         self.filt = filt
 
-    def run(self, samples):
-        return np.convolve(samples, self.filt, mode="valid")
+    def make_taps(self, meta):
+        return self.filt
 
-    def __radd__(self, meta: Meta):
-        meta.obj = self.run(meta.obj)
-        meta.finish()
-        return meta
+    def run(self, samples):
+        """One-shot (stateless) filtering, drops the edges"""
+        return np.convolve(samples, self.filt, mode="valid")
 
 def low_pass(taps, cutoff, fs=None):
     return ConvFilter(designer(taps, cutoff, fs=fs, pass_zero=True))

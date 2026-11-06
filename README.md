@@ -14,7 +14,7 @@ import rpps as rp
 
 mod = rp.mod.load("QPSK")
 mod.set_mapping(mod.get_maps()[0])
-ecc = rp.coding.load("blk", "hamming.7_4")
+ecc = rp.coding.load("block", "hamming.7_4")
 scr = rp.scram.load("fdt", "v35")
 
 print(f"Mod: {mod}")
@@ -23,9 +23,9 @@ print(f"SCR: {scr}")
 
 enc_msg = rp.Data(b"Hello World!")
 
-syms = enc_msg(scr+ecc+mod)*scr*ecc*mod # Scrambled, encoding, and modulate
+syms = enc_msg * scr * ecc * mod # Scrambled, encoding, and modulate
 print(f" Symbols: {syms}")
-dec_msg = syms(mod-ecc-scr)/mod/ecc/scr # Demodulate, decode, and descramble
+dec_msg = syms / mod / ecc / scr # Demodulate, decode, and descramble
 
 enc_msg = enc_msg.as_bytes()
 dec_msg = dec_msg.as_bytes()
@@ -51,8 +51,8 @@ fig, ax = rp.viz.subplots()
 fig.tight_layout()
 im = ax
 for samps in sink(num_samps):
-    snips = rp.utils.stft.stft(samps, nfft, overlap, window)
-    psds = rp.utils.stft.psd(snips, meta.Fs, vbw)
+    snips = rp.dsp.stft.stft(samps, nfft, overlap, window)
+    psds = rp.dsp.stft.psd(snips, meta.Fs, vbw)
 
     im = rp.viz.rt.Persistent(im, psds)
     rp.viz.pause((display)/1000)
@@ -84,17 +84,22 @@ for samps in sink(num_samps):
  - [ ] [Coding](https://github.com/Anonoei/RPPS/tree/main/src/rpps/coding)
    - [ ] Block
      - [X] Repetition
-     - [X] Hamming
+     - [X] Hamming (decoded on its syndrome trellis)
+     - [X] BCH
+     - [X] Reed-Solomon
+     - [X] LDPC (min-sum, DVB-S2 tables)
      - [ ] TPC
-     - [ ] LDPC
-   - [ ] Convolutional
-     - [ ] Viterbi
+   - [X] Convolutional
+     - [X] Viterbi (hard and soft)
+     - [X] BCJR / trellis (log-MAP, max-log-MAP)
+   - [X] Soft decisions (demodulator LLRs into the decoders)
  - [ ] [Scram](https://github.com/Anonoei/RPPS/tree/main/src/rpps/scram)
    - [X] fibonacci
    - [X] galois
    - [X] V.35
- - [ ] Frame
-   - [ ] HDLC
+ - [ ] [Encapsulation](https://github.com/Anonoei/RPPS/tree/main/src/rpps/encap)
+   - [X] CRC
+   - [X] HDLC
    - [ ] PPP
  - [ ] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz)
    - [X] Real-Time (STFT)
@@ -106,5 +111,5 @@ for samps in sink(num_samps):
  3. `git branch -c feature/<your feature>`
  4. `python3 builder.py -b -l` build and install rpps locally
     - This also installs deps, and dev_deps automatically
- 5. run `python3 tests/dev.py`
+ 5. run `python3 -m pytest` (add `-m "not slow"` to skip the chain tests). Scratch scripts live in `tests/dev`
  6. Check out the `dev` branch for latest changes

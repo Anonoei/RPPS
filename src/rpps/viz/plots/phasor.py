@@ -27,8 +27,8 @@ def phasor(ax, syms):
         ax.set_aspect("equal", adjustable="box")
     # ax.set_title(f"{norm:.3f}", loc="left")
     amax = np.max((snip.real, snip.imag, -snip.real, -snip.imag))
-    if amax > ax.get_xlim()[1] or amax > ax.get_ylim()[1]:
-        ax.set_xlim(-amax, amax)
-        ax.set_ylim(-amax, amax)
+    ax.set_xlim(-amax, amax)
+    ax.set_ylim(-amax, amax)
+    # if amax > ax.get_xlim()[1] or amax > ax.get_ylim()[1]:
     ax.set_title(f"{len(snip)} N", loc="right")
     return line

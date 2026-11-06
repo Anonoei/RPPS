@@ -24,8 +24,8 @@ class dtype(Enum):
 
     # Mod
     MAPPED = (2, None)
-    MAPPED_HARD = (21, None)
-    MAPPED_SOFT = (22, None)
+    MAPPED_HARD = (21, bool) # Hard decided bits
+    LLR = (22, np.float32)   # Soft bits: log(P(0)/P(1)) per bit, positive means 0
 
     # Digital
     BITS = (3, bool)

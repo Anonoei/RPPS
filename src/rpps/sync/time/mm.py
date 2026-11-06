@@ -1,81 +1,115 @@
+from types import SimpleNamespace
+
 import numpy as np
 from ..sync import Sync, Meta
 
 from ...sample import up
 
 class MM:
+    """Mueller & Muller timing recovery
+
+    The whole block is interpolated once, then the optimal sample is picked from
+    the interpolated block. The timing estimate is kept in [0, 1) (fractional sample
+    offset); its integer part is moved into the input index.
+
+    Settings live here, the loop state (est, history...) lives in `meta.state_of(mm)`.
+
+    biphase: Biphase (Manchester) symbols, after their matched filter, have two power
+        peaks per symbol and M&M is happy at the weaker one. Use early-late on power,
+        and hop half a symbol if the other peak is stronger.
+    """
     __slots__ = (
         "alpha", "est",
-        "interp", "buffer",
-        "count",
-        "outs", "rail"
+        "interp", "biphase"
     )
+    GUARD = 8 # Input samples at the block end the sinc interpolation can't be trusted for
+    WARMUP = 2 # Outputs dropped while the M&M history fills
 
-    # fig, ax = plt.subplots(1)
-    def __init__(self, alpha=0.3, est=0.0, interp=32):
+    def __init__(self, alpha=0.3, est=0.0, interp=32, biphase=False):
         self.alpha = alpha
-        self.est = est
+        self.est = est # Initial estimate
         self.interp = up.Sinc(interp)
-        self.buffer = None
-        self.count = -2
+        self.biphase = biphase
 
-        self.outs = np.zeros(3, dtype=np.complex64) # 0, -1, -2
-        self.rail = np.zeros(3, dtype=np.complex64) # 0, -1, -2
-
-    def run(self, meta: Meta):
-        meta = meta + self.interp # Interpolate meta.obj
-        opt_idx = int(self.est*self.interp.ratio) + meta.sps//2
-
-        out = meta.obj[opt_idx]
-        rail = int(np.real(out) > 0) + 1j*int(np.imag(out) > 0)
-        self._clock(out, rail)
-        x = (self.rail[0] - self.rail[2]) * np.conj(self.outs[1])
-        y = (self.outs[0] - self.outs[2]) * np.conj(self.rail[1])
-        mm_val = np.real(y-x)
-        self.est += self.alpha*mm_val
-        self.count += 1
-        # print(f"mm_val: {mm_val} / est: {self.est}")
-        return out
+    def new_state(self, meta: Meta):
+        return SimpleNamespace(
+            est=self.est,
+            buffer=None, pos=meta.isps,
+            count=0, skip=0 if self.biphase else self.WARMUP,
+            outs=np.zeros(3, dtype=np.complex64), # 0, -1, -2
+            rail=np.zeros(3, dtype=np.complex64), # 0, -1, -2
+            pw=0.0, pw_half=0.0
+        )
 
     def burst(self, meta: Meta):
-        sps = int(round(meta.sps, 0))
+        st = meta.state_of(self)
+        sps = meta.isps
+        if sps < 1:
+            raise ValueError(f"MM needs meta.sps >= 1, got {meta.sps}")
+        ratio = self.interp.ratio
         samples = np.copy(meta.obj)
-        idx_in = sps + int(np.floor(self.est))
-        if self.buffer is not None:
-            samples = np.concat((self.buffer, samples), axis=0)
-            self.buffer = None
+        if st.buffer is not None:
+            samples = np.concatenate((st.buffer, samples), axis=0)
         N = len(samples)
-        sym_out = int(len(samples)//sps)
-        out = np.zeros(sym_out, dtype=samples.dtype)
-        skip = 2 if self.count == -2 else None
+        out = []
+        if N > 0:
+            interp = self.interp.run(samples) # Interpolate once, not per symbol
+            i_in = st.pos
+            while i_in + self.GUARD < N:
+                opt_idx = i_in * ratio + int(st.est * ratio)
+                val = interp[opt_idx]
+                pw = abs(val)**2
+                st.pw = pw if st.count == 0 else st.pw + 0.02 * (pw - st.pw)
+                if self.biphase:
+                    half = interp[opt_idx - (sps * ratio) // 2]
+                    st.pw_half = abs(half)**2 if st.count == 0 else st.pw_half + 0.02 * (abs(half)**2 - st.pw_half)
+                    if st.count > 100 and st.pw_half > 1.3 * st.pw:
+                        # Locked to the wrong half-symbol; hop to the stronger peak
+                        i_in -= sps // 2
+                        st.pw = st.pw_half = max(st.pw, st.pw_half)
+                        continue
+                out.append(val)
+                if self.biphase:
+                    # Early-late on power, amplitude independent
+                    d = ratio * max(1, sps // 8)
+                    early = abs(interp[opt_idx - d])**2
+                    late = abs(interp[opt_idx + d])**2
+                    err = (late - early) / (early + late + 1e-12)
+                else:
+                    self._clock(st, val, int(np.real(val) > 0) + 1j*int(np.imag(val) > 0))
+                    err = self._error(st) / (np.sqrt(st.pw) + 1e-12) # Error scales with amplitude
+                st.est += self.alpha * err
+                st.count += 1
 
-        for i in range(0, sym_out, 1):
-            if idx_in > N:
-                print(f"MM ended early at {i}/{sym_out}")
-                out = out[:i]
-                break
-            elif idx_in-sps < 0:
-                print(f"MM started with invalid idx {idx_in}-{sps}")
-                break
-            meta.obj = samples[idx_in-sps:idx_in]
-            # print(f"Running samples[{i_in-sps}:{i_in}] of ({N}) [{meta.obj.shape}]")
-            out[i] = self.run(meta)
-            idx_in += sps + int(np.floor(self.est))
-            self.est = self.est - np.floor(self.est)
-        if (idx_in-sps) < len(samples):
-            next_idx = idx_in - len(samples)
-            self.buffer = samples[-next_idx:]
-            # print(f"Next idx is at {next_idx}+{len(self.buffer)} ({idx_in}-{sps}:{len(samples)})")
+                step = int(np.clip(np.floor(st.est), -(sps//2), sps//2)) # Bound a runaway loop
+                st.est -= step # Integer part goes in the input index only
+                i_in += sps + step
+
+            # Keep the history that the next block's window still needs
+            keep = max(0, min(i_in - sps, N))
+            st.buffer = samples[keep:]
+            st.pos = i_in - keep
+
+        out = np.array(out, dtype=samples.dtype)
+        if st.skip and len(out):
+            drop = min(st.skip, len(out))
+            out = out[drop:]
+            st.skip -= drop
         meta.op.Fs = meta.Fs / sps
         meta.op.sps = 1
-        if skip is not None:
-            out = out[skip:]
         meta.obj = out
         return meta
 
-    def _clock(self, out, rail):
-        self.outs = np.roll(self.outs, 1)
-        self.outs[0] = out
+    @staticmethod
+    def _error(st):
+        x = (st.rail[0] - st.rail[2]) * np.conj(st.outs[1])
+        y = (st.outs[0] - st.outs[2]) * np.conj(st.rail[1])
+        return np.real(y - x)
 
-        self.rail = np.roll(self.rail, 1)
-        self.rail[0] = rail
+    @staticmethod
+    def _clock(st, out, rail):
+        st.outs = np.roll(st.outs, 1)
+        st.outs[0] = out
+
+        st.rail = np.roll(st.rail, 1)
+        st.rail[0] = rail

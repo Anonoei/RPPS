@@ -2,8 +2,8 @@ from .. import _config
 
 from .sync import Sync
 
-from .baudline import find_rate
 from .costas import Costas
+from .acquire import Acquire
 
 from . import freq
 from . import phase

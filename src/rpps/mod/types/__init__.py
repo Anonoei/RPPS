@@ -1,5 +1,5 @@
 from .ask import ASK
-from .fsk import FSK
+from .fsk import FSK, FMDemod
 from .psk import PSK
 
 from .apsk import APSK

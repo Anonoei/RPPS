@@ -79,4 +79,5 @@ def designer(taps, cut_off,
         c = np.cos(np.pi*m*scale_freq)
         s = np.sum(h*c)
         h /= s
-    return h
+    # return h.astype(np.complex64)
+    return h.astype(np.float32)

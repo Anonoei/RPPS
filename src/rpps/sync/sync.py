@@ -4,6 +4,10 @@ class Sync:
     __slots__ = ("impl")
     def __init__(self, impl):
         self.impl = impl
+    def state(self, meta: Meta):
+        """The carried state of the wrapped implementation (est, freq, pha...)"""
+        return meta.state_of(self.impl)
+
     def __radd__(self, meta: Meta):
         meta = self.impl.burst(meta)
         meta.finish()
