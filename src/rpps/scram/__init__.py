@@ -2,11 +2,11 @@
 
 # Import helpers/globals
 from .. import base
-from .. import dobject
+from .. import _config
 
 # -----
 
-from .serial import identify, load
+from .serial import ls, load
 
 from . import lfsr
 from .scrambler import Scram

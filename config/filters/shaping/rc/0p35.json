@@ -1,0 +1,6 @@
+{
+  "base": "shaping",
+  "type": "rc",
+  "comment": "Raised-cosine, roll-off 0.35",
+  "beta": 0.35
+}

@@ -1,4 +1,6 @@
+"""Signal sources and sinks, on pysdrlib"""
+from .. import _config
 from . import err
+from . import formats
 
-from .file import File
-from .file import Formats as FileFormats
+from .source import Source, Blocks, File, Device, Sink

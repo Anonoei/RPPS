@@ -1,0 +1,26 @@
+{
+  "base": "conv",
+  "type": "split",
+  "comment": "Rate 1/2, constraint length 3 convolutional code",
+  "aliases": ["cnv.1_2_3"],
+  "encode": {
+    "type": "conv",
+    "num": 1,
+    "den": 2,
+    "constraint": 3,
+    "generator": [
+      [1, 0, 1],
+      [1, 1, 1]
+    ]
+  },
+  "decode": {
+    "type": "viterbi",
+    "num": 1,
+    "den": 2,
+    "constraint": 3,
+    "generator": [
+      [1, 0, 1],
+      [1, 1, 1]
+    ]
+  }
+}

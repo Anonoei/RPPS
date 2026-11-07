@@ -2,42 +2,45 @@
 from abc import abstractmethod
 import numpy as np
 
-from pyboiler.logger import Logger, Level
+from ..logger import Logger
 
 from . import base
-from . import dobject
+from . import _config
+from ..base import Analog, Mod, Digital, pproc, dtype
 from . import lfsr
 
 
 class Scram(base.rpps.Pipe):
-    """Scram Pipe"""
+    """Scrambler parent class"""
 
     def __init__(self):
-        self.log = (
-            Logger().Child("Coding", Level.WARN).Child(type(self).__name__, Level.WARN)
-        )
+        self.log = Logger().Child("Scram", _config.LOG_SCRAM).Child(type(self).__name__, _config.LOG_SCRAM)
 
     def __str__(self):
         return f"{type(self).__name__}"
 
-    @abstractmethod
-    def scram(self, dobj: dobject.BitObject) -> dobject.ScramData:
-        """Encode dobject using specified scram"""
+    def _run(self, data, enc):
+        """Scramble or descramble. The generator state lives in the stream (data.ctx): new data starts at the seed"""
+        self.log.debug(f"{'Scrambling' if enc else 'Descrambling'} {data}")
+        ctx = dict(data.ctx)
+        y = self._stream(ctx, (self, enc), data.bits(), enc)
+        return data.derive(y, pproc.SCRAM, dtype.BITS, Digital, ctx)
 
-    @abstractmethod
-    def descram(self, dobj: dobject.BitObject) -> dobject.BitObject:
-        """Decode dobject using specified scram"""
+    def _stream(self, ctx, key, bits, enc):
+        """Scramble/descramble bits continuing from ctx[key] (the previous call), and put the new state back"""
+        raise NotImplementedError()
+
+    def __rmul__(self, data):
+        return self._run(data, True)
+
+    def __rtruediv__(self, data):
+        return self._run(data, False)
 
     @staticmethod
     @abstractmethod
     def load(name: str, obj: dict):
         """Load modulation from json"""
 
-    def __rmul__(self, other):
-        return self.scram(dobject.ensure_bit(other))
-
-    def __rtruediv__(self, other):
-        return self.descram(dobject.ensure_bit(other))
 
 
 class Feedthrough(Scram):
@@ -54,21 +57,25 @@ class Feedthrough(Scram):
         self.s_lfsr.reset()
         self.d_lfsr.reset()
 
-    def scram(self, dobj: dobject.BitObject):
-        scrambled_data = np.empty_like(dobj.data, dtype=bool)
+    @staticmethod
+    def _xor(data, reg):
+        scr_data = np.empty_like(data, dtype=bool)
+        for i, bit in enumerate(data):
+            scr_data[i] = reg.get_bit() ^ bit
+        return scr_data
 
-        for i, bit in enumerate(dobj.data):
-            scrambled_data[i] = self.s_lfsr.get_bit() ^ bit
+    def encode(self, data):
+        """Scramble, continuing from where the last call left this scrambler"""
+        return self._xor(data, self.s_lfsr)
 
-        return dobject.ScramData(scrambled_data)
+    def decode(self, data):
+        return self._xor(data, self.d_lfsr)
 
-    def descram(self, dobj: dobject.BitObject):
-        descrambled_data = np.empty_like(dobj.data, dtype=bool)
-
-        for i, bit in enumerate(dobj.data):
-            descrambled_data[i] = self.d_lfsr.get_bit() ^ bit
-
-        return dobject.BitObject(descrambled_data)
+    def _stream(self, ctx, key, bits, enc):
+        reg = ctx[key].clone() if key in ctx else (self.s_lfsr if enc else self.d_lfsr).fresh()
+        out = self._xor(bits, reg)
+        ctx[key] = reg
+        return out
 
     @staticmethod
     def load(name, obj):
@@ -82,8 +89,72 @@ class Feedthrough(Scram):
 
 
 class Additive(Scram):
+    """Additive (synchronous) scrambler: data xor a PRBS that does not depend on the data
+
+    poly: feedback taps (register positions, 1 = first stage), seed: register bits, first stage first
+    frame: optional packet structure for byte streams, as in DVB energy dispersal:
+        bytes: PRBS restart period; sync_period/sync_bytes: leading bytes of each packet that the PRBS skips over
+        (it still advances, the data bytes just aren't touched)
+    encode/decode take bits that start on a frame boundary; both are the same operation.
+    """
+    def __init__(self, poly, seed, frame=None):
+        super().__init__()
+        self.poly = np.asarray(poly, dtype=int)
+        self.seed = np.asarray(seed, dtype=np.uint8)
+        self.frame = frame
+        self.marker = None if frame is None else frame.get("marker")
+        self._mask = None
+
+    def sequence(self, nbits):
+        """PRBS bits from the seed (Fibonacci register)"""
+        r = self.seed.copy()
+        out = np.zeros(nbits, dtype=np.uint8)
+        taps = self.poly - 1
+        for i in range(nbits):
+            b = np.bitwise_xor.reduce(r[taps]) & 1
+            out[i] = b
+            r[1:] = r[:-1]
+            r[0] = b
+        return out
+
+    def mask(self):
+        """Bits to xor onto one frame (length frame bytes * 8), or one PRBS period without a frame"""
+        if self._mask is None:
+            self._mask = self._make_mask()
+        return self._mask
+
+    def _make_mask(self):
+        if self.frame is None:
+            return self.sequence(int(2**len(self.seed) - 1))
+        n = self.frame["bytes"]
+        sp, sb = self.frame.get("sync_period", 0), self.frame.get("sync_bytes", 0)
+        first = self.frame.get("skip_first", sb) # The PRBS starts after the first sync byte
+        seq = self.sequence((n - first)*8).reshape(-1, 8)
+        mask = np.zeros((n, 8), dtype=np.uint8)
+        mask[first:] = seq
+        if sp:
+            idx = np.arange(n)
+            mask[(idx % sp) < sb] = 0
+        return mask.reshape(-1)
+
+    def encode(self, data, start=0):
+        """start: position in the mask the first bit falls on (0: a frame boundary)"""
+        bits = np.asarray(data).astype(np.uint8)
+        m = np.roll(self.mask(), -start)
+        reps = -(-len(bits)//len(m))
+        return (bits ^ np.tile(m, reps)[:len(bits)]).astype(bool)
+
+    decode = encode
+
+    def _stream(self, ctx, key, bits, enc):
+        start = ctx.get(key, 0)
+        out = self.encode(bits, start)
+        ctx[key] = (start + len(bits)) % len(self.mask())
+        return out
 
     @staticmethod
     def load(name, obj):
-        impl = type(name, (Additive,), dict(name=name, poly=obj["poly"]))()
-        return impl
+        seed = obj["seed"]
+        if isinstance(seed, str):
+            seed = [int(c) for c in seed]
+        return type(name, (Additive,), dict(name=name))(obj["poly"], seed, obj.get("frame"))

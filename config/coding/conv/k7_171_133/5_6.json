@@ -1,0 +1,30 @@
+{
+  "base": "conv",
+  "type": "split",
+  "comment": "DVB-S (EN 300 421) inner code rate 5/6, G1=171 G2=133",
+  "aliases": ["dvbs.5_6_7"],
+  "encode": {
+    "type": "conv",
+    "num": 1,
+    "den": 2,
+    "constraint": 7,
+    "generator": [
+      [1, 1, 1, 1, 0, 0, 1],
+      [1, 0, 1, 1, 0, 1, 1]
+    ],
+    "puncture": [
+      [1, 0, 1, 0, 1],
+      [1, 1, 0, 1, 0]
+    ]
+  },
+  "decode": {
+    "type": "viterbi",
+    "num": 1,
+    "den": 2,
+    "constraint": 7,
+    "generator": [
+      [1, 1, 1, 1, 0, 0, 1],
+      [1, 0, 1, 1, 0, 1, 1]
+    ]
+  }
+}

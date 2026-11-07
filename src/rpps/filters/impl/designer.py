@@ -1,5 +1,50 @@
 import numpy as np
 
+def _delta(taps, amp=1, shift=0):
+    f = np.zeros(taps)
+    f[taps//2+shift] = amp
+    return f
+
+def _first_dif(taps):
+    f = np.zeros(taps)
+    f[taps//2] = 1
+    f[taps//2+1] = -1
+    return f
+
+def _exp(taps):
+    f = _delta(taps, amp=1)
+    for i in range(taps//2+1, taps, 1):
+        f[i] = f[i-1]*0.75
+    return f
+def _sqr(taps):
+    f = np.zeros(taps)
+    f[taps//2:taps//2+(taps//4)-1] = 1
+    return f
+def _sinc(taps):
+    t = np.arange(-taps//2,taps//2)/(taps/6)
+    f = np.sinc(t)
+    f = f * np.hanning(taps)
+    return f
+
+def lowpass(taps, name="sinc"):
+    if name == "sinc":
+        f = _sinc(taps)
+    elif name == "exp":
+        f = _exp(taps)
+    elif name == "sqr":
+        f = _sqr(taps)
+    f = f / np.sum(f) # normalize values to 1
+    return f
+
+def highpass(taps, name="sinc"):
+    f = lowpass(taps, name)
+    if name == "sqr":
+        d = _delta(taps, shift=taps//8-1)
+    else:
+        d = _delta(taps)
+    f = d - f
+    return f
+
 def designer(taps, cut_off,
         window=np.hamming,
         pass_zero=True, scale=True, fs=None):
@@ -9,8 +54,8 @@ def designer(taps, cut_off,
     cutoff = np.asarray(cut_off, dtype=np.float32)
     cutoff = cutoff.reshape((-1)) / float(nyq)
 
-    pass_nyq = np.size(cutoff) % 2 == 0 == pass_zero
-    cutoff = np.concat((np.zeros(int(pass_zero)), cutoff, np.ones(int(pass_nyq))))
+    pass_nyq = bool(np.size(cutoff) & 1) ^ bool(pass_zero) # As scipy.signal.firwin
+    cutoff = np.concatenate((np.zeros(int(pass_zero)), cutoff, np.ones(int(pass_nyq))))
 
     bands = np.reshape(cutoff, (-1, 2))
     alpha = 0.5 * (taps-1)
@@ -34,4 +79,5 @@ def designer(taps, cut_off,
         c = np.cos(np.pi*m*scale_freq)
         s = np.sum(h*c)
         h /= s
-    return h
+    # return h.astype(np.complex64)
+    return h.astype(np.float32)

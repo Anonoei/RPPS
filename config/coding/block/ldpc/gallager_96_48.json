@@ -1,0 +1,13 @@
+{
+  "base": "block",
+  "type": "ldpc",
+  "comment": "Gallager (96,48) LDPC example",
+  "gallager": {
+    "n": 96,
+    "wc": 3,
+    "wr": 6,
+    "seed": 1
+  },
+  "iters": 50,
+  "alpha": 0.8
+}

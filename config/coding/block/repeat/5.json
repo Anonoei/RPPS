@@ -1,0 +1,6 @@
+{
+  "base": "block",
+  "type": "repeat",
+  "comment": "Repetition code, each bit sent 5 times",
+  "count": 5
+}

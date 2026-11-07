@@ -1,0 +1,12 @@
+{
+  "base": "crc",
+  "type": "crc",
+  "comment": "CRC-16/KERMIT (CCITT true, used by AX.25-era links and CC1101)",
+  "width": 16,
+  "poly": "0x1021",
+  "init": "0x0",
+  "refin": true,
+  "refout": true,
+  "xorout": "0x0",
+  "check": "0x2189"
+}

@@ -1,6 +1,7 @@
 {
   "base": "fdt",
   "type": "galois_left",
+  "comment": "V.35 feedthrough scrambler",
   "seed": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   "poly": [20, 3]
 }

@@ -1,0 +1,12 @@
+{
+  "base": "crc",
+  "type": "crc",
+  "comment": "CRC-32C/Castagnoli (iSCSI, SCTP)",
+  "width": 32,
+  "poly": "0x1edc6f41",
+  "init": "0xffffffff",
+  "refin": true,
+  "refout": true,
+  "xorout": "0xffffffff",
+  "check": "0xe3069283"
+}

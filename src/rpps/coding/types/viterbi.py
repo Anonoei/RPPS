@@ -1,137 +1,115 @@
 import numpy as np
 
-from ._code import _code
+from ._code import _code, register
 
-from ..blocker import block, unblock, hamming_dist
-
-
+@register("viterbi")
 class viterbi(_code):
-    """Viterbi decoder"""
-    def __init__(self, num, den, constraint, generator):
-        super().__init__(num, den)
+    """Viterbi decoder for feed-forward convolutional codes (rate 1/n, any constraint length)
+
+    generator: (n, K) taps. generator[j][i] multiplies the input delayed by i, the same convention as `conv`
+    puncture: optional (n, P) 0/1 pattern, 1 = bit was sent. Punctured positions are decoded as erasures
+    terminated: the encoder was flushed with K-1 zeros, so the path ends in state 0 (and the tail is dropped)
+
+    decode() takes hard bits (0/1) or soft values. Soft values are LLRs, log(P(bit=0)/P(bit=1)): positive means 0.
+    Pass `soft=True` to force soft, otherwise integer/bool input is treated as hard bits.
+
+    Without `state` decode() takes a whole frame. With `state` (a dict) it is a stream: the path metrics and the
+    survivor decisions carry over, and a bit is released once it is `depth` trellis steps old (it is then settled for
+    practical purposes). `final` ends the stream and releases the rest, ending in state 0 if terminated.
+    """
+    soft = True
+    stream = True # decode() can carry on from a previous call
+
+    @classmethod
+    def from_config(cls, log, obj):
+        return cls(log, obj["num"], obj["den"], obj["constraint"], np.array(obj["generator"], dtype=bool),
+                   obj.get("puncture"), obj.get("terminated", False))
+
+    def __init__(self, log, num, den, constraint, generator, puncture=None, terminated=False):
+        super().__init__(log, None, num, den)
         self.con = constraint
-        self.gen = generator
+        self.gen = np.asarray(generator, dtype=np.uint8).reshape(den, constraint)
+        self.puncture = None if puncture is None else np.asarray(puncture, dtype=bool)
+        self.terminated = terminated
+        self.depth = 10*constraint # Traceback depth of a stream
 
-        trellis_states = 2**(self.con-1)
-        states = np.arange(trellis_states, dtype=np.uint8)
-        states = np.unpackbits(states).astype(bool).reshape(-1, 8)[:, -(self.con-1):]
+        K, n = self.con, self.den
+        S = 2**(K-1)
+        self.n_states = S
 
-        # print(f"Got {len(states)} states")
-        # initialize (total states; input 0,1; register bits)
-        all_states = np.zeros((len(states),2,self.con), dtype=bool)
-        for i, state in enumerate(all_states):
-            for j, st in enumerate(state):
-                all_states[i][j] = np.append(j, states[i])
-                # input(f"{i},{j}: {st}")
+        # Register for (state, input): [input, newest past bit, ..., oldest]. State bit K-2 is the newest past bit
+        state = np.arange(S)
+        reg = np.zeros((S, 2, K), dtype=np.uint8)
+        reg[:, :, 0] = np.arange(2)[None, :]
+        for i in range(1, K):
+            reg[:, :, i] = ((state >> (K-1-i)) & 1)[:, None]
+        self.out_bits = (np.einsum("sik,nk->sin", reg, self.gen) & 1).astype(np.uint8) # (S, 2, n)
+        pow2 = 2**np.arange(n-1, -1, -1)
+        self.out_pat = (self.out_bits.astype(int) * pow2).sum(axis=2) # Code word as an integer (S, 2)
+        self.patterns = ((np.arange(2**n)[:, None] >> np.arange(n-1, -1, -1)) & 1).astype(np.float64) # (2^n, n)
 
-        # initialize (total states; constraints; 0,1)
-        codes = np.zeros((len(states),self.con-1,2), dtype=bool)
-        # print(f"Initial codes: {codes}")
-        for i, state in enumerate(all_states):
-            for j, st in enumerate(state):
-                for k, g in enumerate(self.gen):
-                    codes[i,j,k] = np.bitwise_xor.reduce(st[g])
-                # input(f"codes {i},{j} ({st}) = {codes[i,j]}")
+        self.next_state = (np.arange(2)[None, :] << (K-2)) | (state[:, None] >> 1) # (S, 2)
+        ns = np.arange(S)
+        self.prev = np.stack([((ns << 1) & (S-1)) | b for b in (0, 1)], axis=1) # (S, 2) predecessors
+        self.prev_in = ns >> (K-2) # Input bit that leads into each state
 
-        self.states = states
-        self.all_codes = codes
-        self.next_state = np.empty((len(states), 2), dtype=int)
-        next_state = all_states[:, :, :-1]
-        for i, state in enumerate(next_state):
-            for j, b in enumerate(iterable=state):
-                self.next_state[i, j] = np.where((self.states == b).all(axis=1))[0][0]
+    def depuncture(self, values):
+        """Insert zeros (erasures) for the punctured positions. Returns (T, n) array"""
+        n = self.den
+        if self.puncture is None or self.puncture.all():
+            return values[:len(values)//n*n].reshape(-1, n)
+        P = self.puncture.shape[1]
+        per_period = int(self.puncture.sum())
+        periods = len(values) // per_period
+        mask = np.tile(self.puncture, (1, periods)) # (n, T)
+        out = np.zeros((n, periods*P))
+        out.T[mask.T] = values[:periods*per_period]
+        return out.T
 
-        # print(f"states: {self.states.shape}:\n{self.states.astype(int)}")
-        # print(f"all_codes: {self.all_codes.shape}:\n{self.all_codes.astype(int)}")
-        # print(f"next_state: {self.next_state.shape}:\n{self.next_state}")
+    def decode(self, bits: np.ndarray, soft=None, state=None, final=True):
+        x = np.asarray(bits)
+        if soft is None:
+            soft = x.dtype.kind == "f"
+        llr = x.astype(np.float64) if soft else 1.0 - 2.0*x.astype(np.float64) # 0 -> +1, 1 -> -1
+        llr = self.depuncture(llr)                                              # (T, n)
+        T = len(llr)
+        S = self.n_states
 
-    def decode(self, bits: np.ndarray):
-        blocks = block(bits, self.den)
-        trellis_length = len(blocks)
+        # Cost of sending a bit 1 where llr>0 (it says 0), 0 otherwise: sum of llr over the code word's 1 bits
+        cost = llr @ self.patterns.T                                            # (T, 2^n)
 
-        paths = np.empty((len(self.states), trellis_length, len(self.states)), dtype=np.complex64)
-        paths[:,:,:] = np.inf + np.inf*1j
+        if state and "pm" in state:
+            pm, past = state["pm"], state["hist"]
+        else:
+            pm, past = np.full(S, np.inf), np.zeros((0, S), dtype=np.uint8)
+            pm[0] = 0.0
+        decision = np.zeros((T, S), dtype=np.uint8)
+        pat0, pat1 = self.out_pat[self.prev[:, 0], self.prev_in], self.out_pat[self.prev[:, 1], self.prev_in]
+        p0, p1 = self.prev[:, 0], self.prev[:, 1]
+        for t in range(T):
+            c = cost[t]
+            m0 = pm[p0] + c[pat0]
+            m1 = pm[p1] + c[pat1]
+            take1 = m1 < m0
+            decision[t] = take1
+            pm = np.where(take1, m1, m0)
+            pm -= pm.min() # Keep the metrics bounded
+        decision = np.concatenate((past, decision))
+        T = len(decision)
 
-        # print(f"Viterbi decode!")
-        for i, state in enumerate(self.states):
-            # 0: 00
-            # 1: 01
-            # 2: 10
-            # 3: 11
-            for j, blk in enumerate(blocks):
-                if j == 0:
-                    last = [i]
-                else:
-                    last = np.where(np.abs(paths[i,j-1])!=np.inf)[0]
-
-                buffer = np.empty((len(last), len(self.states)), dtype=np.complex64)
-                buffer[:,:] = np.nan - np.inf*1j
-
-                # print(f"Checking {last}")
-                for k, idx in enumerate(last):
-                    # print(f"{i},{j},{idx}: {blk}")
-                    code_0 = self.all_codes[idx][0]
-                    code_1 = self.all_codes[idx][1]
-
-                    dist_0 = hamming_dist(code_0, blk)
-                    dist_1 = hamming_dist(code_1, blk)
-
-                    nxt_0 = self.next_state[idx][0]
-                    nxt_1 = self.next_state[idx][1]
-
-                    if not j == 0:
-                        dist_0 += paths[i,j-1,idx].real
-                        dist_1 += paths[i,j-1,idx].real
-
-                    if j < 2:
-                        paths[i,j,nxt_0] = dist_0 + idx*1j
-                        paths[i,j,nxt_1] = dist_1 + idx*1j
-                    else:
-                        buffer[k,nxt_0] = dist_0 + idx*1j
-                        buffer[k,nxt_1] = dist_1 + idx*1j
-
-                if j >= 2:
-                    # print(buffer)
-                    for k in range(len(self.states)):
-                        valid_idx = np.where(np.abs(buffer[:,k])!=np.inf)[0]
-                        valid_inp = buffer[valid_idx,k]
-                        paths[i, j, k] = np.min(valid_inp)
-                # print(paths[i,j])
-                # print()
-            break
-        # print("Result:")
-        # print(paths[0])
-        survivor = np.empty((len(self.states), trellis_length), dtype=int)
-        code = np.empty((len(self.states), trellis_length, self.den), dtype=bool)
-        decoded = np.empty((len(self.states), trellis_length), dtype=bool)
-
-        for i, state in enumerate(self.states):
-            selected_path = np.min(paths[i,-1].real)
-            selected_path = np.where(paths[i,-1].real==selected_path)[0][0]
-
-            code[i,0] = self.states[0]
-            decoded[i,0] = i
-
-            # print(paths[i])
-
-            # Reverse the trellis
-            # print(f"Selected path {selected_path}")
-            cur_idx = selected_path
-            for j in range(len(paths[i])-1, -1, -1):
-                # print(f"Decoding path[{j+1}], selected {cur_idx}")
-                survivor[i,j] = cur_idx
-
-                cur_idx = paths[i,j][cur_idx].imag.astype(int)
-
-            for idx in range(len(survivor)):
-                cur_state = survivor[i, idx]
-                bit = np.where(self.next_state[cur_state]==survivor[i, idx+1])[0][0]
-                code[i,idx+1] = self.all_codes[cur_state][bit]
-                decoded[i,idx+1] = bit
-
-            break
-
-        # print(survivor[0].astype(int))
-        # print(code[0].astype(int))
-        # print(decoded[0].astype(int))
-        return decoded[0]
+        end = 0 if (self.terminated and final) else int(np.argmin(pm))
+        out = np.zeros(T, dtype=np.uint8)
+        s_ = end
+        for t in range(T-1, -1, -1):
+            out[t] = self.prev_in[s_]
+            s_ = self.prev[s_, decision[t, s_]]
+        release = T if final else max(0, T - self.depth)
+        out = out[:release]
+        if state is not None:
+            if final:
+                state.clear()
+            else:
+                state["pm"], state["hist"] = pm, decision[release:]
+        if self.terminated and final:
+            out = out[:max(0, len(out)-(self.con-1))]
+        return out.astype(bool)

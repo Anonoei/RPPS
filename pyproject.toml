@@ -1,13 +1,13 @@
 [build-system]
-requires = ["setuptools>=61.0", "numpy"]
+requires = ["setuptools>=77.0", "numpy"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "rpps"
-version = "0.2.0"
+version = "0.3.0"
 description = "RF Parameter Processor Suite"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 authors = [
     {name = "Anonoei", email="to+dev@an0.cx"}
 ]
@@ -19,7 +19,10 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 keywords = ["anonoei", "dsp", "sdr"]
-dependencies = ["pyboiler-anonoei", "numpy", "matplotlib"]
+dependencies = ["numpy>=2.0", "pysdrlib>=0.3.1"]
+
+[project.scripts]
+rpps = "rpps.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/anonoei/RPPS"
@@ -29,10 +32,15 @@ Issues = "https://github.com/Anonoei/RPPS/issues"
 Source = "https://github.com/anonoei/RPPS"
 
 [project.optional-dependencies]
-dev = ["twine", "build", "bumpver", "pytest", "pdoc3"]
+viz = ["matplotlib"]
+dev = ["matplotlib", "twine", "build", "bumpver", "pytest", "pdoc3"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 
 [tool.bumpver]
-current_version = "0.2.0"
+current_version = "0.3.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message = "bump version {old_version} -> {new_version}"
 tag_message = "{new_version}"
@@ -49,3 +57,8 @@ push = false
     'version = "{version}"'
 ]
 "src/rpps/__init__.py" = ["{version}"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+pythonpath = ["src"]
+markers = ["slow: takes more than a few seconds"]

@@ -1,0 +1,7 @@
+{
+  "base": "adt",
+  "comment": "CCSDS pseudo-randomizer 1+x^3+x^5+x^7+x^8, restarts every frame; sequence FF 48 0E C0 9A 0D 70 BC... (this class emits the feedback bit, so the seed is the register state 8 steps before the all-ones start)",
+  "ref": "CCSDS 131.0-B",
+  "poly": [8, 5, 3, 1],
+  "seed": [0, 0, 0, 1, 1, 0, 1, 0]
+}

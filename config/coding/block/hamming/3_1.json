@@ -1,0 +1,9 @@
+{
+  "base": "block",
+  "type": "linear",
+  "comment": "Hamming (3,1), a 3x repetition code",
+  "code": [3, 1],
+  "p": [
+    [1, 1]
+  ]
+}

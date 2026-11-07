@@ -1,0 +1,10 @@
+{
+  "base": "block",
+  "type": "bch",
+  "comment": "DVB-S2 normal frame outer BCH, LDPC rate 1/2",
+  "n": 32400,
+  "k": 32208,
+  "m": 16,
+  "poly": "0x1002D",
+  "t": 12
+}

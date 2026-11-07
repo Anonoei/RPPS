@@ -1,76 +1,46 @@
-"""Float/Int to Freq converter"""
+"""Frequencies as numbers or as people write them"""
 import re
 
-class Frequency:
-    """Helper for frequencies"""
+_UNITS = {"": 1.0, "h": 1.0, "k": 1e3, "m": 1e6, "g": 1e9}
+_PARSE = re.compile(r"^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*([hkmg]?)(?:hz)?\s*$", re.I)
 
-    def __init__(self, freq=0):
-        self.freq = freq
-        self.mult = 1
-        self.label = ""
+class Frequency(float):
+    """A frequency in Hz. Built from a number or text: `Frequency(99.5e6)`, `Frequency("99.5M")`, `Frequency("2.4 GHz")`, `Frequency("1e6")`
 
+    It is a float, so it goes anywhere a frequency is wanted (`Fs=Frequency("2.4M")`)."""
+    def __new__(cls, freq=0.0):
         if isinstance(freq, str):
-            if not re.match(r"((\d+\.?)?\d+?)((e\d+)|([hkmg]))", freq):
-                print("Invalid frequency string!")
-                print("It must be provided in scientific notation")
-                print(" ##.#e# - re: '((\\d+\\.?)?\\d+?)(e\\d+)'")
-                print("Or with units")
-                print(" ##.#m - re: '((\\d+\\.?)?\\d+?)[hkmg]'")
-                exit(1)
-
-    def __str__(self):
-        return self.str
-
-    def default(self):
-        return self.str
+            m = _PARSE.match(freq)
+            if m is None:
+                raise ValueError(f"Invalid frequency {freq!r}: use a number with a unit (433.92M, 2.4GHz, 10k) or scientific notation (1e6)")
+            freq = float(m.group(1)) * _UNITS[m.group(2).lower()]
+        return super().__new__(cls, freq)
 
     @property
     def raw(self):
-        """Return the raw freq value"""
-        return self.freq
+        """The frequency in Hz"""
+        return float(self)
+
+    @property
+    def mult(self):
+        """Divisor of the unit it is shown in (1, 1e3, 1e6, 1e9)"""
+        for m in (1e9, 1e6, 1e3):
+            if abs(self) >= m:
+                return m
+        return 1.0
 
     @property
     def short(self):
-        """Return the shorthand freq"""
-        return self.freq / self.mult
-
-    @property
-    def str(self):
-        """Return the shorthand freq and unit"""
-        return format(self.freq / self.mult, ".2f") + self.unit
+        """The value in its unit"""
+        return float(self)/self.mult
 
     @property
     def unit(self):
-        """Return the frequency unit"""
-        return self.label.upper() + "Hz"
+        return {1.0: "", 1e3: "K", 1e6: "M", 1e9: "G"}[self.mult] + "Hz"
 
-    def init(self, freq=None):
-        """Initialize the frequency object"""
-        if freq is not None:
-            self.freq = freq
+    @property
+    def str(self):
+        return f"{self.short:.2f}{self.unit}"
 
-        # input("Initializing: " + str(self.freq))
-        if isinstance(self.freq, str):
-            if "e" in self.freq:
-                freq = self.freq.split("e")
-                mult = int("1" + (int(freq[1]) * "0"))
-                freq = float(freq[0])
-                # input("scinot: got " + str(freq) + " * " + str(mult))
-                self.freq = freq * mult
-                self.init()
-                return
-
-            for i, l in enumerate(["h", "k", "m", "g"]):
-                if self.freq.endswith(l):
-                    self.mult = int("1" + (i * "000"))
-                    self.freq = float(self.freq[:-1])
-                    self.label = l
-                    return
-        else:
-            for i, l in enumerate(["", "k", "m", "g"]):
-                mult = int("1" + (i * "000"))
-                cur_freq = self.freq / mult
-                if cur_freq < 1000:
-                    self.mult = mult
-                    self.label = l
-                    return
+    def __str__(self):
+        return self.str

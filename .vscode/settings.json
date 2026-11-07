@@ -1,20 +1,25 @@
 {
     "cSpell.words": [
-        "rpps",
-        "dobj",
-        "dobject",
+        "alist",
         "APSK",
-        "QPSK",
         "demodulate",
         "descram",
         "descrambled",
+        "encap",
         "Feedthrough",
+        "frombuffer",
+        "pproc",
+        "QPSK",
+        "rpps",
         "samps",
-        "syms"
+        "syms",
+        "tobytes"
     ],
     "python.analysis.diagnosticSeverityOverrides": {
         "reportOperatorIssue": "information",
         "reportIncompatibleMethodOverride": "information",
         "reportPossiblyUnboundVariable": false
     },
+    "python-envs.defaultEnvManager": "ms-python.python:pyenv",
+    "python-envs.pythonProjects": [],
 }
