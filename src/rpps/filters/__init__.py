@@ -11,4 +11,8 @@ from .shaping import ShapingRect, ShapingRC, ShapingRRC, ShapingSinc
 from .shaping import ShapingMatRRC, ShapingBiphase, rrc_pulse
 
 from .window import Window
+from . import iir
+from .iir import IIR
+from .serial import ls, load, Designed, DesignedIIR
+from .convert import import_fir, import_iir, read_array, fir_def, sos_def, ba_def, zpk_def
 from .channel import channel

@@ -1,4 +1,17 @@
-"""Scrambler de-serialization: config/scram/<category>/<name>.json, category = fdt (feedthrough) | adt (additive)"""
+"""Scrambler definitions: config/scram/<category>/<name>.json, loaded with `rp.scram.load("dvb_energy")`
+
+    fdt  feedthrough (self-synchronizing): the output feeds the register
+         {"base": "fdt", "type": "fibonacci" | "galois_left" | "galois_right",
+          "poly": [16, 14, 13, 11],        feedback taps, 1 = first stage
+          "seed": [1, 0, 1, ...]}          register bits, first stage first
+    adt  additive (synchronous): data xor a PRBS that ignores the data
+         {"base": "adt", "poly": [15, 14], "seed": [1, 0, 0, ...] | "100101010000000",
+          "frame": {"bytes": 1504,         optional: restart the PRBS every `bytes` bytes
+                    "sync_period": 188, "sync_bytes": 1,   leading bytes of each packet the PRBS skips over
+                    "skip_first": 1, "marker": 184,        skip_first: bytes before the PRBS starts (default sync_bytes);
+                    "sync": 71}}                           marker: first byte of a frame as sent (DVB: the inverted sync, 0xB8);
+                                                           sync: what it becomes when descrambled (default marker ^ 0xFF)
+"""
 from .. import _config
 
 from . import scrambler

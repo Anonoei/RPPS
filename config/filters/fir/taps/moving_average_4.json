@@ -1,0 +1,6 @@
+{
+  "base": "fir",
+  "type": "taps",
+  "comment": "4-point moving average (boxcar), unity gain at DC",
+  "taps": [0.25, 0.25, 0.25, 0.25]
+}

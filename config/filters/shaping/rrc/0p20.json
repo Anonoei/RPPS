@@ -1,0 +1,7 @@
+{
+  "base": "shaping",
+  "type": "rrc",
+  "comment": "Root-raised-cosine, roll-off 0.20 (DVB-S2)",
+  "ref": "EN 302 307",
+  "beta": 0.2
+}

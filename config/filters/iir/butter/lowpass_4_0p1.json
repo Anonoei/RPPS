@@ -1,0 +1,8 @@
+{
+  "base": "iir",
+  "type": "butter",
+  "comment": "4th order Butterworth low pass, -3 dB at 0.1 of the sample rate",
+  "order": 4,
+  "pass": "lowpass",
+  "cutoff": 0.1
+}

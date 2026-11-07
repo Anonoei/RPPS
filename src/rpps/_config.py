@@ -144,6 +144,46 @@ def load_obj(domain, name, obj):
         raise ConfigError(f"No {domain} loader for base {obj.get('base')!r} in {name}, have {sorted(d.loaders) if d else []}")
     return d.loaders[base](name, obj)
 
+# ---- Writing definitions
+
+_FIRST = ("base", "type", "comment", "ref", "aliases") # Header keys, in this order
+
+def format_json(v, ind=0):
+    """The style of every file in config/: header keys first, a row of numbers on one line, one nested row per line"""
+    pad = "  " * ind
+    flat = lambda x: not isinstance(x, (list, dict))
+    if isinstance(v, dict):
+        if not v:
+            return "{}"
+        keys = [k for k in _FIRST if k in v] + [k for k in v if k not in _FIRST] if ind == 0 else list(v)
+        return "{\n" + ",\n".join(f'{pad}  {json.dumps(k)}: {format_json(v[k], ind + 1)}' for k in keys) + f"\n{pad}}}"
+    if isinstance(v, list):
+        if all(flat(x) for x in v):
+            return json.dumps(v)
+        if all(isinstance(x, dict) for x in v) and all(all(flat(y) for y in x.values()) for x in v):
+            return "[\n" + ",\n".join(f"{pad}  {json.dumps(x)}" for x in v) + f"\n{pad}]"
+        return "[\n" + ",\n".join(f"{pad}  {format_json(x, ind + 1)}" for x in v) + f"\n{pad}]"
+    return json.dumps(v)
+
+def save(domain, category, ref, obj, dest=None, overwrite=False):
+    """Write a definition to <dest>/<domain>/<category>/<ref>.json and return the file
+
+    ref: the name, with any group folders ("taps/my_filter"): lowercase letters, digits, "_", "-" and "." in each part, never absolute or "..".
+    dest: a config directory laid out like config/; default the first one added with `add_config_path`, else the shipped config.
+    Refuses to replace an existing file unless `overwrite`"""
+    import re
+    ref = str(ref).lower()
+    if not ref or not all(re.fullmatch(r"[a-z0-9_.\-]+", part) and not part.startswith(".") for part in ref.split("/")):
+        raise ValueError(f"{ref!r} is not a definition name: use lowercase letters, digits, _ - . in folders and name")
+    root = Path(dest) if dest else (_EXTRA[0] if _EXTRA else PATH_CONFIG)
+    file = root / domain / category / f"{ref}.json"
+    if file.exists() and not overwrite:
+        raise FileExistsError(f"{file} exists (overwrite=True replaces it)")
+    file.parent.mkdir(parents=True, exist_ok=True)
+    file.write_text(format_json(obj) + "\n")
+    return file
+
+
 LOG_CODING = logging.INFO
 LOG_CODING_TYPES = logging.WARNING
 

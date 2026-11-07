@@ -1,12 +1,13 @@
 import numpy as np
 
-from .impl.window import s, get
+from .impl.window import s
+from . import serial
 from .filter import Filter, Meta
 
 class Window(Filter):
     def __init__(self, name, N=None, *args, **kwargs):
         self.N = N
-        self.window = get(name)
+        self.window = serial.window(name)
         if self.N is not None:
             self.w = self.window(self.N, *args, **kwargs)
 
@@ -26,8 +27,10 @@ class Window(Filter):
 
     @staticmethod
     def s():
+        """Names of the built-in windows (presets are listed by `rp.filters.ls()`)"""
         return s
 
     @staticmethod
     def get(name):
-        return get(name)
+        """The window function `name`: a built-in (see `s()`), or a preset from config/filters/window ("kaiser/a8")"""
+        return serial.window(name)

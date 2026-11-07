@@ -3,7 +3,6 @@
     rp.coding.import_alist("code.alist")                          the definition, as a dict (`rp.coding.init("mine", d)` builds it)
     rp.coding.import_alist("code.alist", "mine", dest="my_config")   writes my_config/coding/block/ldpc/mine.json, `add_config_path("my_config")`
 """
-import json
 from pathlib import Path
 
 from .. import _config
@@ -29,13 +28,10 @@ def import_alist(path, name=None, dest=None, **fields):
 
     Without `k`, the message positions come from GF(2) elimination of H, which only suits small codes: give `k` and `systematic`
     ("head": message first, "tail", or a list of positions) for big ones.
-    name: also write it as config/coding/block/ldpc/<name>.json, under `dest` (default: the highest config layer). Returns the file"""
+    name: also write it as config/coding/block/ldpc/<name>.json, under `dest` (default: the first added config path, else the shipped config);
+    an existing file is not replaced. Returns the file"""
     n, checks = read_alist(path)
     obj = {"base": "block", "type": "ldpc", "comment": f"LDPC code from {Path(path).name}", **fields, "n": n, "checks": checks}
     if name is None:
         return obj
-    base = Path(dest) if dest else _config.find_config("coding").parent
-    file = base / "coding" / "block" / "ldpc" / f"{name.lower()}.json"
-    file.parent.mkdir(parents=True, exist_ok=True)
-    file.write_text(json.dumps(obj, separators=(",", ":")))
-    return file
+    return _config.save("coding", "block", f"ldpc/{name}", obj, dest)

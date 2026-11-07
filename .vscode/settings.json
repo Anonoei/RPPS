@@ -1,9 +1,11 @@
 {
     "cSpell.words": [
+        "alist",
         "APSK",
         "demodulate",
         "descram",
         "descrambled",
+        "encap",
         "Feedthrough",
         "frombuffer",
         "pproc",

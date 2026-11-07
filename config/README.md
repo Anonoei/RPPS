@@ -1,45 +1,57 @@
 # config/
 
-Definitions RPPS loads by name. Layout: `config/<domain>/<category>/[<group>/]<name>.json`
+JSON definitions RPPS loads by name: `config/<domain>/<category>/[<group>/]<name>.json`. The keys each domain accepts are documented
+in the header of its `serial.py`.
 
-| Domain | Categories (`base`) | Example | Loaded by |
-|---|---|---|---|
-| `mod` | `psk` | `mod/psk/qpsk.json` | `rp.mod.load("QPSK")` (also generates `16QAM`, `8PSK`... with no file) |
-| `scram` | `fdt`, `adt` | `scram/adt/dvb_energy.json` | `rp.scram.load("dvb_energy")` |
-| `coding` | `block`, `conv`, `interleave` | `coding/block/rs/204_188.json` | `rp.coding.load("block", "rs/204_188")` |
-| `encap` | `crc`, `frame` | `encap/crc/crc32_mpeg2.json` | `rp.encap.load("crc", "crc32_mpeg2")` |
-| `chain` | `chain` | `chain/dvbs/3_4.json` | `rp.Chain.load("dvbs/3_4")` |
+| Domain | Categories | Example | Load | Keys |
+|---|---|---|---|---|
+| `mod` | `psk` | `psk/qpsk` | `rp.mod.load("QPSK")` | [mod/serial.py](../src/rpps/mod/serial.py) |
+| `scram` | `fdt`, `adt` | `adt/dvb_energy` | `rp.scram.load("dvb_energy")` | [scram/serial.py](../src/rpps/scram/serial.py) |
+| `coding` | `block`, `conv`, `interleave` | `block/rs/204_188` | `rp.coding.load("block", "rs/204_188")` | [coding/serial.py](../src/rpps/coding/serial.py) |
+| `encap` | `crc`, `frame` | `crc/crc32_mpeg2` | `rp.encap.load("crc", "crc32_mpeg2")` | [encap/serial.py](../src/rpps/encap/serial.py) |
+| `filters` | `fir`, `iir`, `shaping`, `window` | `shaping/rrc/0p35` | `rp.filters.load("shaping", "rrc/0p35")` | [filters/serial.py](../src/rpps/filters/serial.py) |
+| `chain` | `chain` | `dvbs/3_4` | `rp.Chain.load("dvbs/3_4")` | [chain.py](../src/rpps/chain.py) |
+
+`rp.<domain>.ls()` lists what is available.
 
 ## Names
-A definition is referred to by its path below the category, without `.json`, case-insensitive: `rs/204_188`, `hamming/7_4`, `k7_171_133/3_4`. The folder says what it is, so the filename only carries the parameters.
-- The folder under a category is the **structure** of the code (`rs`, `ldpc`, `k7_171_133` = constraint length + generators). The standard goes in `ref` and `comment`, and in `chain/<standard>/`, which ties a standard's pieces together.
-- A bare name (`204_188`, `dvb_energy`) works when exactly one file has it, and raises an "ambiguous" error listing the choices otherwise.
-- `"aliases": [...]` in a file gives it other names. The old `family.name` form (`rs.204_188`) still resolves too. Both log a deprecation warning once.
-- The folder before the name is also what the loaded object is called (`rs`, `k7_171_133`).
+A definition is referenced by its path below the category, without `.json`, case-insensitive: `rs/204_188`, `k7_171_133/3_4`.
+- The folders say what it is, so the filename holds only the parameters. A group folder is the structure of the thing (`rs`, `ldpc`, `k7_171_133`); the standard goes in `ref` / `comment`, and in `chain/<standard>/`.
+- A bare name (`204_188`) works while exactly one file has it; otherwise the error lists the choices.
+- `"aliases": [...]` gives a file other names. The old `family.name` form (`rs.204_188`) still resolves. Both warn once.
 
 ## File header
-Every file starts with the same keys:
-- `base`: the category. Picks the loader.
-- `type`: the implementation inside the category (where there is more than one).
-- `comment`: one line on what it is. `ref`: the spec, optionally. `aliases`: other names it answers to, optionally.
+Every file starts with `base` (the category, picks the loader), `type` (the implementation, where there are several), `comment`, and optionally `ref` (the spec) and `aliases`. `python tests/dev/fmt_config.py` puts files in the canonical style (`--check` only lists differences).
 
-Keep files tidy with `python tests/dev/fmt_config.py` (`--check` to only list differences).
+## Adding
+- **A definition**: drop a JSON in the right folder.
+- **Your own**: keep a folder laid out like this one and call `rp.add_config_path(dir)` or set `$RPPS_CONFIG`. It is searched first, so it can also override shipped definitions.
+- **A category**: add the folder and `_config.register_domain("<domain>").register("<category>", loader)`, where `loader(name, obj)` builds the object.
+- **A domain**: `_config.register_domain("<name>", {"<category>": loader})`; `_config.ls / find / load` then work on it. [encap/serial.py](../src/rpps/encap/serial.py) is the smallest example.
 
-## Adding things
-- **A definition**: drop a JSON in the right folder. It appears in `ls()` and loads by name.
-- **Your own definitions**: keep a folder laid out like this one and pass it to `rp.add_config_path(dir)` or set `$RPPS_CONFIG`. It is searched first, so it can also override shipped ones.
-- **A category**: make `config/<domain>/<category>/` and register its loader, `_config.register_domain("<domain>").register("<category>", loader)` where `loader(name, obj)` builds the object. `ls`, `find` and `load` need nothing else.
-- **A domain**: `_config.register_domain("<name>", {"<category>": loader})`, then use `_config.ls / find / load("<name>", ...)`. See `rpps/encap/serial.py` for the smallest example.
+## Bringing in existing data
+Definitions never point at other files. Convert instead; the result is a normal definition:
+```python
+rp.filters.import_fir("taps.f32", dtype="f32", name="my_lp", dest="mine")     # also .txt/.csv, .npy/.npz, C/Python arrays, Xilinx .coe
+rp.filters.import_iir("sections.npy", form="sos", name="my_iir", dest="mine") # form: sos | ba | zpk
+rp.coding.import_alist("code.alist", "mine", dest="mine")                     # LDPC, MacKay alist
+rp.add_config_path("mine")
+```
+Without `name` they return the dict. Arrays in memory go through `fir_def`, `sos_def`, `ba_def`, `zpk_def`. An existing file is only replaced with `overwrite=True`.
 
 ## Coming from GNU Radio
-Files are named presets of parameters. Anything GNU Radio builds from parameters can also be built here without a file: `rp.coding.Hamming/RS/Repetition/Conv`, or `rp.coding.init(name, dict)` with the same dict a file holds.
-
 | GNU Radio | Here |
 |---|---|
-| `fec` LDPC `.alist` H matrix | `rp.coding.import_alist("code.alist", "mine")` writes a normal `block/ldpc` definition |
-| `digital.crc` / reveng catalogue entry | `encap/crc/*.json`: `width, poly, init, refin, refout, xorout, check` are reveng's fields, and `check` is verified on load |
-| `additive_scrambler(mask, seed, len)`, CCSDS, DVB | `scram/adt`: `poly` are the feedback taps, `seed` the register, `frame` the restart period |
-| `scrambler_bb` / G3RUH / V.35 | `scram/fdt` (self-synchronizing) |
-| `cc_encoder_def(polys, k, rate)` | `rp.coding.Conv(...)` or a `conv/k<K>_<g1>_<g2>/<rate>.json` file; generators are bit lists |
+| `fec` LDPC `.alist` | `import_alist` |
+| `digital.crc`, reveng entries | `encap/crc`: reveng's fields; `check` is verified on load |
+| `additive_scrambler`, CCSDS, DVB | `scram/adt` (`poly` = feedback taps, `seed`, `frame` = restart period) |
+| `scrambler_bb`, G3RUH, V.35 | `scram/fdt` |
+| `cc_encoder_def(polys, k, rate)` | `rp.coding.Conv(...)` or `conv/k<K>_<g1>_<g2>/<rate>`; generators are bit lists (`0o171` is `[1,1,1,1,0,0,1]`) |
+| `firdes.low_pass(gain, Fs, cutoff, transition, window)` | `fir` `windowed`: `cutoff`, `transition`, `atten_db`, `units: "hz"`, `gain` |
+| `firdes.root_raised_cosine` | `shaping/rrc/<alpha>` |
+| `fir_filter_ccf` | `fir` `taps` (complex: `taps_imag`) |
+| `iir_filter_ffd(fftaps, fbtaps)` | `ba_def(fftaps, fbtaps, convention="gnuradio")`. Default `oldstyle=True` adds the feedback terms, so `a = [1, -fbtaps[1:]]`; `oldstyle=False` is scipy's |
+| `single_pole_iir_filter_ff` | `iir` `single_pole` |
 
-Not expressible yet (add as needed): convolutional tail-biting/truncated modes and per-generator inversion (CCSDS G2), Reed-Solomon dual-basis (CCSDS), QC-LDPC lifting (5G, Wi-Fi), differential constellations, FSK/GMSK/OQPSK definitions, sync-word and line-code domains. Polynomials are bit lists, not octal ints: `0o171` is `[1,1,1,1,0,0,1]`.
+Anything GNU Radio builds from parameters can be built without a file: `rp.coding.Hamming/RS/Repetition/Conv`, or `rp.coding.init(name, dict)`.
+Not expressible yet: convolutional tail-biting and per-generator inversion (CCSDS G2), Reed-Solomon dual basis (CCSDS), QC-LDPC lifting, differential constellations, FSK/GMSK/OQPSK definitions, sync-word and line-code domains.

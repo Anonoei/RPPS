@@ -1,4 +1,11 @@
-"""Modulation de-serialization helpers"""
+"""Modulation definitions: config/mod/<category>/<name>.json, loaded with `rp.mod.load("QPSK")`
+
+A name with no file ("16QAM", "64QAM", "16APSK", "4ASK", "OOK") is generated instead (see `generate`).
+
+    psk   {"base": "psk", "Points": [{"mag": 1, "pha": 45}, ...],         constellation points, phase in degrees
+           "Maps": [{"map": [0, 1, 3, 2], "comment": "R000 Grey"}, ...]}  the ways of labelling the points with bits
+          The first map is the default; `rp.mod.load(name, "R090")` picks another by index or a word of its comment.
+"""
 import re
 
 from .. import _config

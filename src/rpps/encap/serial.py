@@ -1,4 +1,12 @@
-"""Encapsulation de-serialization: config/encap/<category>/<name>.json, category = crc | frame"""
+"""Encapsulation definitions: config/encap/<category>/<name>.json, loaded with `rp.encap.load("crc", "crc32_mpeg2")`
+
+    crc    {"base": "crc", "type": "crc", "width": 16, "poly": "0x1021", "init": "0x0", "xorout": "0x0",
+            "refin": false, "refout": false,       the reveng catalogue fields (numbers or hex strings)
+            "check": "0x29b1"}                      optional: the CRC of b"123456789", verified on load
+    frame  {"base": "frame", "type": "hdlc", "flag": "0x7E", "stuff": 5, "nrzi": false,
+            "fcs": "crc16_x25",                     the name of a crc definition
+            "min_bytes": 4}
+"""
 from pathlib import Path
 
 from .. import _config

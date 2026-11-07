@@ -1,10 +1,21 @@
-"""Coding (FEC) de-serialization helpers
+"""Coding (FEC) definitions: config/coding/<kind>/<family>/<name>.json, loaded with `rp.coding.load("block", "rs/204_188")`
 
-Definitions live in config/coding/<kind>/<family>/<name>.json
- kind: block | conv | interleave
- family: rs, bch, ldpc, hamming, repeat | dvbs, iess308, cnv | forney
-Decoding only runs from a definition loaded here; `analysis.fec.Guess.save` is how a guessed structure becomes one.
-CRC and framing are in rpps.encap.
+Folders are kind (`base`), then the structure of the code; the standard goes in `ref`/`comment`. Names are parameters.
+
+    block       {"base": "block", "type": ..., "decoder": optional type to decode with instead}
+      linear      "code": [n, k], "p": parity block rows    or    "g": generator rows, "h": check rows (decoded on its syndrome "trellis" when small)
+      repeat      "count": 3
+      rs          "n", "k", "m": 8, "poly": field polynomial, "fcr": 0, "prim": 1
+      bch         "n", "k", "t", "m": 16, "poly": "0x1002D"
+      ldpc        "n" and the checks as "checks" (positions per check), "h" (dense rows), "table" + "k" + "group" (DVB-S2 address
+                  table) or "gallager": {...}; optional "k" + "systematic": "head" | "tail" | [positions], "iters": 50, "alpha": 0.8
+    conv        {"base": "conv", "type": "split", "encode": {...}, "decode": {...}} sharing "puncture" and "terminated"
+      encode      "type": "conv", "num", "den", "constraint", "generator": den rows of K bits, "puncture": den rows
+      decode      "type": "viterbi" | "bcjr" (soft output; also "maxlog", "hard_llr"), same keys as encode
+    interleave  {"base": "interleave", "type": "forney", "I": 12, "M": 17, "symbol": 8}
+
+Decoding only runs from a definition loaded here; `analysis.fec.Guess.save` turns a guessed structure into one,
+`rp.coding.import_alist` an LDPC alist file. CRC and framing are in rpps.encap.
 """
 from pathlib import Path
 

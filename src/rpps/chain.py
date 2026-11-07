@@ -1,4 +1,7 @@
-"""FEC chains: several configured stages run in order, defined in config/chain/<name>.json
+"""FEC chains: several configured stages run in order, defined in config/chain/<standard>/<name>.json,
+loaded with `rp.Chain.load("dvbs/3_4")`
+
+    {"base": "chain", "stages": [...], "packet": 204 (bytes, optional), "polarity": "auto" | 0 | 1}
 
 A chain lists stages by kind and config name:
     {"conv": "k7_171_133/3_4"}                      config/coding/conv      (decode: Viterbi)
