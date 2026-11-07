@@ -8,10 +8,11 @@ def I(ax, samps):
         fig, ax = plt.subplots()
 
     if isinstance(ax, mpl.lines.Line2D):
-        ax.set_ydata(samps.real)
         line = ax
+        line.set_data(np.arange(0, len(samps)), samps.real)
     else:
         line, = ax.plot(samps.real, ".-", c="r", label="I")
+        ax.set_xlim(0, len(samps)-1)
     return line
 
 def Q(ax, samps):
@@ -19,10 +20,11 @@ def Q(ax, samps):
         fig, ax = plt.subplots()
 
     if isinstance(ax, mpl.lines.Line2D):
-        ax.set_ydata(samps.imag)
         line = ax
+        line.set_data(np.arange(0, len(samps)), samps.imag)
     else:
         line, = ax.plot(samps.imag, ".-", c="b", label="Q")
+        ax.set_xlim(0, len(samps)-1)
     return line
 
 def mag(ax, samps):
@@ -44,48 +46,63 @@ def IQ(ax, samps):
         fig, ax = plt.subplots()
 
     if isinstance(ax, tuple):
-        line_i = ax[0]
-        line_q = ax[1]
+        line_i, line_q = ax
+        ax = line_i.axes
     else:
         line_i = ax
         line_q = ax
-        ax.grid(True)
-        ax.set_title("Time IQ")
-        ax.set_title("Time Domain", loc="left")
-        ax.set_title(f"{len(samps)} samples", loc="right")
+        ax.grid(True, alpha=0.5)
+        ax.set_title("IQ")
+        ax.set_title("Time", loc="left")
         ax.set_xlabel("Time")
         ax.set_ylabel("Amplitude")
-        ax.set_xlim(0, len(samps))
+        ax.set_xlim(0, len(samps)-1)
+        ax.relim()
+    ax.set_title(f"{len(samps)} N", loc="right")
 
     line_i = I(line_i, samps)
     line_q = Q(line_q, samps)
+    if ax.get_xlim()[1] < len(samps)-1:
+        ax.set_xlim(0, len(samps)-1)
+    amax = np.max((samps.real, samps.imag, -samps.real, -samps.imag))
+    if amax > ax.get_ylim()[1]:
+        ax.set_xlim(-amax, amax)
+        ax.set_ylim(-amax, amax)
 
-    return line_i, line_q
+    return (line_i, line_q)
 
-def IQ3d(samps, ax=None):
+def IQ3d(ax, samps):
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot(projection="3d")
 
-    I = np.real(samps)
-    Q = np.imag(samps)
+    amp_max = np.max((-np.min(samps.real), np.max(samps.real), -np.min(samps.imag), np.max(samps.imag)))
 
-    T = np.arange(len(I))
-    E = np.zeros(len(I))
+    N = len(samps)
 
-    ip = np.array([T,I,E])
-    qp = np.array([T,E,Q])
+    r = np.repeat(amp_max, N)
+    x = np.arange(N)
 
-    ax.plot(ip[0], ip[1], ip[2])
-    ax.plot(qp[0], qp[1], qp[2])
-    ax.scatter(ip[0], ip[1], qp[2])
+    if isinstance(ax, tuple):
+        line_i, line_q, line_c = ax
+        ax = line_i.axes
+        line_i.set_data_3d(x, samps.real, -r)
+        line_q.set_data_3d(x, r, samps.imag)
+        line_c.set_data_3d(x, samps.real, samps.imag)
+    else:
+        line_i, = ax.plot(x, samps.real, -r, color="r", linestyle="solid", linewidth=1, alpha=0.5)
+        line_q, = ax.plot(x, r, samps.imag, color="b", linestyle="solid", linewidth=1, alpha=0.5)
+        line_c, = ax.plot(x, samps.real, samps.imag, color="g", linestyle="solid", marker=".", linewidth=3)
 
-    ax.set_xlabel("Time")
-    ax.set_ylabel("I")
-    ax.set_zlabel("Q")
-    ax.set_ylim(1.2, -1.2)
-    ax.set_zlim(1.2, -1.2)
+        ax.set_xlabel("Time")
+        ax.set_ylabel("I")
+        ax.set_zlabel("Q")
+        ax.set_ylim(1.2, -1.2)
+        ax.set_zlim(1.2, -1.2)
+        ax.set_box_aspect((5,1,1))
+        ax.grid(True, alpha=0.5)
+    ax.set_xlim(0, len(samps))
+    ax.set_ylim(-amp_max, amp_max)
+    ax.set_zlim(-amp_max, amp_max)
 
-    plt.grid(True)
-    plt.legend()
-    return ax
+    return (line_i, line_q, line_c)

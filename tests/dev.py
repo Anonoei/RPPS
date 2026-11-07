@@ -3,40 +3,33 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def main():
-    enc_msg = rp.dobject.StreamData(b"Hello world!")
+    msg = "Hello world, again and again!"
+    # print(f"Encoding {msg}")
+    enc_msg = rp.Data(msg)
 
     mod = rp.mod.load("QPSK")
     mod.set_mapping(mod.get_maps()[0])
-    ecc = rp.coding.load("blk", "repeat.3")
-    # scr = rp.scram.load("fdt", "v35")
+    # ecc = rp.coding.load("block", "repeat/5")
+    ecc = rp.coding.load("block", "hamming/7_4")
+    scr = rp.scram.load("fdt", "v35")
 
     # print(f"Mod: {mod}")
     # print(f"ECC: {ecc}")
-    # # print(f"SCR: {scr}")
+    # print(f"SCR: {scr}")
 
-    # m_pipe = lambda msg, ecc=ecc, mod=mod: msg*ecc*mod
-    # d_pipe = lambda sym, ecc=ecc, mod=mod: sym/mod/ecc
+    # print(enc_msg(scr+ecc+mod))
 
-    print(f"enc_msg: {enc_msg.hex}")
-    # syms = m_pipe(enc_msg)
-    # print(f"Got syms {syms}")
-    # print()
-    # data = d_pipe(syms)
+    syms = enc_msg * scr * ecc * mod
+    # print(f"Encoded to {syms}")
 
-    print(mod.constellation)
-    syms = enc_msg*ecc*mod
+    dec_msg = syms / mod / ecc / scr
 
-    rp.viz.ot_complex(syms)
-    plt.show()
-
-    mod.constellation.invert()
-
-    print(mod.constellation)
-    data = syms/mod/ecc
-    dec_msg = rp.dobject.StreamData(data)
+    dec_msg = dec_msg.as_bytes()
+    enc_msg = enc_msg.as_bytes()
 
     print(f"dec_msg: {dec_msg.hex}")
     print(f"Data is the same: {enc_msg.hex == dec_msg.hex}")
+    print(f"Decoded: {dec_msg.data.tobytes().decode('utf-8')}")
 
 if __name__ == "__main__":
     main()

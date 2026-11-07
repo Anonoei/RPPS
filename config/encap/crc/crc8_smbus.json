@@ -1,0 +1,12 @@
+{
+  "base": "crc",
+  "type": "crc",
+  "comment": "CRC-8/SMBUS (the plain CRC-8, poly x^8+x^2+x+1)",
+  "width": 8,
+  "poly": "0x07",
+  "init": "0x0",
+  "refin": false,
+  "refout": false,
+  "xorout": "0x0",
+  "check": "0xf4"
+}

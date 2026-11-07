@@ -1,0 +1,11 @@
+{
+  "base": "block",
+  "type": "rs",
+  "comment": "DVB-S shortened RS(255,239), t=8",
+  "n": 204,
+  "k": 188,
+  "m": 8,
+  "poly": 285,
+  "fcr": 0,
+  "prim": 1
+}

@@ -1,9 +1,14 @@
 """FEC/ECC encoders and decoders"""
 # Import helpers/globals
 from .. import base
-from .. import dobject
+from .. import _config
 
 # -----
-from .serial import identify, load, generate
+from . import types
+from . import matrix
+from .serial import ls, names, load, init, find, generate
 
-from .coding import Coding, Block, Convolutional
+from .coding import Coding, Block, Convolutional, Interleaver
+
+from .factory import Hamming, Repetition, RS, Conv
+from .alist import import_alist, read_alist

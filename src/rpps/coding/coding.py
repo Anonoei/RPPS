@@ -3,129 +3,218 @@ from abc import abstractmethod
 from enum import Enum
 import numpy as np
 
-from pyboiler.logger import Logger, Level
+from ..logger import Logger
+from ..errors import ConfigError
 
 from . import base
-from . import dobject
+from .. import _config
+from ..base import Analog, Mod, Digital, pproc, dtype
+from ..base.rpps import align, FLUSH
 from .blocker import unblock
 
 from . import types as types
+from . import matrix
 
 
 class Decision(Enum):
-    """Coding decision type"""
+    """Coding decision type: does the decoder get hard bits or LLRs"""
     HARD = 0
     SOFT = 1
 
 class Coding(base.rpps.Pipe):
-    """Coding Pipe"""
+    """Coding parent class"""
+    __slots__ = ("log", "_enc", "_dec")
     name = "Coding"
-    decision = Decision.HARD
+    _decision = None
     def __init__(self, e_impl, d_impl):
-        self.log = Logger().Child("Coding", Level.WARN).Child(type(self).__name__, Level.WARN)
+        self.log = Logger().Child("Coding", _config.LOG_CODING).Child(type(self).__name__, _config.LOG_CODING)
         self._enc = e_impl
         self._dec = d_impl
 
     def __str__(self) -> str:
-        return f"{self.name}:{self.decision.name}:{type(self._enc).__name__}:{self.num}/{self.den}"
+        return f"{self.name}:{self.decision.name}:{type(self._enc).__name__}_{self.e_num}/{self.e_den}:{type(self._dec).__name__}_{self.d_num}/{self.d_den}"
 
     @property
-    def num(self):
-        """Return number of data bits"""
-        return self._enc.num
+    def decision(self):
+        """SOFT when the decoder can use LLRs (the default for those that can), HARD otherwise. Assign to override"""
+        if self._decision is not None:
+            return self._decision
+        return Decision.SOFT if getattr(self._dec, "soft", False) else Decision.HARD
 
-    @property
-    def den(self):
-        """Return number of encoded bits"""
-        return self._enc.den
+    @decision.setter
+    def decision(self, value):
+        self._decision = value
 
-    @property
-    def rate(self):
-        """Return bits/parity rate"""
-        return self.num/self.den
+    def encode(self, data):
+        """Encode data using specified coding"""
+        return self._run(data, True)
 
-    @abstractmethod
-    def encode(self, dobj: dobject.BitObject) -> dobject.CodingData:
-        """Encode dobject using specified coding"""
+    def decode(self, data):
+        """Decode data using specified coding
 
-    @abstractmethod
-    def decode(self, dobj: dobject.BitObject) -> dobject.BitObject:
-        """Decode dobject using specified coding"""
+        A soft decoder takes the LLRs a demodulator produced; anything else (or data that isn't soft) gets hard bits.
+        """
+        return self._run(data, False)
+
+    def _block(self, enc):
+        """Items taken at a time on the way in: message bits to encode, or received bits to decode"""
+        return self._enc.num if enc else self._dec.den
+
+    def _process(self, coder, x, ctx, enc):
+        """Run whole blocks through the coder (ctx is this call's stream state, for coders that carry some)"""
+        if not len(x):
+            return np.zeros(0, dtype=bool)
+        return coder.encode(x) if enc else coder.decode(x)
+
+    def _run(self, data, enc):
+        self.log.debug(f"{'Coding' if enc else 'Decoding'} {data}")
+        x = None
+        if not enc and self.decision == Decision.SOFT and isinstance(data, Mod):
+            x = data.get_soft()
+        if x is None:
+            x = data.bits()
+        ctx = dict(data.ctx)
+        x = align(ctx, (self, enc), x, self._block(enc), pad=enc, log=self.log)
+        y = self._process(self._enc if enc else self._dec, x, ctx, enc)
+        return data.derive(y, pproc.CODING, dtype.BITS, Digital, ctx)
 
     @staticmethod
     @abstractmethod
     def load(name: str, obj: dict):
         """Load coding from json"""
 
-    def __rmul__(self, other):
-        return self.encode(dobject.ensure_bit(other))
+    def __rmul__(self, data):
+        return self.encode(data)
 
-    def __rtruediv__(self, other):
-        if issubclass(type(other), dobject.ModData):
-            if self.decision == Decision.HARD:
-                other = dobject.ModData(other.hard)
-        return self.decode(other)
+    def __rtruediv__(self, data):
+        return self.decode(data)
 
+    @property
+    def e_num(self):
+        """Return number of encoding data bits"""
+        return self._enc.num
+    @property
+    def e_den(self):
+        """Return number of total encoded bits"""
+        return self._enc.den
+
+    @property
+    def d_num(self):
+        """Return number of decoding data bits"""
+        return self._dec.num
+
+    @property
+    def d_den(self):
+        """Return number of total decoded bits"""
+        return self._dec.den
+
+    @property
+    def e_rate(self):
+        """Return encoding bits/parity rate"""
+        return self.e_num/self.e_den
+
+    @property
+    def d_rate(self):
+        """Return decoding bits/parity rate"""
+        return self.d_num/self.d_den
+
+
+
+def _impl(parent, name):
+    """Named subclass of `parent`, so each loaded code reports its own name"""
+    impl = type(name, (parent,), dict())
+    impl.name = name
+    return impl
+
+def _code_of(obj):
+    try:
+        return types.REGISTRY[obj["type"]]
+    except KeyError:
+        raise ConfigError(f"Unknown coding type {obj['type']!r}, have {sorted(types.REGISTRY)}") from None
+
+DEFAULT_DECODER = {"linear": "trellis"} # What decodes a code type when its definition doesn't say
 
 class Block(Coding):
     """Parent block coding"""
 
-    def encode(self, dobj):
-        """Encode dobject using specified coding"""
-        return dobject.CodingData(self._enc.encode(dobj.data))
-
-    def decode(self, dobj):
-        """Decode dobject using specified coding"""
-        return dobject.BitObject(self._dec.decode(dobj.data))
-
     @staticmethod
-    def load(name, obj):
-        i_code = getattr(types, obj["type"])
-
-        if obj["type"] == "linear":
-            gen = np.array(obj["generator"], dtype=bool)
-            chk = np.array(obj["check"], dtype=bool)
-            i_code = i_code(gen, chk)
-
-            impl = type(name, (Block,), dict())
-            impl.name = name
-            return impl(i_code, i_code)
-        if obj["type"] == "repeat":
-            i_code = i_code(obj["count"])
-
-            impl = type(name, (Block,), dict())
-            impl.name = name
-            return impl(i_code, i_code)
-        raise NotImplementedError(f"{name} is not implemented")
+    def load(name, obj, decoder=None):
+        """decoder: a registered decoder type to use instead of the code's own (it's built from the encoder),
+        or "name"/"decoder" in the definition. Linear codes decode on their syndrome trellis unless that is too big"""
+        log = Logger().Child("Coding", _config.LOG_CODING).Child(name)
+        enc = _code_of(obj).from_config(log, obj)
+        want = decoder or obj.get("decoder")
+        dec = enc
+        if want is None and obj["type"] in DEFAULT_DECODER:
+            try:
+                dec = _code_of({"type": DEFAULT_DECODER[obj["type"]]}).from_encoder(log, enc)
+            except ValueError: # Too many trellis states: the encoder's own (hard) decoder it is
+                pass
+        elif want is not None and want != obj["type"]:
+            dec = _code_of({"type": want}).from_encoder(log, enc)
+        return _impl(Block, name)(enc, dec)
 
 class Convolutional(Coding):
-    """Parent convolutional coding"""
-
-    def encode(self, dobj):
-        return dobject.CodingData(self._enc.encode(dobj.data))
-
-    def decode(self, dobj):
-        return dobject.BitObject(self._dec.decode(dobj.data))
+    """Parent convolutional coding: separate encoder ("encode") and decoder ("decode") implementations"""
 
     @staticmethod
-    def load(name, obj):
-        if obj["type"] == "split":
-            i_e_code = getattr(types, obj["encode"]["type"])
-            i_d_code = getattr(types, obj["decode"]["type"])
+    def load(name, obj, decoder=None):
+        """decoder: use this decoder type (viterbi, bcjr) with the definition's decode parameters"""
+        if obj["type"] != "split":
+            raise ConfigError(f"{name}: a convolutional definition is type 'split' (encode + decode), not {obj['type']!r}")
+        log = Logger().Child("Coding", _config.LOG_CODING).Child(name)
+        e, d = dict(obj["encode"]), dict(obj["decode"])
+        if decoder is not None:
+            d["type"] = decoder
+        for side in (e, d): # puncture/terminated are shared between both sides
+            side.setdefault("puncture", obj["encode"].get("puncture"))
+            side.setdefault("terminated", obj["encode"].get("terminated", False))
+        return _impl(Convolutional, name)(_code_of(e).from_config(log, e), _code_of(d).from_config(log, d))
 
-            i_e_num = obj["encode"]["num"]
-            i_e_den = obj["encode"]["den"]
-            i_e_gen = np.array(obj["encode"]["generator"], dtype=bool)
-            i_e_con = obj["encode"]["constraint"]
-            i_e_code = i_e_code(i_e_num, i_e_den, i_e_gen, i_e_con)
+    def _block(self, enc):
+        # A punctured code works on whole puncture periods
+        coder = self._enc if enc else self._dec
+        p = getattr(coder, "puncture", None)
+        if p is None:
+            return coder.num if enc else coder.den
+        return coder.num*p.shape[1] if enc else int(p.sum())
 
-            i_d_num = obj["decode"]["num"]
-            i_d_den = obj["decode"]["den"]
-            i_d_con = obj["decode"]["constraint"]
-            i_d_gen = np.array(obj["decode"]["generator"], dtype=bool)
-            i_d_code = i_d_code(i_d_num, i_d_den, i_d_con, i_d_gen)
+    def _process(self, coder, x, ctx, enc):
+        """The register / path metrics go on from the previous call; a flush ends the frame (terminated code: its tail)"""
+        key = (self, enc, "state")
+        final = bool(ctx.get(FLUSH))
+        if enc or coder.stream:
+            st = dict(ctx.get(key, {}))
+            y = coder.encode(x, st, final) if enc else coder.decode(x, state=st, final=final)
+            if st and not final:
+                ctx[key] = st
+            else:
+                ctx.pop(key, None)
+            return y
+        # A decoder of whole frames (bcjr) collects the stream and decodes it at the end
+        prev = ctx.pop(key, None)
+        if prev is not None:
+            x = np.concatenate((prev, x))
+        if not final:
+            ctx[key] = x
+            return np.zeros(0, dtype=bool)
+        return coder.decode(x) if len(x) else np.zeros(0, dtype=bool)
 
-            impl = type(name, (Convolutional,), dict())
-            impl.name = name
-            return impl(i_e_code, i_d_code)
-        raise NotImplementedError(f"{name} is not implemented")
+class Interleaver(Coding):
+    """Symbol interleaver (Forney: I branches, M symbols of delay increment)"""
+
+    @staticmethod
+    def load(name, obj, decoder=None):
+        log = Logger().Child("Coding", _config.LOG_CODING).Child(name)
+        code = _code_of(obj).from_config(log, obj)
+        return _impl(Interleaver, name)(code, code)
+
+    def _block(self, enc):
+        return self._enc.I*self._enc.symbol # Whole rows of I symbols: the first one is on branch 0
+
+    def _process(self, coder, x, ctx, enc):
+        if not len(x):
+            return np.zeros(0, dtype=bool)
+        key = (self, enc, "delay")
+        ctx[key] = state = dict(ctx.get(key, {})) # The delay lines go on from the previous call
+        return coder.encode(x, state=state) if enc else coder.decode(x, state=state)

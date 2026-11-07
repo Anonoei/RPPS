@@ -1,0 +1,26 @@
+{
+  "base": "conv",
+  "type": "split",
+  "comment": "IESS-308 rate 1/2, K=7",
+  "aliases": ["iess308.1_2_7"],
+  "encode": {
+    "type": "conv",
+    "num": 1,
+    "den": 2,
+    "constraint": 7,
+    "generator": [
+      [1, 0, 1, 1, 0, 1, 1],
+      [1, 1, 1, 1, 0, 0, 1]
+    ]
+  },
+  "decode": {
+    "type": "viterbi",
+    "num": 1,
+    "den": 2,
+    "constraint": 7,
+    "generator": [
+      [1, 0, 1, 1, 0, 1, 1],
+      [1, 1, 1, 1, 0, 0, 1]
+    ]
+  }
+}

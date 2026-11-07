@@ -1,0 +1,7 @@
+{
+  "base": "shaping",
+  "type": "rrc",
+  "comment": "Root-raised-cosine, roll-off 0.35 (DVB-S and DVB-S2)",
+  "ref": "EN 300 421, EN 302 307",
+  "beta": 0.35
+}

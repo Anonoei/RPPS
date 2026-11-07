@@ -1,0 +1,8 @@
+{
+  "base": "iir",
+  "type": "sos",
+  "comment": "DC blocker (1-z^-1)/(1-0.995 z^-1): removes the mean, passes the rest",
+  "sos": [
+    [1, -1, 0, 1, -0.995, 0]
+  ]
+}

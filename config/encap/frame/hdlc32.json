@@ -1,0 +1,10 @@
+{
+  "base": "frame",
+  "type": "hdlc",
+  "comment": "HDLC, FCS-32",
+  "flag": "0x7E",
+  "stuff": 5,
+  "nrzi": false,
+  "fcs": "crc32_ieee",
+  "min_bytes": 6
+}

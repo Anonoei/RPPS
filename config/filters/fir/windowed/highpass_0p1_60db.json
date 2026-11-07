@@ -1,0 +1,9 @@
+{
+  "base": "fir",
+  "type": "windowed",
+  "comment": "High pass at 0.1 of the sample rate, 0.02 wide transition, 60 dB stopband (Kaiser window)",
+  "pass": "highpass",
+  "cutoff": 0.1,
+  "transition": 0.02,
+  "atten_db": 60
+}
