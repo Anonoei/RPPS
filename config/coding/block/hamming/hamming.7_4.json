@@ -1,5 +1,5 @@
 {
-  "base": "blk",
+  "base": "block",
   "type": "linear",
   "code": [7,4],
   "p": [

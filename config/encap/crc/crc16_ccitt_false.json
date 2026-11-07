@@ -1,0 +1,12 @@
+{
+  "base": "encap",
+  "type": "crc",
+  "width": 16,
+  "poly": "0x1021",
+  "init": "0xffff",
+  "refin": false,
+  "refout": false,
+  "xorout": "0x0",
+  "check": "0x29b1",
+  "comment": "CRC-16/CCITT-FALSE (e.g. DVB-S2 GSE? no: generic)"
+}

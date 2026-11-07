@@ -1,0 +1,12 @@
+{
+  "base": "encap",
+  "type": "crc",
+  "width": 16,
+  "poly": "0x1021",
+  "init": "0xffff",
+  "refin": true,
+  "refout": true,
+  "xorout": "0xffff",
+  "check": "0x906e",
+  "comment": "HDLC / X.25 / PPP FCS-16"
+}

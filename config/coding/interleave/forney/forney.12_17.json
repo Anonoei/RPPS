@@ -1,0 +1,8 @@
+{
+  "base": "interleave",
+  "type": "forney",
+  "I": 12,
+  "M": 17,
+  "symbol": 8,
+  "comment": "DVB-S / ITU-T J.83 convolutional interleaver"
+}

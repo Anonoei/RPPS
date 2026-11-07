@@ -1,0 +1,12 @@
+{
+  "base": "encap",
+  "type": "crc",
+  "width": 16,
+  "poly": "0x8005",
+  "init": "0x0",
+  "refin": true,
+  "refout": true,
+  "xorout": "0x0",
+  "check": "0xbb3d",
+  "comment": "CRC-16/ARC"
+}

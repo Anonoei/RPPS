@@ -1,0 +1,12 @@
+{
+  "base": "encap",
+  "type": "crc",
+  "width": 8,
+  "poly": "0xd5",
+  "init": "0x0",
+  "refin": false,
+  "refout": false,
+  "xorout": "0x0",
+  "check": "0xbc",
+  "comment": "CRC-8 of DVB-S2 generic stream headers"
+}

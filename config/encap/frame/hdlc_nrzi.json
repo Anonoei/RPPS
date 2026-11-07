@@ -1,0 +1,10 @@
+{
+  "base": "encap",
+  "type": "hdlc",
+  "flag": "0x7E",
+  "stuff": 5,
+  "nrzi": true,
+  "fcs": "crc16_x25",
+  "min_bytes": 4,
+  "comment": "HDLC with NRZI (AX.25 / 1200 baud packet style)"
+}

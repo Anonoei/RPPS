@@ -1,0 +1,52 @@
+{
+ "base": "PSK",
+ "Points": [
+  {
+   "mag": 1,
+   "pha": 0
+  },
+  {
+   "mag": 1,
+   "pha": 45
+  },
+  {
+   "mag": 1,
+   "pha": 90
+  },
+  {
+   "mag": 1,
+   "pha": 135
+  },
+  {
+   "mag": 1,
+   "pha": 180
+  },
+  {
+   "mag": 1,
+   "pha": 225
+  },
+  {
+   "mag": 1,
+   "pha": 270
+  },
+  {
+   "mag": 1,
+   "pha": 315
+  }
+ ],
+ "Maps": [
+  {
+   "map": [
+    1,
+    0,
+    4,
+    6,
+    2,
+    3,
+    7,
+    5
+   ],
+   "comment": "DVB-S2 8PSK: label (b0b1b2) of the point at k*45 degrees"
+  }
+ ]
+}

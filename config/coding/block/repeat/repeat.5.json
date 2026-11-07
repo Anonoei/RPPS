@@ -1,5 +1,5 @@
 {
-  "base": "blk",
+  "base": "block",
   "type": "repeat",
   "count": 5
 }
