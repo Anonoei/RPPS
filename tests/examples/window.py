@@ -1,4 +1,5 @@
 import rpps as rp
+import rpps.viz
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -32,7 +33,7 @@ def all(f, s):
     ax[1].set_ylim(-130, 0)
 
     for window in rp.filters.Window.s():
-        w = rp.filters.window.get(window)(N)
+        w = rp.filters.Window.get(window)(N)
         sw = s * w
         sw /= 100
         psd = np.fft.fftshift(np.fft.fft(sw))

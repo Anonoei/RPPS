@@ -4,5 +4,5 @@ from . import rate
 from . import signal
 
 from .rate import find_rate, find_baud
-from .signal import Signal, find_signals, welch, noise_floor
+from .signal import Signal, Survey, Channel, find_signals, survey, welch, noise_floor
 from .psd import psd, vbw, vbw_calc

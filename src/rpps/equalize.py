@@ -64,21 +64,36 @@ class LMS(_Equalizer):
     `points` (decision directed). Needs a carrier that is already locked
 
         eq = rp.equalize.LMS(11, points=rp.mod.load("QPSK").points.arr, training=known_symbols)
+
+    With neither, the constellation is the detected one (meta.stream.det, see rp.sync.Acquire), so after the
+    carrier correction: `... + rp.sync.phase.FFCarrier() + rp.equalize.LMS(7, 0.002)`.
     """
     __slots__ = ("points", "training")
     def __init__(self, taps=11, mu=0.01, sps=None, points=None, training=None):
         super().__init__(taps, mu, sps)
-        if points is None and training is None:
-            raise ValueError("LMS needs the constellation `points`, or a `training` sequence")
         self.points = None if points is None else np.asarray(points, dtype=np.complex64)
         self.training = None if training is None else np.asarray(training, dtype=np.complex64)
+
+    def new_state(self, meta):
+        st = super().new_state(meta)
+        st.points = self.points
+        return st
+
+    def step(self, samples, st, meta):
+        if st.points is None and self.training is None: # The detected constellation, once there is one
+            det = meta.stream.det
+            if det is None:
+                return samples[:0]
+            from .analysis.modulation import candidates # Late: analysis imports sync
+            st.points = candidates([det.mod])[det.mod].astype(np.complex64)
+        return super().step(samples, st, meta)
 
     def error(self, y, st):
         k = st.n
         if self.training is not None and k < len(self.training):
             d = self.training[k]
-        elif self.points is not None:
-            d = self.points[np.argmin(np.abs(self.points - y))]
+        elif st.points is not None:
+            d = st.points[np.argmin(np.abs(st.points - y))]
         else:
             return 0.0
         return d - y

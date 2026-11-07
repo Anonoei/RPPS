@@ -113,3 +113,13 @@ def test_ofdm_streams_in_chunks(rng):
         ctx = out.ctx
         outs.append(out.data)
     assert np.allclose(np.concatenate(outs), whole, atol=1e-6)
+
+def test_lms_takes_the_detected_constellation(rng):
+    s = qpsk_symbols(rng, 6000)
+    x = rp.Data(s, sps=1) + rp.channel.Multipath([1.0, 0.4], [0, 1])
+    eq = rp.equalize.LMS(7, 0.02) # No points: they come from the detection
+    assert len(x + eq) == 0 # Nothing detected yet: nothing to decide against, nothing out
+    x.stream.det = type("Det", (), {"mod": "qpsk"})()
+    out = (x + eq).data
+    pts = np.array([a + 1j*b for a in (1, -1) for b in (1, -1)])/np.sqrt(2)
+    assert np.mean(np.min(np.abs(out[-1000:, None] - pts[None, :]), axis=1)) < 0.2

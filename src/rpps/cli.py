@@ -2,6 +2,7 @@
 RPPS command line interface
 
     python -m rpps ls [category ...]
+    python -m rpps survey <file> --fs <Hz> [--fmt <format>] [--cf <Hz>] [--plot]
     python -m rpps fmt [--check] [dir]
     python -m rpps gen-ldpc <dvb_s2_tables.hh> [table ids ...] [--out dir]
 """
@@ -67,6 +68,25 @@ def cmd_fmt(args):
     return 1 if changed and args.check else 0
 
 
+def cmd_survey(args):
+    """Survey a capture and print each signal found; --plot also shows the spectrum (needs matplotlib)"""
+    import rpps as rp
+    src = rp.serial.File(args.fmt, args.file, Fs=args.fs, cf=args.cf)
+    sv = rp.dsp.survey(src, samples=args.samples)
+    print(f"{src.path}: {sv.Fs/1e6:g} MS/s at {sv.cf/1e6:g} MHz, {len(sv)} signals, {sv.bin_hz:.0f} Hz bins, floor {sv.floor:.1f} dB")
+    for i, s in enumerate(sv):
+        print(f"  {i:>2}  {s.describe()}")
+    if args.plot:
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            print("--plot needs matplotlib (pip install rpps[viz])", file=sys.stderr)
+            return 1
+        sv.plot()
+        plt.show()
+    return 0
+
+
 _LDPC_RATES = {"B1": "1_4", "B2": "1_3", "B3": "2_5", "B4": "1_2", "B5": "3_5", "B6": "2_3", "B7": "3_4", "B8": "4_5",
                "B9": "5_6", "B10": "8_9", "B11": "9_10"}
 
@@ -127,6 +147,15 @@ def main(argv=None):
     p_ls = sub.add_parser("ls", help="list available modulations, codings, chains, filters, ...")
     p_ls.add_argument("category", nargs="*", choices=names, help="limit output to these categories (default: all)")
     p_ls.set_defaults(fn=cmd_ls)
+
+    p_sv = sub.add_parser("survey", help="find and list the signals in a capture file")
+    p_sv.add_argument("file", help="capture file")
+    p_sv.add_argument("--fs", type=float, required=True, help="sample rate [Hz]")
+    p_sv.add_argument("--fmt", default="cf64", help="sample format, see rp.serial.formats.ls() (default: cf64, complex float32 pairs)")
+    p_sv.add_argument("--cf", type=float, default=0.0, help="centre frequency [Hz] (default: 0)")
+    p_sv.add_argument("--samples", type=int, default=2**17, help="samples to read (default: 131072)")
+    p_sv.add_argument("--plot", action="store_true", help="show the survey plot (needs matplotlib)")
+    p_sv.set_defaults(fn=cmd_survey)
 
     p_fmt = sub.add_parser("fmt", help="rewrite config json files in one style")
     p_fmt.add_argument("dir", nargs="?", help="config directory (default: the shipped config)")

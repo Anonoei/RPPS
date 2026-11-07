@@ -65,6 +65,10 @@ class Source:
         """Start the stream over: the stages that ran on it forget their state"""
         self.stream.restart()
 
+    def peek(self, count):
+        """The first `count` samples as an array (not a block), without using them up: a File keeps its place"""
+        raise StreamError(f"{type(self).__name__} can't peek")
+
     def __add__(self, pipe):
         raise StreamError("Give the source a block size first: source(4096) + stage")
 
@@ -120,6 +124,20 @@ class File(Source):
         self._f.reset()
         self.restart()
 
+    def peek(self, count, start=0):
+        """`count` samples from sample `start` (fewer near the end) as an array, leaving the read position where it was"""
+        pos, was_open = self._f.cur_samp, self._f.f is not None
+        n = max(0, min(int(count), self.max_samp - start))
+        self._f.seek(start)
+        try:
+            if not was_open:
+                self._f.open()
+            return self._convert(self._f.next(n))
+        finally:
+            self._f.seek(pos)
+            if not was_open and self._f.f is not None:
+                self._f.close()
+
     def read(self, count):
         """The next `count` samples as an array (not a block)"""
         if self._f.f is None:
@@ -152,6 +170,12 @@ class Device(Source):
         self.rx_gain = rx_gain
         self._open_args = open_args
         super().__init__(Fs if Fs is not None else self.sdr.Fs, cf if cf is not None else self.sdr.CF, sps)
+
+    def peek(self, count):
+        """The first `count` samples from the device, as an array. A device can't rewind: these are not in the blocks
+        that follow (rp.dsp.survey keeps them in Survey.head)"""
+        for blk in self._samples(count):
+            return np.asarray(blk.data)
 
     def _samples(self, count):
         sdr = self.sdr
