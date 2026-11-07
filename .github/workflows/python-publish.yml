@@ -56,7 +56,7 @@ jobs:
         shell: bash
         run: |
           # Away from the checkout, so `import rpps` can only find the installed package. The docs tests read these
-          mkdir run && cp -r tests README.md guides pyproject.toml run/ && cd run
+          mkdir run && cp -r tests README.md pyproject.toml run/ && cd run
           python -m pytest -q -m "not slow" tests/unit
 
   pypi-publish:

@@ -93,6 +93,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip pdoc3
           pip install "pysdrlib>=0.3.1" || pip install "git+https://github.com/Anonoei/pysdrlib.git"
-          pip install .
+          pip install ".[viz]"
       - run: python -m pdoc -o docs --html --force src/rpps
       - run: test -f docs/rpps/index.html
