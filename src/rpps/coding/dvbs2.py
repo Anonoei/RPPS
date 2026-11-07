@@ -224,7 +224,7 @@ def decode_frame(z, index, phase, rate=None, n_pl=0):
         ldpc = coding.load("block", f"ldpc/dvbs2_64800_{rf}")._enc
         bch = coding.load("block", f"bch/dvbs2_{rf}")._enc
     except FileNotFoundError as e:
-        res["note"] = f"not decoded: missing config {e.filename.split('/')[-1]} (tests/dev/make_dvbs2_ldpc.py makes the LDPC ones)"
+        res["note"] = f"not decoded: missing config {e.filename.split('/')[-1]} (`python -m rpps gen-ldpc` makes the LDPC ones)"
         return res
     if kind == "8PSK":
         m = modulation.load("dvbs2_8psk")

@@ -21,7 +21,7 @@ A definition is referenced by its path below the category, without `.json`, case
 - `"aliases": [...]` gives a file other names. The old `family.name` form (`rs.204_188`) still resolves. Both warn once.
 
 ## File header
-Every file starts with `base` (the category, picks the loader), `type` (the implementation, where there are several), `comment`, and optionally `ref` (the spec) and `aliases`. `python tests/dev/fmt_config.py` puts files in the canonical style (`--check` only lists differences).
+Every file starts with `base` (the category, picks the loader), `type` (the implementation, where there are several), `comment`, and optionally `ref` (the spec) and `aliases`. `python -m rpps fmt` puts files in the canonical style (`--check` only lists differences).
 
 ## Adding
 - **A definition**: drop a JSON in the right folder.

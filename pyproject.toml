@@ -21,6 +21,9 @@ classifiers = [
 keywords = ["anonoei", "dsp", "sdr"]
 dependencies = ["numpy>=2.0", "pysdrlib>=0.3.1"]
 
+[project.scripts]
+rpps = "rpps.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/anonoei/RPPS"
 Documentation = "https://anonoei.github.io/RPPS/"
