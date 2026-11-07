@@ -110,6 +110,86 @@ def test_find_signals_splits_close_neighbours(rng):
     assert len(found) == 2
     assert found[0].mid == pytest.approx(-120e3, abs=15e3) and found[1].mid == pytest.approx(20e3, abs=15e3)
 
+def shaped(rng, N, Fs, bands, noise=0.05):
+    """Noise plus flat bands [(centre, width, amplitude), ...] built in the frequency domain"""
+    f = np.fft.fftfreq(N, 1/Fs)
+    x = (rng.normal(size=N) + 1j*rng.normal(size=N))*noise
+    for fc, bw, a in bands:
+        spec = np.where(np.abs(f - fc) < bw/2, rng.normal(size=N) + 1j*rng.normal(size=N), 0)
+        x = x + np.fft.ifft(spec)*np.sqrt(N)*a
+    return x.astype(np.complex64)
+
+def test_find_signals_in_a_band_mostly_full_of_signal(rng):
+    Fs = 1e6 # Two transponders fill 75% of the band: the median is inside them, the noise is the gaps
+    x = shaped(rng, 1 << 18, Fs, [(-230e3, 240e3, 0.3), (230e3, 240e3, 0.3)], noise=0.05)
+    found = rp.dsp.find_signals(x, Fs)
+    assert len(found) == 2
+    assert found[0].mid == pytest.approx(-230e3, abs=15e3) and found[1].mid == pytest.approx(230e3, abs=15e3)
+    assert found[0].width == pytest.approx(240e3, rel=0.15)
+
+def test_find_signals_cut_by_band_edge(rng):
+    Fs = 1e6 # Reaches into the receiver's roll-off at the top: kept, cut there, and flagged
+    x = shaped(rng, 1 << 18, Fs, [(-100e3, 40e3, 0.5), (480e3, 100e3, 0.5)])
+    found = rp.dsp.find_signals(x, Fs)
+    assert len(found) == 2
+    assert not found[0].clipped and found[1].clipped
+    assert found[1].hi == pytest.approx(0.48*Fs, abs=1e3) # edge=2% of the band at each end
+    assert "cut by band edge" in found[1].describe()
+
+def test_duty_weak_continuous_is_not_bursty(rng):
+    Fs = 1e6 # A wide signal at a few dB above the noise in every bin stays on throughout
+    x = shaped(rng, 1 << 19, Fs, [(0, 200e3, 0.07)], noise=0.05)
+    found = rp.dsp.find_signals(x, Fs)
+    assert len(found) == 1
+    assert found[0].duty is None or found[0].duty > 0.9
+
+def test_duty_sees_bursts(rng):
+    Fs, N = 1e6, 1 << 19
+    x = shaped(rng, N, Fs, [(0, 100e3, 0.5)])
+    clean = shaped(rng, N, Fs, [])
+    on = np.repeat(np.arange(8) % 2 == 0, N//8) # Whole spectrum segments on or off
+    found = rp.dsp.find_signals(np.where(on, x, clean).astype(np.complex64), Fs)
+    assert len(found) == 1 and found[0].duty == pytest.approx(0.5, abs=0.15)
+
+def test_reject_spur_bauds():
+    from rpps.dsp.signal import Signal, reject_spur_bauds
+    def sig(width, baud):
+        s = Signal(0.0, width, 0.0, 0.0)
+        s.baud_est = baud
+        return s
+    sigs = [sig(1.0e6, 683e3), sig(1.6e6, 683e3), sig(1.9e6, 683e3), # One rate on very different widths: a spur
+            sig(1.3e6, 1366e3), sig(1.2e6, 341.5e3), # Its harmonic and subharmonic
+            sig(1.2e6, 1.0e6), sig(1.2e6, 1.0e6), sig(1.2e6, 1.0e6), # Carriers of one service: kept
+            sig(100e3, 500e3)] # Faster than it is wide
+    reject_spur_bauds(sigs)
+    assert [s.baud_est for s in sigs] == [None]*5 + [1.0e6]*3 + [None]
+
+def shaped_psd(rng, N, Fs, shape_db, noise=1.0):
+    """Complex noise whose power spectrum follows shape_db(f) [dB, f in Hz]"""
+    f = np.fft.fftfreq(N, 1/Fs)
+    spec = (rng.normal(size=N) + 1j*rng.normal(size=N))*10**(shape_db(f)/20)
+    return (np.fft.ifft(spec)*np.sqrt(N)*noise).astype(np.complex64)
+
+def test_a_smooth_hill_is_not_a_signal(rng):
+    Fs = 100e6 # Passband curvature and bleed-over: 4 dB high, tens of MHz across, no steep edges
+    x = shaped_psd(rng, 1 << 20, Fs, lambda f: 4*np.exp(-(f/15e6)**2))
+    assert rp.dsp.find_signals(x, Fs) == []
+    assert len(rp.dsp.find_signals(x, Fs, edges=False)) >= 1 # By level alone it would be one
+
+def test_square_edged_boxes_are_signals_and_neighbours_stay_apart(rng):
+    Fs = 100e6 # Two 3 dB boxes 2 MHz apart, as on a transponder pair
+    def box(f):
+        return 3.0*((np.abs(f + 15e6) < 8e6) | (np.abs(f - 3e6) < 5e6))
+    found = rp.dsp.find_signals(shaped_psd(rng, 1 << 20, Fs, box), Fs)
+    assert len(found) == 2
+    assert found[0].mid == pytest.approx(-15e6, abs=1e6) and found[0].width == pytest.approx(16e6, rel=0.1)
+    assert found[1].mid == pytest.approx(3e6, abs=1e6) and found[1].width == pytest.approx(10e6, rel=0.1)
+
+def test_steep_block_cut_by_band_edge_is_flagged(rng):
+    Fs = 100e6 # A flat top that runs off the end of the usable band
+    found = rp.dsp.find_signals(shaped_psd(rng, 1 << 20, Fs, lambda f: 4.0*(f > 20e6)), Fs)
+    assert len(found) == 1 and found[0].clipped and found[0].lo == pytest.approx(20e6, abs=1e6)
+
 def test_signal_fields_and_survey_pick(rng):
     Fs = 1e6
     x = two_bands(rng, 1 << 17, Fs, -200e3, 150e3, 60e3)
