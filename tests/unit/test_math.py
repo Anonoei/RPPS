@@ -62,7 +62,7 @@ def test_reflect():
     assert reflect(0x01, 16) == 0x8000
 
 def test_bch_corrects_up_to_t_errors(rng):
-    code = rp.coding.load("block", "bch.dvbs2_1_2")._enc
+    code = rp.coding.load("block", "bch/dvbs2_1_2")._enc
     msg = rng.integers(0, 2, code.num).astype(bool)
     coded = code.encode(msg)
     bad = coded.copy()
@@ -108,7 +108,7 @@ def test_rs_variants_correct_t_errors(name, rng):
     assert (rs.errors == -1).mean() > 0.5
 
 def test_rs_clean_words_untouched(rng):
-    rs = rp.coding.load("block", "rs.204_188")._enc
+    rs = rp.coding.load("block", "rs/204_188")._enc
     msg = rng.integers(0, 256, 188*3).astype(np.int64)
     assert np.array_equal(rs.decode(rs.encode(msg, symbols=True), symbols=True), msg)
     assert (rs.errors == 0).all()
@@ -124,7 +124,7 @@ def test_small_bch_codes(n, k, m, poly, t, rng):
 
 def test_rs_decoding_is_fast(rng):
     import time
-    rs = rp.coding.load("block", "rs.204_188")._enc
+    rs = rp.coding.load("block", "rs/204_188")._enc
     cw = rs.encode(rng.integers(0, 256, 188*200).astype(np.int64), symbols=True).reshape(200, 204)
     bad = inject(cw, 8, rng)
     t0 = time.time()

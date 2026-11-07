@@ -1,10 +1,10 @@
 """FEC chains: several configured stages run in order, defined in config/chain/<name>.json
 
 A chain lists stages by kind and config name:
-    {"conv": "dvbs.3_4_7"}                          config/coding/conv      (decode: Viterbi)
+    {"conv": "k7_171_133/3_4"}                      config/coding/conv      (decode: Viterbi)
     {"align": {"markers": [71, 184], "period": 204}} finds byte alignment from repeating sync bytes
-    {"interleave": "forney.12_17"}                  config/coding/interleave
-    {"block": "rs.204_188"}                         config/coding/block    (a Reed-Solomon code here)
+    {"interleave": "forney/12_17"}                  config/coding/interleave
+    {"block": "rs/204_188"}                         config/coding/block    (a Reed-Solomon code here)
     {"scram": ["adt", "dvb_energy"]}                config/scram/<folder>/<name>
     {"crc": "crc32_mpeg2"}                          config/encap/crc
 The decode result is a (packets, bytes) array. Hard bits can be inverted by a symbol ambiguity: with
@@ -33,23 +33,25 @@ class Result:
     def __repr__(self):
         return f"<Result {len(self.packets)} packets {self.stats}>"
 
+def _from_config(name, obj):
+    return Chain(name, obj["stages"], obj.get("polarity", "auto"), obj.get("packet"))
+
 class Chain(Pipe):
     def __init__(self, name, stages, polarity="auto", packet=None):
         self.name, self.stages, self.polarity, self.packet = name, stages, polarity, packet
 
     @staticmethod
     def load(name, path=None):
-        from pathlib import Path
-        file = Path(path) / f"{name}.json" if path else _config.find_file("chain", f"{name}.json")
-        if file is None or not file.exists():
-            raise FileNotFoundError(f"chain/{name}: not found")
-        obj = json.loads(file.read_text())
-        return Chain(name, obj["stages"], obj.get("polarity", "auto"), obj.get("packet"))
+        file = _config.find("chain", name, path=path)
+        if file is None:
+            raise FileNotFoundError(f"chain/{name}: not found, have {_config.ls('chain', path)}")
+        obj = _config.read(file)
+        return _config.load_obj("chain", name, obj)
 
     def _load(self, kind, ref):
         if kind == "scram":
             from . import scram
-            return scram.load(*ref)
+            return scram.load(ref) if isinstance(ref, str) else scram.load(*ref)
         if kind == "crc":
             return encap.load("crc", ref)
         return coding.load(kind, ref) # block | conv | interleave
@@ -213,3 +215,5 @@ class Chain(Pipe):
                 bits = np.unpackbits(x.reshape(-1)) if x.dtype == np.uint8 else x
                 return code._enc.encode(bits.astype(bool))
         return np.unpackbits(x.reshape(-1)).astype(bool)
+
+_config.register_domain("chain", {"chain": _from_config})

@@ -7,6 +7,7 @@ from conftest import bits
 # Catalogue check values for b"123456789"
 CHECK = {
     "crc32_ieee": 0xCBF43926, "crc32_mpeg2": 0x0376E6E7,
+    "crc32c": 0xE3069283, "crc32_bzip2": 0xFC891918, "crc16_kermit": 0x2189, "crc16_modbus": 0x4B37, "crc8_smbus": 0xF4,
     "crc16_arc": 0xBB3D, "crc16_xmodem": 0x31C3, "crc16_ccitt_false": 0x29B1, "crc16_x25": 0x906E,
 }
 

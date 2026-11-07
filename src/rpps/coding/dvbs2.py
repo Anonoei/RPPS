@@ -181,7 +181,7 @@ def compensate(sym, cfo, baud):
     return sym*np.exp(-2j*np.pi*cfo/baud*np.arange(len(sym)))
 
 def decode_frame(z, index, phase, rate=None, n_pl=0):
-    """Decode the PLFRAME whose SOF starts at z[index]. Needs config/coding/block ldpc.dvbs2_64800_<rate> and bch.dvbs2_<rate>
+    """Decode the PLFRAME whose SOF starts at z[index]. Needs config/coding/block ldpc/dvbs2_64800_<rate> and bch/dvbs2_<rate>
 
     z: symbols with the carrier offset removed except for a slow residual. The carrier phase over the frame is a line
     through the SOF and the pilot blocks (data-aided, so no phase slips); without pilots it is the SOF phase plus
@@ -221,8 +221,8 @@ def decode_frame(z, index, phase, rate=None, n_pl=0):
     res["noise_var"] = var
     rf = _RATE_FILE[crate]
     try:
-        ldpc = coding.load("block", f"ldpc.dvbs2_64800_{rf}")._enc
-        bch = coding.load("block", f"bch.dvbs2_{rf}")._enc
+        ldpc = coding.load("block", f"ldpc/dvbs2_64800_{rf}")._enc
+        bch = coding.load("block", f"bch/dvbs2_{rf}")._enc
     except FileNotFoundError as e:
         res["note"] = f"not decoded: missing config {e.filename.split('/')[-1]} (tests/dev/make_dvbs2_ldpc.py makes the LDPC ones)"
         return res

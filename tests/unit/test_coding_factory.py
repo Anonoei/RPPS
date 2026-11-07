@@ -12,7 +12,7 @@ def same_code(a, b, rng, k):
 
 @pytest.mark.parametrize("n,k", [(3, 1), (7, 4), (15, 11)])
 def test_hamming_matches_the_definitions(n, k, rng):
-    ours, theirs = rp.coding.Hamming(n, k), rp.coding.load("block", f"hamming.{n}_{k}")
+    ours, theirs = rp.coding.Hamming(n, k), rp.coding.load("block", f"hamming/{n}_{k}")
     msg = rng.integers(0, 2, k*8).astype(bool)
     a, b = (c._enc.encode(msg) for c in (ours, theirs))
     # Same code up to the order of the parity columns: both are single error correcting with k data bits first
@@ -42,7 +42,7 @@ def test_repetition(rng):
     assert np.array_equal((rp.Data(cw, flush=True) / code).data, msg)
 
 def test_rs_matches_the_definition_and_corrects(rng):
-    ours, theirs = rp.coding.RS(204, 188), rp.coding.load("block", "rs.204_188")
+    ours, theirs = rp.coding.RS(204, 188), rp.coding.load("block", "rs/204_188")
     msg = rng.integers(0, 256, 188*3).astype(np.uint8)
     a, b = (c._enc.encode(msg, symbols=True) for c in (ours, theirs))
     assert np.array_equal(a, b)
@@ -59,7 +59,7 @@ def test_rs_255_223(rng):
 
 def test_conv_matches_the_definition(rng):
     ours = rp.coding.Conv([0o133, 0o171], 7)
-    theirs = rp.coding.load("conv", "iess308.1_2_7")
+    theirs = rp.coding.load("conv", "k7_133_171/1_2")
     msg = rng.integers(0, 2, 200).astype(bool)
     assert np.array_equal(ours._enc.encode(msg), theirs._enc.encode(msg))
     cw = ours._enc.encode(msg).copy()
@@ -68,7 +68,7 @@ def test_conv_matches_the_definition(rng):
 
 def test_conv_with_a_puncture_pattern_and_bcjr(rng):
     code = rp.coding.Conv([[1, 0, 1, 1, 0, 1, 1], [1, 1, 1, 1, 0, 0, 1]], puncture=[[1, 1, 0], [1, 0, 1]], decoder="bcjr")
-    ref = rp.coding.load("conv", "iess308.3_4_7")
+    ref = rp.coding.load("conv", "k7_133_171/3_4")
     msg = rng.integers(0, 2, 300).astype(bool)
     assert np.array_equal(code._enc.encode(msg), ref._enc.encode(msg))
     assert code.e_rate == pytest.approx(ref.e_rate)

@@ -10,10 +10,8 @@ BIG = ("dvbs2_",) # DVB-S2 frames (16200+ bits) are tested separately: too slow 
 def configs(kind):
     return [n for n in rp.coding.names(kind) if not any(b in n for b in BIG)]
 
-def test_kinds_and_aliases():
-    assert set(rp.coding.ls()) >= {"block/rs", "conv/dvbs", "interleave/forney"}
-    assert rp.coding.names("blk") == rp.coding.names("block")
-    assert rp.coding.names("cnv") == rp.coding.names("conv")
+def test_kinds():
+    assert set(rp.coding.ls()) >= {"block/rs", "conv/k7_171_133", "interleave/forney"}
 
 def test_unknown_definition():
     with pytest.raises(FileNotFoundError):
@@ -22,7 +20,7 @@ def test_unknown_definition():
 @pytest.mark.parametrize("name", configs("block"))
 def test_block_round_trip(name, rng):
     code = rp.coding.load("block", name)._enc
-    if name.startswith("rs."):
+    if name.startswith("rs/"):
         msg = bits(rng, code.num*8*5)
     else:
         msg = bits(rng, code.num*20)
@@ -37,14 +35,14 @@ def test_block_rate_matches_properties(name):
     assert 0 < c.e_rate <= 1
 
 def test_linear_syndrome_decoder_corrects_one_error_per_block():
-    c = rp.coding.load("block", "hamming.7_4", decoder="linear")._dec
+    c = rp.coding.load("block", "hamming/7_4", decoder="linear")._dec
     msg = np.array([1, 0, 1, 1], dtype=bool)
     coded = c.encode(msg).copy()
     coded[2] ^= True
     assert np.array_equal(c.decode(coded), msg)
 
 def test_rs_corrects_errors(rng):
-    rs = rp.coding.load("block", "rs.204_188")._enc
+    rs = rp.coding.load("block", "rs/204_188")._enc
     msg = rng.integers(0, 256, 188*4).astype(np.uint8)
     coded = rs.encode(msg, symbols=True).reshape(-1, 204)
     bad = coded.copy()
@@ -65,7 +63,7 @@ def test_conv_clean_round_trip(name, rng):
     assert np.array_equal(out[:n], msg[:n])
 
 def test_viterbi_soft_beats_hard(rng):
-    code = rp.coding.load("conv", "iess308.1_2_7")
+    code = rp.coding.load("conv", "k7_133_171/1_2")
     msg = bits(rng, 4000)
     coded = code._enc.encode(msg)
     sigma = 0.75
@@ -76,14 +74,14 @@ def test_viterbi_soft_beats_hard(rng):
     assert (soft[:n] != msg[:n]).sum() < (hard[:n] != msg[:n]).sum()
 
 def test_interleaver_round_trip(rng):
-    il = rp.coding.load("interleave", "forney.12_17")._enc
+    il = rp.coding.load("interleave", "forney/12_17")._enc
     x = rng.integers(0, 256, 204*30).astype(np.uint8)
     y = il.decode(il.encode(x, symbols=True), symbols=True)
     delay = (il.I - 1)*il.M*il.I # Total latency of interleaver + deinterleaver
     assert np.array_equal(np.asarray(y)[delay:delay+1000], x[:1000])
 
 def test_ldpc_corrects_noise(rng):
-    code = rp.coding.load("block", "ldpc.gallager_96_48")._enc
+    code = rp.coding.load("block", "ldpc/gallager_96_48")._enc
     msg = bits(rng, code.num*40)
     coded = code.encode(msg)
     rx = (1.0 - 2.0*coded.astype(float)) + rng.normal(0, 0.6, len(coded))
@@ -94,3 +92,44 @@ def test_ldpc_corrects_noise(rng):
 
 def test_registry_lists_all_types():
     assert {"linear", "repeat", "rs", "bch", "ldpc", "conv", "viterbi", "forney"} <= set(rp.coding.types.REGISTRY)
+
+# MacKay alist of the Hamming (7,4) parity checks: 7 bits, 3 checks
+HAMMING_ALIST = """7 3
+3 4
+1 1 2 2 1 2 3
+4 4 4
+1 0 0
+2 0 0
+1 2 0
+1 3 0
+3 0 0
+2 3 0
+1 2 3
+1 3 4 7
+2 3 6 7
+4 5 6 7
+"""
+
+def test_import_alist(tmp_path):
+    f = tmp_path / "ham.alist"
+    f.write_text(HAMMING_ALIST)
+    obj = rp.coding.import_alist(f)
+    assert obj["n"] == 7 and obj["checks"] == [[0, 2, 3, 6], [1, 2, 5, 6], [3, 4, 5, 6]]
+    path = rp.coding.import_alist(f, "alist_ham", dest=tmp_path / "cfg", comment="test")
+    rp.add_config_path(tmp_path / "cfg")
+    try:
+        code = rp.coding.load("block", "ldpc/alist_ham")._enc
+        assert (code.num, code.den) == (4, 7)
+        word = code.encode(np.array([1, 0, 1, 1], dtype=bool))
+        assert not np.any(code.syndrome(word[None, :]))
+        bad = word.copy()
+        bad[2] ^= True
+        assert np.any(code.syndrome(bad[None, :]))
+    finally:
+        rp._config._EXTRA.remove(tmp_path / "cfg")
+
+def test_import_alist_rejects_inconsistent(tmp_path):
+    f = tmp_path / "bad.alist"
+    f.write_text(HAMMING_ALIST.replace("2 3 6 7", "2 3 5 7"))
+    with pytest.raises(ValueError, match="different matrices"):
+        rp.coding.import_alist(f)

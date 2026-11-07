@@ -1,5 +1,4 @@
 """Modulation de-serialization helpers"""
-import json
 import re
 
 from .. import _config
@@ -10,18 +9,16 @@ from . import types
 from .modulation import Modulation
 from .constellation import ModConstellation
 
+DOMAIN = _config.register_domain("mod", {"psk": types.PSK.load})
+
 def ls():
-    """List available modulation types"""
-    mods = {}
-    for layer in _config.layers("mod"):
-        for folder in layer.iterdir():
-            mods[folder.name] = sorted(set(mods.get(folder.name, [])) | {file.stem for file in folder.iterdir()})
-    return mods
+    """List available modulation types: {category: [names]}"""
+    return _config.ls("mod")
 
 
 def init(name, obj: dict) -> Modulation:
     """Initialize modulation"""
-    return getattr(types, obj["base"]).load(name, obj)
+    return _config.load_obj("mod", name, obj)
 
 
 _GENERATED = re.compile(r"^(?:(\d+)\s*[-_]?\s*)?(B?PSK|QPSK|QAM|APSK|ASK|OOK)(?:[-_]?(\d+))?$", re.I)
@@ -54,8 +51,7 @@ def load(name: str, mapping=None) -> ModConstellation:
     return mod
 
 def _load(name: str) -> ModConstellation:
-    folder = name[-3:].lower()
-    path = _config.find_file("mod", folder, f"{name.lower()}.json")
+    path = _config.find("mod", name)
     if path is None:
         return generate(name)
-    return init(name, json.loads(path.read_text())) # type: ignore
+    return init(name, _config.read(path)) # type: ignore

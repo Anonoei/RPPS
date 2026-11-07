@@ -1,11 +1,18 @@
 {
-  "base": "PSK",
+  "base": "psk",
+  "comment": "BPSK",
   "Points": [
-    { "mag": 1, "pha": 0 },
-    { "mag": 1, "pha": 180 }
+    {"mag": 1, "pha": 0},
+    {"mag": 1, "pha": 180}
   ],
   "Maps": [
-    { "map": [0, 1], "comment": "R000" },
-    { "map": [1, 0], "comment": "R180" }
+    {
+      "map": [0, 1],
+      "comment": "R000"
+    },
+    {
+      "map": [1, 0],
+      "comment": "R180"
+    }
   ]
 }

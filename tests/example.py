@@ -4,7 +4,7 @@ Example showing encoding and decoding data
 import rpps as rp
 
 mod = rp.mod.load("QPSK")   # starts on its first bit map; rp.mod.load("QPSK", "R090") picks another
-ecc = rp.coding.load("block", "hamming.7_4")
+ecc = rp.coding.load("block", "hamming/7_4")
 scr = rp.scram.load("fdt", "v35")
 
 print(f"Mod: {mod}")

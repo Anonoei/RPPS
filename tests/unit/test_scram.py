@@ -20,7 +20,7 @@ def test_scram_whitens_constant_input(folder, name):
     scr = np.asarray(s.encode(np.zeros(8*204*8, dtype=bool)))
     assert 0.4 < scr.mean() < 0.6
 
-@pytest.mark.parametrize("name", ["v35", "galois", "fib"])
+@pytest.mark.parametrize("name", ["v35", "galois", "fib", "g3ruh"])
 def test_fdt_keystream_follows_polynomial(name):
     """The keystream is an LFSR sequence: s[n-N] = s[n] ^ (xor of s[n-t] for the other taps t)"""
     s = rp.scram.load("fdt", name)
@@ -37,3 +37,12 @@ def test_fdt_streams_continue_between_calls(rng):
     whole = rp.scram.load("fdt", "v35").encode(msg)
     parts = np.concatenate((s.encode(msg[:300]), s.encode(msg[300:])))
     assert np.array_equal(whole, parts)
+
+def test_ccsds_sequence():
+    """CCSDS 131.0-B pseudo-random sequence: s[n] = s[n-1]^s[n-3]^s[n-5]^s[n-8] from all ones, FF 48 0E C0 9A 0D 70 BC..."""
+    s = [1]*8
+    for n in range(8, 255*2):
+        s.append(s[n-1] ^ s[n-3] ^ s[n-5] ^ s[n-8])
+    y = np.asarray(rp.scram.load("ccsds").encode(np.zeros(len(s), dtype=bool))).astype(int)
+    assert list(y) == s
+    assert bytes(np.packbits(y.astype(np.uint8)))[:8].hex() == "ff480ec09a0d70bc"

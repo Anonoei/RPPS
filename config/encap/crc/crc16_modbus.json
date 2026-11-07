@@ -1,0 +1,12 @@
+{
+  "base": "crc",
+  "type": "crc",
+  "comment": "CRC-16/MODBUS",
+  "width": 16,
+  "poly": "0x8005",
+  "init": "0xffff",
+  "refin": true,
+  "refout": true,
+  "xorout": "0x0",
+  "check": "0x4b37"
+}

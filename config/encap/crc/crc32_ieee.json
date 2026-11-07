@@ -1,12 +1,12 @@
 {
-  "base": "encap",
+  "base": "crc",
   "type": "crc",
+  "comment": "CRC-32 (Ethernet, HDLC FCS-32, GZIP)",
   "width": 32,
   "poly": "0x4c11db7",
   "init": "0xffffffff",
   "refin": true,
   "refout": true,
   "xorout": "0xffffffff",
-  "check": "0xcbf43926",
-  "comment": "CRC-32 (Ethernet, HDLC FCS-32, GZIP)"
+  "check": "0xcbf43926"
 }

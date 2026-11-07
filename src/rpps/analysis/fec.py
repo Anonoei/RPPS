@@ -218,7 +218,7 @@ def config_blocks():
                 syn = lambda w, H=H: (w.astype(np.uint8) @ H.T) % 2
             else:
                 continue
-            out.append((name.split(".")[0], folder, name, enc.den, syn))
+            out.append((name.partition("/")[0], folder, name, enc.den, syn))
     return out
 
 # --- Whiteness -----------------------------------------------------------------------------------

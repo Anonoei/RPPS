@@ -75,7 +75,7 @@ def test_generated_names_and_errors():
         rp.mod.load("nonsense")
 
 def test_pipeline_with_a_generated_modulation(rng):
-    ecc = rp.coding.load("block", "hamming.7_4")
+    ecc = rp.coding.load("block", "hamming/7_4")
     link = rp.scram.load("fdt", "v35") * ecc * rp.mod.QAM(16)
     raw = bytes(rng.integers(0, 256, 66).astype(np.uint8))
     assert (rp.Data(raw) * link / link).as_bytes().hex == raw.hex()

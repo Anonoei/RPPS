@@ -1,31 +1,25 @@
-"""Encapsulation de-serialization: config/encap/<kind>/<name>.json, kind = crc | frame"""
+"""Encapsulation de-serialization: config/encap/<category>/<name>.json, category = crc | frame"""
 from pathlib import Path
-import json
 
 from .. import _config
-
+from .encap import Encap, CRC, Frame
 
 KINDS = ("crc", "frame")
+
+DOMAIN = _config.register_domain("encap", {"crc": CRC.load, "frame": Frame.load, "encap": Encap.load}) # "encap": the type picks
 
 def root() -> Path:
     """Directory holding the encapsulation definitions"""
     return _config.find_config("encap")
 
 def ls(path=None):
-    """List available definitions: {kind: [names]}"""
-    bases = [Path(path)] if path else _config.layers("encap")
-    out = {}
-    for base in bases:
-        for f in sorted(base.iterdir()):
-            if f.is_dir():
-                out[f.name] = sorted(set(out.get(f.name, [])) | {x.stem for x in f.iterdir() if x.suffix == ".json"})
-    return out
+    """List available definitions: {category: [names]}"""
+    return _config.ls("encap", path)
 
-def load(kind: str, name: str, path=None):
-    """Load config/encap/<kind>/<name>.json (or from `path`/<kind>/)"""
-    from .encap import Encap
-    file = Path(path) / kind / f"{name.lower()}.json" if path else _config.find_file("encap", kind, f"{name.lower()}.json")
-    if file is None or not file.exists():
-        raise FileNotFoundError(f"encap/{kind}/{name}: not found, have {ls()}")
-    obj = json.loads(file.read_text())
-    return Encap.load(name.split(".")[0], obj)
+def load(kind: str, ref: str, path=None):
+    """Load config/encap/<kind>/<name>.json (or from `path`/<kind>/). kind: crc | frame"""
+    file, parts = _config.locate("encap", ref, kind, path)
+    if file is None:
+        raise FileNotFoundError(f"encap/{kind}/{ref}: not found, have {ls(path)}")
+    obj = _config.read(file)
+    return DOMAIN.loaders[str(obj.get("base", kind)).lower()](parts[-1], obj)

@@ -94,7 +94,7 @@ def test_pipelines_compose_and_match_the_operators(x):
 
 def test_digital_pipelines_encode_forward_and_decode_backward():
     m = rp.mod.load("QPSK"); m.set_mapping(m.get_maps()[0])
-    ecc = rp.coding.load("block", "hamming.7_4")
+    ecc = rp.coding.load("block", "hamming/7_4")
     scr = rp.scram.load("fdt", "v35")
     link = scr * ecc * m
     msg = rp.Data(b"Hello World!")

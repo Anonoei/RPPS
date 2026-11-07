@@ -15,7 +15,7 @@ The data carries its sample rate and the state of every stage, so there is nothi
 import rpps as rp
 
 mod = rp.mod.load("QPSK")           # first bit map; load("QPSK", "R090 inverted") for a rotated / spectrally inverted one. Or rp.mod.QAM(16), rp.mod.PSK(8), rp.mod.APSK(32), rp.mod.FSK(4)...
-ecc = rp.coding.Hamming(7, 4)       # or rp.coding.load("block", "hamming.7_4")
+ecc = rp.coding.Hamming(7, 4)       # or rp.coding.load("block", "hamming/7_4")
 scr = rp.scram.load("fdt", "v35")
 
 msg = rp.Data(b"Hello World!")
