@@ -26,3 +26,6 @@ logs/
 !.vscode/extensions.json
 !.vscode/*.code-snippets
 !*.code-workspace
+
+# Built by pdoc (CI/CD publishes it; builder.py -d writes it here)
+docs/

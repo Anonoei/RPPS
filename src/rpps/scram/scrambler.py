@@ -2,7 +2,7 @@
 from abc import abstractmethod
 import numpy as np
 
-from pyboiler.logger import Logger, Level
+from ..logger import Logger
 
 from . import base
 from . import _config

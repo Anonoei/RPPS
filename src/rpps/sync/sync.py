@@ -1,19 +1,5 @@
-from ..base import Meta
+from ..base import Meta, Stage
 
-class Sync:
-    __slots__ = ("impl")
-    def __init__(self, impl):
-        self.impl = impl
-    def state(self, meta: Meta):
-        """The carried state of the wrapped implementation (est, freq, pha...)"""
-        return meta.state_of(self.impl)
-
-    def __radd__(self, meta: Meta):
-        meta = self.impl.burst(meta)
-        meta.finish()
-        return meta
-
-    def __rsub__(self, meta: Meta):
-        meta = self.impl.burst(meta)
-        meta.finish()
-        return meta
+def Sync(impl):
+    """Kept for older code: synchronizers are stages now, so `block + Costas(...)` works directly"""
+    return impl

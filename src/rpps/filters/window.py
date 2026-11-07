@@ -16,12 +16,13 @@ class Window(Filter):
     def run(self, N):
         return self.window(N)
 
-    def __radd__(self, meta: Meta):
+    def step(self, samples, st, meta: Meta):
+        """Weight each block by the window (one window per block: N, or the block's length)"""
         if self.N is None:
-            meta.obj = meta.obj * self.run(len(meta.obj))
-        else:
-            meta.obj = meta.obj * self.w
-        return meta
+            return samples * self.run(len(samples))
+        if len(samples) != self.N:
+            raise ValueError(f"Window of {self.N} was given a block of {len(samples)}")
+        return samples * self.w
 
     @staticmethod
     def s():

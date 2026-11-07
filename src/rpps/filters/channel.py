@@ -26,7 +26,7 @@ def channel(mid, width, Fs, oversample=3.0, max_taps=401, largest=16):
 
     Decimates in several stages, each with an anti-alias filter just sharp enough for its own rate, so
     a 100 kHz signal in a 100 MS/s capture needs a few short filters rather than one of thousands of taps.
-    Returns (stages, Fs_out, total decimation). The stages are stateful: feed them consecutive blocks.
+    Returns (pipeline, Fs_out, total decimation): `block + pipeline`. State carries across consecutive blocks of a stream.
     """
     from ..sample.down import Decimate # Late: sample imports filters
     D = max(1, int(Fs/(oversample*width)))
@@ -44,4 +44,5 @@ def channel(mid, width, Fs, oversample=3.0, max_taps=401, largest=16):
         stages.append(low_pass(taps, 0.5*(edge + stop), fs))
         stages.append(Decimate(f))
         fs = out
-    return tuple(stages), fs, D
+    from ..base import Pipeline
+    return Pipeline(*stages), fs, D

@@ -21,6 +21,7 @@ class dtype(Enum):
     # Analog
     SAMPLES = (1, np.complex64)
     SYMBOLS = (11, np.complex64)
+    REAL = (12, np.float32) # Real samples (demodulated FM, audio...)
 
     # Mod
     MAPPED = (2, None)

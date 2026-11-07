@@ -93,7 +93,8 @@ def loop(sink):
     loop_min = np.inf
     loop_max = -np.inf
 
-    for samps in sink(Prop.num_samps):
+    for blk in sink(Prop.num_samps):
+        samps = blk.data
         ts = time.perf_counter()
         snips = rp.dsp.stft.stft(samps, Prop.nfft, Prop.overlap, Prop.window)
         psds = rp.dsp.stft.psd(snips, Prop.Fs, Prop.vbw)

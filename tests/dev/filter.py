@@ -5,12 +5,11 @@ import matplotlib.pyplot as plt
 def main():
     num_samps = 256
     sink = rp.serial.File("cf64", "data/fm_rds_250k_1Msamples.iq")
-    meta = rp.Meta(Fs=250e3, cf=99.5e6)
 
     sink.open()
     samps = sink.read(num_samps)
     sink.close()
-    low_pass = rp.filters.low_pass(101, 7.5e3, meta.Fs) # Lowpass, isolate RDS
+    low_pass = rp.filters.low_pass(101, 7.5e3, 250e3) # Lowpass, isolate RDS
     low_pass = low_pass.filt
 
     taps = 40

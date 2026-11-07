@@ -29,5 +29,5 @@ class FIR(Filter):
 
     def step(self, samples, st, meta: Meta):
         out, st.hist = self.stream(samples, st.taps, st.hist)
-        meta.stream.delay += (len(st.taps)-1) / 2 / meta.Fs
+        meta.delay += (len(st.taps)-1) / 2 / meta.Fs
         return out

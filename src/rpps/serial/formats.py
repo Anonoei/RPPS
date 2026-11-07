@@ -1,56 +1,35 @@
-from enum import Enum
+"""Sample file formats, as pysdrlib names them: a complex format is named by the bits of one whole sample
 
-from . import io as IO
+    ci8t ci16t ci32t   complex two's compliment integers (4, 8 and 16 bit I and Q)
+    cf32 cf64 cf128    complex floats (cf64 is two float32: numpy's complex64)
+    i8t.. ui8.. f32..  real samples
+`rp.serial.formats.ls()` lists them.
+"""
+import numpy as np
+import pysdrlib
+from pysdrlib.base import io as _io
 
-class Formats(Enum):
-    """IO Format wrapper"""
-    # Integer
-    i8 = IO.i8
-    i16 = IO.i16
-    i32 = IO.i32
-    ui8 = IO.ui8
-    ui16 = IO.ui16
-    ui32 = IO.ui32
-    i4 = IO.i4
-    # Float
-    f16 = IO.f16
-    f32 = IO.f32
-    f64 = IO.f64
-    # Complex
-    ci4 = cs4 = IO.ci4
-    ci8 = cs8 = IO.ci8
-    ci16 = cs16 = IO.ci16
+Formats = pysdrlib.Formats
 
-    cf32 = IO.cf32
-    cf64 = IO.cf64
+def get(fmt):
+    """A pysdrlib Formats member from its name (or a member)"""
+    if isinstance(fmt, Formats):
+        return fmt
+    try:
+        return Formats[fmt]
+    except KeyError:
+        raise ValueError(f"Unknown format {fmt!r}, have {ls()}") from None
 
-    def read(self, io, count):
-        """Input as format"""
-        return self.value.read(io, count)
+def ls():
+    """Names that can be used for a format"""
+    return list(Formats.__members__)
 
-    def write(self, io, data):
-        """Output as format"""
-        self.value.write(io, data)
-
-    @property
-    def bits(self):
-        """Return size of format in bits"""
-        return self.value.SIZE
-
-    @property
-    def bytes(self):
-        """Return size of format in bytes"""
-        return self.value.SIZE // 8
-    @property
-    def is_complex(self):
-        if issubclass(self.value, IO.ComplexFormat):
-            return True
-        return False
-
-    @classmethod
-    def ls(cls):
-        return [fmt.name for fmt in cls]
-
-    @classmethod
-    def get(cls, name: str):
-        return cls[name]
+def full_scale(fmt):
+    """Value that integer samples of this format map to 1.0 with (1.0 for floats)"""
+    cls = get(fmt).value
+    base = getattr(cls, "BASE", cls)
+    while getattr(base, "BASE", None) is not None:
+        base = base.BASE
+    if base.DTYPE is not None and np.dtype(base.DTYPE).kind == "f":
+        return 1.0
+    return float(2**(base.SIZE - 1))

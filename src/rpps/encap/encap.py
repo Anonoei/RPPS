@@ -1,5 +1,6 @@
 """Encapsulation parent classes"""
-from pyboiler.logger import Logger
+from ..logger import Logger
+from ..errors import ConfigError
 
 from .. import _config
 from ..coding.coding import Coding
@@ -19,7 +20,7 @@ class Encap(Coding):
             return CRC.load(name, obj)
         if t == "hdlc":
             return Frame.load(name, obj)
-        raise NotImplementedError(f"Unknown encapsulation: {name}, {obj}")
+        raise ConfigError(f"Unknown encapsulation type {t!r} in {name}: have crc, hdlc")
 
 
 def _int(obj, key, default=0):

@@ -9,8 +9,9 @@ CRC and framing are in rpps.encap.
 from pathlib import Path
 import json
 
-from pyboiler.config import config
 
+from .. import _config
+from ..errors import ConfigError
 from . import coding
 from . import types as types
 
@@ -20,22 +21,24 @@ _LOADERS = {"block": coding.Block, "conv": coding.Convolutional, "interleave": c
 
 def root() -> Path:
     """Directory holding the coding definitions"""
-    return config().PATH_CONFIG / "coding"  # type: ignore
+    return _config.find_config("coding")
 
 def ls(path=None):
     """List available FEC definitions by family: {"block/rs": [names], "conv/dvbs": [names], ...}"""
-    base = Path(path) if path else root()
+    bases = [Path(path)] if path else _config.layers("coding")
     codings = {}
-    for kind in sorted(base.iterdir()):
-        if not kind.is_dir():
-            continue
-        direct = sorted(f.stem for f in kind.iterdir() if f.suffix == ".json")
-        if direct:
-            codings[kind.name] = direct
-        for sub in sorted(kind.iterdir()):
-            if sub.is_dir():
-                codings[f"{kind.name}/{sub.name}"] = sorted(f.stem for f in sub.iterdir() if f.suffix == ".json")
-    return codings
+    for base in bases:
+        for kind in sorted(base.iterdir()):
+            if not kind.is_dir():
+                continue
+            direct = sorted(f.stem for f in kind.iterdir() if f.suffix == ".json")
+            if direct:
+                codings[kind.name] = sorted(set(codings.get(kind.name, [])) | set(direct))
+            for sub in sorted(kind.iterdir()):
+                if sub.is_dir():
+                    key = f"{kind.name}/{sub.name}"
+                    codings[key] = sorted(set(codings.get(key, [])) | {f.stem for f in sub.iterdir() if f.suffix == ".json"})
+    return dict(sorted(codings.items()))
 
 def names(kind: str, sub=None, path=None):
     """Names of the definitions of a kind ("block", "conv", "interleave"), across families, or just one family"""
@@ -51,18 +54,19 @@ def init(name: str, obj: dict, decoder=None) -> coding.Coding:
     """Initialize coding. decoder: a decoder type to use instead of the definition's (see `coding.Block.load`)"""
     base = ALIAS.get(obj["base"], obj["base"])
     if base not in _LOADERS:
-        raise NotImplementedError(f"Unknown coding: {name}, {obj}")
+        raise ConfigError(f"Unknown coding base {obj.get('base')!r} in {name}: have {sorted(_LOADERS)}")
     return _LOADERS[base].load(name, obj, decoder)
 
 def find(folder: str, name: str, path=None) -> Path:
     """File of a definition: config/coding/<kind>/[<family>/]<name>.json"""
-    base = (Path(path) if path else root()) / ALIAS.get(folder, folder)
+    bases = [Path(path) / ALIAS.get(folder, folder)] if path else [d / ALIAS.get(folder, folder) for d in _config.layers("coding")]
     fname = f"{name.lower()}.json"
-    if (base / fname).exists():
-        return base / fname
-    for f in sorted(base.rglob(fname)):
-        return f
-    raise FileNotFoundError(f"{folder}/{name}: no {fname} under {base}")
+    for base in bases:
+        if (base / fname).exists():
+            return base / fname
+        for f in sorted(base.rglob(fname)):
+            return f
+    raise FileNotFoundError(f"{folder}/{name}: no {fname} under {', '.join(map(str, bases))}")
 
 def load(folder: str, name: str, path=None, decoder=None) -> coding.Coding:
     """Load a coding from config/coding/<kind>/**/<name>.json (or from `path`/<kind>/ instead of config/coding)

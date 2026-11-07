@@ -9,16 +9,22 @@ A chain lists stages by kind and config name:
     {"crc": "crc32_mpeg2"}                          config/encap/crc
 The decode result is a (packets, bytes) array. Hard bits can be inverted by a symbol ambiguity: with
 "polarity": "auto" both are tried and the one the block code accepts is kept.
+
+A chain is a pipe, so it sits in the operator syntax after a demodulator (soft decisions go to the first Viterbi stage):
+
+    chain = rp.Chain.load("dvbs_3_4")
+    packets = syms / mod / chain          # bytes, packets back to back; chain.stats(packets) says how it went
+    syms = rp.Data(ts_bytes) * chain * mod
 """
 import json
 
 import numpy as np
 
-import json as _json
-from pyboiler.config import config
 
-from . import coding, encap
+from . import coding, encap, _config
 from .analysis import fec
+from .base import Pipe, Digital, Mod, dtype, pproc
+from .base.data import _Data
 
 class Result:
     __slots__ = ("packets", "stats")
@@ -27,15 +33,17 @@ class Result:
     def __repr__(self):
         return f"<Result {len(self.packets)} packets {self.stats}>"
 
-class Chain:
+class Chain(Pipe):
     def __init__(self, name, stages, polarity="auto", packet=None):
         self.name, self.stages, self.polarity, self.packet = name, stages, polarity, packet
 
     @staticmethod
     def load(name, path=None):
         from pathlib import Path
-        base = Path(path) if path else config().PATH_CONFIG / "chain" # type: ignore
-        obj = json.loads((base / f"{name}.json").read_text())
+        file = Path(path) / f"{name}.json" if path else _config.find_file("chain", f"{name}.json")
+        if file is None or not file.exists():
+            raise FileNotFoundError(f"chain/{name}: not found")
+        obj = json.loads(file.read_text())
         return Chain(name, obj["stages"], obj.get("polarity", "auto"), obj.get("packet"))
 
     def _load(self, kind, ref):
@@ -46,9 +54,37 @@ class Chain:
             return encap.load("crc", ref)
         return coding.load(kind, ref) # block | conv | interleave
 
+    def __str__(self):
+        return f"Chain:{self.name}"
+
+    def info_bytes(self):
+        """Bytes of one packet going in (the first stage of the encoding that has a size: scrambler frame or block code)"""
+        for st in reversed(self.stages):
+            kind, ref = next(iter(st.items()))
+            if kind == "scram":
+                frame = self._load("scram", ref).frame
+                if frame:
+                    return frame["sync_period"]
+            elif kind == "block":
+                return self._load("block", ref)._enc.num
+        raise ValueError(f"Chain {self.name} doesn't say how many bytes make a packet")
+
+    def stats(self, data):
+        """What the decoding that produced `data` reported (sync, corrected symbols...)"""
+        return data.ctx.get((self, "stats"), {})
+
     # --- decode ---
     def decode(self, bits, soft=None):
-        """Run the chain on the received bits (or LLRs for the first conv stage). Returns a Result"""
+        """Run the chain on the received bits (or LLRs for the first conv stage)
+
+        Given an array this returns a Result. Given data from a demodulator it returns the packets as bytes (a Digital)"""
+        if isinstance(bits, _Data):
+            x = bits.get_soft() if isinstance(bits, Mod) and bits.is_soft else bits.bits()
+            res = self.decode(x)
+            out = Digital.from_bytes(np.asarray(res.packets, dtype=np.uint8).reshape(-1), pproc.CODING, dtype.BYTES,
+                                     ctx=dict(bits.ctx), meta=bits.meta)
+            out.ctx[(self, "stats")] = res.stats
+            return out
         stats = {}
         stages = list(self.stages)
         x = np.asarray(bits)
@@ -76,10 +112,18 @@ class Chain:
         for pol in ((0, 1) if self.polarity == "auto" else (int(self.polarity),)):
             res = self._bytes(np.asarray(x, dtype=np.uint8) ^ pol, stages)
             res.stats["polarity"] = pol
-            if best is None or res.stats.get("rs_ok", 0) > best.stats.get("rs_ok", 0):
+            if best is None or self._score(res) > self._score(best):
                 best = res
         best.stats.update(stats)
         return best
+
+    @staticmethod
+    def _score(res):
+        """How well the stages accepted a polarity: the block code's success, else the CRC's, else the alignment"""
+        for key in ("rs_ok", "crc_ok", "sync"):
+            if key in res.stats:
+                return res.stats[key]
+        return 0.0
 
     def _bytes(self, bits, stages):
         stats = {}
@@ -96,7 +140,7 @@ class Chain:
             elif kind == "interleave":
                 il = self._load("interleave", ref)._enc
                 arr = il.decode(arr, symbols=True)
-                arr = arr[(il.I - 1)*il.M*il.I:]
+                arr = arr[il.delay:] # The deinterleaver's first outputs are its empty delay lines
                 arr = arr[:len(arr)//self.packet*self.packet] if self.packet else arr
             elif kind == "block":
                 rs = self._load("block", ref)._enc
@@ -130,13 +174,25 @@ class Chain:
         sel = arr[s0:s0 + groups*per].astype(np.uint8)
         bits = np.unpackbits(sel.reshape(-1))
         out = np.packbits(scram.decode(bits)).reshape(-1, sel.shape[1])
-        out[::per, 0] = 0x47 # The inverted sync becomes a normal one again
+        out[::per, 0] = scram.frame.get("sync", marker ^ 0xFF) # The inverted sync byte becomes a normal one again
         stats["frames"] = groups
         return out
 
+    def __rtruediv__(self, data):
+        return self.decode(data)
+
+    def __rmul__(self, data):
+        return self.encode(data)
+
     # --- encode ---
     def encode(self, packets):
-        """Packets (N, bytes) -> coded bits (the chain run backwards)"""
+        """Packets (N, bytes) -> coded bits (the chain run backwards). Given data, bytes in and bits out (a Digital)"""
+        if isinstance(packets, _Data):
+            size = self.info_bytes()
+            raw = packets.as_bytes().data if isinstance(packets, Digital) else packets.data
+            n = len(raw)//size*size
+            bits = self.encode(np.asarray(raw[:n]).reshape(-1, size))
+            return Digital.from_bits(bits.astype(bool), pproc.CODING, dtype.BITS, ctx=dict(packets.ctx), meta=packets.meta)
         x = np.asarray(packets, dtype=np.uint8)
         for st in reversed(self.stages):
             kind, ref = next(iter(st.items()))

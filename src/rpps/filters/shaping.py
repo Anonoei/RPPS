@@ -5,9 +5,11 @@ from .filter import FIR, Meta
 def rrc_pulse(t, beta=0.35):
     """Root-raised-cosine pulse, t in symbols. Handles the t=0 and |t|=1/(4*beta) limits"""
     t = np.asarray(t, dtype=np.float64)
+    if beta == 0:
+        return np.sinc(t)
     out = np.empty_like(t)
     at0 = np.abs(t) < 1e-9
-    atS = np.abs(np.abs(t) - 1/(4*beta)) < 1e-9 if beta > 0 else np.zeros_like(at0)
+    atS = np.abs(np.abs(t) - 1/(4*beta)) < 1e-9
     rest = ~(at0 | atS)
     out[at0] = 1.0 + beta*(4/np.pi - 1)
     out[atS] = beta/np.sqrt(2) * (
@@ -26,75 +28,47 @@ class ShapingFilter(FIR):
         """One-shot (stateless) filtering"""
         return np.convolve(samples, self.pulse, mode="same")
 
+def _centred(taps, sps):
+    """Time axis, in symbols, of `taps` samples centred on the middle of the pulse"""
+    return (np.arange(taps) - (taps - 1)/2)/sps
+
+def _default_taps(sps, span=25):
+    taps = int(round(sps*span))
+    return taps | 1 # Odd, so there is a centre tap
+
+def rc_pulse(t, beta=0.35):
+    """Raised-cosine pulse, t in symbols. Handles the |t| = 1/(2*beta) limit"""
+    t = np.asarray(t, dtype=np.float64)
+    if beta == 0:
+        return np.sinc(t)
+    den = 1 - (2*beta*t)**2
+    sing = np.abs(den) < 1e-9
+    safe = np.where(sing, 1.0, den)
+    out = np.sinc(t)*np.cos(np.pi*beta*t)/safe
+    out[sing] = np.pi/4*np.sinc(1/(2*beta))
+    return out
+
 class ShapingRRC(ShapingFilter):
     def __init__(self, taps, sps, beta=0.35, gain=1.0):
         """Root-Raised Cosine shaping
-        taps: number of taps for FIR
+        taps: number of taps for FIR (None: 25 symbols)
         sps: samples per symbol (sample width for 0 ISI)
-        beta: roll off factor [0.35,0>=beta<=1]
+        beta: roll off factor [0.35, 0 <= beta <= 1]
         gain: filter gain [1]
         """
-        # # Correct (slow) implementation
-        # t = np.arange(-taps//2,taps//2)
-        # i0 = t==0
-        # i1 = (t==(sps/(4*beta))) | (t==-(sps/(4*beta)))
-        # i2 = ~(i0 | i1)
-
-        # h = np.zeros(taps)
-        # h[i0] = 1/sps*(1+beta*(4/np.pi - 1))
-        # h[i1] = beta/(sps*np.sqrt(2)) * (
-        #             (1+2/np.pi) * np.sin(np.pi/(4*beta)) + \
-        #             (1-2/np.pi) * np.cos(np.pi/(4*beta))
-        #         )
-        # h[i2] = 1/sps*((
-        #             np.sin(np.pi*t[i2]/sps * (1-beta)) \
-        #             + 4*beta*t[i2]/sps * \
-        #             np.cos(np.pi*t[i2]/sps * (1+beta))) / \
-        #             (np.pi*t[i2]/sps* (1 - (4*beta*t[i2]/sps)**2))
-        #         )
-
-        if taps is None:
-            taps = sps*25
-            if taps % 2 == 0:
-                taps += 1
-            # print(f"sps {sps} has taps {taps}")
-
-
-        t = np.arange(-taps//2,0, dtype=np.float32)/sps # only generate half the pulse
-        sin_arg = np.sin(np.pi * t * (1.0 - beta))
-        cos_arg = 4.0 * beta * t * np.cos(np.pi * t * (1.0 + beta))
-        denom = np.pi * t * (1.0 - 16.0 * (beta * t) * (beta * t))
-        h = 1/sps*(sin_arg+cos_arg)/denom
-
-        h = np.concat((h, [1/sps*(1+beta*(4/np.pi -1))], h[::-1]))
-        # hc = np.zeros(len(h), dtype=np.complex64)
-        # hc = h+1j*h
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.plot(h)
-        # plt.show()
-        # exit()
-        self.pulse = gain*h
+        taps = _default_taps(sps) if taps is None else int(taps)
+        self.pulse = gain/sps*rrc_pulse(_centred(taps, sps), beta)
 
 class ShapingRC(ShapingFilter):
     def __init__(self, taps, sps, beta=0.35, gain=1.0):
         """Raised Cosine shaping
-        taps: number of taps for FIR
+        taps: number of taps for FIR (None: 25 symbols)
         sps: samples per symbol (sample width for 0 ISI)
-        beta: roll off factor [0.35,0>=beta<=1]
+        beta: roll off factor [0.35, 0 <= beta <= 1]
         gain: filter gain [1]
         """
-        t = np.arange(-taps//2+1,1) # only generate half the pulse
-
-        numer = np.cos((np.pi*beta*t)/sps)
-        denom = 1 - (2*beta*t/sps)**2
-        h = np.sinc(t/sps) * numer/denom
-
-        h = np.concat((h[:-1], h[::-1]))
-        # hc = np.zeros(len(h), dtype=np.complex64)
-        # hc = h+1j*h
-
-        self.pulse = gain*h
+        taps = _default_taps(sps) if taps is None else int(taps)
+        self.pulse = gain*rc_pulse(_centred(taps, sps), beta)
 
 class ShapingSinc(ShapingFilter):
     def __init__(self, taps, sps, gain=1.0):
@@ -161,7 +135,6 @@ class ShapingMatRRC(ShapingFilter):
                 segment = np.zeros(self.N)
                 num_pulse = len(samples)-s_idx
                 segment[:num_pulse] = samples[s_idx:]
-                print(f"Pulsing {len(segment)}")
                 pulsed = self.run(segment)
                 out[i*(self.N*self.sps):] = pulsed[:num_pulse*self.sps]
         return out

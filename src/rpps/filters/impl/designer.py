@@ -54,8 +54,8 @@ def designer(taps, cut_off,
     cutoff = np.asarray(cut_off, dtype=np.float32)
     cutoff = cutoff.reshape((-1)) / float(nyq)
 
-    pass_nyq = np.size(cutoff) % 2 == 0 == pass_zero
-    cutoff = np.concat((np.zeros(int(pass_zero)), cutoff, np.ones(int(pass_nyq))))
+    pass_nyq = bool(np.size(cutoff) & 1) ^ bool(pass_zero) # As scipy.signal.firwin
+    cutoff = np.concatenate((np.zeros(int(pass_zero)), cutoff, np.ones(int(pass_nyq))))
 
     bands = np.reshape(cutoff, (-1, 2))
     alpha = 0.5 * (taps-1)

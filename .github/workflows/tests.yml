@@ -1,0 +1,98 @@
+name: tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  MPLBACKEND: Agg
+
+jobs:
+  pytest:
+    name: pytest (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install pysdrlib
+        # From PyPI once a release with File(path, fmt), partial reads and FileSink exists, otherwise from main
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pysdrlib>=0.3.1" || pip install "git+https://github.com/Anonoei/pysdrlib.git"
+      - name: Install test requirements
+        run: pip install pytest numpy scipy matplotlib
+      - name: Fast tests
+        run: python -m pytest -q -m "not slow" --durations=10
+      - name: Slow tests (chain decoding)
+        if: matrix.python == '3.12'
+        run: python -m pytest -q -m slow
+
+  package:
+    # The built wheel has to carry config/ and run the README example from a clean environment
+    name: wheel and sdist
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip build
+      - name: Build sdist, then the wheel from the sdist
+        run: python -m build
+      - name: Wheel carries the definitions
+        run: |
+          python - <<'PY'
+          import glob, zipfile, tarfile
+          whl = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
+          sdist = tarfile.open(glob.glob("dist/*.tar.gz")[0]).getnames()
+          for name, files in (("wheel", whl), ("sdist", sdist)):
+              n = sum(1 for f in files if "config/" in f and f.endswith(".json"))
+              print(name, n, "definitions")
+              assert n > 40, f"{name} is missing config/"
+          PY
+      - name: Install into a clean environment and run the examples
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install "pysdrlib>=0.3.1" dist/*.whl || /tmp/clean/bin/pip install "git+https://github.com/Anonoei/pysdrlib.git" dist/*.whl
+          cd /tmp
+          /tmp/clean/bin/python "$GITHUB_WORKSPACE/tests/example.py"
+          /tmp/clean/bin/python "$GITHUB_WORKSPACE/tests/example_ls.py" > /dev/null
+          /tmp/clean/bin/python -c "import rpps, sys; assert 'matplotlib' not in sys.modules"
+
+  docs:
+    # Same build as deploy-docs, so a docstring that breaks pdoc fails the pull request
+    name: docs build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip pdoc3
+          pip install "pysdrlib>=0.3.1" || pip install "git+https://github.com/Anonoei/pysdrlib.git"
+          pip install .
+      - run: python -m pdoc -o docs --html --force src/rpps
+      - run: test -f docs/rpps/index.html

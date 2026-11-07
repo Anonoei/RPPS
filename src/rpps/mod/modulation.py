@@ -1,4 +1,4 @@
-from pyboiler.logger import Logger
+from ..logger import Logger
 
 from . import base
 from . import _config

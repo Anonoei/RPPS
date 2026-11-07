@@ -10,3 +10,4 @@ from .serial import ls, names, load, init, find, generate
 
 from .coding import Coding, Block, Convolutional, Interleaver
 
+from .factory import Hamming, Repetition, RS, Conv

@@ -1,11 +1,11 @@
 from types import SimpleNamespace
 
 import numpy as np
-from ..sync import Sync, Meta
+from ...base import Meta, Stage
 
 from ...sample import up
 
-class MM:
+class MM(Stage):
     """Mueller & Muller timing recovery
 
     The whole block is interpolated once, then the optimal sample is picked from
@@ -14,18 +14,23 @@ class MM:
 
     Settings live here, the loop state (est, history...) lives in `meta.state_of(mm)`.
 
+    ted: "mm" (Mueller & Muller, decision directed) or "gardner" (needs no decisions, works for any modulation,
+        wants at least 2 samples per symbol)
     biphase: Biphase (Manchester) symbols, after their matched filter, have two power
         peaks per symbol and M&M is happy at the weaker one. Use early-late on power,
         and hop half a symbol if the other peak is stronger.
     """
     __slots__ = (
         "alpha", "est",
-        "interp", "biphase"
+        "interp", "biphase", "ted"
     )
     GUARD = 8 # Input samples at the block end the sinc interpolation can't be trusted for
     WARMUP = 2 # Outputs dropped while the M&M history fills
 
-    def __init__(self, alpha=0.3, est=0.0, interp=32, biphase=False):
+    def __init__(self, alpha=0.3, est=0.0, interp=32, biphase=False, ted="mm"):
+        if ted not in ("mm", "gardner"):
+            raise ValueError(f"ted must be mm or gardner, not {ted!r}")
+        self.ted = ted
         self.alpha = alpha
         self.est = est # Initial estimate
         self.interp = up.Sinc(interp)
@@ -41,13 +46,12 @@ class MM:
             pw=0.0, pw_half=0.0
         )
 
-    def burst(self, meta: Meta):
-        st = meta.state_of(self)
+    def step(self, samples, st, meta: Meta):
         sps = meta.isps
         if sps < 1:
             raise ValueError(f"MM needs meta.sps >= 1, got {meta.sps}")
         ratio = self.interp.ratio
-        samples = np.copy(meta.obj)
+        samples = np.copy(samples)
         if st.buffer is not None:
             samples = np.concatenate((st.buffer, samples), axis=0)
         N = len(samples)
@@ -75,6 +79,10 @@ class MM:
                     early = abs(interp[opt_idx - d])**2
                     late = abs(interp[opt_idx + d])**2
                     err = (late - early) / (early + late + 1e-12)
+                elif self.ted == "gardner":
+                    mid = interp[opt_idx - (sps * ratio) // 2]
+                    self._clock(st, val, 0)
+                    err = -np.real((st.outs[0] - st.outs[1]) * np.conj(mid)) / (st.pw + 1e-12)
                 else:
                     self._clock(st, val, int(np.real(val) > 0) + 1j*int(np.imag(val) > 0))
                     err = self._error(st) / (np.sqrt(st.pw) + 1e-12) # Error scales with amplitude
@@ -97,8 +105,7 @@ class MM:
             st.skip -= drop
         meta.op.Fs = meta.Fs / sps
         meta.op.sps = 1
-        meta.obj = out
-        return meta
+        return out
 
     @staticmethod
     def _error(st):

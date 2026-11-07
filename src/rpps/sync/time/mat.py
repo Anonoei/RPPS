@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from ..sync import Sync, Meta
+from ...base import Meta, Stage
 from ...filters.shaping import rrc_pulse
 
 def matrix_mf(x, centres, sps, beta=0.2, span=8):
@@ -47,7 +47,7 @@ def best_tau(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
     d = 0.0 if den == 0 else 0.5*(a - c_)/den
     return ((g + d)*sps/grid) % sps, float(b)
 
-class Mat:
+class Mat(Stage):
     """Matrix matched filter and symbol timing
 
     Needs meta.stream.det (see rpps.analysis.modulation) for beta and the timing offset. Symbols are
@@ -65,26 +65,27 @@ class Mat:
         self.track = track
 
     def new_state(self, meta: Meta):
-        det = meta.stream.det
-        if det is None:
-            raise RuntimeError("Mat needs a detection (rpps.analysis.modulation) in meta.stream.det")
-        sps = meta.sps
-        S = self.span*sps
-        t0 = det.tau + np.ceil((S + 5 - det.tau)/sps)*sps
-        return SimpleNamespace(buffer=None, t_next=t0, beta=self.beta or det.beta, base=0, det=det)
+        return SimpleNamespace(buffer=None, t_next=0.0, beta=self.beta, base=0, det=None) # det None: not started
 
-    def burst(self, meta: Meta):
+    def _start(self, st, meta: Meta):
+        det = meta.stream.det
+        S = self.span*meta.sps
+        st.t_next = det.tau + np.ceil((S + 5 - det.tau)/meta.sps)*meta.sps
+        st.beta = self.beta or det.beta
+        st.det = det
+
+    def step(self, samples, st, meta: Meta):
         if meta.stream.det is None: # Still acquiring
-            meta.obj = meta.obj[:0]
-            return meta
-        st = meta.state_of(self)
+            return samples[:0]
+        if st.det is None:
+            self._start(st, meta)
         sps = meta.sps
         if st.det is not meta.stream.det:
             # Refined estimates: move to their lattice (absolute index = st.base + buffer index)
             st.det = meta.stream.det
             k = np.ceil((st.base + st.t_next - st.det.tau)/sps)
             st.t_next = st.det.tau + k*sps - st.base
-        samples = meta.obj if st.buffer is None else np.concatenate((st.buffer, meta.obj))
+        samples = samples if st.buffer is None else np.concatenate((st.buffer, samples))
         centres = centres_in(len(samples), st.t_next, sps, self.span)
 
         out = np.zeros(0, dtype=np.complex64)
@@ -109,5 +110,4 @@ class Mat:
 
         meta.op.Fs = meta.Fs / sps
         meta.op.sps = 1
-        meta.obj = out.astype(np.complex64, copy=False)
-        return meta
+        return out.astype(np.complex64, copy=False)

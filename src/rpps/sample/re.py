@@ -29,7 +29,7 @@ class Resample(Sample):
         out = self.run(samples, st)
         meta.op.Fs *= self.up/self.down
         meta.op.sps *= self.up/self.down
-        meta.stream.delay += (len(self.taps)-1) / 2 / (meta.Fs * self.up)
+        meta.delay += (len(self.taps)-1) / 2 / (meta.Fs * self.up)
         return out
 
 class Polyphase(Resample):

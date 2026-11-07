@@ -3,7 +3,8 @@ from abc import abstractmethod
 from enum import Enum
 import numpy as np
 
-from pyboiler.logger import Logger, Level
+from ..logger import Logger
+from ..errors import ConfigError
 
 from . import base
 from .. import _config
@@ -129,7 +130,7 @@ def _code_of(obj):
     try:
         return types.REGISTRY[obj["type"]]
     except KeyError:
-        raise NotImplementedError(f"Unknown coding type {obj['type']!r}, have {sorted(types.REGISTRY)}") from None
+        raise ConfigError(f"Unknown coding type {obj['type']!r}, have {sorted(types.REGISTRY)}") from None
 
 DEFAULT_DECODER = {"linear": "trellis"} # What decodes a code type when its definition doesn't say
 
@@ -160,7 +161,7 @@ class Convolutional(Coding):
     def load(name, obj, decoder=None):
         """decoder: use this decoder type (viterbi, bcjr) with the definition's decode parameters"""
         if obj["type"] != "split":
-            raise NotImplementedError(f"{name} is not implemented")
+            raise ConfigError(f"{name}: a convolutional definition is type 'split' (encode + decode), not {obj['type']!r}")
         log = Logger().Child("Coding", _config.LOG_CODING).Child(name)
         e, d = dict(obj["encode"]), dict(obj["decode"])
         if decoder is not None:

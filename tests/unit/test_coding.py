@@ -36,13 +36,12 @@ def test_block_rate_matches_properties(name):
     assert c.e_rate == pytest.approx(c.e_num/c.e_den)
     assert 0 < c.e_rate <= 1
 
-def test_hamming_syndrome_decoder_only_detects():
+def test_linear_syndrome_decoder_corrects_one_error_per_block():
     c = rp.coding.load("block", "hamming.7_4", decoder="linear")._dec
     msg = np.array([1, 0, 1, 1], dtype=bool)
     coded = c.encode(msg).copy()
     coded[2] ^= True
-    with pytest.raises(NotImplementedError): # The plain syndrome check can't locate the error
-        c.decode(coded)
+    assert np.array_equal(c.decode(coded), msg)
 
 def test_rs_corrects_errors(rng):
     rs = rp.coding.load("block", "rs.204_188")._enc

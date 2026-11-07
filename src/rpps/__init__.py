@@ -10,24 +10,18 @@ PyPI: https://pypi.org/project/rpps/
 """
 
 __version__ = "0.2.0"
-__author__ = "Anonoei <dev@anonoei.com>"
+__author__ = "Anonoei <to+dev@an0.us>"
 
-from pathlib import Path
-
-from pyboiler.logger import Logger, Level
-from pyboiler.config import config
-
-# Definitions (config/) live next to src/ in a checkout; otherwise they're looked up from the running project's root
-_checkout = Path(__file__).resolve().parents[2] / "config"
-config().PATH_CONFIG = _checkout if _checkout.is_dir() else config().PATH_ROOT / "config" # type: ignore
-
-Logger("RPPS", Level.TRACE)
+from . import logger
+from . import errors
+from . import _config
+from ._config import add_config_path
 
 # Import helpers/globals
 from .base.types import pproc, dtype
 from .base import data
 from .base.data import Data
-from .base.meta import Meta
+from .base import Pipeline, Pipe, Stage, Stream
 
 from . import base
 from . import math
@@ -44,9 +38,18 @@ from . import scram
 from . import coding
 from . import encap
 from . import chain
+from . import channel
+from . import equalize
+from . import demod
 from .chain import Chain
 from . import mod
 
 from . import serial
 
-from . import viz
+
+def __getattr__(name):
+    # Plotting pulls in matplotlib, so it's loaded on first use (rp.viz)
+    if name == "viz":
+        import importlib
+        return importlib.import_module(".viz", __name__)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

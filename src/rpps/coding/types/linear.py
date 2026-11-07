@@ -3,6 +3,7 @@ import numpy as np
 from ._code import _code, register
 
 from ..blocker import block, unblock
+from ...errors import DecodeError
 
 @register("linear")
 class linear(_code):
@@ -32,18 +33,16 @@ class linear(_code):
         return encoded.astype(bool)
 
     def decode(self, bits: np.ndarray):
-        blocks = block(bits, self.den)
+        """Hard decode by syndrome: corrects a single bit error (any more raises DecodeError)"""
+        blocks = block(bits, self.den).astype(np.uint8)
         self.log.trace(f"decoding {len(bits)}, {blocks.shape}")
-
-        decoded = np.empty((len(blocks), self.den - self.num), dtype=int)
-
-        for i, blk in enumerate(blocks):
-            decoded[i] = np.matmul(blk.astype(int), self.check)
-
-        decoded = unblock(decoded)
-        self.log.trace(f"decoded {len(decoded)}")
-        parity_bits = decoded % 2
-        if sum(parity_bits) == 0:
-            return unblock(blocks[:,0:self.num])
-        print(f"{parity_bits}")
-        raise NotImplementedError("Bit error!")
+        synd = (blocks.astype(int) @ self.check.astype(int)) % 2 # (blocks, n-k)
+        bad = np.nonzero(synd.any(axis=1))[0]
+        if len(bad):
+            cols = {tuple(row): i for i, row in enumerate(self.check.astype(int) % 2)} # Syndrome of a flip of bit i
+            for b in bad:
+                i = cols.get(tuple(synd[b]))
+                if i is None:
+                    raise DecodeError(f"Block {b} has an uncorrectable error pattern")
+                blocks[b, i] ^= 1
+        return unblock(blocks[:, 0:self.num]).astype(bool)

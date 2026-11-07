@@ -10,4 +10,5 @@ from . import phase
 from . import time
 
 from . import agc
+from .agc import AGC
 from . import pll

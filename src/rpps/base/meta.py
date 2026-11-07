@@ -1,9 +1,11 @@
-import numpy as np
+"""Rate information and stream state that travel with data
 
-class _Meta:
-    __slots__ = (
-        "Fs", "sps", "cf"
-    )
+Users don't build these: give `rp.Data` an Fs / sps / cf and the stages take care of the rest.
+"""
+
+class Rate:
+    """Sample rate (Fs), samples per symbol (sps) and centre frequency (cf)"""
+    __slots__ = ("Fs", "sps", "cf")
     def __init__(self, Fs, sps, cf):
         self.Fs = Fs
         self.sps = sps
@@ -13,6 +15,9 @@ class _Meta:
         self.Fs = Fs
         self.sps = sps
         self.cf = cf
+
+    def copy(self):
+        return Rate(self.Fs, self.sps, self.cf)
 
     @property
     def Ts(self):
@@ -24,127 +29,97 @@ class _Meta:
 
     @property
     def isps(self):
-        return int(round(self.sps,0))
+        return int(round(self.sps, 0))
 
-class _Stream:
-    """Information that follows the stream across loops of processing"""
-    __slots__ = ("blocks", "delay", "det")
-    def __init__(self):
-        self.blocks = 0 # Loops of processing started
-        self.delay = 0.0 # Accumulated group delay, in seconds
-        self.det = None # Detection result (baud, modulation, timing, cfo...), see rpps.analysis.modulation
+    def __repr__(self):
+        return f"Rate(Fs={self.Fs}, sps={self.sps}, cf={self.cf})"
+
+class Stream:
+    """Everything that follows one source across its blocks, shared by every block (and every data derived from it)
+
+    states: the carried state of each stage (filter history, oscillator phase, loop filters...), keyed by the stage,
+        so a stage object is reusable and the same stage in two streams has two states
+    det: detection result (baud, modulation, timing, cfo...), see rpps.analysis.modulation
+    """
+    __slots__ = ("states", "det", "blocks", "src_Fs", "src_sps")
+    def __init__(self, Fs=None):
+        self.states = {}
+        self.det = None
+        self.blocks = 0 # Blocks the source has produced
+        self.src_Fs = Fs # Rate of the source
+        self.src_sps = None # sps at the source, once a stage has learned it (Acquire): the next blocks start from it
+
+    def restart(self):
+        """Forget everything: the next block starts a new stream"""
+        self.states.clear()
+        self.det = None
+        self.blocks = 0
+        self.src_sps = None
 
 class Meta:
-    """Signal information shared by every DSP operation
+    """The rate information of one block of data, as a stage sees it
 
-    Three tiers:
-        _init/op/state: Fs, sps, cf. Per loop, `reset()` returns them to the source values
-        stream: Stream-wide info (group delay, block count). Survives `reset()`
-        ctx: Per-stage carried state (filter history, oscillator phase, loop filters...).
-            Survives `reset()`. Stage settings stay on the stage, its state lives here.
-    `restart()` clears everything for a new stream.
+        Fs, sps, cf, isps, Ts: the rates of the block coming in (read-only for stages)
+        op: the rates of the block going out. A stage changes these (meta.op.Fs /= 2), the carrier applies them
+        delay: group delay of the data so far [s]. A stage adds its own
+        stream: the Stream this block belongs to (stage state, detection)
     """
-    __slots__ = (
-        "_init", "op", "state",
-        "ctx", "stream",
-        "obj"
-    )
-    def __init__(self, Fs=1.0, sps=0.0, cf=0.0):
-        self._init = _Meta(Fs, sps, cf)
-        self.op = _Meta(Fs, sps, cf)
-        self.state = _Meta(Fs, sps, cf)
-
-        self.ctx = {}
-        self.stream = _Stream()
-
-        self.obj: np.ndarray = None # type: ignore
+    __slots__ = ("state", "op", "delay", "stream")
+    def __init__(self, Fs=1.0, sps=0.0, cf=0.0, delay=0.0, stream=None):
+        self.stream = Stream(Fs) if stream is None else stream
+        if self.stream.src_Fs is None:
+            self.stream.src_Fs = Fs
+        if self.stream.src_sps is not None:
+            sps = self.stream.src_sps # A stage already learned the source's sps
+        self.state = Rate(Fs, sps, cf)
+        self.op = Rate(Fs, sps, cf)
+        self.delay = delay
 
     @property
     def Fs(self):
         return self.state.Fs
-    @Fs.setter
-    def Fs(self, Fs):
-        self.state.Fs = Fs
-        self.op.Fs = Fs
-
     @property
     def sps(self):
         return self.state.sps
-    @sps.setter
-    def sps(self, sps):
-        self.state.sps = sps
-        self.op.sps = sps
-
-    @property
-    def isps(self):
-        return self.state.isps
-
     @property
     def cf(self):
         return self.state.cf
-    @cf.setter
-    def cf(self, cf):
-        self.state.cf = cf
-        self.op.cf = cf
+    @property
+    def isps(self):
+        return self.state.isps
+    @property
+    def Ts(self):
+        return self.state.Ts
+    @property
+    def sr(self):
+        return self.state.sr
 
-    def reset(self):
-        """Start a new loop of processing. Carried stage state and stream info are kept"""
-        self.state.set(self._init.Fs, self._init.sps, self._init.cf)
-        self.op.set(self._init.Fs, self._init.sps, self._init.cf)
-        self.stream.blocks += 1
-
-    def restart(self):
-        """Start a new stream. Drops all carried stage state"""
-        self.reset()
-        self.ctx.clear()
-        self.stream = _Stream()
+    def fork(self):
+        """Meta for the data a stage produces: the output rates become the input rates. Stream is shared"""
+        m = Meta.__new__(Meta)
+        m.stream = self.stream
+        m.state = self.op.copy()
+        m.op = self.op.copy()
+        m.delay = self.delay
+        return m
 
     def calibrate_sps(self, sps):
         """Declare the sps at the current stage of the chain
 
-        `reset()` restores the source values each loop, so the source sps is derived from the
-        current sps through the Fs ratio (decimation/resampling scale both).
+        Blocks come from the source with the source's sps, so the sps at the source is worked out through the
+        Fs ratio (decimation/resampling scale both) and handed to the blocks that follow.
         """
-        self._init.sps = sps * self._init.Fs / self.state.Fs
+        self.stream.src_sps = sps * self.stream.src_Fs / self.state.Fs
         self.state.sps = sps
         self.op.sps = sps
 
     def state_of(self, stage):
         """Get (creating on first use) the carried state of a stage"""
         try:
-            return self.ctx[stage]
+            return self.stream.states[stage]
         except KeyError:
-            st = self.ctx[stage] = stage.new_state(self)
+            st = self.stream.states[stage] = stage.new_state(self)
             return st
 
-    @property
-    def delay(self):
-        """Accumulated group delay in seconds"""
-        return self.stream.delay
-
-    def set(self, Fs=None, sps=None, cf=None):
-        Fs = self.Fs if Fs is None else Fs
-        sps = self.sps if sps is None else sps
-        cf = self.cf if cf is None else cf
-        self._init.set(Fs, sps, cf)
-        self.state.set(Fs, sps, cf)
-        self.op.set(Fs, sps, cf)
-
-    def finish(self):
-        self.state.set(self.op.Fs, self.op.sps, self.op.cf)
-
-    @property
-    def Ts(self):
-        return self.state.Ts
-
     def __str__(self):
-        return f"Meta: Fs{self.state.Fs}, sps{self.state.sps}"
-
-    def str_init(self):
-        return f"Fs{self._init.Fs}, sps{self._init.sps}, cf{self._init.cf}"
-
-    def str_op(self):
-        return f"Fs{self.op.Fs}, sps{self.op.sps}, cf{self.op.cf}"
-
-    def get_init(self):
-        return self._init
+        return f"Meta: Fs{self.state.Fs}, sps{self.state.sps}, cf{self.state.cf}"

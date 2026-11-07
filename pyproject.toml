@@ -19,7 +19,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 keywords = ["anonoei", "dsp", "sdr"]
-dependencies = ["pyboiler-anonoei", "numpy", "matplotlib"]
+dependencies = ["numpy>=2.0", "pysdrlib>=0.3.0"]
 
 [project.urls]
 Homepage = "https://github.com/anonoei/RPPS"
@@ -29,7 +29,12 @@ Issues = "https://github.com/Anonoei/RPPS/issues"
 Source = "https://github.com/anonoei/RPPS"
 
 [project.optional-dependencies]
-dev = ["twine", "build", "bumpver", "pytest", "pdoc3"]
+viz = ["matplotlib"]
+dev = ["matplotlib", "twine", "build", "bumpver", "pytest", "pdoc3"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 
 [tool.bumpver]
 current_version = "0.2.0"

@@ -18,7 +18,8 @@ def main():
     # writer = rp.viz.save.FFmpegMP4(fig, fps, "video_time3d.mp4")
     # writer.open()
 
-    for samps in sink(num_samps):
+    for blk in sink(num_samps):
+        samps = blk.data
         # samps *= rp.filters.window.blackman(len(samps))
         # lines = rp.viz.freq.psd_minmax(lines, samps, Fs, 1000)
         samps *= 10

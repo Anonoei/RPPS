@@ -1,16 +1,22 @@
 import numpy as np
 
 from ..constellation import ModConstellation, Mapping, Points, Maps
+from ..utils import shapes
 
 class PSK(ModConstellation):
-    """Phase-shift keying parent"""
+    """Phase-shift keying: `PSK(8)` makes M points on the unit circle with a Gray map. Definitions in config/mod/psk
+    (`rp.mod.load("QPSK")`) give the DVB and other specific maps"""
+    def __init__(self, M=None, mapping=None, offset=None):
+        if M is None:
+            super().__init__(mapping)
+        else:
+            pts, lab = shapes.psk(M, offset)
+            points, maps = self._generated(pts, lab)
+            super().__init__(mapping, points, maps)
+            self.name = f"{M}PSK"
+
     @staticmethod
     def load(name, obj):
-        # def load_complex(comp):
-        #     c = []
-        #     for num in comp:
-        #         c.append(num["real"] + num["imag"] * 1j)
-        #     return c
         def load_magpha(comp):
             c = []
             for num in comp:

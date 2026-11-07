@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from .sample import Sample, Meta
 
 # from ..filters.shaping import ShapingSinc
@@ -8,17 +10,18 @@ import numpy as np
 class Upsample(Sample):
     __slots__ = ("ratio")
     def __init__(self, ratio):
-        self.ratio = ratio
+        self.ratio = int(ratio)
 
     def run(self, samples):
         raise NotImplementedError()
 
-    def __radd__(self, meta: Meta):
-        meta.obj = self.run(meta.obj)
-        meta.Fs *= self.ratio
-        return meta
+    def step(self, samples, st, meta: Meta):
+        meta.op.Fs *= self.ratio
+        meta.op.sps *= self.ratio
+        return self.run(samples)
 
 class FFT(Upsample):
+    """Upsample each block through the FFT (the block is treated as one period, so edges wrap)"""
     def run(self, samples):
         frq = np.fft.fft(samples)
         up = self.ratio*np.hstack([
@@ -33,17 +36,32 @@ class FFT(Upsample):
         return up
 
 class Sinc(Upsample):
-    __slots__ = ("pulse")
-    def __init__(self, ratio):
+    """Zero stuff and interpolate with a windowed sinc. The filter history carries across blocks"""
+    __slots__ = ("pulse", "taps")
+    def __init__(self, ratio, taps=None):
         super().__init__(ratio)
-        taps = np.max([self.ratio*12, 31])
-        self.pulse = shaping.ShapingSinc(taps, ratio, 1) # TODO: tune this
+        taps = max(self.ratio*12, 31) if taps is None else int(taps)
+        self.pulse = shaping.ShapingSinc(taps, ratio, 1) # One-shot kernel
+        self.taps = np.sinc((np.arange(taps | 1) - (taps | 1)//2)/ratio) # Streaming kernel: symmetric, centre tap
+
+    def new_state(self, meta):
+        return SimpleNamespace(hist=None)
 
     def run(self, samples):
+        """One-shot (stateless) interpolation, same length as ratio*samples"""
         up = np.zeros(len(samples)*self.ratio, dtype=samples.dtype)
         up[::self.ratio] = samples
         up = self.pulse.run(up)
         return up
+
+    def step(self, samples, st, meta: Meta):
+        up = np.zeros(len(samples)*self.ratio, dtype=samples.dtype)
+        up[::self.ratio] = samples
+        out, st.hist = shaping.FIR.stream(up, self.taps, st.hist)
+        meta.delay += (len(self.taps)-1) / 2 / (meta.Fs*self.ratio)
+        meta.op.Fs *= self.ratio
+        meta.op.sps *= self.ratio
+        return out
 
 class Zeros(Upsample):
     def run(self, samples):
