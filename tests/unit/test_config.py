@@ -37,7 +37,7 @@ def test_every_file_loads():
     for domain in _config.domains():
         for cat, ref in refs(domain):
             if domain != "chain" and not any(b in ref for b in BIG): # chains are loaded by test_chain
-                _config.load(domain, ref, cat)
+                _config.load(domain, ref, cat, example=True)
 
 def test_bare_names():
     assert _config.find("coding", "204_188", "block") == _config.find("coding", "rs/204_188", "block")

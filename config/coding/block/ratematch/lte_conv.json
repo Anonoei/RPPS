@@ -1,0 +1,20 @@
+{
+  "base": "block",
+  "type": "ratematch",
+  "comment": "LTE rate matching for convolutionally coded channels (36.212 5.1.4.2): input three bits per step as the rate 1/3 tail-biting code sends them; D = message length (with CRC), E bits out (PBCH: D = 40, E = 1920)",
+  "params": {
+    "D": {
+      "example": 40
+    },
+    "E": {
+      "example": 1920
+    }
+  },
+  "mode": "conv",
+  "length": {
+    "param": "D"
+  },
+  "out": {
+    "param": "E"
+  }
+}

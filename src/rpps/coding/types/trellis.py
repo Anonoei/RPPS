@@ -15,8 +15,9 @@ under confident. `maxlog=True` is the cheap approximation (Viterbi-like) and doe
 """
 import numpy as np
 
-from ._code import _code, register
+from ._code import _code, register, word_errors
 from .viterbi import viterbi
+from .conv import termination_of, generators_of
 from ..blocker import block
 
 class Trellis:
@@ -124,8 +125,8 @@ class bcjr_conv(viterbi):
 
     @classmethod
     def from_config(cls, log, obj):
-        return cls(log, obj["num"], obj["den"], obj["constraint"], np.array(obj["generator"], dtype=bool),
-                   obj.get("puncture"), obj.get("terminated", False), obj.get("maxlog", False), obj.get("hard_llr", 2.94))
+        return cls(log, obj["num"], obj["den"], obj["constraint"], generators_of(obj),
+                   obj.get("puncture"), termination_of(obj), obj.get("maxlog", False), obj.get("hard_llr", 2.94))
 
     def __init__(self, log, num, den, constraint, generator, puncture=None, terminated=False, maxlog=False, hard_llr=2.94):
         super().__init__(log, num, den, constraint, generator, puncture, terminated)
@@ -139,6 +140,9 @@ class bcjr_conv(viterbi):
             soft = x.dtype.kind == "f"
         llr = x.astype(np.float64) if soft else _hard_to_llr(x, self.hard_llr)
         llr = self.depuncture(llr)                                   # (T, n)
+        if self.termination == "tailbiting": # Three laps from and to any state, the middle one kept
+            T = len(llr)
+            return bcjr(self.trellis, np.tile(llr, (3, 1))[None], start=None, end=None, maxlog=self.maxlog)[0][T:2*T]
         out = bcjr(self.trellis, llr[None], start=0, end=0 if self.terminated else None, maxlog=self.maxlog)[0]
         return out[:len(out)-(self.con-1)] if self.terminated else out
 
@@ -163,6 +167,7 @@ class trellis(_code):
         m, n = H.shape
         super().__init__(log, None, n - m, n)
         self.maxlog, self.hard_llr = maxlog, hard_llr
+        self.H = H
         self.trellis = Trellis.syndrome(H)
 
     def app(self, bits, soft=None):
@@ -175,5 +180,9 @@ class trellis(_code):
         return bcjr(self.trellis, llr[:, :, None], start=0, end=0, maxlog=self.maxlog)
 
     def decode(self, bits, soft=None):
-        words = self.app(bits, soft) < 0
+        x = np.asarray(bits)
+        words = self.app(x, soft) < 0
+        hard = (x < 0) if (soft or (soft is None and x.dtype.kind == "f")) else x.astype(bool)
+        ok = ~((words.astype(np.int64) @ self.H.T.astype(np.int64)) % 2).any(axis=1) # MAP per bit need not be a codeword
+        self.errors = word_errors(hard[:words.size], words, ok)
         return words[:, :self.num].reshape(-1)

@@ -6,9 +6,13 @@ from conftest import bits
 
 ALL = [(k, n) for k, names in rp.scram.ls().items() for n in names]
 
+def _load(folder, name):
+    """With example values for the parameters a definition needs (a cell id, a WACN ...)"""
+    return rp._config.load("scram", name, folder, example=True)
+
 @pytest.mark.parametrize("folder,name", ALL)
 def test_scram_round_trip(folder, name, rng):
-    s = rp.scram.load(folder, name)
+    s = _load(folder, name)
     msg = bits(rng, 8*204*8) # Whole frames for the frame-based scramblers
     scr = s.encode(msg)
     assert not np.array_equal(scr, msg)
@@ -16,7 +20,7 @@ def test_scram_round_trip(folder, name, rng):
 
 @pytest.mark.parametrize("folder,name", ALL)
 def test_scram_whitens_constant_input(folder, name):
-    s = rp.scram.load(folder, name)
+    s = _load(folder, name)
     scr = np.asarray(s.encode(np.zeros(8*204*8, dtype=bool)))
     assert 0.4 < scr.mean() < 0.6
 

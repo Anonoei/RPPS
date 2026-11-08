@@ -173,7 +173,7 @@ def test_decisions_default_by_decoder():
     assert rp.coding.load("block", "ldpc/gallager_96_48").decision.name == "SOFT"
     assert rp.coding.load("block", "repeat/3").decision.name == "SOFT"
     assert rp.coding.load("block", "hamming/7_4").decision.name == "SOFT"
-    assert rp.coding.load("block", "rs/204_188").decision.name == "HARD"
+    assert rp.coding.load("block", "rs/204_188").decision.name == "SOFT" # LLRs pick the symbols to erase on a retry
 
 def test_repeat_adds_llrs():
     rep = rp.coding.load("block", "repeat/3")._dec

@@ -10,6 +10,11 @@ BIG = ("dvbs2_",) # DVB-S2 frames (16200+ bits) are tested separately: too slow 
 def configs(kind):
     return [n for n in rp.coding.names(kind) if not any(b in n for b in BIG)]
 
+def load(kind, name, **kw):
+    """With the example values of any parameters the definition needs (a block size ...)"""
+    ex = rp._config.examples(rp._config.read(rp.coding.find(kind, name)))
+    return rp.coding.load(kind, name, **ex, **kw)
+
 def test_kinds():
     assert set(rp.coding.ls()) >= {"block/rs", "conv/k7_171_133", "interleave/forney"}
 
@@ -19,18 +24,26 @@ def test_unknown_definition():
 
 @pytest.mark.parametrize("name", configs("block"))
 def test_block_round_trip(name, rng):
-    code = rp.coding.load("block", name)._enc
+    code = load("block", name)._enc
     if name.startswith("rs/"):
-        msg = bits(rng, code.num*8*5)
+        msg = bits(rng, code.num*code.m*5)
+        per = code.m # Lengths count symbols of m bits
     else:
         msg = bits(rng, code.num*20)
+        per = 1
     coded = code.encode(msg)
-    assert len(coded) == len(msg)//code.num*code.den
-    assert np.array_equal(np.asarray(code.decode(coded)).astype(bool), msg)
+    tail = getattr(code, "tail", 0)*getattr(code, "n", 0) # A trellis code's flush steps
+    assert len(coded) == len(msg)//(code.num*per)*code.den*per + tail
+    if getattr(code, "levels", None) is not None: # Decoded from the amplitudes it sends
+        coded = code.modulate(coded)
+    out = np.asarray(code.decode(coded))
+    if type(code).__name__ == "ratematch": # Rate matching gives back summed soft values
+        out = out < 0
+    assert np.array_equal(out.astype(bool), msg)
 
 @pytest.mark.parametrize("name", configs("block"))
 def test_block_rate_matches_properties(name):
-    c = rp.coding.load("block", name)
+    c = load("block", name)
     assert c.e_rate == pytest.approx(c.e_num/c.e_den)
     assert 0 < c.e_rate <= 1
 

@@ -1,0 +1,30 @@
+{
+  "base": "adt",
+  "type": "sequence",
+  "comment": "LTE PCFICH scrambling (36.211 6.7.1): c_init = (floor(ns/2) + 1)(2 N_ID^cell + 1) 2^9 + N_ID^cell",
+  "params": {
+    "pci": {
+      "comment": "physical cell id",
+      "example": 77
+    },
+    "ns": {
+      "comment": "slot number 0..19",
+      "example": 0
+    }
+  },
+  "sequences": [
+    {
+      "length": 31,
+      "taps": [0, 3],
+      "init": 1
+    },
+    {
+      "length": 31,
+      "taps": [0, 1, 2, 3],
+      "init": {
+        "expr": "((ns//2 + 1)*(2*pci + 1) << 9) + pci"
+      }
+    }
+  ],
+  "skip": 1600
+}

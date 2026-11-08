@@ -1,0 +1,30 @@
+{
+  "base": "adt",
+  "type": "sequence",
+  "comment": "LTE PDCCH scrambling (36.211 6.8.2): c_init = floor(ns/2) 2^9 + N_ID^cell",
+  "params": {
+    "pci": {
+      "comment": "physical cell id",
+      "example": 77
+    },
+    "ns": {
+      "comment": "slot number 0..19 (the first slot of the subframe)",
+      "example": 0
+    }
+  },
+  "sequences": [
+    {
+      "length": 31,
+      "taps": [0, 3],
+      "init": 1
+    },
+    {
+      "length": 31,
+      "taps": [0, 1, 2, 3],
+      "init": {
+        "expr": "((ns//2) << 9) + pci"
+      }
+    }
+  ],
+  "skip": 1600
+}

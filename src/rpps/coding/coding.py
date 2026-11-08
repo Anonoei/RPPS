@@ -83,6 +83,12 @@ class Coding(base.rpps.Pipe):
     def load(name: str, obj: dict):
         """Load coding from json"""
 
+    @property
+    def errors(self):
+        """Per codeword of the last decode: bits (Reed-Solomon: symbols) corrected, -1 where it failed. None for
+        decoders without codewords (Viterbi, BCJR of a convolutional code)"""
+        return getattr(self._dec, "errors", None)
+
     def __rmul__(self, data):
         return self.encode(data)
 
@@ -132,7 +138,7 @@ def _code_of(obj):
     except KeyError:
         raise ConfigError(f"Unknown coding type {obj['type']!r}, have {sorted(types.REGISTRY)}") from None
 
-DEFAULT_DECODER = {"linear": "trellis"} # What decodes a code type when its definition doesn't say
+DEFAULT_DECODER = {"linear": "trellis", "cyclic": "syndrome"} # What decodes a code type when its definition doesn't say
 
 class Block(Coding):
     """Parent block coding"""
@@ -166,9 +172,11 @@ class Convolutional(Coding):
         e, d = dict(obj["encode"]), dict(obj["decode"])
         if decoder is not None:
             d["type"] = decoder
-        for side in (e, d): # puncture/terminated are shared between both sides
+        for side in (e, d): # puncture / termination / constraint are shared between both sides
             side.setdefault("puncture", obj["encode"].get("puncture"))
-            side.setdefault("terminated", obj["encode"].get("terminated", False))
+            for k in ("termination", "terminated", "constraint"):
+                if k in obj["encode"]:
+                    side.setdefault(k, obj["encode"][k])
         return _impl(Convolutional, name)(_code_of(e).from_config(log, e), _code_of(d).from_config(log, d))
 
     def _block(self, enc):
@@ -183,7 +191,7 @@ class Convolutional(Coding):
         """The register / path metrics go on from the previous call; a flush ends the frame (terminated code: its tail)"""
         key = (self, enc, "state")
         final = bool(ctx.get(FLUSH))
-        if enc or coder.stream:
+        if getattr(coder, "stream", True):
             st = dict(ctx.get(key, {}))
             y = coder.encode(x, st, final) if enc else coder.decode(x, state=st, final=final)
             if st and not final:
@@ -198,10 +206,13 @@ class Convolutional(Coding):
         if not final:
             ctx[key] = x
             return np.zeros(0, dtype=bool)
-        return coder.decode(x) if len(x) else np.zeros(0, dtype=bool)
+        if not len(x):
+            return np.zeros(0, dtype=bool)
+        return coder.encode(x) if enc else coder.decode(x)
 
 class Interleaver(Coding):
-    """Symbol interleaver (Forney: I branches, M symbols of delay increment)"""
+    """Interleaver: Forney (convolutional: I branches, M symbols of delay increment, state carried along the stream)
+    or block (a permutation of each block)"""
 
     @staticmethod
     def load(name, obj, decoder=None):
@@ -210,11 +221,15 @@ class Interleaver(Coding):
         return _impl(Interleaver, name)(code, code)
 
     def _block(self, enc):
+        if hasattr(self._enc, "block_bits"):
+            return self._enc.block_bits
         return self._enc.I*self._enc.symbol # Whole rows of I symbols: the first one is on branch 0
 
     def _process(self, coder, x, ctx, enc):
         if not len(x):
             return np.zeros(0, dtype=bool)
+        if hasattr(coder, "block_bits"): # A block interleaver keeps nothing between blocks
+            return coder.encode(x) if enc else coder.decode(x)
         key = (self, enc, "delay")
         ctx[key] = state = dict(ctx.get(key, {})) # The delay lines go on from the previous call
         return coder.encode(x, state=state) if enc else coder.decode(x, state=state)

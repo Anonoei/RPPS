@@ -50,3 +50,64 @@ class forney(_code):
         sym = np.asarray(bits) if symbols else self._to_symbols(bits)
         out = self._run(sym, rev=True, state=state)
         return out if symbols else self._to_bits(out)
+
+
+@register("block")
+class block_interleaver(_code):
+    """Block interleaver: a fixed permutation of each block of `n` items of `symbol` bits (dibits: symbol=2)
+
+    perm: the permutation, as a list or {"each": "<expression of i>", "n": N} in the definition.
+        map "from" (default): item i of the interleaved block is item perm[i] of the input
+        map "to": item i of the input goes to position perm[i]
+    Or the row-column form (LTE sub-block interleaver, 36.212 5.1.4.2.1):
+        cols, col_perm (default: in order), length n (rows = ceil(n/cols)): written row by row with the filler
+        (rows*cols - n dummies) at the front, columns permuted, read column by column; dummies are dropped
+    encode() interleaves, decode() undoes it, on bits or on soft values (any dtype), whole blocks at a time.
+    """
+    @classmethod
+    def from_config(cls, log, obj):
+        sym = obj.get("symbol", 1)
+        if "perm" in obj:
+            return cls(log, obj["perm"], obj.get("map", "from"), sym)
+        return cls(log, rowcol(obj["length"], obj["cols"], obj.get("col_perm"), obj.get("fill", "front")), "from", sym)
+
+    def __init__(self, log, perm, mapping="from", symbol=1):
+        perm = np.asarray(perm, dtype=np.int64)
+        n = len(perm)
+        if not np.array_equal(np.sort(perm), np.arange(n)):
+            raise ValueError(f"Not a permutation of 0..{n-1} (repeated or missing positions)")
+        if mapping not in ("from", "to"):
+            raise ValueError(f"map {mapping!r}: 'from' or 'to'")
+        src = perm if mapping == "from" else np.argsort(perm)
+        super().__init__(log, None, n*symbol, n*symbol)
+        self.n, self.symbol = n, symbol
+        self.src = src                       # Output item i = input item src[i]
+        self.dst = np.argsort(src)           # Input item j lands at dst[j]
+        self.block_bits = n*symbol
+
+    def _apply(self, x, index):
+        x = np.asarray(x)
+        per = self.block_bits
+        x = x[:len(x)//per*per].reshape(-1, self.n, self.symbol)
+        return x[:, index, :].reshape(-1)
+
+    def encode(self, bits):
+        return self._apply(bits, self.src)
+
+    def decode(self, bits):
+        return self._apply(bits, self.dst)
+
+def rowcol(length, cols, col_perm=None, fill="front"):
+    """`from` permutation of a row-column interleaver: written by rows (dummies first, or last with fill="back"),
+    columns permuted by col_perm, read by columns; dummy positions dropped"""
+    rows = -(-length//cols)
+    dummies = rows*cols - length
+    y = np.full(rows*cols, -1)
+    if fill == "front":
+        y[dummies:] = np.arange(length)
+    else:
+        y[:length] = np.arange(length)
+    mat = y.reshape(rows, cols)
+    order = np.arange(cols) if col_perm is None else np.asarray(col_perm)
+    out = mat[:, order].T.reshape(-1)
+    return out[out >= 0]

@@ -1,0 +1,27 @@
+{
+  "base": "adt",
+  "type": "sequence",
+  "comment": "LTE PBCH scrambling (36.211 6.6.1): c_init = N_ID^cell, over the 1920 bits of four radio frames (start = 480 * (SFN mod 4))",
+  "params": {
+    "pci": {
+      "comment": "physical cell id 0..503",
+      "example": 77
+    }
+  },
+  "sequences": [
+    {
+      "length": 31,
+      "taps": [0, 3],
+      "init": 1
+    },
+    {
+      "length": 31,
+      "taps": [0, 1, 2, 3],
+      "init": {
+        "param": "pci"
+      }
+    }
+  ],
+  "skip": 1600,
+  "period": 1920
+}

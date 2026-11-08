@@ -154,6 +154,9 @@ class Additive(Scram):
 
     @staticmethod
     def load(name, obj):
+        if obj.get("type") == "sequence":
+            from .sequence import Sequence
+            return Sequence.load(name, obj)
         seed = obj["seed"]
         if isinstance(seed, str):
             seed = [int(c) for c in seed]

@@ -1,0 +1,37 @@
+{
+  "base": "adt",
+  "type": "sequence",
+  "comment": "LTE PDSCH scrambling (36.211 6.3.1): c_init = n_RNTI 2^14 + q 2^13 + floor(ns/2) 2^9 + N_ID^cell (SI-RNTI 0xFFFF for system information)",
+  "params": {
+    "pci": {
+      "comment": "physical cell id",
+      "example": 77
+    },
+    "ns": {
+      "comment": "slot number",
+      "example": 0
+    },
+    "rnti": {
+      "default": 65535
+    },
+    "q": {
+      "default": 0,
+      "comment": "codeword 0 or 1"
+    }
+  },
+  "sequences": [
+    {
+      "length": 31,
+      "taps": [0, 3],
+      "init": 1
+    },
+    {
+      "length": 31,
+      "taps": [0, 1, 2, 3],
+      "init": {
+        "expr": "(rnti << 14) + (q << 13) + ((ns//2) << 9) + pci"
+      }
+    }
+  ],
+  "skip": 1600
+}

@@ -1,6 +1,6 @@
 import numpy as np
 
-from ._code import _code, register
+from ._code import _code, register, word_errors
 from ...math.gf2 import systematic, to_checks
 
 def gallager(n, wc=3, wr=6, seed=0):
@@ -174,4 +174,5 @@ class ldpc(_code):
         llr = x.astype(np.float64) if soft else 2.0*(1.0 - 2.0*x.astype(np.float64)) # Hard bit: LLR +-2
         llr = llr[:len(llr)//self.N*self.N].reshape(-1, self.N)
         cw = self.decode_codewords(llr)
+        self.errors = word_errors(llr < 0, cw, self.converged)
         return cw[:, self.info].reshape(-1)

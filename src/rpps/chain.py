@@ -40,24 +40,37 @@ def _from_config(name, obj):
     return Chain(name, obj["stages"], obj.get("polarity", "auto"), obj.get("packet"))
 
 class Chain(Pipe):
-    def __init__(self, name, stages, polarity="auto", packet=None):
+    def __init__(self, name, stages, polarity="auto", packet=None, params=None):
         self.name, self.stages, self.polarity, self.packet = name, stages, polarity, packet
+        self.params = dict(params or {})
 
     @staticmethod
-    def load(name, path=None):
+    def load(name, path=None, **params):
+        """params: values for the stages' parameters; each stage takes the ones its definition declares"""
         file = _config.find("chain", name, path=path)
         if file is None:
             raise FileNotFoundError(f"chain/{name}: not found, have {_config.ls('chain', path)}")
         obj = _config.read(file)
-        return _config.load_obj("chain", name, obj)
+        chain = _config.load_obj("chain", name, obj)
+        chain.params = params
+        return chain
 
     def _load(self, kind, ref):
         if kind == "scram":
             from . import scram
-            return scram.load(ref) if isinstance(ref, str) else scram.load(*ref)
+            *folder, name = [ref] if isinstance(ref, str) else ref
+            file = _config.find("scram", name, folder[0] if folder else None)
+            return scram.load(*folder, name, **self._params_for(file))
         if kind == "crc":
-            return encap.load("crc", ref)
-        return coding.load(kind, ref) # block | conv | interleave
+            return encap.load("crc", ref, **self._params_for(_config.find("encap", ref, "crc")))
+        return coding.load(kind, ref, **self._params_for(coding.find(kind, ref))) # block | conv | interleave
+
+    def _params_for(self, file):
+        """The chain's parameters that a stage's definition declares"""
+        if not self.params or file is None:
+            return {}
+        decl = _config.declared(_config.read(file))
+        return {k: v for k, v in self.params.items() if k in decl}
 
     def __str__(self):
         return f"Chain:{self.name}"

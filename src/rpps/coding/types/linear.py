@@ -3,10 +3,13 @@ import numpy as np
 from ._code import _code, register
 
 from ..blocker import block, unblock
-from ...errors import DecodeError
 
 @register("linear")
 class linear(_code):
+    """Linear block code from its matrices, systematic with the message first. Own decoder: single-error syndrome
+    correction (the `trellis` decoder is the default, `syndrome` corrects up to t errors)"""
+    t = None # Errors a syndrome decoder should correct; None: from the minimum distance
+
     def __init__(self, log, generator, check):
         super().__init__(log, None, generator.shape[0], generator.shape[1])
         self.generator = generator
@@ -33,16 +36,20 @@ class linear(_code):
         return encoded.astype(bool)
 
     def decode(self, bits: np.ndarray):
-        """Hard decode by syndrome: corrects a single bit error (any more raises DecodeError)"""
+        """Hard decode by syndrome: corrects a single bit error; a word with any other syndrome is returned as
+        received with `errors` -1"""
         blocks = block(bits, self.den).astype(np.uint8)
         self.log.trace(f"decoding {len(bits)}, {blocks.shape}")
         synd = (blocks.astype(int) @ self.check.astype(int)) % 2 # (blocks, n-k)
+        self.errors = np.zeros(len(blocks), dtype=int)
         bad = np.nonzero(synd.any(axis=1))[0]
         if len(bad):
             cols = {tuple(row): i for i, row in enumerate(self.check.astype(int) % 2)} # Syndrome of a flip of bit i
             for b in bad:
                 i = cols.get(tuple(synd[b]))
                 if i is None:
-                    raise DecodeError(f"Block {b} has an uncorrectable error pattern")
+                    self.errors[b] = -1
+                    continue
                 blocks[b, i] ^= 1
+                self.errors[b] = 1
         return unblock(blocks[:, 0:self.num]).astype(bool)

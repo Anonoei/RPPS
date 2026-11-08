@@ -1,0 +1,9 @@
+{
+  "base": "block",
+  "type": "cyclic",
+  "comment": "Extended Golay (24,12,8): the (23,12) code plus an overall parity bit last; corrects 3, detects 4. P25 phase 2 AMBE+2 c0 (TIA-102.BABA-A)",
+  "n": 23,
+  "k": 12,
+  "poly": "0xc75",
+  "extend": true
+}

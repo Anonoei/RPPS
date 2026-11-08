@@ -1,0 +1,26 @@
+{
+  "base": "block",
+  "type": "ratematch",
+  "comment": "LTE rate matching for turbo coded channels (36.212 5.1.4.1): input d0 | d1 | d2 of K + 4 bits each; E bits out from redundancy version rv; ncb: soft buffer size (default: all of it)",
+  "params": {
+    "K": {
+      "example": 40
+    },
+    "E": {
+      "example": 132
+    },
+    "rv": {
+      "default": 0
+    }
+  },
+  "mode": "turbo",
+  "length": {
+    "expr": "K + 4"
+  },
+  "out": {
+    "param": "E"
+  },
+  "rv": {
+    "param": "rv"
+  }
+}

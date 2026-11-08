@@ -1,0 +1,26 @@
+{
+  "base": "adt",
+  "type": "sequence",
+  "comment": "LTE pseudo-random sequence c(n) (3GPP TS 36.211 7.2): x1 = x^31 + x^3 + 1 from 1, x2 = x^31 + x^3 + x^2 + x + 1 from c_init (LSB = x2(0)), Nc = 1600. The c_init of each channel is its own definition (lte_pbch, lte_pcfich, ...)",
+  "params": {
+    "c_init": {
+      "comment": "seed of x2",
+      "example": 77
+    }
+  },
+  "sequences": [
+    {
+      "length": 31,
+      "taps": [0, 3],
+      "init": 1
+    },
+    {
+      "length": 31,
+      "taps": [0, 1, 2, 3],
+      "init": {
+        "param": "c_init"
+      }
+    }
+  ],
+  "skip": 1600
+}

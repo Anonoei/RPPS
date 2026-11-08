@@ -11,6 +11,8 @@
                     "skip_first": 1, "marker": 184,        skip_first: bytes before the PRBS starts (default sync_bytes);
                     "sync": 71}}                           marker: first byte of a frame as sent (DVB: the inverted sync, 0xB8);
                                                            sync: what it becomes when descrambled (default marker ^ 0xFF)
+         {"base": "adt", "type": "sequence", ...}  a recurrence / register / Gold sequence (see rpps.scram.sequence)
+    Seeds and any other value can be load-time parameters ("params", then {"param": ...} / {"expr": ...}).
 """
 from .. import _config
 
@@ -26,7 +28,8 @@ def init(name: str, obj: dict) -> scrambler.Scram:
     """Initialize scram"""
     return _config.load_obj("scram", name, obj)
 
-def load(*ref: str) -> scrambler.Scram:
-    """Load a scrambler by name, `load("dvb_energy")`; a leading category still works, `load("adt", "dvb_energy")`"""
+def load(*ref: str, **params) -> scrambler.Scram:
+    """Load a scrambler by name, `load("dvb_energy")`; a leading category still works, `load("adt", "dvb_energy")`.
+    params: values of the definition's "params" (`load("ble_whiten", channel=37)`)"""
     *folder, name = ref
-    return _config.load("scram", name, folder[0] if folder else None)
+    return _config.load("scram", name, folder[0] if folder else None, params=params)

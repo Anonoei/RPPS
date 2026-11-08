@@ -10,3 +10,4 @@ from .serial import ls, load
 
 from . import lfsr
 from .scrambler import Scram
+from .sequence import Sequence
