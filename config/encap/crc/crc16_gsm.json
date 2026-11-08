@@ -1,0 +1,13 @@
+{
+  "base": "crc",
+  "type": "crc",
+  "comment": "CRC-16/GSM. P25 Phase 1 TSBK / header blocks (CRC-CCITT, inverted remainder, TIA-102.BAAA). DMR CRC-CCITT (ETSI TS 102 361-1 B.3.8), with the data type mask of Table B.21 given as mask= (CSBK 0xA5A5, data header 0xCCCC ...)",
+  "aliases": ["p25_ccitt", "dmr_ccitt"],
+  "width": 16,
+  "poly": "0x1021",
+  "init": "0x0",
+  "refin": false,
+  "refout": false,
+  "xorout": "0xffff",
+  "check": "0xce3c"
+}

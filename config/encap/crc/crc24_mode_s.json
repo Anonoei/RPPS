@@ -1,0 +1,13 @@
+{
+  "base": "crc",
+  "type": "crc",
+  "comment": "Mode S / ADS-B parity (ICAO Annex 10 Vol IV 3.1.2.3.3): over the first 32 or 88 bits. DF17/18 syndrome is 0; on DF4/5/11/20/21 the syndrome is the address (or interrogator id) overlaid on it. Check value computed here, verified on a real DF17 frame in the tests",
+  "aliases": ["adsb"],
+  "width": 24,
+  "poly": "0xfff409",
+  "init": "0x0",
+  "refin": false,
+  "refout": false,
+  "xorout": "0x0",
+  "check": "0x54268"
+}
