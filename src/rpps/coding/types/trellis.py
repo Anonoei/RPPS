@@ -15,6 +15,7 @@ under confident. `maxlog=True` is the cheap approximation (Viterbi-like) and doe
 """
 import numpy as np
 
+from ... import _accel
 from ._code import _code, register, word_errors
 from .viterbi import viterbi
 from .conv import termination_of, generators_of
@@ -73,6 +74,10 @@ def bcjr(tr, llr, start=0, end=0, maxlog=False):
     llr = np.asarray(llr, dtype=np.float64)
     W, T, L = llr.shape
     S = tr.S
+    if _accel.native is not None: # The blocks on several threads
+        return _accel.native.bcjr(np.ascontiguousarray(llr), np.ascontiguousarray(tr.sign.reshape(tr.P, S, 2, L)), tr.next,
+                                  tr.pred_state, tr.pred_bit, -1 if start is None else int(start), -1 if end is None else int(end),
+                                  bool(maxlog))
     comb = np.maximum if maxlog else np.logaddexp
     sgn = tr.sign.reshape(tr.P, S, 2, L)
 

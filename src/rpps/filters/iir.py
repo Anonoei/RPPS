@@ -15,6 +15,7 @@ import warnings
 
 import numpy as np
 
+from .. import _accel
 from .filter import Filter
 
 BLOCK = 256 # Samples handled by one matrix product
@@ -101,6 +102,12 @@ class IIR(Filter):
         cplx = x.dtype.kind == "c"
         X = np.stack([x.real, x.imag], axis=1).astype(float) if cplx else x.astype(float)[:, None]
         c = X.shape[1]
+        if _accel.native is not None: # Sample by sample in C++: ~5 operations per sample and section, not a 256-wide product
+            Z = np.ascontiguousarray(np.stack([z[:, :c] for z in zs]))
+            X, Z = _accel.native.sos_filter(np.ascontiguousarray(X), np.ascontiguousarray(self.sos), Z)
+            for i, z in enumerate(zs):
+                z[:, :c] = Z[i]
+            return X[:, 0] + 1j*X[:, 1] if cplx else X[:, 0]
         for i, sec in enumerate(self._sections):
             X, z = sec.process(X, zs[i][:, :c])
             zs[i][:, :c] = z

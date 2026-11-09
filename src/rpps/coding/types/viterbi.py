@@ -1,5 +1,6 @@
 import numpy as np
 
+from ... import _accel
 from ._code import _code, register
 from .conv import termination_of, generators_of
 
@@ -57,6 +58,9 @@ class viterbi(_code):
         ns = np.arange(S)
         self.prev = np.stack([((ns << 1) & (S-1)) | b for b in (0, 1)], axis=1) # (S, 2) predecessors
         self.prev_in = ns >> (K-2) # Input bit that leads into each state
+        # The same trellis for rpps._native: branch j into state s comes from prev[s, j] and sends pattern _pat[s, j]
+        self._pred = np.ascontiguousarray(self.prev, dtype=np.int32)
+        self._pat = np.ascontiguousarray(np.stack([self.out_pat[self.prev[:, j], self.prev_in] for j in (0, 1)], axis=1), dtype=np.int32)
 
     def depuncture(self, values):
         """Insert zeros (erasures) for the punctured positions. Returns (T, n) array"""
@@ -85,6 +89,8 @@ class viterbi(_code):
             return self._tailbiting(llr)
         T = len(llr)
         S = self.n_states
+        if _accel.native is not None:
+            return self._decode_native(llr, state, final)
 
         # Cost of sending a bit 1 where llr>0 (it says 0), 0 otherwise: sum of llr over the code word's 1 bits
         cost = llr @ self.patterns.T                                            # (T, 2^n)
@@ -125,10 +131,39 @@ class viterbi(_code):
             out = out[:max(0, len(out)-(self.con-1))]
         return out.astype(bool)
 
+    def _decode_native(self, llr, state, final):
+        """`decode` with the trellis walked in C++ (rpps._native): the same decisions, ties and traceback"""
+        nat, S = _accel.native, self.n_states
+        if state and "pm" in state:
+            pm, past = state["pm"], state["hist"]
+        else:
+            pm, past = np.full(S, np.inf), np.zeros((0, S), dtype=np.uint8)
+            pm[0] = 0.0
+        dec, pm = nat.viterbi_forward(np.ascontiguousarray(llr, dtype=np.float64), self.patterns, 1, self._pred, self._pat, pm)
+        decision = np.concatenate((past, dec)) if len(past) else dec
+        T = len(decision)
+        end = 0 if (self.terminated and final) else int(np.argmin(pm))
+        states, _ = nat.viterbi_traceback(decision, self._pred, end)
+        out = self.prev_in[states].astype(np.uint8)
+        release = T if final else max(0, T - self.depth)
+        out = out[:release]
+        if state is not None:
+            if final:
+                state.clear()
+            else:
+                state["pm"], state["hist"] = pm, decision[release:]
+        if self.terminated and final:
+            out = out[:max(0, len(out)-(self.con-1))]
+        return out.astype(bool)
+
     def _tailbiting(self, llr):
         """Viterbi over three laps of the circular trellis from no particular state, the middle lap kept: by then the
         path has settled, and it starts and ends in the state the frame's last bits leave"""
         T, S = len(llr), self.n_states
+        if _accel.native is not None:
+            x = np.ascontiguousarray(np.tile(llr, (3, 1))[None], dtype=np.float64)
+            states, _, _ = _accel.native.viterbi_batch(x, self.patterns, 1, self._pred, self._pat, np.zeros(S), np.array([-1]))
+            return self.prev_in[states[0]][T:2*T].astype(bool)
         cost = np.tile(llr, (3, 1)) @ self.patterns.T
         pm = np.zeros(S)
         decision = np.zeros((3*T, S), dtype=np.uint8)

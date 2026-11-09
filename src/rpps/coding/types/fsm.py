@@ -1,5 +1,6 @@
 import numpy as np
 
+from ... import _accel
 from ._code import _code, register
 
 @register("fsm")
@@ -59,6 +60,16 @@ class fsm(_code):
         self.pred_s = np.array([[p[i % len(p)][0] for i in range(P)] for p in pred]) # (S, P), padded by repeating
         self.pred_u = np.array([[p[i % len(p)][1] for i in range(P)] for p in pred])
         self.out_bits = ((out[..., None] >> np.arange(n - 1, -1, -1)) & 1).astype(np.uint8) # (S, U, n)
+        # For rpps._native: branch j into s sends word _pat[s, j]; _tab holds each word's bits (or its amplitudes)
+        self._pred = np.ascontiguousarray(self.pred_s, dtype=np.int32)
+        self._pat = np.ascontiguousarray(out[self.pred_s, self.pred_u], dtype=np.int32)
+        word_bits = ((np.arange(1 << n)[:, None] >> np.arange(n - 1, -1, -1)) & 1)
+        if self.levels is None:
+            self._tab = word_bits.astype(np.float64)
+        else:
+            m = n // self.sym_bits
+            idx = (word_bits.reshape(-1, m, self.sym_bits) * (1 << np.arange(self.sym_bits - 1, -1, -1))).sum(axis=2)
+            self._tab = np.ascontiguousarray(self.levels[idx], dtype=np.float64)
 
     # ------------------------------------------------------------------ encoder
     def encode(self, bits):
@@ -97,6 +108,8 @@ class fsm(_code):
             soft = x.dtype.kind == "f"
         steps, cost_of = self._prepare(x, soft)            # (W, T, m)
         W, T = steps.shape[:2]
+        if _accel.native is not None:
+            return self._finish(x, soft, *self._native_paths(steps, W))
         pm = np.zeros((W, self.S)) if self.start is None else np.full((W, self.S), np.inf)
         if self.start is not None:
             pm[:, self.start] = 0.0
@@ -119,6 +132,24 @@ class fsm(_code):
             words[:, t] = u
             path_out[:, t] = self.out[prev, u]
             s = prev
+        return self._finish(x, soft, words, path_out)
+
+    def _native_paths(self, steps, W):
+        """The survivor paths in C++ (rpps._native.viterbi_batch, the sequences on several threads): (words, path_out)"""
+        pm0 = np.zeros(self.S) if self.start is None else np.full(self.S, np.inf)
+        if self.start is not None:
+            pm0[self.start] = 0.0
+        end = np.full(W, -1 if self.end is None else self.end, dtype=np.int64)
+        metric = 0 if self.levels is not None else 1
+        states, branch, _ = _accel.native.viterbi_batch(np.ascontiguousarray(steps, dtype=np.float64), self._tab, metric,
+                                                        self._pred, self._pat, pm0, end)
+        words = self.pred_u[states, branch]
+        prev = self.pred_s[states, branch]
+        return words, self.out[prev, words]
+
+    def _finish(self, x, soft, words, path_out):
+        """Input bits of the decoded paths, and `errors` against what was received"""
+        W, T = words.shape
         keep = T - self.tail
         bits = ((words[:, :keep, None] >> np.arange(self.k - 1, -1, -1)) & 1).astype(bool).reshape(W, -1)
         self._path_out = path_out

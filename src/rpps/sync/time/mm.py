@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import numpy as np
+from ... import _accel
 from ...base import Meta, Stage
 
 from ...sample import up
@@ -57,9 +58,14 @@ class MM(Stage):
         N = len(samples)
         out = []
         if N > 0:
-            interp = self.interp.run(samples) # Interpolate once, not per symbol
             i_in = st.pos
-            while i_in + self.GUARD < N:
+            pulse = self.interp.pulse.pulse
+            native = _accel.native is not None and samples.dtype == np.complex64 and N*ratio >= len(pulse)
+            if native: # Interpolates only the points it reads
+                out, i_in = self._native(samples, pulse, i_in, st, ratio, sps)
+            else:
+                interp = self.interp.run(samples) # Interpolate once, not per symbol
+            while not native and i_in + self.GUARD < N:
                 opt_idx = i_in * ratio + int(st.est * ratio)
                 val = interp[opt_idx]
                 pw = abs(val)**2
@@ -98,7 +104,7 @@ class MM(Stage):
             st.buffer = samples[keep:]
             st.pos = i_in - keep
 
-        out = np.array(out, dtype=samples.dtype)
+        out = out if isinstance(out, np.ndarray) else np.array(out, dtype=samples.dtype)
         if st.skip and len(out):
             drop = min(st.skip, len(out))
             out = out[drop:]
@@ -106,6 +112,16 @@ class MM(Stage):
         meta.op.Fs = meta.Fs / sps
         meta.op.sps = 1
         return out
+
+    def _native(self, samples, pulse, i_in, st, ratio, sps):
+        """The symbol walk of `step` in C++ (rpps._native.mm), interpolating only the points it reads"""
+        y, i_in, est, count, pw, pw_half, outs, rail = _accel.native.mm(
+            samples, np.ascontiguousarray(pulse, dtype=np.float64), int(i_in), float(st.est), int(st.count), float(st.pw), float(st.pw_half),
+            np.ascontiguousarray(st.outs, dtype=np.complex64), np.ascontiguousarray(st.rail, dtype=np.complex64),
+            int(ratio), int(sps), float(self.alpha), self.GUARD, 1 if self.ted == "gardner" else 0, bool(self.biphase))
+        st.est, st.count, st.pw, st.pw_half = est, count, pw, pw_half
+        st.outs, st.rail = outs, rail
+        return y, i_in
 
     @staticmethod
     def _error(st):

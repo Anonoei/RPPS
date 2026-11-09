@@ -38,9 +38,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install "pysdrlib>=0.3.1" || pip install "git+https://github.com/Anonoei/pysdrlib.git"
       - name: Install test requirements
-        run: pip install pytest numpy scipy matplotlib
+        run: pip install pytest numpy scipy matplotlib pybind11
+      - name: Build the C++ kernels (rpps._native)
+        env:
+          RPPS_REQUIRE_NATIVE: "1"
+        run: python setup.py build_ext -i
       - name: Fast tests
         run: python -m pytest -q -m "not slow" --durations=10
+      - name: Fast tests without the kernels (the Python loops)
+        if: matrix.python == '3.12'
+        env:
+          RPPS_NO_NATIVE: "1"
+        run: python -m pytest -q -m "not slow"
       - name: Slow tests (chain decoding)
         if: matrix.python == '3.12'
         run: python -m pytest -q -m slow

@@ -9,6 +9,8 @@ unless noted.
 """
 import numpy as np
 
+from .. import _accel
+
 def berlekamp_massey(gf, S, nroots, gamma=None):
     """Error locator sigma (nroots+1 coefficients, lowest degree first) and its degree L from the syndromes
 
@@ -89,6 +91,9 @@ def correct(gf, S, N, nroots, t, fcr=0, prim=1, binary=False, erasures=()):
     are corrected. Their values are found like any error's, and may be 0 (the symbol was right after all)
     """
     erasures = sorted(set(int(p) for p in erasures))
+    if _accel.native is not None and np.ndim(S) == 1 and len(S) >= nroots:
+        return _accel.native.cyclic_correct(np.ascontiguousarray(S, dtype=np.int64), gf.exp, gf.log, int(N), int(nroots), int(t),
+                                            int(fcr), int(prim), bool(binary), erasures)
     e = len(erasures)
     if e:
         if binary:

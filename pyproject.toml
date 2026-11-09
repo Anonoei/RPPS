@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77.0", "numpy"]
+requires = ["setuptools>=77.0", "numpy", "pybind11>=2.12"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -57,6 +57,11 @@ push = false
     'version = "{version}"'
 ]
 "src/rpps/__init__.py" = ["{version}"]
+
+[tool.cibuildwheel]
+# Wheels for every CPython in requires-python (python-publish.yml); each must carry rpps._native
+environment = { RPPS_REQUIRE_NATIVE = "1" }
+test-command = "python -c \"import rpps._native\""
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]

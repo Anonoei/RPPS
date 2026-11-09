@@ -1,5 +1,6 @@
 import numpy as np
 
+from ... import _accel
 from ._code import _code, register, word_errors
 from ...math.gf2 import systematic, to_checks
 
@@ -26,6 +27,8 @@ class ldpc(_code):
     iters/alpha: maximum iterations / min-sum normalisation
     decode() takes hard bits or LLRs (log(P(0)/P(1)), positive means 0) for whole codewords, returns the message.
     After a decode, `converged` says which codewords satisfied every parity check.
+    With rpps._native the codewords are decoded on several threads, each stopping as soon as it converges (the
+    numpy decoder iterates the whole batch until every codeword has).
     """
     soft = True
 
@@ -65,6 +68,7 @@ class ldpc(_code):
         M = len(self.checks)
         self.M, self.N = M, n
         deg = np.array([len(c) for c in self.checks])
+        self.deg = deg.astype(np.int64)
         self.var = np.concatenate(self.checks) # Edges, grouped by check
         self.dmax = int(deg.max())
         self.cstart = np.concatenate(([0], np.cumsum(deg)[:-1]))
@@ -135,6 +139,11 @@ class ldpc(_code):
 
     def decode_codewords(self, llr):
         """Min-sum on (B, N) LLRs. Returns hard decisions (B, N)"""
+        if _accel.native is not None:
+            hard, self.converged = _accel.native.ldpc_minsum(
+                np.ascontiguousarray(llr, dtype=np.float64), self.var, self.cstart.astype(np.int64), self.deg,
+                self.order.astype(np.int64), self.vstart.astype(np.int64), self.vend.astype(np.int64), int(self.iters), float(self.alpha))
+            return hard
         B = llr.shape[0]
         ch = llr
         v2c = ch[:, self.var].copy() # (B, E)

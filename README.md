@@ -44,12 +44,27 @@ src(16384) + rx >> rp.serial.Sink("cf64", "symbols.iq")       # or straight into
 A stage can also be applied by hand to a block: `blk + rp.filters.ShiftFreq(1e3)`.
 `rp.channel` has impairments to test against (`AWGN`, `CFO`, `Fading`, `Multipath`, `ClockDrift`...).
 
+### Real time
+```python
+# docs: skip
+blocks = rp.serial.Device("hackrf", cf=915e6, Fs=10e6)(65536).threaded(drop=True) # the radio is read in a thread of its own
+for out in blocks.pipelined(rx):     # and every stage of rx runs in its own thread
+    ...
+print(out.stream.load())             # time each stage takes, as a fraction of real time (over 1.0: too slow)
+```
+The per-sample loops (AGC, Costas, timing recovery, equalizers, IIR, demodulators) and the decoders (Viterbi, trellis,
+BCJR / turbo, LDPC, Reed-Solomon, BCH) run in C++ (`rpps._native`, built with the package) and release the GIL, so
+threads run them in parallel; batches of codewords are spread over the cores (`RPPS_THREADS` sets how many).
+Without a compiler RPPS uses its Python loops (the reference: `RPPS_NO_NATIVE=1` forces them). Compare with
+`python scripts/bench_stages.py`.
+
 ### Real-time spectrum
 ![RT](/media/example_rt.jpg?raw=true "Real-time Persistent Spectrum")
 - [file](https://github.com/Anonoei/RPPS/tree/main/tests/dev/viz_rt.py)
 
 ## Install
-1. Run `python3 -m pip install rpps` (`rpps[viz]` adds matplotlib for `rp.viz`)
+1. Run `python3 -m pip install rpps` (`rpps[viz]` adds matplotlib for `rp.viz`). From a checkout, `python builder.py -c`
+   (or `python setup.py build_ext -i`) builds the C++ kernels in place; it needs pybind11 and a C++17 compiler
 2. In your project, `import rpps as rp`
 
 Definitions (codes, scramblers, modulations) ship with the package. Add your own without touching it:

@@ -40,14 +40,28 @@ class Stream:
     states: the carried state of each stage (filter history, oscillator phase, loop filters...), keyed by the stage,
         so a stage object is reusable and the same stage in two streams has two states
     det: detection result (baud, modulation, timing, cfo...), see rpps.analysis.modulation
+    busy: seconds each stage spent in `step`; air: seconds of signal the source produced. busy/air (`load`) over 1
+        means that stage can't keep up in real time
+    dropped: blocks a threaded source discarded because the stages fell behind (Blocks.threaded(drop=True))
+
+    Threads (Blocks.threaded): each stage's state is used only by the thread running that stage. `det` and
+    `src_sps` have one writer (Acquire); `gen` lets blocks already on their way pick up a new sps (Meta.refresh).
     """
-    __slots__ = ("states", "det", "blocks", "src_Fs", "src_sps")
+    __slots__ = ("states", "det", "blocks", "src_Fs", "src_sps", "gen", "busy", "air", "dropped")
     def __init__(self, Fs=None):
         self.states = {}
         self.det = None
         self.blocks = 0 # Blocks the source has produced
         self.src_Fs = Fs # Rate of the source
         self.src_sps = None # sps at the source, once a stage has learned it (Acquire): the next blocks start from it
+        self.gen = 0 # Bumped when src_sps changes
+        self.busy = {}
+        self.air = 0.0
+        self.dropped = 0
+
+    def load(self):
+        """Fraction of real time each stage takes: {stage: busy/air}. Over 1.0, it is too slow for a live source"""
+        return {st: t/self.air for st, t in self.busy.items()} if self.air > 0 else {}
 
     def restart(self):
         """Forget everything: the next block starts a new stream"""
@@ -55,6 +69,10 @@ class Stream:
         self.det = None
         self.blocks = 0
         self.src_sps = None
+        self.gen += 1
+        self.busy = {}
+        self.air = 0.0
+        self.dropped = 0
 
 class Meta:
     """The rate information of one block of data, as a stage sees it
@@ -64,7 +82,7 @@ class Meta:
         delay: group delay of the data so far [s]. A stage adds its own
         stream: the Stream this block belongs to (stage state, detection)
     """
-    __slots__ = ("state", "op", "delay", "stream")
+    __slots__ = ("state", "op", "delay", "stream", "gen")
     def __init__(self, Fs=1.0, sps=0.0, cf=0.0, delay=0.0, stream=None):
         self.stream = Stream(Fs) if stream is None else stream
         if self.stream.src_Fs is None:
@@ -74,6 +92,7 @@ class Meta:
         self.state = Rate(Fs, sps, cf)
         self.op = Rate(Fs, sps, cf)
         self.delay = delay
+        self.gen = self.stream.gen
 
     @property
     def Fs(self):
@@ -101,7 +120,22 @@ class Meta:
         m.state = self.op.copy()
         m.op = self.op.copy()
         m.delay = self.delay
+        m.gen = self.gen
         return m
+
+    def refresh(self):
+        """Pick up an sps learned after this block left the source
+
+        One thread: never needed, every block starts after the last one finished. Threaded, blocks already between
+        the source and Acquire carry the old sps: scale the source's new one by the Fs ratio, as the stages would have.
+        """
+        s = self.stream
+        if self.gen != s.gen:
+            self.gen = s.gen
+            if s.src_sps is not None and s.src_Fs:
+                sps = s.src_sps * self.state.Fs / s.src_Fs
+                self.state.sps = sps
+                self.op.sps = sps
 
     def calibrate_sps(self, sps):
         """Declare the sps at the current stage of the chain
@@ -110,6 +144,8 @@ class Meta:
         Fs ratio (decimation/resampling scale both) and handed to the blocks that follow.
         """
         self.stream.src_sps = sps * self.stream.src_Fs / self.state.Fs
+        self.stream.gen += 1
+        self.gen = self.stream.gen
         self.state.sps = sps
         self.op.sps = sps
 

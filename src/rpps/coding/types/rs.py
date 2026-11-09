@@ -1,5 +1,6 @@
 import numpy as np
 
+from ... import _accel
 from ._code import _code, register
 from ...math import cyclic
 from ...math.gf import GF
@@ -62,6 +63,9 @@ class rs(_code):
     def syndromes(self, words):
         """Syndromes (W, nroots) of full-length codewords (W, n): S_i = r(alpha^((fcr+i)*prim))"""
         words = np.asarray(words)
+        if _accel.native is not None:
+            return _accel.native.gf_syndromes(np.ascontiguousarray(words, dtype=np.int64), self.gf.exp, self.gf.log,
+                                              self.nroots, self.fcr, self.prim)
         e = np.arange(words.shape[1] - 1, -1, -1) # Power of x at each position
         S = np.zeros((len(words), self.nroots), dtype=np.int64)
         for i in range(self.nroots):
@@ -116,6 +120,8 @@ class rs(_code):
         cw = np.zeros((W, self.n), dtype=np.int64)
         cw[:, self.sent] = rx
         given = self._erasure_lists(erasures, W)
+        if _accel.native is not None:
+            return self._decode_native(cw, given, rel, symbols)
         S = self.syndromes(cw)
         self.errors = np.zeros(W, dtype=int)
         for w in range(W):
@@ -133,6 +139,32 @@ class rs(_code):
             self.errors[w] = -1 if fixed is None else fixed
         out = cw[:, :self.num].reshape(-1)
         return out if symbols else self.to_bits(out)
+
+    def _decode_native(self, cw, given, rel, symbols):
+        """`decode` in C++ (rpps._native.cyclic_decode, the codewords on several threads), the soft retries included"""
+        nat, gf = _accel.native, self.gf
+        W = len(cw)
+        erased = np.zeros((W, self.n), dtype=np.uint8)
+        erased[:, self.puncture] = 1
+        for w in range(W):
+            if len(given[w]):
+                erased[w, self.sent[np.asarray(given[w], dtype=np.int64)]] = 1
+        args = (gf.exp, gf.log, self.nroots, self.t, self.fcr, self.prim, False, True)
+        out, errors = nat.cyclic_decode(cw, erased if erased.any() else np.zeros((0, 0), np.uint8), *args)
+        if rel is not None:
+            for w in np.nonzero(errors < 0)[0]:
+                base = erased[w].astype(bool)
+                order = [int(p) for p in self.sent[np.argsort(rel[w], kind="stable")] if not base[p]] # Least reliable first
+                for extra in range(2, self.nroots - int(base.sum()) + 1, 2):
+                    mask = base.copy()
+                    mask[order[:extra]] = True
+                    one, err = nat.cyclic_decode(cw[w:w+1], mask[None].astype(np.uint8), *args)
+                    if err[0] >= 0:
+                        out[w], errors[w] = one[0], err[0]
+                        break
+        self.errors = errors.astype(int)
+        res = out[:, :self.num].reshape(-1)
+        return res if symbols else self.to_bits(res)
 
     def _correct(self, word, S, erasures=()):
         """Fix one full-length word in place. Returns the number of changed symbols, None if it can't be corrected"""

@@ -1,5 +1,6 @@
 import numpy as np
 
+from ... import _accel
 from ._code import _code, register
 from ...math import cyclic
 from ...math.gf import GF
@@ -61,6 +62,8 @@ class bchgf(_code):
     def syndromes(self, words):
         """S_j = r(alpha^j), j=1..2t, for words (W, n) of bits"""
         words = np.asarray(words)
+        if _accel.native is not None:
+            return _accel.native.gf_syndromes(np.ascontiguousarray(words, dtype=np.int64), self.gf.exp, self.gf.log, 2*self.t, 1, 1)
         e = np.arange(self.den - 1, -1, -1) # Power of x of each bit
         S = np.zeros((len(words), 2*self.t), dtype=np.int64)
         for j in range(1, 2*self.t + 1):
@@ -70,6 +73,11 @@ class bchgf(_code):
     def decode(self, bits):
         cw = np.asarray(bits, dtype=np.uint8)
         cw = cw[:len(cw)//self.den*self.den].reshape(-1, self.den).copy()
+        if _accel.native is not None: # The codewords on several threads
+            out, errors = _accel.native.cyclic_decode(cw.astype(np.int64), np.zeros((0, 0), np.uint8), self.gf.exp, self.gf.log,
+                                                      2*self.t, self.t, 1, 1, True, False)
+            self.errors = errors.astype(int)
+            return out[:, :self.num].reshape(-1).astype(bool)
         S = self.syndromes(cw)
         self.errors = np.zeros(len(cw), dtype=int)
         for w in np.nonzero(S.any(axis=1))[0]:

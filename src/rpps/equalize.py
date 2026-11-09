@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from . import _accel
 from .base import Stage
 
 class _Equalizer(Stage):
@@ -28,12 +29,26 @@ class _Equalizer(Stage):
         """Update direction for output y: w += mu * error * conj(x)"""
         raise NotImplementedError()
 
+    def _native_mode(self):
+        """0 CMA, 1 LMS: the error functions rpps._native.equalize knows (a subclass with its own runs in Python)"""
+        err = type(self).error
+        return 0 if err is CMA.error else 1 if err is LMS.error else None
+
     def step(self, samples, st, meta):
         N, sps, mu = self.taps, st.sps, self.mu
         buf = np.concatenate((st.tail, samples.astype(np.complex64, copy=False)))
         out = []
         n, w = st.next, st.w
-        while n < len(buf):
+        mode = self._native_mode() if _accel.native is not None else None
+        if mode is not None:
+            pts = getattr(st, "points", None)
+            train = getattr(self, "training", None)
+            none = np.zeros(0, dtype=np.complex64)
+            out, w, n, st.n = _accel.native.equalize(
+                buf, np.ascontiguousarray(w, dtype=np.complex64), int(n), int(sps), float(mu), mode, float(getattr(self, "R", 0.0)),
+                none if pts is None else np.ascontiguousarray(pts, dtype=np.complex64), pts is not None,
+                none if train is None else np.ascontiguousarray(train, dtype=np.complex64), train is not None, int(st.n))
+        while mode is None and n < len(buf):
             x = buf[n - N + 1:n + 1][::-1]
             y = np.dot(w, x)
             w = w + mu*self.error(y, st)*np.conj(x)

@@ -3,9 +3,12 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from . import _accel
 from .base import Stage
 from .filters.filter import FIR
 from .filters.impl.designer import designer
+
+_NATIVE_DTYPES = (np.float32, np.float64, np.complex64, np.complex128) # What the rpps._native loops take
 
 class AMDemod(Stage):
     """Envelope detector: |x| with the carrier (DC) removed by a slow running mean"""
@@ -19,6 +22,10 @@ class AMDemod(Stage):
 
     def step(self, samples, st, meta):
         env = np.abs(samples).astype(np.float32)
+        if _accel.native is not None:
+            out, mean, have = _accel.native.am_demod(env, 0.0 if st.mean is None else float(st.mean), st.mean is not None, float(self.alpha))
+            st.mean = mean if have else None
+            return out
         out = np.empty_like(env)
         mean = st.mean
         for i, v in enumerate(env):
@@ -62,10 +69,16 @@ class Squelch(Stage):
         return SimpleNamespace(level=None, is_open=False)
 
     def step(self, samples, st, meta):
+        lo, hi = 10**(self.close_db/10), 10**(self.open_db/10)
+        x = np.ascontiguousarray(samples)
+        if _accel.native is not None and x.dtype in _NATIVE_DTYPES:
+            out, lvl, have, op = _accel.native.squelch(x, 0.0 if st.level is None else float(st.level), st.level is not None,
+                                                       bool(st.is_open), lo, hi, float(self.alpha))
+            st.level, st.is_open = (lvl if have else None), op
+            return out
         pw = np.abs(samples)**2
         out = np.zeros_like(samples)
         lvl, op = st.level, st.is_open
-        lo, hi = 10**(self.close_db/10), 10**(self.open_db/10)
         for i, p in enumerate(pw):
             lvl = p if lvl is None else lvl + self.alpha*(p - lvl)
             op = lvl > (lo if op else hi)
@@ -84,6 +97,12 @@ class DCBlock(Stage):
         return SimpleNamespace(x=0.0, y=0.0)
 
     def step(self, samples, st, meta):
+        x = np.ascontiguousarray(samples)
+        if _accel.native is not None and x.dtype in _NATIVE_DTYPES:
+            cplx = x.dtype.kind == "c"
+            out, st.x, st.y = _accel.native.dc_block(x, complex(st.x) if cplx else float(np.real(st.x)),
+                                                     complex(st.y) if cplx else float(np.real(st.y)), float(self.r))
+            return out
         out = np.empty_like(samples)
         x1, y1, r = st.x, st.y, self.r
         for i, v in enumerate(samples):
@@ -104,6 +123,10 @@ class Deemphasis(Stage):
 
     def step(self, samples, st, meta):
         a = 1 - np.exp(-1/(self.tau*meta.Fs))
+        x = np.ascontiguousarray(samples)
+        if _accel.native is not None and x.dtype in _NATIVE_DTYPES:
+            out, st.y = _accel.native.one_pole(x, complex(st.y) if x.dtype.kind == "c" else float(np.real(st.y)), float(a))
+            return out
         out = np.empty_like(samples)
         y = st.y
         for i, v in enumerate(samples):

@@ -4,7 +4,17 @@
     for out in src(4096) + (lpf + dec):          # blocks flow through the pipeline, its state carried along
         ...
     src(4096) + (lpf + dec) >> rp.serial.Sink("cf64", "out.iq")   # or straight into a sink
+
+Threads: `.threaded()` puts everything before it in its own thread, and `.pipelined(pipe)` gives every stage of a
+pipeline its own, connected by bounded queues. Stages overlap where they release the GIL (numpy, the rpps._native
+kernels), and a radio is drained while the stages work:
+
+    src(16384).threaded(drop=True).pipelined(agc + costas + mm) >> sink
 """
+import queue
+import threading
+import time
+
 import numpy as np
 import pysdrlib
 
@@ -14,11 +24,82 @@ from ..errors import StreamError
 from . import formats as fmts
 from .err import Overflow
 
+def _close(it):
+    """Close a generator: its `finally` runs now (a radio stops, a thread exits)"""
+    close = getattr(it, "close", None)
+    if close is not None:
+        close()
+
+class _End:
+    """End of a threaded stream: carries the producer's exception, if any"""
+    __slots__ = ("exc",)
+    def __init__(self, exc=None):
+        self.exc = exc
+
+def _threaded(gen, depth, drop, name):
+    """Iterate `gen` in a thread of its own, handing its items over through a queue of `depth`"""
+    q = queue.Queue(maxsize=max(1, int(depth)))
+    stop = threading.Event()
+
+    def put(item):
+        while not stop.is_set():
+            try:
+                q.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                pass
+        return False
+
+    def pump():
+        it = iter(gen)
+        end = _End()
+        try:
+            for b in it:
+                if drop:
+                    try:
+                        q.put_nowait(b)
+                    except queue.Full:
+                        meta = getattr(b, "meta", None)
+                        if meta is not None:
+                            meta.stream.dropped += 1
+                elif not put(b):
+                    break
+                if stop.is_set():
+                    break
+        except BaseException as e: # Re-raised in the consumer
+            end = _End(e)
+        finally:
+            try:
+                _close(it) # A generator source (a radio) cleans up in the thread that runs it
+            except Exception:
+                pass
+        put(end)
+
+    t = threading.Thread(target=pump, daemon=True, name=name)
+    t.start()
+    try:
+        while True:
+            item = q.get()
+            if isinstance(item, _End):
+                if item.exc is not None:
+                    raise item.exc
+                return
+            yield item
+    finally:
+        stop.set()
+        while t.is_alive(): # Unblock a producer waiting on a full queue
+            try:
+                q.get_nowait()
+            except queue.Empty:
+                t.join(timeout=0.05)
+
 class Blocks:
     """Blocks of a stream. The operators apply to every block as it is produced, with state carried between them
 
         blocks + stage      # DSP stage or pipeline (also blocks * pipe, blocks / pipe)
         blocks >> sink      # write every block; returns the sink
+        blocks.threaded()   # everything so far runs in a thread of its own
+        blocks.pipelined(a + b + c) # a, b and c each in a thread of their own
     """
     def __init__(self, gen):
         self._gen = gen
@@ -27,7 +108,13 @@ class Blocks:
         return iter(self._gen)
 
     def _map(self, fn):
-        return Blocks(fn(b) for b in self._gen)
+        def gen(src=self._gen):
+            try:
+                for b in src:
+                    yield fn(b)
+            finally:
+                _close(src) # A generator expression would leave the source (and its threads) to the garbage collector
+        return Blocks(gen())
 
     def __add__(self, pipe):
         return self._map(lambda b: b + pipe)
@@ -37,13 +124,38 @@ class Blocks:
         return self._map(lambda b: b / pipe)
 
     def __rshift__(self, sink):
-        for b in self._gen:
-            sink.write(b)
+        try:
+            for b in self._gen:
+                sink.write(b)
+        finally:
+            _close(self._gen)
         return sink
+
+    def threaded(self, depth=8, drop=False):
+        """Run everything before this point (the source, the stages applied so far) in its own thread
+
+        depth: blocks the queue to the next thread holds.
+        drop: when the queue is full, discard the block and count it in `stream.dropped` instead of waiting. Use
+            for a radio, which overruns anyway when it isn't read; the stream then has gaps (the stages carry on).
+        An exception in the thread is raised where the blocks are read; leaving the loop stops the thread (and
+        closes the source).
+        """
+        return Blocks(_threaded(self._gen, depth, drop, "rpps-blocks"))
+
+    def pipelined(self, pipe, depth=4):
+        """blocks + pipe, with every top-level stage of the pipe in its own thread (and the source in another)"""
+        items = pipe.items if isinstance(pipe, base.Pipeline) else (pipe,)
+        b = self.threaded(depth)
+        for it in items:
+            b = (b + it).threaded(depth)
+        return b
 
     def collect(self):
         """All the output joined into one array"""
-        parts = [np.asarray(b.data) for b in self._gen]
+        try:
+            parts = [np.asarray(b.data) for b in self._gen]
+        finally:
+            _close(self._gen)
         return np.concatenate(parts) if parts else np.zeros(0, dtype=np.complex64)
 
 class Source:
@@ -53,7 +165,11 @@ class Source:
         self.stream = Stream(Fs) # Shared by every block this source makes
 
     def _block(self, samples, flush=False):
-        return Data(samples, flush=flush, Fs=self.Fs, sps=self.sps, cf=self.cf, stream=self.stream)
+        s = self.stream
+        s.blocks += 1
+        if self.Fs:
+            s.air += len(samples) / self.Fs
+        return Data(samples, flush=flush, Fs=self.Fs, sps=self.sps, cf=self.cf, stream=s)
 
     def _samples(self, count):
         raise NotImplementedError()
@@ -187,7 +303,11 @@ class Device(Source):
             sdr.start_rx()
             pending = np.zeros(0, dtype=np.complex64)
             while True:
-                pending = np.concatenate((pending, sdr.get_samples()))
+                got = sdr.get_samples()
+                if len(got) == 0:
+                    time.sleep(0.001) # get_samples doesn't wait: spinning here would starve the thread that processes the blocks
+                    continue
+                pending = np.concatenate((pending, got))
                 while len(pending) >= count:
                     yield self._block(pending[:count].copy())
                     pending = pending[count:]
