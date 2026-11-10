@@ -104,5 +104,5 @@ jobs:
           python -m pip install --upgrade pip pdoc3
           pip install "pysdrlib>=0.3.1" || pip install "git+https://github.com/Anonoei/pysdrlib.git"
           pip install ".[viz]"
-      - run: python -m pdoc -o docs --html --force src/rpps
+      - run: python -m pdoc -o docs --html --force --template-dir pdoc_templates src/rpps
       - run: test -f docs/rpps/index.html

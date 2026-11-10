@@ -1,3 +1,5 @@
+"""Synchronization stages: acquisition, AGC, PLLs, Costas, and frequency (`freq`), phase (`phase`) and symbol-timing (`time`) recovery
+"""
 from .. import _config
 
 from .sync import Sync

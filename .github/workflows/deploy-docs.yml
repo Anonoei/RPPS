@@ -53,7 +53,7 @@ jobs:
 
       - name: Build docs
         run: |
-            python -m pdoc -o docs --html --force --skip-errors src/rpps
+            python -m pdoc -o docs --html --force --template-dir pdoc_templates src/rpps
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

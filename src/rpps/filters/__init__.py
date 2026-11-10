@@ -1,3 +1,5 @@
+"""Filters as stages: FIR/IIR design (`low_pass`, `band_pass`, `remez`...), pulse shaping, windows, frequency shifts and a polyphase channelizer: `samples + rp.filters.low_pass(401, 3e6, 100e6)`
+"""
 from .. import _config
 
 from .impl import designer
