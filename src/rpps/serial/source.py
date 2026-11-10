@@ -13,7 +13,6 @@ kernels), and a radio is drained while the stages work:
 """
 import queue
 import threading
-import time
 
 import numpy as np
 import pysdrlib
@@ -193,25 +192,19 @@ class File(Source):
 
     fmt: pysdrlib format name (see `rp.serial.formats.ls()`)
     Fs, cf, sps: what the capture was recorded with
-    scale: integer formats become floats in [-1, 1)
+    scale: integer formats become floats in [-1, 1), as a device's samples are
     """
     def __init__(self, fmt, path, Fs=1.0, cf=0.0, sps=0.0, scale=True):
         super().__init__(Fs, cf, sps)
         self.fmt = fmts.get(fmt)
-        self.scale = fmts.full_scale(self.fmt) if scale else 1.0
-        self._f = pysdrlib.File(path, self.fmt.name)
+        self._f = pysdrlib.File(path, self.fmt.name, scale=scale)
         self.path = self._f.get_path()
 
     def __str__(self):
         return str(self._f)
 
-    @property
-    def max_samp(self):
-        return self._f.max_samp
-
-    @property
-    def cur_samp(self):
-        return self._f.cur_samp
+    max_samp = property(lambda self: self._f.max_samp)
+    cur_samp = property(lambda self: self._f.cur_samp)
 
     @property
     def percent(self):
@@ -243,37 +236,28 @@ class File(Source):
     def peek(self, count, start=0):
         """`count` samples from sample `start` (fewer near the end) as an array, leaving the read position where it was"""
         pos, was_open = self._f.cur_samp, self._f.f is not None
-        n = max(0, min(int(count), self.max_samp - start))
         self._f.seek(start)
         try:
-            if not was_open:
-                self._f.open()
-            return self._convert(self._f.next(n))
+            self.open()
+            return self._writable(self._f.next(int(count), partial=True))
         finally:
             self._f.seek(pos)
-            if not was_open and self._f.f is not None:
-                self._f.close()
+            if not was_open:
+                self.close()
 
     def read(self, count):
         """The next `count` samples as an array (not a block)"""
-        if self._f.f is None:
-            self._f.open()
-        return self._convert(self._f.next(count))
+        self.open()
+        return self._writable(self._f.next(int(count)))
 
-    def _convert(self, x):
-        """Writable samples, integers scaled to [-1, 1)"""
-        if self.scale == 1.0:
-            return np.array(x)
-        if x.dtype.kind == "c":
-            return (x / np.float32(self.scale)).astype(np.complex64)
-        return x.astype(np.float32) / np.float32(self.scale)
+    @staticmethod
+    def _writable(x):
+        return x if x.flags.writeable else x.copy()
 
     def _samples(self, count):
-        count = int(count)
         with self._f:
-            while self._f.cur_samp < self._f.max_samp:
-                x = self._f.next(count, partial=True) # A short last block at the end
-                yield self._block(self._convert(x), flush=self._f.cur_samp >= self._f.max_samp)
+            for x in self._f.forward(int(count), partial=True): # A short last block at the end
+                yield self._block(self._writable(x), flush=self._f.cur_samp >= self._f.max_samp)
 
 class Device(Source):
     """Samples from a pysdrlib device (RTL-SDR, HackRF, ..., "sim", or "remote"): blocks until the loop is left
@@ -281,11 +265,12 @@ class Device(Source):
         for blk in rp.serial.Device("hackrf", cf=100e6, Fs=10e6)(8192) + rx: ...
     """
     def __init__(self, device, cf=None, Fs=None, rx_gain=None, sps=0.0, **open_args):
-        """device: a pysdrlib device name, or a device you made (rp.serial.Device(pysdrlib.device("sim", realtime=False)))"""
+        """device: a pysdrlib device name, or a device you made (rp.serial.Device(pysdrlib.device("sim", realtime=False))).
+        rx_gain: the receive gain as a fraction 0-1 of the device's range (the same on any radio), or a {stage: fraction} dict"""
         self.sdr = pysdrlib.device(device) if isinstance(device, str) else device
         self.rx_gain = rx_gain
         self._open_args = open_args
-        super().__init__(Fs if Fs is not None else self.sdr.Fs, cf if cf is not None else self.sdr.CF, sps)
+        super().__init__(Fs if Fs is not None else self.sdr.get_rx_sample_rate(), cf if cf is not None else self.sdr.get_rx_freq(), sps)
 
     def peek(self, count):
         """The first `count` samples from the device, as an array. A device can't rewind: these are not in the blocks
@@ -298,22 +283,13 @@ class Device(Source):
         sdr.open(**self._open_args)
         try:
             sdr.initialize(cf=self.cf, Fs=self.Fs, rx_gain=self.rx_gain)
-            self.cf, self.Fs = sdr.get_freq(), sdr.get_sample_rate() # What the hardware settled on
+            self.cf, self.Fs = sdr.get_rx_freq(), sdr.get_rx_sample_rate() # What the hardware settled on
             self.stream.src_Fs = self.Fs
-            sdr.start_rx()
-            pending = np.zeros(0, dtype=np.complex64)
-            while True:
-                got = sdr.get_samples()
-                if len(got) == 0:
-                    time.sleep(0.001) # get_samples doesn't wait: spinning here would starve the thread that processes the blocks
-                    continue
-                pending = np.concatenate((pending, got))
-                while len(pending) >= count:
-                    yield self._block(pending[:count].copy())
-                    pending = pending[count:]
+            with sdr.stream(count, meta=True) as rx: # Exactly `count` samples a block; starts and stops receiving
+                for x, m in rx:
+                    self.stream.dropped += m.dropped
+                    yield self._block(x)
         finally:
-            if sdr.state["rx"]:
-                sdr.stop_rx()
             if sdr.state["open"]:
                 sdr.close()
 
@@ -326,7 +302,7 @@ class Sink:
     """
     def __init__(self, fmt, path, scale=True, append=False, clip=True):
         self.fmt = fmts.get(fmt)
-        self.scale = fmts.full_scale(self.fmt) if scale else 1.0
+        self.scale = self.fmt.full_scale if scale else 1.0
         self._sink = pysdrlib.FileSink(path, self.fmt.name, append=append, open=True, clip=clip)
 
     @property

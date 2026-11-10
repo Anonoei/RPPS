@@ -56,7 +56,7 @@ The per-sample loops (AGC, Costas, timing recovery, equalizers, IIR, demodulator
 BCJR / turbo, LDPC, Reed-Solomon, BCH) run in C++ (`rpps._native`, built with the package) and release the GIL, so
 threads run them in parallel; batches of codewords are spread over the cores (`RPPS_THREADS` sets how many).
 Without a compiler RPPS uses its Python loops (the reference: `RPPS_NO_NATIVE=1` forces them). Compare with
-`python scripts/bench_stages.py`.
+`python tests/bench_stages.py`.
 
 ### Real-time spectrum
 ![RT](/media/example_rt.jpg?raw=true "Real-time Persistent Spectrum")
