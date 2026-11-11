@@ -38,7 +38,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install "pysdrlib>=0.3.1" || pip install "git+https://github.com/Anonoei/pysdrlib.git"
       - name: Install test requirements
-        run: pip install pytest numpy scipy matplotlib pybind11
+        run: pip install pytest numpy matplotlib pybind11 # no scipy: RPPS must not need it
       - name: Build the C++ kernels (rpps._native)
         env:
           RPPS_REQUIRE_NATIVE: "1"
@@ -50,6 +50,12 @@ jobs:
         env:
           RPPS_NO_NATIVE: "1"
         run: python -m pytest -q -m "not slow"
+      - name: Oracle tests against scipy
+        # scipy is not a dependency; these tests compare remez, resample_poly, convolve and the IIR designs with it
+        if: matrix.python == '3.12'
+        run: |
+          pip install scipy
+          python -m pytest -q -m "not slow" tests/unit/test_remez.py tests/unit/test_numpy_only.py tests/unit/test_iir.py tests/unit/test_channel_sync.py tests/unit/test_filters_config.py
       - name: Slow tests (chain decoding)
         if: matrix.python == '3.12'
         run: python -m pytest -q -m slow
