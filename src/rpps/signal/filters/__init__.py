@@ -7,6 +7,7 @@ from .impl import designer
 from .filter import Filter, FIR
 
 from .filters import low_pass, high_pass, band_pass, band_stop, low_pass_kaiser, high_pass_kaiser, kaiser_window, kaiser_params, remez
+from .convolve import convolve
 from .pfb import Channelizer
 from .shift import ShiftFreq, ShiftFreqIdx, ShiftTime
 from .shaping import ShapingRect, ShapingRC, ShapingRRC, ShapingSinc

@@ -144,13 +144,7 @@ def test_filters_take_a_window():
         f = rp.signal.filters.low_pass(101, 1000, 10e3, window=w).filt
         assert abs(f.sum() - 1) < 1e-3
 
-def test_remez_needs_scipy_or_works():
-    try:
-        import scipy  # noqa
-    except ImportError:
-        with pytest.raises(ImportError):
-            rp.signal.filters.remez(51, [0, 0.2, 0.3, 0.5], [1, 0])
-        return
+def test_remez_meets_the_spec_without_scipy():
     h = rp.signal.filters.remez(101, [0, 1000, 1500, 5000], [1, 0], fs=10e3).filt
     H = np.abs(np.fft.rfft(h, 4096)); f = np.fft.rfftfreq(4096, 1e-4)
     assert H[f < 900].min() > 0.95 and H[f > 1600].max() < 0.05

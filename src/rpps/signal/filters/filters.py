@@ -1,6 +1,7 @@
 import numpy as np
 
 from .impl.designer import designer
+from .impl.remez import remez as _remez
 from .filter import FIR
 
 class ConvFilter(FIR):
@@ -54,13 +55,12 @@ def high_pass_kaiser(cutoff, transition, atten_db=60, fs=1.0):
     taps, beta = kaiser_params(atten_db, transition/fs)
     return high_pass(taps, cutoff, fs, kaiser_window(beta))
 
-def remez(taps, bands, desired, weight=None, fs=1.0):
-    """Equiripple (Parks-McClellan) FIR through scipy.signal.remez (needs scipy)
+def remez(taps, bands, desired, weight=None, fs=1.0, type="bandpass"):
+    """Equiripple (Parks-McClellan) FIR: the smallest possible maximum weighted error for `taps` coefficients
 
         remez(101, [0, 1000, 1500, 5000], [1, 0], fs=10e3)   # low pass: pass 0-1 kHz, stop 1.5 kHz up
+
+    bands: band edges in Hz of `fs`, two per band; desired: one gain per band; weight: one per band (a heavier band gets less ripple);
+    type: "bandpass", "hilbert" or "differentiator". Needs no scipy
     """
-    try:
-        from scipy.signal import remez as _remez
-    except ImportError as exc:
-        raise ImportError("rp.signal.filters.remez needs scipy (pip install scipy)") from exc
-    return ConvFilter(np.asarray(_remez(taps, bands, desired, weight=weight, fs=fs), dtype=np.float32))
+    return ConvFilter(np.asarray(_remez(taps, bands, desired, weight=weight, fs=fs, type=type), dtype=np.float32))

@@ -108,13 +108,12 @@ def test_inline_window_in_a_design(tmp_path):
         _config._EXTRA.remove(tmp_path)
 
 def test_remez_design(tmp_path):
-    scipy_signal = pytest.importorskip("scipy.signal")
     (tmp_path / "filter" / "fir").mkdir(parents=True)
     obj = {"base": "fir", "type": "remez", "taps": 41, "bands": [0, 0.1, 0.15, 0.5], "desired": [1, 0]}
     (tmp_path / "filter" / "fir" / "rz.json").write_text(json.dumps(obj))
     rp.add_config_path(tmp_path)
     try:
-        assert np.allclose(rp.signal.filters.load("fir", "rz").taps(), scipy_signal.remez(41, [0, 0.1, 0.15, 0.5], [1, 0], fs=1.0))
+        assert np.allclose(rp.signal.filters.load("fir", "rz").taps(), rp.signal.filters.remez(41, [0, 0.1, 0.15, 0.5], [1, 0]).filt, atol=1e-6)
     finally:
         _config._EXTRA.remove(tmp_path)
 

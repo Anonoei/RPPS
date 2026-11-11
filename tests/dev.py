@@ -11,7 +11,7 @@ def main():
     mod.set_mapping(mod.maps[0])
     # ecc = rp.code.load("block", "repeat/5")
     ecc = rp.code.load("block", "hamming/7_4")
-    scr = rp.code.scram.load("fdt", "v35")
+    scr = rp.code.scram.load("v35")
 
     # print(f"Mod: {mod}")
     # print(f"ECC: {ecc}")

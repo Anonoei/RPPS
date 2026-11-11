@@ -9,7 +9,7 @@ taps when a stream starts, from its `Fs` and `sps` (`stage.taps(Fs=..., sps=...)
              "type": "windowed"  "pass": lowpass | highpass | bandpass | bandstop, "cutoff": f or [low, high], then
                                  "taps": n, "window": name (default np.hamming, as rp.signal.filters.low_pass; "hamming" is the built-in one)
                                  or "transition": width, "atten_db": dB (Kaiser window sized to meet it)
-             "type": "remez"    "taps": n, "bands": [...], "desired": [...], "weight": [...]   (needs scipy)
+             "type": "remez"    "taps": n, "bands": [...], "desired": [...], "weight": [...]   "response": bandpass (default) | hilbert | differentiator; no scipy
     iir      numpy only, as second-order sections. No constant group delay, so a stream's `delay` is unchanged. Unstable: rejected.
              "type": "sos"       "sos": [[b0, b1, b2, a0, a1, a2], ...]
              "type": "ba"        "b": [...], "a": [...]       scipy sign: y[n] = sum(b x) - sum(a[1:] y)
@@ -37,6 +37,7 @@ from ...errors import ConfigError
 from .filter import FIR, Filter
 from .filters import kaiser_params, kaiser_window
 from .impl.designer import designer
+from .impl.remez import remez
 from .impl import window as _windows
 from . import shaping as _shaping
 from . import iir as _iir
@@ -149,11 +150,7 @@ def _remez(name, obj):
         if k not in obj:
             raise ConfigError(f"{name}: a remez design needs `{k}`")
     def build(meta):
-        try:
-            from scipy.signal import remez
-        except ImportError as exc:
-            raise ImportError(f"{name}: a remez design needs scipy (pip install scipy)") from exc
-        h = remez(int(obj["taps"]), _freq(obj, "bands", meta.Fs), obj["desired"], weight=obj.get("weight"), fs=1.0)
+        h = remez(int(obj["taps"]), _freq(obj, "bands", meta.Fs), obj["desired"], weight=obj.get("weight"), fs=1.0, type=obj.get("response", "bandpass"))
         return _post(h, obj)
     return build
 

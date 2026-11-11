@@ -9,7 +9,7 @@ description = "RF Parameter Processor Suite"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [
-    {name = "Anonoei", email="to+dev@an0.cx"}
+    {name = "Anonoei", email="to+dev@an0.us"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -33,7 +33,7 @@ Source = "https://github.com/anonoei/RPPS"
 
 [project.optional-dependencies]
 viz = ["matplotlib"]
-dev = ["matplotlib", "twine", "build", "bumpver", "pytest", "pdoc3"]
+dev = ["matplotlib", "twine", "build", "bumpver", "pytest", "pdoc3", "scipy"] # scipy: only the tests that check against it
 
 [tool.setuptools.packages.find]
 where = ["src"]
