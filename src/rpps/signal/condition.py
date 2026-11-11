@@ -5,8 +5,6 @@ import numpy as np
 
 from .. import _accel
 from ..base import Stage
-from .filters.filter import FIR
-from .filters.impl.designer import designer
 
 _NATIVE_DTYPES = (np.float32, np.float64, np.complex64, np.complex128) # What the rpps._native loops take
 

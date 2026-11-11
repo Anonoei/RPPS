@@ -24,7 +24,7 @@ import numpy as np
 
 from ..base.rpps import FLUSH
 from . import control as _ctl
-from .steps import STAGE, DECODE, ENCODE
+from .steps import STAGE, DECODE
 
 MIN_SEGMENT = 1024 # Items at the re-run span's first step per piece, at least
 MAX_REWINDS = 256  # Re-runs in one call before late changes are only reported

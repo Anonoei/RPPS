@@ -364,7 +364,6 @@ def scan_rs(bits, names=None, interleavers=True, packets=200):
     Returns (hypotheses, trials). The score is how many words have all-zero syndromes.
     """
     from .. import code as coding
-    from ..code.types import rs as RS
     names = names or coding.names("block", "rs")
     inters = [None] + [c for c in (coding.load("interleave", n)._enc for n in coding.names("interleave"))
                        if hasattr(c, "I") and hasattr(c, "M")] if interleavers else [None] # Forney: the ones RS sits behind
@@ -382,12 +381,7 @@ def scan_rs(bits, names=None, interleavers=True, packets=200):
             for off in range(8):
                 B = np.packbits(b[off:][:(len(b)-off)//8*8]).astype(np.int64)
                 for inter in inters:
-                    if inter is None:
-                        C = B
-                        phases = range(n)
-                    else:
-                        phases = range(n)
-                    for ph in phases:
+                    for ph in range(n):
                         seg = B[ph:ph+(packets + 20)*n]
                         if len(seg) < 80*n:
                             continue

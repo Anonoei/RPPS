@@ -45,11 +45,12 @@ def test_bare_names():
     with pytest.raises(ConfigError, match="ambiguous"):
         _config.find("fec", "1_2", "conv")
 
-def test_old_names_still_resolve():
-    new = _config.find("fec", "rs/204_188", "block")
-    assert _config.find("fec", "rs.204_188", "block") == new           # first "." read as "/"
-    assert _config.find("fec", "dvbs.3_4_7", "conv") == _config.find("fec", "k7_171_133/3_4", "conv") # declared alias
-    assert [s.kind for s in rp.profile.load("dvbs_3_4").steps][-1] == "scramble" # a profile's declared alias
+def test_aliases_resolve():
+    assert _config.find("crc", "adsb") == _config.find("crc", "crc24_mode_s") # the name it goes by in a standard
+    assert _config.find("fec", "dvbs.3_4_7", "conv") == _config.find("fec", "k7_171_133/3_4", "conv") # system.rate_K
+    assert _config.find("fec", "iess308.1_2_7", "conv") == _config.find("fec", "k7_133_171/1_2", "conv")
+    assert [s.kind for s in rp.profile.load("dvbs_3_4").steps][-1] == "scramble" # a profile's alias
+    assert _config.find("fec", "rs.204_188", "block") is None # a dotted name is an alias or nothing: no family.name guess
 
 def test_family_names_the_loaded_code():
     assert type(rp.code.load("block", "rs/204_188")).__name__ == "rs"

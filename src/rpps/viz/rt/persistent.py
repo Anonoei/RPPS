@@ -1,7 +1,6 @@
 from . import matrix
 
 import numpy as np
-import matplotlib.colors as colors
 import matplotlib as mpl
 
 from . import colors

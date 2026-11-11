@@ -77,13 +77,6 @@ def ls(domain, path=None):
             out[key] = sorted(set(out.get(key, [])) | {f.stem})
     return dict(sorted(out.items()))
 
-_log = logging.getLogger("rpps.config")
-_WARNED: set = set()
-
-def _deprecated(old, new):
-    if old not in _WARNED:
-        _WARNED.add(old)
-        _log.warning("config name %r is deprecated, use %r", old, new)
 
 def _files(base):
     return sorted(base.rglob("*.json")) if base.is_dir() else []
@@ -93,7 +86,8 @@ def locate(domain, ref, category=None, path=None):
     e.g. ("block", "rs", "204_188"): the category, the group folders, the name.
 
     ref is the path below the category ("rs/204_188", case-insensitive); without folders it's a bare name, which must match one file.
-    Tried in each layer, user layers first: the exact path, a bare name, an "aliases" entry of a definition, and the old "family.name" form.
+    Tried in each layer, user layers first: the exact path, a bare name, then an "aliases" entry of a definition (another
+    name it goes by: "dvbs.3_4_7", "adsb").
     category: only look under that folder"""
     ref_l = ref.lower().strip("/")
     for root in _roots(domain, path):
@@ -110,13 +104,7 @@ def locate(domain, ref, category=None, path=None):
             for f in files:
                 if ref_l in [str(a).lower() for a in read(f).get("aliases", [])]:
                     hit = f
-                    _deprecated(ref, f.relative_to(base).with_suffix("").as_posix())
                     break
-        if hit is None and "." in ref_l and "/" not in ref_l: # rs.204_188 -> rs/204_188
-            new = ref_l.replace(".", "/", 1)
-            hit = rel.get(new)
-            if hit is not None:
-                _deprecated(ref, new)
         if hit is not None:
             return hit, hit.relative_to(root).with_suffix("").parts
     return None, None

@@ -2,7 +2,7 @@ import numpy as np
 
 from ._code import _code, register
 
-from ..blocker import block, unblock
+from ..blocker import block
 
 @register("repeat")
 class repeat(_code):

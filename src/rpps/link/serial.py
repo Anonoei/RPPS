@@ -13,8 +13,7 @@
 from pathlib import Path
 
 from .. import _config
-from .encap import Encap, CRC, Frame
-from .header import Header
+from .encap import CRC, Frame
 
 KINDS = ("crc", "frame", "header")
 

@@ -5,7 +5,7 @@ from matplotlib import colormaps
 
 from ... import analysis
 
-from ..utils import fft, window, freq_axis, bins
+from ..utils import window, freq_axis
 
 def spectrogram(ax, samp_list, Fs=1, vbw_hz=None):
     """Plot spectrogram"""

@@ -2,7 +2,7 @@
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches # for draw_signals
+import matplotlib.patches as patches
 
 from ... import analysis
 from ..utils import fft, freq_axis, bins
@@ -142,10 +142,5 @@ def pha(ax, samps):
     return line
 
 def mag_phase(ax_mag, ax_pha, samps):
-    fig, ax = plt.subplots(1,2)
-    line_mag = mag(ax_mag, samps)
-    line_pha = pha(ax_pga, samps)
-    return line_mag, line_pha
-
-def draw_signals(ax, signals, samps, Fs, cf):
-    x = freq_axis(len(samps), Fs, cf)
+    """Magnitude and phase of samps on two axes"""
+    return mag(ax_mag, samps), pha(ax_pha, samps)

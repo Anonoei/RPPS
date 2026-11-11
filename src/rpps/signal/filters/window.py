@@ -1,4 +1,3 @@
-import numpy as np
 
 from .impl.window import s
 from . import serial

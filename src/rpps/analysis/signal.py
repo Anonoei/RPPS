@@ -356,7 +356,6 @@ def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occ
     pw = np.fft.fftshift(seg.sum(axis=0)/(K*wp*Fs))
     segs = np.fft.fftshift(seg/(wp*Fs), axes=1)
     db = 10*np.log10(pw + 1e-30)
-    sigma = 4.34/np.sqrt(K) # Standard deviation of a K-average periodogram, in dB
     inner = slice(int(max(edge, 0.05)*nfft), nfft - int(max(edge, 0.05)*nfft)) # Not the receiver filter's roll-off
     kf = max(3, nfft//128)
     low = 10*np.log10(np.convolve(pw[inner], np.ones(kf)/kf, mode="same") + 1e-30)[kf:-kf]

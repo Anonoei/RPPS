@@ -1,6 +1,6 @@
 import numpy as np
 
-from .filter import FIR, Meta
+from .filter import FIR
 
 def rrc_pulse(t, beta=0.35):
     """Root-raised-cosine pulse, t in symbols. Handles the t=0 and |t|=1/(4*beta) limits"""

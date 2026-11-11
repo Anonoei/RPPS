@@ -30,7 +30,7 @@ def test_gps_prn_out_of_table():
         rp.sequence.load("gps_ca", prn=33)
 
 def test_barker11():
-    c = rp.sequence.load("wifi_dsss") # alias
+    c = rp.sequence.load("barker11")
     assert c.length == 11 and c.rate == 11e6
     assert c.autocorrelation()[0] == 11 and np.abs(c.autocorrelation()[1:]).max() == 1
     ac = np.correlate(c[0], c[0], "full") # aperiodic sidelobes of a Barker code are at most 1

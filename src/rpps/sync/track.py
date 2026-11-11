@@ -11,7 +11,6 @@ The state is a SimpleNamespace (`new()`), kept in the estimating stage's stream 
 """
 from types import SimpleNamespace
 
-import numpy as np
 
 def new():
     """A tracker that has seen nothing: `started` False until the first update"""

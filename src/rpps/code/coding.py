@@ -9,14 +9,12 @@ from ..errors import ConfigError
 
 from . import base
 from .. import _config
-from ..base import Analog, Mod, Digital, dtype
+from ..base import Mod, Digital, dtype
 from ..base.types import Category, Rep
 from ..base.data import expect
 from ..base.rpps import align, FLUSH
-from .blocker import unblock
 
 from . import types as types
-from . import matrix
 
 
 class Decision(Enum):

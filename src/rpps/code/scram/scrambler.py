@@ -6,7 +6,7 @@ from ...logger import Logger
 
 from . import base
 from . import _config
-from ...base import Analog, Mod, Digital, dtype
+from ...base import Digital, dtype
 from ...base.types import Category, Rep
 from ...base.data import expect
 from ...errors import ConfigError

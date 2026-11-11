@@ -18,10 +18,9 @@ import numpy as np
 import pysdrlib
 
 from .. import base
-from ..base import Meta, Stream, Data
+from ..base import Stream, Data
 from ..errors import StreamError
 from . import formats as fmts
-from .err import Overflow
 
 def _close(it):
     """Close a generator: its `finally` runs now (a radio stops, a thread exits)"""

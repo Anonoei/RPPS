@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from .sample import Sample, Meta
+from .sample import Sample
 
 class Downsample(Sample):
     __slots__ = ("ratio")
@@ -36,9 +36,6 @@ def interpolate_stream(samples, st, step, kind="linear"):
     pre = 1 if cubic else 0
     if st.tail is None and pre and len(samples):
         samples = np.concatenate((samples[:1], samples)) # Nothing before the first sample: repeat it
-        first = True
-    else:
-        first = False
     buf = samples if st.tail is None else np.concatenate((st.tail, samples))
     n = len(buf)
     last = n - 1 - (2 if cubic else 0) # Newest position that has what it needs

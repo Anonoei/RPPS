@@ -11,13 +11,12 @@ Every block carries three tags (see rpps.base.types and ARCHITECTURE.md):
 """
 
 from time import perf_counter
-import typing
 
 import numpy as np
 
 from .types import Category, Rep, dtype, REP_OF
-from .buffer import Buffer, Vector
-from .meta import Meta, Stream
+from .buffer import Buffer
+from .meta import Meta
 from .rpps import FLUSH
 from ..errors import StreamError
 
@@ -169,7 +168,6 @@ class _Data:
 
 class Analog(_Data):
     """Analog data"""
-    pass
 
 class Mod(_Data):
     """(De)Modulation data

@@ -1,7 +1,7 @@
 import numpy as np
 
 from .impl.designer import designer
-from .filter import FIR, Meta
+from .filter import FIR
 
 class ConvFilter(FIR):
     __slots__ = ("filt")

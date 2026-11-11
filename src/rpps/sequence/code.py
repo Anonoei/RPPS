@@ -14,7 +14,6 @@
 """
 import numpy as np
 
-from .. import _config
 from ..errors import ConfigError
 from .recurrence import _Component
 

@@ -38,7 +38,6 @@ class Stagger(Stage):
         x = np.asarray(samples)
         if x.dtype.kind != "c":
             raise ValueError("Stagger needs a complex signal (I and Q)")
-        n = len(st.held)
         rail = x.imag if self.rail == "q" else x.real
         joined = np.concatenate((st.held, rail.astype(np.float32)))
         late, st.held = joined[:len(x)], joined[len(x):].copy()

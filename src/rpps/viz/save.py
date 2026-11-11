@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import matplotlib.animation as manim
 
 class FFmpegMP4:

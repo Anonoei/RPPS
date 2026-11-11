@@ -2,7 +2,6 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from ...base import Meta
 from .filter import Filter, FIR
 
 def _cdtype(samples):

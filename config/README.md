@@ -32,7 +32,9 @@ A definition is referenced by its path below the category, without `.json`, case
 - Definitions that use others (profiles above all) write the path, so the reader sees what each is: `"additive/dvb_energy"`
   (a sequence XOR'd in: it must start on a frame boundary), `"feedthrough/ieee80211b"` (self-synchronizing: each channel
   error comes out once per tap), `"rs/204_188"`. Bare names are for typing at a prompt: `rp.code.scram.load("v35")`.
-- `"aliases": [...]` gives a file other names. The old `family.name` form (`rs.204_188`) still resolves. Both warn once.
+- `"aliases": [...]` gives a file the other names it goes by: the system and parameters it is known for (`"dvbs.3_4_7"`,
+  `"iess308.1_2_7"`: system.rate_constraint), or a standard's own name (`"adsb"`, `"gcrc24a"`). They resolve like the file's
+  name. A dotted name resolves only as a declared alias: `rs.204_188` is not read as `rs/204_188`.
 
 ## File header
 Every file starts with `base` (the category, picks the loader), `type` (the implementation, where there are several), `comment`, and optionally `ref` (the spec) and `aliases`. `python -m rpps fmt` puts files in the canonical style (`--check` only lists differences).

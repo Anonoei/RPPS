@@ -2,7 +2,6 @@
 """
 from .. import _config
 
-from .sync import Sync
 
 from .costas import Costas
 from .acquire import Acquire

@@ -17,7 +17,6 @@ import re
 
 from .. import _config
 from ..errors import ConfigError
-import typing
 
 from .modulation import Modulation
 from .constellation import Constellation, PSK, QAM, APSK, ASK
@@ -59,7 +58,7 @@ def generate(name: str) -> Constellation:
     m = _GENERATED.match(name.strip())
     if m is None:
         raise ConfigError(f"No modulation {name!r}: not a definition ({ls()}) and not a name like 16QAM, 8PSK, 16APSK, 4ASK")
-    order, kind, tail = m.group(1) or m.group(3), m.group(2).upper(), None
+    order, kind = m.group(1) or m.group(3), m.group(2).upper()
     M = int(order) if order else None
     if kind == "BPSK":
         return PSK(2, offset=0.0)

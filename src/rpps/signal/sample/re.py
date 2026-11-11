@@ -48,13 +48,22 @@ class Polyphase(Resample):
             return samples
 
         buf = np.concatenate((st.hist, samples))
-        u = np.zeros(len(buf)*up, dtype=buf.dtype) # Zero stuffed
-        u[::up] = buf
+        # Output m sits at position n = start + m*down of the zero-stuffed stream (input j at j*up). Only every up-th tap
+        # meets a real sample: y = sum_i taps[p + i*up] * buf[q - i], q = n // up, p = n % up. So no zero-stuffed copy
         start = st.nh*up + st.phase # The first new sample sits at st.nh*up
-        idx = np.arange(start, len(u), down)
-        win = np.lib.stride_tricks.sliding_window_view(u, L)[idx-(L-1)]
-        out = win @ self.taps[::-1]
+        total = len(buf)*up
+        n = np.arange(start, total, down)
+        q, p = n//up, n % up
+        K = -(-L//up)
+        poly = np.zeros((up, K), dtype=np.float64) # poly[p, i] = taps[p + i*up]
+        for ph in range(up):
+            h = self.taps[ph::up]
+            poly[ph, :len(h)] = h
+        out = np.empty(len(n), dtype=np.result_type(buf.dtype, poly.dtype))
+        for a in range(0, len(n), 1 << 16): # In chunks: (outputs, taps per phase) at a time
+            idx = q[a:a + (1 << 16), None] - np.arange(K)[None, :]
+            out[a:a + (1 << 16)] = np.sum(poly[p[a:a + (1 << 16)]]*buf[np.maximum(idx, 0)]*(idx >= 0), axis=1)
 
-        st.phase = start + len(idx)*down - len(u)
+        st.phase = start + len(n)*down - total
         st.hist = buf[len(buf)-st.nh:]
         return out.astype(samples.dtype if np.iscomplexobj(samples) else out.dtype, copy=False)
