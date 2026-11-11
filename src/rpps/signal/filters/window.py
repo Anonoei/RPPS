@@ -32,5 +32,5 @@ class Window(Filter):
 
     @staticmethod
     def get(name):
-        """The window function `name`: a built-in (see `s()`), or a preset from config/filters/window ("kaiser/a8")"""
+        """The window function `name`: a built-in (see `s()`), or a preset from config/filter/window ("kaiser/a8")"""
         return serial.window(name)

@@ -18,7 +18,7 @@ The data carries its sample rate and the state of every stage, so there is nothi
 
     mod = rp.symbol.load("QPSK")
     ecc = rp.code.Hamming(7, 4)
-    scr = rp.code.scram.load("fdt", "v35")
+    scr = rp.code.scram.load("v35")
 
     msg = rp.Data(b"Hello World!")
     syms = msg * scr * ecc * mod          # scramble, encode, modulate
@@ -40,7 +40,7 @@ Packages follow the categories of ARCHITECTURE.md: data goes samples -> symbols 
 | `rpps.sync` | Sync, at any representation: AGC, carrier, timing, equalizers, alignment on bits (`sync.Align`) |
 | `rpps.wave` | Wave transform, symbols <-> samples: stagger (O-QPSK), frequency modulation (FSK, GFSK, GMSK, C4FM), OFDM IFFT/FFT, AM/SSB |
 | `rpps.symbol` | Symbol transform, symbols <-> channel bits: constellations (any points from config), differential coding, OFDM carriers, `Spread` |
-| `rpps.spread` | Spreading codes (Barker, GPS C/A, 802.15.4), until they become the `sequence` resource |
+| `rpps.sequence` | The `sequence` resource: bit sequences (LFSRs, Gold) and chip codes (Barker, GPS C/A, 802.15.4) every operator shares |
 | `rpps.code` | Code transform, channel bits <-> data bits: FEC, interleaving, rate matching, scrambling (`code.scram`), `Uncoded` |
 | `rpps.link` | Link transform, data bits <-> packets: CRC and framing |
 | `rpps.analysis` | Outside the data path: spectra, rate estimation, signal survey, blind analysis of modulation and FEC |
@@ -48,7 +48,8 @@ Packages follow the categories of ARCHITECTURE.md: data goes samples -> symbols 
 | `rpps.math`, `rpps.utils`, `rpps.viz` | Finite fields and GF(2) algebra, helpers, plots (`pip install rpps[viz]`) |
 | `rpps.profile` | Profiles: a whole signal from one config file, receive and transmit (`rp.profile.load`) |
 
-Codes, scramblers and modulations are definitions that ship with the package; add your own with
+Constellations, pulses, filters, sequences, scramblers, codes, headers, tables and profiles are definitions that ship
+with the package, in config/ by resource (`python -m rpps ls` lists them); add your own with
 `rpps.add_config_path`. The per-sample loops and decoders run in C++ (`rpps._native`) with a Python fallback.
 """
 
@@ -77,7 +78,7 @@ from . import analysis
 
 from . import code
 from . import link
-from . import spread
+from . import sequence
 from . import wave
 from . import profile
 from . import symbol

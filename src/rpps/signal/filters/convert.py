@@ -4,7 +4,7 @@ A definition in config/ never refers to another file; this is how coefficients t
 become one. Read a file, get the definition as a dict, or have it written into a config directory:
 
     d = rp.signal.filters.import_fir("taps.txt")                                  # {"base": "fir", "type": "taps", "taps": [...]}
-    rp.signal.filters.import_fir("lp.f32", dtype="f32", name="my_lp", dest="mine")  # writes mine/filters/fir/taps/my_lp.json
+    rp.signal.filters.import_fir("lp.f32", dtype="f32", name="my_lp", dest="mine")  # writes mine/filter/fir/taps/my_lp.json
     rp.signal.filters.import_iir("sections.npy", form="sos", name="my_iir")
     rp.add_config_path("mine"); rp.signal.filters.load("fir", "taps/my_lp")
 
@@ -217,7 +217,7 @@ def zpk_def(z, p, k, **fields):
 def import_fir(path, fmt=None, dtype=None, key=None, scale=1.0, name=None, dest=None, overwrite=False, **fields):
     """The FIR in a file as a config definition (a dict). A text file may wrap the taps over lines. scale multiplies the taps (integer .coe data: 1/32768 for 16 bit).
 
-    name: also write it as config/filters/fir/taps/<name>.json under dest (default: the first added config path, else the shipped
+    name: also write it as config/filter/fir/taps/<name>.json under dest (default: the first added config path, else the shipped
     config; an existing file is kept unless overwrite) and return the file. fields: comment, gain..."""
     rows = read_table(path, fmt, dtype, key)
     if (fmt or EXTENSIONS.get(Path(path).suffix.lower())) == "text": # Taps wrapped over several lines, or one per line
@@ -225,14 +225,14 @@ def import_fir(path, fmt=None, dtype=None, key=None, scale=1.0, name=None, dest=
     if len(rows) != 1:
         raise ValueError(f"{Path(path).name} has {len(rows)} rows: taps are one list (an sos or ba table is for import_iir)")
     obj = fir_def(np.asarray(rows[0]) * scale, **{"comment": f"FIR from {Path(path).name}", **fields})
-    return obj if name is None else _config.save("filters", "fir", f"taps/{name}", obj, dest, overwrite)
+    return obj if name is None else _config.save("filter", "fir", f"taps/{name}", obj, dest, overwrite)
 
 def import_iir(path, form="sos", fmt=None, dtype=None, key=None, convention="scipy", name=None, dest=None, overwrite=False, **fields):
     """The IIR in a file as a config definition. form says what the numbers are:
         sos   rows of 6 (b0 b1 b2 a0 a1 a2), one per section
         ba    two rows or arrays, b then a (see `ba_def` for convention)
         zpk   three rows, zeros, poles, then the gain; from an .npz, the arrays z, p, k
-    A .npz may hold the arrays by name (sos | b, a | z, p, k). name/dest/overwrite as for `import_fir` (written under filters/iir/<form>/)."""
+    A .npz may hold the arrays by name (sos | b, a | z, p, k). name/dest/overwrite as for `import_fir` (written under filter/iir/<form>/)."""
     fields = {"comment": f"IIR from {Path(path).name}", **fields}
     fmt = fmt or EXTENSIONS.get(Path(path).suffix.lower())
     if fmt == "npz":
@@ -255,4 +255,4 @@ def import_iir(path, form="sos", fmt=None, dtype=None, key=None, convention="sci
         obj = zpk_def(rows[0], rows[1], rows[2][0].real, **fields)
     else:
         raise ValueError(f"form must be sos, ba or zpk, not {form!r}")
-    return obj if name is None else _config.save("filters", "iir", f"{form}/{name}", obj, dest, overwrite)
+    return obj if name is None else _config.save("filter", "iir", f"{form}/{name}", obj, dest, overwrite)

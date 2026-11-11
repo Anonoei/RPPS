@@ -1,35 +1,41 @@
-"""Scrambler definitions: config/scram/<category>/<name>.json, loaded with `rp.code.scram.load("dvb_energy")`
+"""Scrambler definitions: config/scramble/<type>/<name>.json, loaded with `rp.code.scram.load("dvb_energy")`
 
-    fdt  feedthrough (self-synchronizing): the output feeds the register
-         {"base": "fdt", "type": "fibonacci" | "galois_left" | "galois_right",
-          "poly": [16, 14, 13, 11],        feedback taps, 1 = first stage
-          "seed": [1, 0, 1, ...]}          register bits, first stage first
-    adt  additive (synchronous): data xor a PRBS that ignores the data
-         {"base": "adt", "poly": [15, 14], "seed": [1, 0, 0, ...] | "100101010000000",
-          "frame": {"bytes": 1504,         optional: restart the PRBS every `bytes` bytes
-                    "sync_period": 188, "sync_bytes": 1,   leading bytes of each packet the PRBS skips over
-                    "skip_first": 1, "marker": 184,        skip_first: bytes before the PRBS starts (default sync_bytes);
-                    "sync": 71}}                           marker: first byte of a frame as sent (DVB: the inverted sync, 0xB8);
-                                                           sync: what it becomes when descrambled (default marker ^ 0xFF)
-         {"base": "adt", "type": "sequence", ...}  a recurrence / register / Gold sequence (see rpps.code.scram.sequence)
-    Seeds and any other value can be load-time parameters ("params", then {"param": ...} / {"expr": ...}).
+How a sequence is applied to bits; the sequences are their own resource (rpps.sequence), which a scrambler names.
+
+    additive     data XOR a sequence that ignores the data
+         {"base": "scramble", "type": "additive",
+          "sequence": "dvb_energy" | {"name": "lte_gold", "args": {"c_init": {"expr": "..."}}},   with its parameters
+          "period": 1920,                    optional: restart every `period` bits
+          "frame": {"bytes": 1504, "sync_period": 188, "sync_bytes": 1, "marker": 184}}  optional: packet structure (see Additive)
+    feedthrough  self-synchronizing: the output feeds the register, so the register is the scrambler's own
+         {"base": "scramble", "type": "feedthrough", "register": "fibonacci" | "galois_left" | "galois_right",
+          "poly": [16, 14, 13, 11],          feedback taps, 1 = first stage
+          "seed": [1, 0, 1, ...]}            register bits, first stage first
+    Seeds, sequence arguments and any other value can be load-time parameters ("params", then {"param": ...} / {"expr": ...}).
 """
 from ... import _config
+from ...errors import ConfigError
 
 from . import scrambler
 
-DOMAIN = _config.register_domain("scram", {"fdt": scrambler.Feedthrough.load, "adt": scrambler.Additive.load})
+def _load(name, obj):
+    t = obj.get("type")
+    if t == "additive":
+        return scrambler.Additive.load(name, obj)
+    if t == "feedthrough":
+        return scrambler.Feedthrough.load(name, obj)
+    raise ConfigError(f"scramble {name}: no type {t!r} (have additive, feedthrough)")
+
+DOMAIN = _config.register_domain("scramble", {"scramble": _load})
 
 def ls():
-    """List available scram types: {category: [names]}"""
-    return _config.ls("scram")
+    """The scramblers there are: {type: [names]}"""
+    return _config.ls("scramble")
 
 def init(name: str, obj: dict) -> scrambler.Scram:
-    """Initialize scram"""
-    return _config.load_obj("scram", name, obj)
+    """A scrambler from a definition object"""
+    return _config.load_obj("scramble", name, obj)
 
-def load(*ref: str, **params) -> scrambler.Scram:
-    """Load a scrambler by name, `load("dvb_energy")`; a leading category still works, `load("adt", "dvb_energy")`.
-    params: values of the definition's "params" (`load("ble_whiten", channel=37)`)"""
-    *folder, name = ref
-    return _config.load("scram", name, folder[0] if folder else None, params=params)
+def load(name: str, **params) -> scrambler.Scram:
+    """Load a scrambler by name: `load("dvb_energy")`, `load("ble_whiten", channel=37)`. params: values of its "params" """
+    return _config.load("scramble", name, params=params)

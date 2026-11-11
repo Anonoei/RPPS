@@ -1,4 +1,5 @@
-"""Modulation definitions: config/mod/<category>/[<group>/]<name>.json, loaded with `rp.symbol.load("QPSK")`
+"""Constellations: config/constellation/[<group>/]<name>.json, loaded with `rp.symbol.load("QPSK")`; physical headers:
+config/header/physical/<name>.json, `rp.symbol.load_header("dvbs2_pl")`
 
 A name with no file ("16QAM", "64QAM", "16APSK", "4ASK", "OOK") is generated instead (see `generate`).
 
@@ -9,7 +10,8 @@ A name with no file ("16QAM", "64QAM", "16APSK", "4ASK", "OOK") is generated ins
         maps[i].map[point] is the value (bits, first bit most significant) the point carries. The first map is the default;
         `rp.symbol.load(name, "R090")` picks another by index or a word of its comment, and every rotation and spectral inversion of
         the first map is added (see rpps.symbol.mapping).
-    header          a physical header: known symbols then a short code carrying fields (see rpps.symbol.frame.Header)
+    header          {"base": "header", "type": "physical" | "link"}: known symbols then a short code carrying fields
+                    (rpps.symbol.frame.Header), or a link header (rpps.link.header.Header): one resource, `header`
 """
 import re
 
@@ -22,16 +24,32 @@ from .constellation import Constellation, PSK, QAM, APSK, ASK
 
 from .frame import Header
 
-DOMAIN = _config.register_domain("mod", {"constellation": Constellation.load, "header": Header.load})
+DOMAIN = _config.register_domain("constellation", {"constellation": Constellation.load})
+
+def _header(name, obj):
+    t = obj.get("type")
+    if t == "physical":
+        return Header.load(name, obj)
+    if t == "link":
+        from ..link.header import Header as LinkHeader
+        return LinkHeader.load(name, obj)
+    raise ConfigError(f"header {name}: type is physical or link, not {t!r}")
+
+HEADERS = _config.register_domain("header", {"header": _header})
+
+def load_header(name: str, **params) -> Header:
+    """A physical header definition: `load_header("dvbs2_pl")` (config/header/physical)"""
+    h = _config.load("header", name, "physical", params=params)
+    return h
 
 def ls():
     """List available modulation types: {category: [names]}"""
-    return _config.ls("mod")
+    return _config.ls("constellation")
 
 
 def init(name, obj: dict) -> Modulation:
     """Initialize modulation"""
-    return _config.load_obj("mod", name, obj)
+    return _config.load_obj("constellation", name, obj)
 
 
 _GENERATED = re.compile(r"^(?:(\d+)\s*[-_]?\s*)?(B?PSK|QPSK|QAM|APSK|ASK|OOK)(?:[-_]?(\d+))?$", re.I)
@@ -54,7 +72,7 @@ def generate(name: str) -> Constellation:
     return {"PSK": PSK, "QAM": QAM, "APSK": APSK, "ASK": ASK}[kind](M)
 
 def load(name: str, mapping=None) -> Constellation:
-    """Load a modulation by name: a definition in config/mod (QPSK, 8PSK, DVBS2_8PSK...) or a generated one (16QAM, 64QAM, 16APSK, 4ASK)
+    """Load a modulation by name: a definition in config/constellation (QPSK, 8PSK, DVBS2_8PSK...) or a generated one (16QAM, 64QAM, 16APSK, 4ASK)
 
     mapping: which bit map, if not the first: an index, or a word of its comment (`load("QPSK", "R090")`)"""
     mod = _load(name)
@@ -63,7 +81,7 @@ def load(name: str, mapping=None) -> Constellation:
     return mod
 
 def _load(name: str) -> Constellation:
-    path = _config.find("mod", name)
+    path = _config.find("constellation", name)
     if path is None:
         return generate(name)
     return init(name, _config.read(path)) # type: ignore

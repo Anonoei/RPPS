@@ -1,6 +1,6 @@
 """Constellations: a set of points and the bit maps that say which bits each point carries
 
-A constellation is data, not code: any point set with any labelling is one, from config/mod/constellation (`rp.symbol.load("QPSK")`) or
+A constellation is data, not code: any point set with any labelling is one, from config/constellation (`rp.symbol.load("QPSK")`) or
 built from points (`rp.symbol.Constellation(points, maps)`). PSK, QAM, APSK and ASK are generators of such point sets.
 """
 import math

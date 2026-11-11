@@ -20,7 +20,7 @@ def add_config_path(path):
     _EXTRA.insert(0, Path(path))
 
 def layers(kind):
-    """Directories holding definitions of a kind ("mod", "coding", ...), highest priority first"""
+    """Directories holding definitions of a kind ("constellation", "fec", ...), highest priority first"""
     return [d / kind for d in (*_EXTRA, PATH_CONFIG) if (d / kind).is_dir()]
 
 def find_file(kind, *parts):
@@ -97,7 +97,7 @@ def locate(domain, ref, category=None, path=None):
     category: only look under that folder"""
     ref_l = ref.lower().strip("/")
     for root in _roots(domain, path):
-        base = root / category if category else root
+        base = root / category if category and not (category == domain and not (root / category).is_dir()) else root
         files = _files(base)
         rel = {f.relative_to(base).with_suffix("").as_posix().lower(): f for f in files}
         hit = rel.get(ref_l)

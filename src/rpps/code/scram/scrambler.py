@@ -1,4 +1,4 @@
-"""Modulation parent classes"""
+"""Scramblers: how a sequence is applied to bits (the `scramble` resource; the sequences are rpps.sequence)"""
 from abc import abstractmethod
 import numpy as np
 
@@ -9,7 +9,8 @@ from . import _config
 from ...base import Analog, Mod, Digital, dtype
 from ...base.types import Category, Rep
 from ...base.data import expect
-from . import lfsr
+from ...errors import ConfigError
+from ...sequence import lfsr
 
 
 class Scram(base.rpps.Pipe):
@@ -111,7 +112,7 @@ class Feedthrough(Scram):
 
     @staticmethod
     def load(name, obj):
-        i_lfsr = getattr(lfsr, obj["type"])
+        i_lfsr = getattr(lfsr, obj["register"])
         i_seed = np.array(obj["seed"], dtype=bool)
         i_poly = np.array(obj["poly"], dtype=int)
         i_s_lfsr = i_lfsr(np.copy(i_seed), np.copy(i_poly))
@@ -121,50 +122,40 @@ class Feedthrough(Scram):
 
 
 class Additive(Scram):
-    """Additive (synchronous) scrambler: data xor a PRBS that does not depend on the data
+    """Additive (synchronous) scrambler: data XOR a sequence that does not depend on the data (rpps.sequence)
 
-    poly: feedback taps (register positions, 1 = first stage), seed: register bits, first stage first
-    frame: optional packet structure for byte streams, as in DVB energy dispersal:
-        bytes: PRBS restart period; sync_period/sync_bytes: leading bytes of each packet that the PRBS skips over
-        (it still advances, the data bytes just aren't touched)
-    encode/decode take bits that start on a frame boundary; both are the same operation.
-        marker: as an operator (`bits * scr`, `bits / scr`), the first byte of each frame is written as `marker` on
-        encode (DVB: the inverted sync byte, 0xB8) and as `sync` on decode (default marker ^ 0xFF): the frame structure
-        energy dispersal defines. The stream must start on a frame boundary (rp.sync.Align with start="pattern").
+    encode(bits, start) and decode (the same) XOR the sequence from position `start`; soft(llr, start) flips LLRs instead.
+    As an operator (`bits * scr`, `bits / scr`) its position carries along the stream, and restarts:
+        period: every `period` bits (an LTE PBCH over four radio frames, a P25 phase 2 superframe)
+        frame: packet structure for byte streams, as in DVB energy dispersal:
+            bytes: restart period; sync_period/sync_bytes: leading bytes of each packet the sequence skips over (it
+            still advances, those bytes just aren't touched); skip_first: bytes before it starts (default sync_bytes);
+            marker: the first byte of each frame as sent (DVB: the inverted sync byte, 0xB8), written on encode, and
+            `sync` (default marker ^ 0xFF) written on decode. The stream must start on a frame boundary.
+        length (a profile's control): every `length` bits from where a frame starts (a DVB-S2 BBFRAME)
     """
-    def __init__(self, poly, seed, frame=None):
+    def __init__(self, sequence, frame=None, period=None):
         super().__init__()
-        self.poly = np.asarray(poly, dtype=int)
-        self.seed = np.asarray(seed, dtype=np.uint8)
+        self.seq = sequence
         self.frame = frame
+        self.period = None if period is None else int(period)
         self.marker = None if frame is None else frame.get("marker")
         self._mask = None
 
-    def sequence(self, nbits):
-        """PRBS bits from the seed (Fibonacci register)"""
-        r = self.seed.copy()
-        out = np.zeros(nbits, dtype=np.uint8)
-        taps = self.poly - 1
-        for i in range(nbits):
-            b = np.bitwise_xor.reduce(r[taps]) & 1
-            out[i] = b
-            r[1:] = r[:-1]
-            r[0] = b
-        return out
+    def __str__(self):
+        return f"{type(self).__name__}:{self.seq.name}"
 
     def mask(self):
-        """Bits to xor onto one frame (length frame bytes * 8), or one PRBS period without a frame"""
+        """Bits XOR'd onto one frame (frame bytes * 8), or onto one period"""
         if self._mask is None:
-            self._mask = self._make_mask()
+            self._mask = self._make_mask() if self.frame is not None else self.seq.bits(self.period)
         return self._mask
 
     def _make_mask(self):
-        if self.frame is None:
-            return self.sequence(int(2**len(self.seed) - 1))
         n = self.frame["bytes"]
         sp, sb = self.frame.get("sync_period", 0), self.frame.get("sync_bytes", 0)
-        first = self.frame.get("skip_first", sb) # The PRBS starts after the first sync byte
-        seq = self.sequence((n - first)*8).reshape(-1, 8)
+        first = self.frame.get("skip_first", sb) # The sequence starts after the first sync byte
+        seq = self.seq.bits((n - first)*8).reshape(-1, 8)
         mask = np.zeros((n, 8), dtype=np.uint8)
         mask[first:] = seq
         if sp:
@@ -172,14 +163,23 @@ class Additive(Scram):
             mask[(idx % sp) < sb] = 0
         return mask.reshape(-1)
 
+    def _bits(self, n, start):
+        if self.frame is None and self.period is None:
+            return self.seq.bits(n, start)
+        m = self.mask()
+        return m[(start + np.arange(n)) % len(m)]
+
     def encode(self, data, start=0):
-        """start: position in the mask the first bit falls on (0: a frame boundary)"""
+        """data XOR the sequence from position `start` (0: a frame or period boundary)"""
         bits = np.asarray(data).astype(np.uint8)
-        m = np.roll(self.mask(), -start)
-        reps = -(-len(bits)//len(m))
-        return (bits ^ np.tile(m, reps)[:len(bits)]).astype(bool)
+        return (bits ^ self._bits(len(bits), start)).astype(bool)
 
     decode = encode
+
+    def soft(self, llr, start=0):
+        """Descramble LLRs (positive = 0): the sign flips where the sequence is 1"""
+        llr = np.asarray(llr, dtype=np.float64)
+        return llr*(1.0 - 2.0*self._bits(len(llr), start))
 
     def _stream(self, ctx, key, bits, enc):
         self._frame_start(ctx, key)
@@ -193,18 +193,18 @@ class Additive(Scram):
             if first.any():
                 byte = self.marker if enc else self.frame.get("sync", self.marker ^ 0xFF)
                 out[first] = ((byte >> (7 - pos[first])) & 1).astype(bool)
-        ctx[key] = (start + len(bits)) % len(self.mask())
+        end = start + len(bits)
+        ctx[key] = end % len(self.mask()) if (self.frame is not None or self.period) else end
         return out
 
     @staticmethod
     def load(name, obj):
-        if obj.get("type") == "sequence":
-            from .sequence import Sequence
-            return Sequence.load(name, obj)
-        seed = obj["seed"]
-        if isinstance(seed, str):
-            seed = [int(c) for c in seed]
-        return type(name, (Additive,), dict(name=name))(obj["poly"], seed, obj.get("frame"))
+        from ... import sequence as _sequence
+        ref = obj.get("sequence")
+        if ref is None:
+            raise ConfigError(f"scramble {name}: an additive scrambler names its 'sequence'")
+        seq = _sequence.load(ref) if isinstance(ref, str) else _sequence.load(ref["name"], **ref.get("args", {}))
+        return type(name, (Additive,), dict(name=name))(seq, obj.get("frame"), obj.get("period"))
 
 
 def _framed(scr, ctx, key, bits):

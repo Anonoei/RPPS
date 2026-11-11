@@ -7,7 +7,7 @@
 Pulse shapes are in rp.signal.filters (`halfsine`, `gaussian`, `rrc`, `rect`), the rate change is rp.signal.sample.up.Zeros:
 
     qpsk = rp.symbol.load("QPSK")
-    wave = bits * qpsk + rp.signal.sample.up.Zeros(8) + rp.signal.filters.load("shaping", "halfsine") + rp.wave.Stagger()   # O-QPSK
+    wave = bits * qpsk + rp.signal.sample.up.Zeros(8) + rp.signal.filters.load("pulse", "halfsine") + rp.wave.Stagger()   # O-QPSK
 """
 from .stagger import Stagger
 from .fm import FM, FMDemod, fm_gain

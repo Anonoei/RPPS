@@ -50,7 +50,7 @@ class CRC(Encap):
 
 
 class Frame(Encap):
-    """Framing (HDLC) defined by config; the FCS is another config, `fcs`, from config/encap/crc"""
+    """Framing (HDLC) defined by config; the FCS is another config, `fcs`, from config/crc"""
 
     @staticmethod
     def load(name, obj):

@@ -10,34 +10,34 @@ GPS_FIRST10 = [0o1440, 0o1620, 0o1710, 0o1744, 0o1133, 0o1455, 0o1131, 0o1454, 0
 
 def test_gps_first_chips():
     for prn, want in enumerate(GPS_FIRST10, 1):
-        b = rp.spread.load("gps_ca", prn=prn).bits()[0][:10]
+        b = rp.sequence.load("gps_ca", prn=prn).bits()[0][:10]
         assert int("".join(map(str, b)), 2) == want, prn
 
 def test_gps_autocorrelation():
     for prn in (1, 17, 32):
-        c = rp.spread.load("gps_ca", prn=prn)
+        c = rp.sequence.load("gps_ca", prn=prn)
         ac = c.autocorrelation()
         assert c.length == 1023 and ac[0] == 1023
         assert set(ac[1:]) <= {-65, -1, 63}
 
 def test_gps_cross_correlation_bounded():
-    a, b = rp.spread.load("gps_ca", prn=3), rp.spread.load("gps_ca", prn=21)
-    both = rp.spread.Code("pair", np.vstack((a.chips, b.chips)))
+    a, b = rp.sequence.load("gps_ca", prn=3), rp.sequence.load("gps_ca", prn=21)
+    both = rp.sequence.Code("pair", np.vstack((a.chips, b.chips)))
     assert set(both.crosscorrelation(0, 1)) <= {-65, -1, 63}
 
 def test_gps_prn_out_of_table():
     with pytest.raises(rp.errors.ConfigError):
-        rp.spread.load("gps_ca", prn=33)
+        rp.sequence.load("gps_ca", prn=33)
 
 def test_barker11():
-    c = rp.spread.load("wifi_dsss") # alias
+    c = rp.sequence.load("wifi_dsss") # alias
     assert c.length == 11 and c.rate == 11e6
     assert c.autocorrelation()[0] == 11 and np.abs(c.autocorrelation()[1:]).max() == 1
     ac = np.correlate(c[0], c[0], "full") # aperiodic sidelobes of a Barker code are at most 1
     assert np.abs(ac[ac.size//2 + 1:]).max() <= 1
 
 def test_802154_structure():
-    c = rp.spread.load("ieee802154_2450")
+    c = rp.sequence.load("ieee802154_2450")
     b = c.bits(one=1)
     assert c.count == 16 and c.length == 32
     for k in range(1, 8): # symbols 1..7: symbol 0 rotated right by 4 chips each
@@ -51,7 +51,7 @@ def test_802154_structure():
 
 def test_spread_despread_roundtrip():
     rng = np.random.default_rng(0)
-    code = rp.spread.load("barker11")
+    code = rp.sequence.load("barker11")
     sym = rng.choice([-1, 1], 50) + 0j
     assert np.allclose(code.despread(code.spread(sym)), sym)
 
@@ -59,7 +59,7 @@ def run_stage(x, blocks, native, **kw):
     saved = _accel.native
     _accel.native = saved if native else None
     try:
-        stage = rp.symbol.Despread(rp.spread.load("barker11"), **kw)
+        stage = rp.symbol.Despread(rp.sequence.load("barker11"), **kw)
         stream, outs, i = None, [], 0
         for b in blocks:
             d = rp.Data(x[i:i + b], stream=stream, Fs=44e6, sps=4)
@@ -73,7 +73,7 @@ def run_stage(x, blocks, native, **kw):
 @pytest.fixture
 def chips44():
     rng = np.random.default_rng(1)
-    code = rp.spread.load("barker11")
+    code = rp.sequence.load("barker11")
     sym = np.exp(1j*np.pi/2*rng.integers(0, 4, 60))
     x = np.repeat(code.spread(sym), 4) + 0.1*(rng.standard_normal(60*44) + 1j*rng.standard_normal(60*44))
     return sym, np.concatenate((np.zeros(7), x)).astype(np.complex64)
@@ -97,7 +97,7 @@ def test_despread_block_cuts(chips44, native):
 @pytest.mark.skipif(not _accel.available(), reason="rpps._native is not built")
 def test_native_matches_python_set():
     rng = np.random.default_rng(2)
-    code = rp.spread.load("ieee802154_2450")
+    code = rp.sequence.load("ieee802154_2450")
     x = (rng.standard_normal(32*3*20) + 1j*rng.standard_normal(32*3*20)).astype(np.complex64)
     saved = _accel.native
     try:
@@ -110,7 +110,7 @@ def test_native_matches_python_set():
 
 def test_set_detection_802154():
     rng = np.random.default_rng(3)
-    code = rp.spread.load("ieee802154_2450")
+    code = rp.sequence.load("ieee802154_2450")
     syms = rng.integers(0, 16, 40)
     chips = code.spread(np.ones(40), index=syms) + 0.5*rng.standard_normal(40*32)
     corr = rp.symbol.correlate(chips.astype(np.complex64), code, 1)
@@ -130,7 +130,7 @@ def samples(like, x, ctx=None):
 def wifi(rate):
     """802.11b DSSS: DBPSK (1 Mb/s) or DQPSK (2 Mb/s), differential, spread by Barker-11"""
     const = rp.symbol.load("bpsk" if rate == 1 else "qpsk_axes")
-    return const, Differential(), rp.symbol.Spread(rp.spread.load("barker11"))
+    return const, Differential(), rp.symbol.Spread(rp.sequence.load("barker11"))
 
 @pytest.mark.parametrize("rate,chips_per_bit", [(1, 11), (2, 5.5)])
 def test_wifi_dsss_roundtrip(rate, chips_per_bit):
@@ -145,7 +145,7 @@ def test_wifi_dsss_roundtrip(rate, chips_per_bit):
 def test_gps_ca_bpsk_roundtrip():
     rng = np.random.default_rng(5)
     msg = rng.integers(0, 256, 4).astype(np.uint8)
-    spread = rp.symbol.Spread(rp.spread.load("gps_ca", prn=9))
+    spread = rp.symbol.Spread(rp.sequence.load("gps_ca", prn=9))
     bpsk = rp.symbol.load("bpsk")
     chips = rp.Data(msg) * bpsk * spread
     assert len(chips.data) == 32*1023 and chips.Fs == pytest.approx(rp.Data(msg).Fs*1023)
@@ -154,7 +154,7 @@ def test_gps_ca_bpsk_roundtrip():
 def test_spread_sets_rates_and_sps():
     d = rp.Data(np.array([1, -1, 1, 1], dtype=np.complex64), Fs=1e6, sps=1)
     d = samples(d, d.data)
-    code = rp.spread.load("barker11")
+    code = rp.sequence.load("barker11")
     chips = d * rp.symbol.Spread(code)
     assert chips.Fs == pytest.approx(11e6) and chips.sps == 1
     assert (chips / rp.symbol.Spread(code)).Fs == pytest.approx(1e6)
@@ -163,14 +163,14 @@ def test_spread_sets_rates_and_sps():
 def test_zigbee_set_roundtrip(pair):
     rng = np.random.default_rng(6)
     msg = rng.integers(0, 256, 24).astype(np.uint8)
-    spread = rp.symbol.Spread(rp.spread.load("ieee802154_2450"), pair=pair)
+    spread = rp.symbol.Spread(rp.sequence.load("ieee802154_2450"), pair=pair)
     chips = rp.Data(msg) * spread
     assert len(chips.data) == 24*2*(16 if pair else 32) # two 4-bit symbols per byte
     assert (chips.data.dtype.kind == "c")
     assert np.array_equal(hard(chips / spread), np.unpackbits(msg).astype(bool))
 
 def test_zigbee_pair_puts_even_chips_on_i_and_odd_on_q():
-    code = rp.spread.load("ieee802154_2450")
+    code = rp.sequence.load("ieee802154_2450")
     chips = (rp.Data(np.array([0b0000_0101], dtype=np.uint8)) * rp.symbol.Spread(code, pair=True)).data
     # bits come most significant first: 0 0 0 0, then 0 1 0 1; the first bit of a symbol is its least significant
     want = []
@@ -215,7 +215,7 @@ def test_dsss_stream_blocks():
 # ---- acquisition
 
 def gps_signal(rng, prn=7, sps=2, delay=357, dop=1300.0, snr_db=-10.0, periods=8):
-    code = rp.spread.load("gps_ca", prn=prn)
+    code = rp.sequence.load("gps_ca", prn=prn)
     Fs = 1.023e6*sps
     n = code.length*sps*periods
     data = np.repeat(rng.choice([-1, 1], periods), code.length*sps) # a bit flip now and then is in the way of coherent summing
@@ -233,13 +233,13 @@ def test_acquire_gps_code_phase_and_doppler():
 def test_acquire_wrong_prn_is_not_locked():
     rng = np.random.default_rng(8)
     _, Fs, x = gps_signal(rng, prn=7)
-    other = rp.spread.load("gps_ca", prn=12)
+    other = rp.sequence.load("gps_ca", prn=12)
     r = rp.sync.acquire_code(x, other, 2, Fs=Fs, doppler=np.arange(-5000, 5001, 500))
     assert not r.locked
 
 def test_acquire_then_despread():
     rng = np.random.default_rng(9)
-    code = rp.spread.load("barker11")
+    code = rp.sequence.load("barker11")
     sym = np.exp(1j*np.pi*rng.integers(0, 2, 80))
     x = np.repeat(code.spread(sym), 4)
     x = np.concatenate((0.05*rng.standard_normal(19), x)) + 0.3*(rng.standard_normal(len(x) + 19) + 1j*rng.standard_normal(len(x) + 19))

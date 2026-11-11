@@ -1,4 +1,5 @@
-"""Coding (FEC) definitions: config/coding/<kind>/<family>/<name>.json, loaded with `rp.code.load("block", "rs/204_188")`
+"""Code definitions, two resources: config/fec/<kind>/<family>/<name>.json (`rp.code.load("block", "rs/204_188")`) and
+config/interleave/<type>/<name>.json (`rp.code.load("interleave", "forney/12_17")`)
 
 Folders are kind (`base`), then the structure of the code; the standard goes in `ref`/`comment`. Names are parameters.
 
@@ -39,15 +40,20 @@ from . import types as types
 
 KINDS = ("block", "conv", "interleave")
 _LOADERS = {"block": coding.Block, "conv": coding.Convolutional, "interleave": coding.Interleaver}
-DOMAIN = _config.register_domain("coding", {k: v.load for k, v in _LOADERS.items()})
+FEC = _config.register_domain("fec", {"block": coding.Block.load, "conv": coding.Convolutional.load})
+INTERLEAVE = _config.register_domain("interleave", {"interleave": coding.Interleaver.load})
+
+def _domain(kind):
+    return "interleave" if kind == "interleave" else "fec"
 
 def root() -> Path:
     """Directory holding the coding definitions"""
-    return _config.find_config("coding")
+    return _config.find_config("fec")
 
 def ls(path=None):
     """List available FEC definitions by family: {"block/rs": [names], "conv/dvbs": [names], ...}"""
-    return _config.ls("coding", path)
+    return {**_config.ls("fec", path), **{f"interleave/{k}" if k != "interleave" else k: v
+                                              for k, v in _config.ls("interleave", path).items()}}
 
 def names(kind: str, sub=None, path=None):
     """References of the definitions of a kind ("block", "conv", "interleave"), as `load(kind, ref)` takes them ("rs/204_188"), across families or just one"""
@@ -66,19 +72,20 @@ def init(name: str, obj: dict, decoder=None) -> coding.Coding:
     return _LOADERS[base].load(name, obj, decoder)
 
 def locate(folder: str, ref: str, path=None):
-    """(file, name) of a definition: config/coding/<kind>/[<family>/]<name>.json. The name of what is loaded is its family folder, else its file"""
-    file, parts = _config.locate("coding", ref, folder, path)
+    """(file, name) of a definition: config/fec/<kind>/[<family>/]<name>.json or config/interleave/<type>/<name>.json. The name of what is loaded is its family folder, else its file"""
+    dom = _domain(folder)
+    file, parts = _config.locate(dom, ref, None if dom == "interleave" else folder, path)
     if file is None:
-        raise FileNotFoundError(f"{folder}/{ref}: not found under {folder} in {[str(r) for r in ([Path(path)] if path else _config.layers('coding'))]}")
-    family = parts[1:-1]
+        raise FileNotFoundError(f"{folder}/{ref}: not found in {[str(r) for r in ([Path(path)] if path else _config.layers(dom))]}")
+    family = parts[:-1] if dom == "interleave" else parts[1:-1]
     return file, family[-1] if family else parts[-1]
 
 def find(folder: str, ref: str, path=None) -> Path:
-    """File of a definition: config/coding/<kind>/[<family>/]<name>.json"""
+    """File of a definition (see `locate`)"""
     return locate(folder, ref, path)[0]
 
 def load(folder: str, ref: str, path=None, decoder=None, **params) -> coding.Coding:
-    """Load a coding from config/coding/<kind>/<family>/<name>.json, `load("block", "rs/204_188")` (or from `path`/<kind>/ instead of config/coding)
+    """Load a code from config/fec/<kind>/<family>/<name>.json (kind block, conv) or config/interleave/<type>/<name>.json (kind interleave), `load("block", "rs/204_188")` (or from `path`/<kind>/ instead of config/coding)
 
     A bare name ("204_188") also works when only one family has it.
     decoder: decode with another type than the definition's: "bcjr" or "viterbi" for conv, "trellis" for linear block codes

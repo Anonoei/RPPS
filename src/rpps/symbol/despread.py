@@ -5,7 +5,7 @@ import numpy as np
 from .. import _accel
 from ..base import Meta, Stage
 from ..base.types import Category
-from ..spread.code import Code
+from ..sequence.code import Code
 
 def correlate(x, code: Code, sps=1):
     """Correlate whole code periods of x (len a multiple of code.length*sps) with every sequence of the code: (periods, code.count).

@@ -1,7 +1,7 @@
 """LDPC parity-check matrices in MacKay's alist format (what GNU Radio's gr-fec and most LDPC tools read and write)
 
     rp.code.import_alist("code.alist")                          the definition, as a dict (`rp.code.init("mine", d)` builds it)
-    rp.code.import_alist("code.alist", "mine", dest="my_config")   writes my_config/coding/block/ldpc/mine.json, `add_config_path("my_config")`
+    rp.code.import_alist("code.alist", "mine", dest="my_config")   writes my_config/fec/block/ldpc/mine.json, `add_config_path("my_config")`
 """
 from pathlib import Path
 
@@ -28,10 +28,10 @@ def import_alist(path, name=None, dest=None, **fields):
 
     Without `k`, the message positions come from GF(2) elimination of H, which only suits small codes: give `k` and `systematic`
     ("head": message first, "tail", or a list of positions) for big ones.
-    name: also write it as config/coding/block/ldpc/<name>.json, under `dest` (default: the first added config path, else the shipped config);
+    name: also write it as config/fec/block/ldpc/<name>.json, under `dest` (default: the first added config path, else the shipped config);
     an existing file is not replaced. Returns the file"""
     n, checks = read_alist(path)
     obj = {"base": "block", "type": "ldpc", "comment": f"LDPC code from {Path(path).name}", **fields, "n": n, "checks": checks}
     if name is None:
         return obj
-    return _config.save("coding", "block", f"ldpc/{name}", obj, dest)
+    return _config.save("fec", "block", f"ldpc/{name}", obj, dest)

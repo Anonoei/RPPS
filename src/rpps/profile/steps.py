@@ -7,6 +7,9 @@ gives a Step: the operators it runs on receive and on transmit, and the represen
         side inverted (the profile runs transmit steps in reverse order)
     sync and signal steps run on receive only
 
+A step names the resources it uses by their path below the resource ("additive/dvb_energy", "rrc/0p35"), so the profile
+says what each is.
+
 Sync steps name what is estimated; how is a method, chosen by `defaults` in the profile or the `sync` argument of
 `rp.profile.load`, else the default here.
 
@@ -152,14 +155,14 @@ def _sync(kind, spec, rep, ctx):
         return [(STAGE, st)], [], rep
     if kind == "frame": # Frames by a known preamble among symbols: the one a physical header definition starts with
         from .. import symbol
-        h = symbol.load(_need(m, "header", "sync frame"))
+        h = symbol.load_header(_need(m, "header", "sync frame"))
         st = sync.FrameSync(h.preamble, h.words() if m.get("words", True) else None, m.get("threshold"),
                             m.get("max_length"), m.get("name", "frame"))
         return [(STAGE, st)], [], rep
     if kind == "delimit": # Frames by the word before them among bits: a link header's preamble word, or one given
         if "header" in m:
             from .. import link
-            pre = _config.read(_config.find("encap", m["header"], "header")).get("preamble") or {}
+            pre = _config.read(_config.find("header", m["header"], "link")).get("preamble") or {}
             h = link.load("header", m["header"])
             word, bits, order = pre.get("word"), pre.get("bits"), h.order
         else:
@@ -206,11 +209,11 @@ class _KnownTiming(_Stage):
 def _pulse(name):
     """The pulse resource and whether it is a symbol pulse or a frequency pulse"""
     from .. import signal
-    f = _config.find("filters", name, "shaping")
+    f = _config.find("pulse", name)
     if f is None:
-        raise ConfigError(f"wave shape: no pulse {name!r} in config/filters/shaping")
+        raise ConfigError(f"wave shape: no pulse {name!r} in config/pulse")
     kind = _config.read(f).get("kind", "symbol")
-    return (lambda: signal.filters.load("shaping", name)), kind
+    return (lambda: signal.filters.load("pulse", name)), kind
 
 def _wave(kind, spec, rep, ctx):
     from .. import wave, signal
@@ -239,7 +242,7 @@ def _pair(op_rx, op_tx, gives):
     return [(DECODE, op_rx)], [(ENCODE, op_tx)], gives
 
 def _symbol(kind, spec, rep, ctx):
-    from .. import symbol, spread
+    from .. import symbol, sequence
     if kind == "constellation":
         name = _need(spec, "name", "symbol constellation")
         make = lambda: symbol.load(name, spec.get("mapping"))
@@ -248,7 +251,7 @@ def _symbol(kind, spec, rep, ctx):
         d = symbol.Differential()
         return [(DECODE, d)], [(ENCODE, symbol.Differential())], Rep.SYMBOLS
     if kind == "spread":
-        code = spread.load(_need(spec, "sequence", "symbol spread"), **spec.get("args", {}))
+        code = sequence.load(_need(spec, "sequence", "symbol spread"), **spec.get("args", {}))
         make = lambda: symbol.Spread(code, spec.get("pair", False))
         return _pair(make(), make(), Rep.CHANNEL if code.count > 1 else Rep.SYMBOLS)
     if kind == "carriers":
@@ -257,16 +260,16 @@ def _symbol(kind, spec, rep, ctx):
         return [(DECODE, c)], [(ENCODE, c)], Rep.SYMBOLS
     if kind == "header":
         name = _need(spec, "name", "symbol header")
-        return _pair(symbol.load(name), symbol.load(name), Rep.SYMBOLS)
+        return _pair(symbol.load_header(name), symbol.load_header(name), Rep.SYMBOLS)
     if kind == "pilots":
         make = lambda: symbol.Pilots(spec.get("slot", 90), spec.get("every", 16), spec.get("length", 36),
                                      _complex(spec.get("value", [0.7071067811865476, 0.7071067811865476])), spec.get("slots"),
                                      spec.get("pilots", True), spec.get("id", "pilots"))
         return _pair(make(), make(), Rep.SYMBOLS)
     if kind == "scramble":
-        from ..code import scram
-        ref = _need(spec, "sequence", "symbol scramble").split("/")
-        make = lambda: symbol.PhaseScramble(scram.load(*ref), spec.get("offsets", [0]), spec.get("step", 90),
+        from .. import sequence
+        ref = _need(spec, "sequence", "symbol scramble")
+        make = lambda: symbol.PhaseScramble(sequence.load(ref, **spec.get("args", {})), spec.get("offsets", [0]), spec.get("step", 90),
                                             spec.get("length"), spec.get("id", "scramble"))
         return _pair(make(), make(), Rep.SYMBOLS)
     raise ConfigError(f"symbol step: no kind {kind!r} (have constellation, differential, spread, carriers, header, pilots, scramble)")
@@ -283,8 +286,8 @@ def _code(kind, spec, rep, ctx):
             return code.load(folder, name, **spec.get("args", {}))
         return _pair(make(), make(), Rep.DATA)
     if kind == "scramble":
-        ref = _need(spec, "name", "code scramble").split("/")
-        make = lambda: code.scram.load(*ref, **spec.get("args", {}))
+        ref = _need(spec, "name", "code scramble")
+        make = lambda: code.scram.load(ref, **spec.get("args", {}))
         return _pair(make(), make(), Rep.DATA)
     if kind == "uncoded":
         return _pair(code.Uncoded(), code.Uncoded(), Rep.DATA)

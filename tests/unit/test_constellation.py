@@ -75,7 +75,7 @@ def test_a_config_without_points_is_an_error():
 
 def test_a_config_file_in_a_user_directory(tmp_path):
     from rpps._config import format_json
-    d = tmp_path / "mod" / "constellation"
+    d = tmp_path / "constellation"
     d.mkdir(parents=True)
     (d / "diamond.json").write_text(format_json({"base": "constellation", "points": [[1, 0], [0, 1], [-1, 0], [0, -1]],
                                                   "maps": [{"map": [0, 1, 3, 2], "comment": "Grey"}]}))

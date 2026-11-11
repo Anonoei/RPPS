@@ -119,7 +119,7 @@ def test_restart_rebuilds_and_reports(config_path):
 # ---- operators of the frame structure
 
 def test_pl_header_codewords():
-    h = rp.symbol.load("dvbs2_pl")
+    h = rp.symbol.load_header("dvbs2_pl")
     for fields, word in [({"modcod": 4, "short": 0, "pilots": 1}, 0x2437D66306E87850),
                          ({"modcod": 12, "short": 0, "pilots": 0}, 0x7E6D8C395CB2220A)]:
         sym = h.encode_fields(fields)
@@ -132,7 +132,7 @@ def test_pl_header_codewords():
         assert got == fields and errors > 0 # soft decoding over the 128 words still finds it
 
 def test_pl_scrambling_sequence():
-    ps = rp.symbol.PhaseScramble(rp.code.scram.load("adt", "dvbs2_pl"), [131072, 0])
+    ps = rp.symbol.PhaseScramble(rp.sequence.load("dvbs2_pl"), [131072, 0])
     assert ps.R(20).tolist() == [0, 1, 1, 1, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 3, 3, 1, 3, 1, 2] # EN 302 307 R_0(i)
     x = np.exp(2j*np.pi*np.random.default_rng(1).random(500)).astype(np.complex64)
     s = rp.Data(x, sps=1)

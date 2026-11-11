@@ -11,7 +11,7 @@ class Differential(Modulation):
         bits = syms / Differential() / constellation
 
     The receiver needs no carrier phase, only that it holds over two symbols (a constant phase offset cancels). DBPSK is BPSK
-    (points 1, -1: bit 1 turns the phase by 180 degrees); DQPSK is QPSK, the points on the axes for 802.11b (config/mod/constellation/dpsk/qpsk_axes)
+    (points 1, -1: bit 1 turns the phase by 180 degrees); DQPSK is QPSK, the points on the axes for 802.11b (config/constellation/dpsk/qpsk_axes)
     or at 45 degrees for pi/4-DQPSK, whose phase moves by an odd multiple of 45 degrees every symbol.
 
     The sent symbols have unit magnitude (the phase is what is coded). The phase before the first symbol is 0, so that one symbol of a

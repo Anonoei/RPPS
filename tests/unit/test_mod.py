@@ -3,7 +3,7 @@ import pytest
 
 import rpps as rp
 
-NAMES = [n for cat, names in rp.symbol.ls().items() if cat.startswith("constellation") for n in names] # every constellation definition
+NAMES = [n for cat, names in rp.symbol.ls().items() for n in names] # every constellation definition
 assert NAMES, "no constellation definitions found" # an empty list would silently skip the tests below
 
 @pytest.mark.parametrize("name", NAMES)

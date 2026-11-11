@@ -7,7 +7,7 @@ from rpps import _config
 from rpps.errors import ConfigError
 
 def test_listing_has_fir_shaping_and_window_presets():
-    assert set(rp.signal.filters.ls()) >= {"fir/taps", "fir/windowed", "shaping/rrc", "window/kaiser"}
+    assert set(rp.signal.filters.ls()) >= {"fir/taps", "fir/windowed", "pulse/rrc", "window/kaiser"}
     assert "hann" not in sum(rp.signal.filters.ls().values(), []) # Built-in windows are listed apart
     assert "hann" in rp.signal.filters.Window.s()
 
@@ -31,9 +31,9 @@ def test_windowed_meets_its_stopband():
     assert 20*np.log10(H[f > 0.12].max()) < -58 # transition 0.02 wide around 0.1
 
 def test_hz_units_follow_the_sample_rate(tmp_path):
-    (tmp_path / "filters" / "fir" / "windowed").mkdir(parents=True)
+    (tmp_path / "filter" / "fir" / "windowed").mkdir(parents=True)
     obj = {"base": "fir", "type": "windowed", "pass": "lowpass", "cutoff": 25e3, "taps": 101, "units": "hz"} # No window: np.hamming, as low_pass
-    (tmp_path / "filters" / "fir" / "windowed" / "lp_25k.json").write_text(json.dumps(obj))
+    (tmp_path / "filter" / "fir" / "windowed" / "lp_25k.json").write_text(json.dumps(obj))
     rp.add_config_path(tmp_path)
     try:
         f = rp.signal.filters.load("fir", "windowed/lp_25k")
@@ -44,9 +44,9 @@ def test_hz_units_follow_the_sample_rate(tmp_path):
         _config._EXTRA.remove(tmp_path)
 
 def test_highpass_needs_odd_taps(tmp_path):
-    (tmp_path / "filters" / "fir").mkdir(parents=True)
+    (tmp_path / "filter" / "fir").mkdir(parents=True)
     obj = {"base": "fir", "type": "windowed", "pass": "highpass", "cutoff": 0.2, "taps": 100}
-    (tmp_path / "filters" / "fir" / "hp.json").write_text(json.dumps(obj))
+    (tmp_path / "filter" / "fir" / "hp.json").write_text(json.dumps(obj))
     rp.add_config_path(tmp_path)
     try:
         with pytest.raises(ConfigError, match="odd"):
@@ -55,13 +55,13 @@ def test_highpass_needs_odd_taps(tmp_path):
         _config._EXTRA.remove(tmp_path)
 
 def test_bad_definitions_fail_on_load(tmp_path):
-    (tmp_path / "filters" / "fir").mkdir(parents=True)
+    (tmp_path / "filter" / "fir").mkdir(parents=True)
     for n, obj in {"nopass": {"type": "windowed", "taps": 11, "cutoff": 0.1},
                    "nospec": {"type": "windowed", "pass": "lowpass", "cutoff": 0.1},
                    "badtype": {"type": "iir"},
                    "badunits": {"type": "taps", "taps": [1], "units": "rad"},
                    "empty": {"type": "taps", "taps": []}}.items():
-        (tmp_path / "filters" / "fir" / f"{n}.json").write_text(json.dumps({"base": "fir", **obj}))
+        (tmp_path / "filter" / "fir" / f"{n}.json").write_text(json.dumps({"base": "fir", **obj}))
     rp.add_config_path(tmp_path)
     try:
         for n in ("nopass", "nospec", "badtype", "badunits", "empty"):
@@ -72,12 +72,12 @@ def test_bad_definitions_fail_on_load(tmp_path):
 
 @pytest.mark.parametrize("beta", ["0p35", "0p25", "0p20"])
 def test_rrc_matches_the_class(beta):
-    f = rp.signal.filters.load("shaping", f"rrc/{beta}")
+    f = rp.signal.filters.load("pulse", f"rrc/{beta}")
     b = float(beta.replace("p", "."))
     assert np.allclose(f.taps(sps=8), rp.signal.filters.ShapingRRC(None, 8, b).pulse)
 
 def test_shaping_takes_sps_from_the_stream():
-    f = rp.signal.filters.load("shaping", "rc/0p35")
+    f = rp.signal.filters.load("pulse", "rc/0p35")
     out = (rp.Data(np.ones(500, dtype=np.float32), Fs=8e3, sps=8) + f).data
     assert len(out) == 500
     with pytest.raises(ConfigError, match="samples per symbol"):
@@ -95,11 +95,11 @@ def test_window_presets_and_builtins():
         rp.signal.filters.Window.get("np") # Not a window, though it is a name in the module
 
 def test_inline_window_in_a_design(tmp_path):
-    (tmp_path / "filters" / "fir").mkdir(parents=True)
+    (tmp_path / "filter" / "fir").mkdir(parents=True)
     obj = {"base": "fir", "type": "windowed", "pass": "lowpass", "cutoff": 0.2, "taps": 51, "window": {"type": "kaiser", "params": {"a": 8}}}
-    (tmp_path / "filters" / "fir" / "inline.json").write_text(json.dumps(obj))
+    (tmp_path / "filter" / "fir" / "inline.json").write_text(json.dumps(obj))
     obj["window"] = "kaiser/a8"
-    (tmp_path / "filters" / "fir" / "ref.json").write_text(json.dumps(obj))
+    (tmp_path / "filter" / "fir" / "ref.json").write_text(json.dumps(obj))
     rp.add_config_path(tmp_path)
     try:
         a, b = rp.signal.filters.load("fir", "inline").taps(), rp.signal.filters.load("fir", "ref").taps()
@@ -109,9 +109,9 @@ def test_inline_window_in_a_design(tmp_path):
 
 def test_remez_design(tmp_path):
     scipy_signal = pytest.importorskip("scipy.signal")
-    (tmp_path / "filters" / "fir").mkdir(parents=True)
+    (tmp_path / "filter" / "fir").mkdir(parents=True)
     obj = {"base": "fir", "type": "remez", "taps": 41, "bands": [0, 0.1, 0.15, 0.5], "desired": [1, 0]}
-    (tmp_path / "filters" / "fir" / "rz.json").write_text(json.dumps(obj))
+    (tmp_path / "filter" / "fir" / "rz.json").write_text(json.dumps(obj))
     rp.add_config_path(tmp_path)
     try:
         assert np.allclose(rp.signal.filters.load("fir", "rz").taps(), scipy_signal.remez(41, [0, 0.1, 0.15, 0.5], [1, 0], fs=1.0))
@@ -119,9 +119,9 @@ def test_remez_design(tmp_path):
         _config._EXTRA.remove(tmp_path)
 
 def test_named_hamming_is_the_builtin_one(tmp_path):
-    (tmp_path / "filters" / "fir").mkdir(parents=True)
+    (tmp_path / "filter" / "fir").mkdir(parents=True)
     obj = {"base": "fir", "type": "windowed", "pass": "lowpass", "cutoff": 0.1, "taps": 101, "window": "hamming"}
-    (tmp_path / "filters" / "fir" / "h.json").write_text(json.dumps(obj))
+    (tmp_path / "filter" / "fir" / "h.json").write_text(json.dumps(obj))
     rp.add_config_path(tmp_path)
     try:
         h = rp.signal.filters.load("fir", "h").taps()

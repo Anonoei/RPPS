@@ -20,7 +20,7 @@ def user(tmp_path):
     _config._EXTRA.remove(tmp_path)
 
 def put(user, category, ref, obj):
-    f = user / "filters" / category / f"{ref}.json"
+    f = user / ("pulse" if category == "pulse" else "filter") / category / f"{ref}.json"
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps(obj))
 
@@ -259,13 +259,13 @@ def test_write_then_load(tmp_path):
     taps.tofile(tmp_path / "t.f32")
     out = tmp_path / "mine"
     f = rp.signal.filters.import_fir(tmp_path / "t.f32", name="my_lp", dest=out, comment="mine")
-    assert f == out / "filters" / "fir" / "taps" / "my_lp.json"
+    assert f == out / "filter" / "fir" / "taps" / "my_lp.json"
     text = f.read_text()
     assert text.index('"base"') < text.index('"comment"') < text.index('"taps": [') and "0.10000000149" not in text
     sos = iir.design("cheby2", 4, "highpass", 0.2, atten_db=50)
     np.save(tmp_path / "s.npy", sos)
     g = rp.signal.filters.import_iir(tmp_path / "s.npy", name="my_hp", dest=out)
-    assert g == out / "filters" / "iir" / "sos" / "my_hp.json"
+    assert g == out / "filter" / "iir" / "sos" / "my_hp.json"
     rp.add_config_path(out)
     try:
         assert np.allclose(rp.signal.filters.load("fir", "taps/my_lp").taps(), taps)
@@ -298,7 +298,7 @@ def test_a_failed_import_writes_nothing(tmp_path):
 def test_default_destination_is_the_first_added_layer(user, tmp_path):
     (tmp_path / "t.txt").write_text("1 2 3")
     f = rp.signal.filters.import_fir(tmp_path / "t.txt", name="dflt")
-    assert f == user / "filters" / "fir" / "taps" / "dflt.json"
+    assert f == user / "filter" / "fir" / "taps" / "dflt.json"
 
 def test_alist_import_keeps_files(tmp_path):
     from test_coding import HAMMING_ALIST

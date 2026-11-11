@@ -51,7 +51,7 @@
     {
       "symbol": "scramble",
       "id": "plscram",
-      "sequence": "adt/dvbs2_pl",
+      "sequence": "dvbs2_pl",
       "offsets": [131072, 0],
       "step": 90
     },
@@ -91,7 +91,7 @@
     {
       "code": "scramble",
       "id": "bbscram",
-      "name": "adt/dvbs2_bb"
+      "name": "additive/dvbs2_bb"
     },
     {
       "link": "header",

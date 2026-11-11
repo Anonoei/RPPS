@@ -19,7 +19,7 @@ def qpsk_wave(n, seed=0, ppm=0.0, delay=1.3, cfo=0.0, noise=0.05):
     sym = np.exp(1j*np.pi/4*(2*rng.integers(0, 4, n) + 1))
     up = np.zeros(4*n, np.complex64)
     up[::4] = sym
-    tx = np.asarray((rp.Data(up, Fs=4e6, sps=4) + rp.signal.filters.load("shaping", RRC)).data)
+    tx = np.asarray((rp.Data(up, Fs=4e6, sps=4) + rp.signal.filters.load("pulse", RRC)).data)
     t = np.arange(len(tx))*(1 + ppm*1e-6) + delay
     tx = np.interp(t, np.arange(len(tx)), tx.real) + 1j*np.interp(t, np.arange(len(tx)), tx.imag)
     x = tx*np.exp(2j*np.pi*cfo*np.arange(len(tx)) + 0.4j)
@@ -44,7 +44,7 @@ def evm_qpsk(y):
     return float(np.sqrt(np.mean(np.abs(y - ref)**2)))
 
 def timing_and_carrier():
-    return [rp.signal.filters.load("shaping", RRC), rp.sync.time.OerderMeyr(window=0),
+    return [rp.signal.filters.load("pulse", RRC), rp.sync.time.OerderMeyr(window=0),
             rp.sync.phase.MPower(4, offset=np.pi, window=0)]
 
 @pytest.mark.parametrize("ppm", [0, 50, -200, 200])

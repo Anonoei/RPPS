@@ -1,9 +1,0 @@
-{
-  "base": "shaping",
-  "type": "gaussian",
-  "comment": "Gaussian frequency pulse, BT 0.3, 4 symbols (GSM GMSK, h 0.5)",
-  "ref": "3GPP TS 45.004",
-  "kind": "frequency",
-  "bt": 0.3,
-  "span": 4
-}

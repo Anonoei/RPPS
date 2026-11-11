@@ -177,11 +177,12 @@ def test_profile_parameters_reach_the_steps(tmp_path):
     d = tmp_path / "profile" / "test"
     d.mkdir(parents=True)
     (d / "ble_whitening.json").write_text(format_json({"base": "profile", "params": {"channel": {"default": 37}},
-        "steps": [{"code": "scramble", "name": "ble_whiten", "args": {"channel": {"param": "channel"}}}]}))
+        "steps": [{"code": "scramble", "name": "additive/ble_whiten", "args": {"channel": {"param": "channel"}}}]}))
     rp.add_config_path(tmp_path)
     try:
         p = rp.profile.load("test/ble_whitening", channel=38)
         s = p.steps[0].obj
-        assert np.array_equal(s.sequence(50), rp.code.scram.load("ble_whiten", channel=38).sequence(50))
+        z = np.zeros(50, bool)
+        assert np.array_equal(s.encode(z), rp.code.scram.load("ble_whiten", channel=38).encode(z))
     finally:
         rp._config._EXTRA.remove(tmp_path)

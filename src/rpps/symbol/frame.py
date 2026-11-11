@@ -10,9 +10,9 @@ their own, a stream starts on a frame.
     PhaseScramble  every symbol turned by a multiple of a step, the multiple from a binary sequence, restarting each
                    frame (DVB-S2 PL scrambling)
 
-A header is a definition: config/mod/header/<name>.json, `rp.symbol.load("dvbs2_pl")`
+A header is a definition: config/header/physical/<name>.json, `rp.symbol.load_header("dvbs2_pl")`
 
-    {"base": "header", "comment": "...", "ref": "...",
+    {"base": "header", "type": "physical", "comment": "...", "ref": "...",
      "constellation": "bpsk", "phase": 45, "rotate": 90,      symbol k is the point turned by phase + k*rotate degrees,
      "cycle": 2,                                              k counted modulo cycle (pi/2-BPSK: 0, 90, 0, 90...)
      "known": {"bits": "0x18D2E82", "n": 26},                 the preamble, first bit first
@@ -310,7 +310,7 @@ class Pilots(_Frame):
 
 class PhaseScramble(_Frame):
     """Every symbol of a frame turned by step * R(i) degrees, R(i) = sum_j 2**(J-1-j) z(i + offsets[j]) for a binary
-    sequence z (a `scram` sequence definition), i counted from the frame start (and from 0 again every `length` symbols
+    sequence z (rpps.sequence), i counted from the frame start (and from 0 again every `length` symbols
     when that is set). DVB-S2 PL scrambling: z the Gold sequence, offsets (131072, 0), step 90 degrees.
     Receiving turns them back."""
     CONTROLS = {"length": "live"}
@@ -331,7 +331,7 @@ class PhaseScramble(_Frame):
     def R(self, n):
         """R(0..n-1)"""
         if len(self._R) < n:
-            z = np.asarray(self.sequence.sequence(n + max(self.offsets)), dtype=np.int64)
+            z = np.asarray(self.sequence.bits(n + max(self.offsets)), dtype=np.int64)
             J = len(self.offsets)
             self._R = sum((z[o:o + n] << (J - 1 - j)) for j, o in enumerate(self.offsets))
         return self._R[:n]

@@ -8,7 +8,7 @@ ALL = [(k, n) for k, names in rp.code.scram.ls().items() for n in names]
 
 def _load(folder, name):
     """With example values for the parameters a definition needs (a cell id, a WACN ...)"""
-    return rp._config.load("scram", name, folder, example=True)
+    return rp._config.load("scramble", name, folder, example=True)
 
 @pytest.mark.parametrize("folder,name", ALL)
 def test_scram_round_trip(folder, name, rng):
@@ -27,7 +27,7 @@ def test_scram_whitens_constant_input(folder, name):
 @pytest.mark.parametrize("name", ["v35", "galois", "fib", "g3ruh"])
 def test_fdt_keystream_follows_polynomial(name):
     """The keystream is an LFSR sequence: s[n-N] = s[n] ^ (xor of s[n-t] for the other taps t)"""
-    s = rp.code.scram.load("fdt", name)
+    s = rp.code.scram.load(name)
     taps = [int(t) for t in s.s_lfsr._poly] if hasattr(s.s_lfsr, "_poly") else [int(t) for t in s.s_lfsr.taps]
     N = max(taps)
     y = np.asarray(s.encode(np.zeros(2000, dtype=bool))).astype(int)
@@ -43,22 +43,22 @@ def test_fdt_is_self_synchronizing(name, rng):
     joins mid-stream (wrong register) is right after one register length; one channel error is one error per tap plus itself"""
     delays, N = FDT_DELAYS[name], max(FDT_DELAYS[name])
     d = bits(rng, 600)
-    y = np.asarray(rp.code.scram.load("fdt", name).encode(d)).astype(int)
+    y = np.asarray(rp.code.scram.load(name).encode(d)).astype(int)
     for n in range(N, len(y)):
         assert y[n] == int(d[n]) ^ np.bitwise_xor.reduce([y[n - t] for t in delays])
-    assert np.array_equal(np.asarray(rp.code.scram.load("fdt", name).decode(y.astype(bool))).astype(bool), d)
-    mid = np.asarray(rp.code.scram.load("fdt", name).decode(y[137:].astype(bool))).astype(bool)
+    assert np.array_equal(np.asarray(rp.code.scram.load(name).decode(y.astype(bool))).astype(bool), d)
+    mid = np.asarray(rp.code.scram.load(name).decode(y[137:].astype(bool))).astype(bool)
     assert np.array_equal(mid[N:], d[137 + N:])
     bad = y.copy()
     bad[300] ^= 1
-    ref = np.asarray(rp.code.scram.load("fdt", name).decode(y.astype(bool))).astype(int)
-    got = np.asarray(rp.code.scram.load("fdt", name).decode(bad.astype(bool))).astype(int)
+    ref = np.asarray(rp.code.scram.load(name).decode(y.astype(bool))).astype(int)
+    got = np.asarray(rp.code.scram.load(name).decode(bad.astype(bool))).astype(int)
     assert (ref != got).sum() == len(delays) + 1
 
 def test_fdt_matches_wifi_dsss_descrambler(rng):
     """802.11b DSSS: self-synchronizing x^7 + x^4 + 1, as projects/wifi/wifi_dsss.py descrambles"""
     from rpps.code.scram import serial
-    s = serial.init("wifi_dsss", {"base": "fdt", "type": "fibonacci", "poly": [7, 4], "seed": [0]*7})
+    s = serial.init("wifi_dsss", {"base": "scramble", "type": "feedthrough", "register": "fibonacci", "poly": [7, 4], "seed": [0]*7})
     b = bits(rng, 500).astype(np.uint8)
     want = np.zeros(len(b), np.uint8)
     for n in range(7, len(b)):
@@ -67,9 +67,9 @@ def test_fdt_matches_wifi_dsss_descrambler(rng):
     assert np.array_equal(got[7:], want[7:])
 
 def test_fdt_streams_continue_between_calls(rng):
-    s = rp.code.scram.load("fdt", "v35")
+    s = rp.code.scram.load("v35")
     msg = bits(rng, 1000)
-    whole = rp.code.scram.load("fdt", "v35").encode(msg)
+    whole = rp.code.scram.load("v35").encode(msg)
     parts = np.concatenate((s.encode(msg[:300]), s.encode(msg[300:])))
     assert np.array_equal(whole, parts)
 

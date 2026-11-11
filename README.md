@@ -16,7 +16,7 @@ import rpps as rp
 
 mod = rp.symbol.load("QPSK")           # first bit map; load("QPSK", "R090 inverted") for a rotated / spectrally inverted one. Or rp.symbol.QAM(16), rp.symbol.PSK(8), rp.symbol.APSK(32), or any point set from a config file
 ecc = rp.code.Hamming(7, 4)       # or rp.code.load("block", "hamming/7_4")
-scr = rp.code.scram.load("fdt", "v35")
+scr = rp.code.scram.load("v35")
 
 msg = rp.Data(b"Hello World!")
 syms = msg * scr * ecc * mod        # Scramble, encode, modulate

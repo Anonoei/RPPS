@@ -4,7 +4,7 @@ from ..base import Mod, dtype
 from ..base.types import Category, Rep
 from ..base.rpps import align
 from .modulation import Modulation
-from ..spread.code import Code
+from ..sequence.code import Code
 from .despread import correlate
 
 class Spread(Modulation):

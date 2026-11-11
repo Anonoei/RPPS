@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from ..spread.code import Code
+from ..sequence.code import Code
 
 def acquire_code(x, code: Code, sps=1, index=0, Fs=None, doppler=(0.0,), periods=None, threshold=None, pfa=1e-3):
     """Find where a spreading code starts in a signal, and its frequency offset: the parallel code-phase search

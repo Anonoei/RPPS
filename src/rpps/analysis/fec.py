@@ -27,7 +27,7 @@ class Hypothesis:
         self.name = name
         self.z = z
         self.params = params or {}
-        self.coding = coding # (folder, config name) when it is in config/coding
+        self.coding = coding # (folder, config name) when it is in config/fec
 
     def __repr__(self):
         c = f" [{self.coding[0]}/{self.coding[1]}]" if self.coding else ""
@@ -199,7 +199,7 @@ def scan_block(bits, syndrome, n, name, tag=None, max_offsets=None):
     return hyps, trials
 
 def config_blocks():
-    """(name, folder, config name, n, syndrome function) for the block codes in config/coding"""
+    """(name, folder, config name, n, syndrome function) for the block codes in config/fec"""
     from .. import code as coding
     out = []
     for folder in ("block",):
@@ -275,7 +275,7 @@ def detect_fec(streams, ks=range(3, 8), rates=(2, 3), periods=(), blocks=True, d
     return Report(hyps, trials, facts)
 
 def _label_configs(hyps):
-    """Attach the matching config/coding entry to convolutional hypotheses"""
+    """Attach the matching config/fec entry to convolutional hypotheses"""
     from .. import code as coding
     known = {}
     for name in coding.names("conv"):
@@ -289,7 +289,7 @@ def _label_configs(hyps):
                 if gs in forms or tuple(reversed(gs)) in forms:
                     h.coding = ("conv", name)
 
-# --- Identifying a chain from config/coding definitions ---------------------------------------------------
+# --- Identifying a chain from config/fec definitions ---------------------------------------------------
 
 def find_sync(bits, markers=(0x47, 0xB8), period=204):
     """Bit offset and byte phase at which `markers` repeat every `period` bytes. Returns (fraction, bit offset, phase)"""
@@ -316,7 +316,7 @@ def _mismatch(code, seg):
     return int(np.sum(e[:n] != seg[:n].astype(bool))), n
 
 def scan_defined_conv(streams, names=None, steps=2500, skip=0.1):
-    """Try every convolutional definition in config/coding/conv on every bit mapping and puncture alignment
+    """Try every convolutional definition in config/fec/conv on every bit mapping and puncture alignment
 
     A correct hypothesis lets the decoder reproduce the received bits (the channel error rate, well below
     what a wrong one gets). Returns (hypotheses, trials).
@@ -359,7 +359,7 @@ def decode_conv(bits, hyp):
     return code._dec.decode(seg)
 
 def scan_rs(bits, names=None, interleavers=True, packets=200):
-    """Find a Reed-Solomon code (config/coding/block type rs), optionally behind an interleaver (config/coding/interleave)
+    """Find a Reed-Solomon code (config/fec/block type rs), optionally behind an interleaver (config/interleave)
 
     Returns (hypotheses, trials). The score is how many words have all-zero syndromes.
     """
@@ -495,7 +495,7 @@ class Guess:
         return f"<Guess conv K={d['encode']['constraint']} rate {d['encode']['num']}/{d['encode']['den']} {self.evidence}>"
 
     def save(self, name, path=None):
-        """Write config/coding/<kind>/guess/<name>.json (or <path>/<kind>/guess/<name>.json). Returns the file"""
+        """Write config/fec/<kind>/guess/<name>.json (or <path>/<kind>/guess/<name>.json). Returns the file"""
         import json
         from pathlib import Path
         from ..code import serial
@@ -552,7 +552,7 @@ def guess_block(bits, n=None, offsets=None, hints=()):
     return None
 
 def scan_hdlc(streams, names=None, min_frames=3):
-    """HDLC framing (config/encap/frame): many flags, and frames whose FCS checks out
+    """HDLC framing (config/frame): many flags, and frames whose FCS checks out
 
     Looks at flag counts first (a 0x7E pattern shows up at random once per 256 bits), then deframes the
     streams that have far more than that. Returns (hypotheses, trials).

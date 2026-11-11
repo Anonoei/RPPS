@@ -1,9 +1,0 @@
-{
-  "base": "shaping",
-  "type": "gaussian",
-  "comment": "Gaussian frequency pulse, BT 0.5, 4 symbols (Bluetooth LE GFSK, h 0.5)",
-  "ref": "Bluetooth Core Vol 6 Part A 3.1",
-  "kind": "frequency",
-  "bt": 0.5,
-  "span": 4
-}

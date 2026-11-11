@@ -1,0 +1,9 @@
+{
+  "base": "sequence",
+  "type": "chips",
+  "comment": "Barker-11 chip sequence of IEEE 802.11b DSSS (1 and 2 Mb/s), 11 Mcps",
+  "ref": "IEEE 802.11-2020 15.4.6.3",
+  "aliases": ["wifi_dsss"],
+  "rate": 11000000.0,
+  "chips": [1, -1, 1, 1, -1, 1, 1, 1, -1, -1, -1]
+}

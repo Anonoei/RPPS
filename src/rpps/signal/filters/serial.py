@@ -1,4 +1,5 @@
-"""Filter definitions: config/filters/<category>/<group>/<name>.json, loaded with `rp.signal.filters.load("fir", "taps/name")`
+"""Filter definitions, config/filter/<category>/<group>/<name>.json (`rp.signal.filters.load("fir", "taps/name")`), and pulses,
+config/pulse/<type>/<name>.json (`rp.signal.filters.load("pulse", "rrc/0p35")`): two resources
 
 All frequencies are fractions of the sample rate (0.5 is Nyquist), or Hz with "units": "hz". FIR and shaping filters build their
 taps when a stream starts, from its `Fs` and `sps` (`stage.taps(Fs=..., sps=...)` shows them). "gain" scales any of them;
@@ -18,7 +19,7 @@ taps when a stream starts, from its `Fs` and `sps` (`stage.taps(Fs=..., sps=...)
              "type": "biquad"    "shape": lowpass | highpass | bandpass | notch | allpass | peaking | lowshelf | highshelf,
                                  "f0", "q", "gain_db"                                                  (RBJ audio-EQ cookbook)
              "type": "single_pole"  "alpha": y[n] = alpha x[n] + (1 - alpha) y[n-1]
-    shaping  "type": "rrc" | "rc"    "beta": 0.35, "span": 25 (symbols) or "taps": n, "sps": override the stream's
+    pulse    "type": "rrc" | "rc"    "beta": 0.35, "span": 25 (symbols) or "taps": n, "sps": override the stream's
              "type": "sinc" | "rect" "taps", "sps"           "type": "biphase"   Manchester matched filter
     window   "type": a built-in window name (`Window.s()`), "params": {its arguments}: kaiser/a8 is kaiser(N, a=8).
              Plain windows (hann, blackman...) are code, not files; `Window.get` and a design's "window" accept either.
@@ -87,9 +88,9 @@ def window(spec="hamming"):
         return spec
     if isinstance(spec, dict):
         return _window_def("inline", spec)
-    file = _config.find("filters", spec, "window")
+    file = _config.find("filter", spec, "window")
     if file is not None:
-        return _config.load_obj("filters", spec, _config.read(file))
+        return _config.load_obj("filter", spec, _config.read(file))
     return builtin(spec)
 
 # ---- FIR
@@ -281,12 +282,16 @@ def _shaping_def(name, obj):
         return cls().pulse
     return Designed(name, build)
 
-DOMAIN = _config.register_domain("filters", {"fir": _fir, "iir": _iir_def, "shaping": _shaping_def, "window": _window_def})
+DOMAIN = _config.register_domain("filter", {"fir": _fir, "iir": _iir_def, "window": _window_def})
+PULSES = _config.register_domain("pulse", {"pulse": _shaping_def})
 
 def ls(path=None):
-    """List the filter definitions: {"fir/windowed": [names], "shaping/rrc": [...], "window/kaiser": [...]}"""
-    return _config.ls("filters", path)
+    """List the filter and pulse definitions: {"fir/windowed": [names], "pulse/rrc": [...], "window/kaiser": [...]}"""
+    return {**_config.ls("filter", path), **{f"pulse/{k}": v for k, v in _config.ls("pulse", path).items()}}
 
 def load(kind: str, ref: str, path=None):
-    """Load config/filters/<kind>/<family>/<name>.json, `load("shaping", "rrc/0p35")`. kind: fir | iir | shaping | window"""
-    return _config.load("filters", ref, kind, path)
+    """Load a filter, config/filter/<kind>/<family>/<name>.json, or a pulse, config/pulse/<family>/<name>.json:
+    `load("fir", "taps/name")`, `load("pulse", "rrc/0p35")`. kind: fir | iir | window | pulse"""
+    if kind == "pulse":
+        return _config.load("pulse", ref, None, path)
+    return _config.load("filter", ref, kind, path)

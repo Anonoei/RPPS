@@ -7,13 +7,13 @@ import pytest
 import rpps as rp
 
 CODES = [("block", "hamming/7_4"), ("block", "hamming/15_11"), ("block", "repeat/3")]
-SCRAMS = [("fdt", "v35"), ("fdt", "fib")]
+SCRAMS = ["v35", "fib"]
 MODS = ["bpsk", "qpsk", "8psk"]
 
 def build(code, scram, mod):
     m = rp.symbol.load(mod)
     m.set_mapping(m.maps[0])
-    return rp.code.load(*code), rp.code.scram.load(*scram), m
+    return rp.code.load(*code), rp.code.scram.load(scram), m
 
 @pytest.mark.parametrize("code,scram,mod", itertools.product(CODES, SCRAMS, MODS))
 def test_pipeline_round_trip(code, scram, mod, rng):
@@ -25,14 +25,14 @@ def test_pipeline_round_trip(code, scram, mod, rng):
     assert out.as_bytes().hex == want
 
 def test_readme_example():
-    ecc, scr, m = build(("block", "hamming/7_4"), ("fdt", "v35"), "qpsk")
+    ecc, scr, m = build(("block", "hamming/7_4"), "v35", "qpsk")
     msg = rp.Data(b"Hello World!")
     syms = msg * scr * ecc * m
     out = syms / m / ecc / scr
     assert out.as_bytes().hex == b"Hello World!".hex()
 
 def test_operators_do_not_modify_their_input():
-    ecc, scr, m = build(("block", "hamming/7_4"), ("fdt", "v35"), "bpsk")
+    ecc, scr, m = build(("block", "hamming/7_4"), "v35", "bpsk")
     msg = rp.Data(b"Hello World!")
     a = msg * scr * ecc * m
     b = msg * scr * ecc * m          # the same input gives the same output
@@ -40,14 +40,14 @@ def test_operators_do_not_modify_their_input():
     assert np.array_equal(a.data, b.data)
 
 def test_bpsk_needs_no_sizing():
-    ecc, scr, m = build(("block", "hamming/7_4"), ("fdt", "v35"), "bpsk")
+    ecc, scr, m = build(("block", "hamming/7_4"), "v35", "bpsk")
     out = (rp.Data(b"Hello World!") * scr * ecc * m) / m / ecc / scr
     assert out.as_bytes().hex == b"Hello World!".hex()
 
 @pytest.mark.parametrize("mod", MODS)
 def test_partial_last_block_is_held_until_flushed(mod):
     """17 bits is not a whole block for hamming 7/4 or the symbols: the stages hold the rest, and flushing pads it"""
-    ecc, scr, m = build(("block", "hamming/7_4"), ("fdt", "v35"), mod)
+    ecc, scr, m = build(("block", "hamming/7_4"), "v35", mod)
     bits = np.array([1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1], dtype=bool)
     held = rp.Data(bits) * scr * ecc * m
     done = rp.Data(bits, flush=True) * scr * ecc * m
@@ -57,7 +57,7 @@ def test_partial_last_block_is_held_until_flushed(mod):
     assert len(out.data) >= len(bits)  # the padding was added after scrambling, so it descrambles to noise
 
 def test_flushing_a_decode_drops_the_partial_block():
-    ecc, scr, m = build(("block", "hamming/7_4"), ("fdt", "v35"), "bpsk")
+    ecc, scr, m = build(("block", "hamming/7_4"), "v35", "bpsk")
     syms = rp.Data(np.ones(32, dtype=bool), flush=True) * ecc * m   # 8 words of 7 bits
     syms = rp.Data(syms.data[:-3], flush=True, sps=1)                    # cut: 53 bits, 7 whole words and 4 left over
     assert len((syms / m / ecc).data) == 28
@@ -75,14 +75,14 @@ def chunked(chain, data, cuts):
 
 def test_stream_in_chunks_matches_one_shot(rng):
     """Chunks that don't line up with any block give the one-shot result"""
-    ecc, scr, m = build(("block", "hamming/7_4"), ("fdt", "v35"), "qpsk")
+    ecc, scr, m = build(("block", "hamming/7_4"), "v35", "qpsk")
     bits = rng.integers(0, 2, 2000).astype(bool)
     whole = rp.Data(bits, flush=True) * scr * ecc * m
     got = chunked(lambda d: d * scr * ecc * m, bits, [0, 7, 301, 302, 1003, 2000])
     assert np.allclose(got, whole.data)
 
 def test_stream_decode_in_chunks(rng):
-    ecc, scr, m = build(("block", "hamming/15_11"), ("fdt", "v35"), "8psk")
+    ecc, scr, m = build(("block", "hamming/15_11"), "v35", "8psk")
     bits = rng.integers(0, 2, 33*10).astype(bool)
     syms = (rp.Data(bits, flush=True) * scr * ecc * m).data
     got = chunked(lambda d: d / m / ecc / scr, syms, [0, 5, 64, len(syms)])
@@ -90,7 +90,7 @@ def test_stream_decode_in_chunks(rng):
 
 def test_scrambler_state_belongs_to_the_stream(rng):
     """Two streams through one scrambler do not disturb each other"""
-    scr = rp.code.scram.load("fdt", "v35")
+    scr = rp.code.scram.load("v35")
     bits = rng.integers(0, 2, 100).astype(bool)
     a = rp.Data(bits) * scr
     b = rp.Data(bits) * scr
@@ -158,7 +158,7 @@ def test_bcjr_conv_stream_decodes_at_the_end(rng):
     assert np.array_equal(last.data[:300], bits)
 
 def test_scrambling_changes_the_symbols(rng):
-    ecc, scr, m = build(("block", "hamming/7_4"), ("fdt", "v35"), "qpsk")
+    ecc, scr, m = build(("block", "hamming/7_4"), "v35", "qpsk")
     msg = bytes(rng.integers(0, 256, 66).astype(np.uint8))
     with_scr = rp.Data(msg)*scr*ecc*m
     scr.reset()

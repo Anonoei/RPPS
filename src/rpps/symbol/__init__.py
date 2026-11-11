@@ -12,6 +12,6 @@ from .spread import Spread
 from .despread import Despread, correlate
 from .ofdm import Carriers
 from .frame import Header, Pilots, PhaseScramble, pilot_layout, rotating
-from .serial import ls, load, init, generate
+from .serial import ls, load, load_header, init, generate
 
 from .modulation import Modulation

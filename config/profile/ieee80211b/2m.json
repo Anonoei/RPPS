@@ -32,7 +32,7 @@
     },
     {
       "code": "scramble",
-      "name": "fdt/ieee80211b"
+      "name": "feedthrough/ieee80211b"
     }
   ]
 }

@@ -1,8 +1,8 @@
 """Link headers: fields, a CRC, and the payload they announce (ARCHITECTURE.md, link and Header-driven control)
 
-A definition, config/encap/header/<name>.json, `rp.link.load("header", "ieee80211b_plcp")`:
+A definition, config/header/link/<name>.json, `rp.link.load("header", "ieee80211b_plcp")`:
 
-    {"base": "header", "comment": "...", "ref": "...",
+    {"base": "header", "type": "link", "comment": "...", "ref": "...",
      "order": "lsb",                                      field bits sent least ("lsb") or most ("msb") significant first
      "fields": [{"name": "signal", "bits": 8},
                 {"name": "length", "bits": 16,

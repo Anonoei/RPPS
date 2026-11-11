@@ -18,12 +18,18 @@ from pathlib import Path
 def _categories(rp):
     """name -> (title, callable returning {group: [names]})"""
     return {
-        "mod": ('Modulation  (rp.symbol.load("<name>"[, "<mapping>"]))', rp.symbol.ls),
-        "coding": ('Coding  (rp.code.load(<kind>, "<family>/<name>"))', rp.code.ls),
-        "scram": ('Scrambling  (rp.code.scram.load(<kind>, "<name>"))', rp.code.scram.ls),
-        "encap": ('Encapsulation  (rp.link.load(<kind>, "<name>"))', rp.link.ls),
+        "constellation": ('Constellations  (rp.symbol.load("<name>"[, "<mapping>"]))', rp.symbol.ls),
+        "pulse": ('Pulses  (rp.signal.filters.load("pulse", "<family>/<name>"))', lambda: rp._config.ls("pulse")),
+        "filter": ('Filters  (rp.signal.filters.load(<kind>, "<family>/<name>"))', lambda: rp._config.ls("filter")),
+        "sequence": ('Sequences  (rp.sequence.load("<name>"))', rp.sequence.ls),
+        "scramble": ('Scramblers  (rp.code.scram.load("<name>"))', rp.code.scram.ls),
+        "fec": ('FEC  (rp.code.load(<kind>, "<family>/<name>"))', lambda: rp._config.ls("fec")),
+        "interleave": ('Interleavers  (rp.code.load("interleave", "<type>/<name>"))', lambda: rp._config.ls("interleave")),
+        "crc": ('CRCs  (rp.link.load("crc", "<name>"))', lambda: rp._config.ls("crc")),
+        "frame": ('Frames  (rp.link.load("frame", "<name>"))', lambda: rp._config.ls("frame")),
+        "header": ('Headers  (rp.symbol.load_header("<name>"), rp.link.load("header", "<name>"))', lambda: rp._config.ls("header")),
+        "table": ('Tables  (rp.profile.table("<family>/<name>"))', lambda: rp._config.ls("table")),
         "profile": ('Profiles  (rp.profile.load("<family>/<mode>"))', rp.profile.ls),
-        "filters": ('Filters  (rp.signal.filters.load(<kind>, "<family>/<name>"))', rp.signal.filters.ls),
         "windows": ("Built-in Windows  (rp.signal.filters.Window.get(<name>))", lambda: {"windows": rp.signal.filters.Window.s()}),
     }
 
@@ -118,13 +124,13 @@ def _ldpc_rows(t):
 
 
 def cmd_gen_ldpc(args):
-    """Turn DVB-S2 LDPC parity address tables (EN 302 307 annex B/C) into config/coding/block/ldpc files
+    """Turn DVB-S2 LDPC parity address tables (EN 302 307 annex B/C) into config/fec/block/ldpc files
 
     The input is xdsopl/LDPC's dvb_s2_tables.hh (https://github.com/xdsopl/LDPC). It is read as data, never executed.
     """
     from rpps._config import PATH_CONFIG
     tables = _ldpc_parse(Path(args.tables).read_text())
-    root = Path(args.out) if args.out else PATH_CONFIG / "coding" / "block" / "ldpc"
+    root = Path(args.out) if args.out else PATH_CONFIG / "fec" / "block" / "ldpc"
     root.mkdir(parents=True, exist_ok=True)
     for i in args.ids or ["B5", "B7"]:
         t = tables[i]
@@ -141,10 +147,11 @@ def cmd_gen_ldpc(args):
 
 def main(argv=None):
     # Category names are static so --help doesn't need to import rpps
-    names = ["mod", "coding", "scram", "encap", "profile", "filters", "windows"]
+    names = ["constellation", "pulse", "filter", "sequence", "scramble", "fec", "interleave", "crc", "frame", "header", "table",
+             "profile", "windows"]
     parser = argparse.ArgumentParser(prog="rpps", description="RF Parameter Processor Suite")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p_ls = sub.add_parser("ls", help="list available modulations, codings, chains, filters, ...")
+    p_ls = sub.add_parser("ls", help="list the definitions there are, by resource")
     p_ls.add_argument("category", nargs="*", choices=names, help="limit output to these categories (default: all)")
     p_ls.set_defaults(fn=cmd_ls)
 
@@ -165,7 +172,7 @@ def main(argv=None):
     p_gen = sub.add_parser("gen-ldpc", help="generate DVB-S2 LDPC config files from dvb_s2_tables.hh")
     p_gen.add_argument("tables", help="path to xdsopl/LDPC dvb_s2_tables.hh")
     p_gen.add_argument("ids", nargs="*", help="table ids, e.g. B5 B7 (default: B5 B7)")
-    p_gen.add_argument("--out", help="output directory (default: the shipped config/coding/block/ldpc)")
+    p_gen.add_argument("--out", help="output directory (default: the shipped config/fec/block/ldpc)")
     p_gen.set_defaults(fn=cmd_gen_ldpc)
 
     args = parser.parse_args(argv)

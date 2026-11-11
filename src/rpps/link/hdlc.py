@@ -3,7 +3,7 @@ import numpy as np
 from ..code.types._code import _code
 
 class hdlc(_code):
-    """HDLC framing: flags, bit stuffing and an FCS, defined by config (see config/encap/frame)
+    """HDLC framing: flags, bit stuffing and an FCS, defined by config (see config/frame)
 
     fcs: a `crc` instance. flag: the flag byte (0x7E). stuff: ones before a zero is inserted (5)
     nrzi: line coding (a 0 is a transition, a 1 is no change). Bytes go out least significant bit first.

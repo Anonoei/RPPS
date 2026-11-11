@@ -29,7 +29,7 @@ def test_halfsine_pulse():
         shaping.ShapingHalfSine(1)
 
 def test_halfsine_config_uses_stream_sps():
-    st = rp.signal.filters.load("shaping", "halfsine/halfsine")
+    st = rp.signal.filters.load("pulse", "halfsine/halfsine")
     x = np.zeros(32, np.complex64)
     x[::8] = 1
     out = (rp.Data(x, Fs=8e6, sps=8) + st).data
@@ -46,7 +46,7 @@ def test_gaussian_pulse_holds_a_level(name, bt):
     wide = shaping.ShapingGaussian(sps, 0.3).pulse
     narrow = shaping.ShapingGaussian(sps, 1.0).pulse
     assert wide.max() < narrow.max()
-    assert rp.signal.filters.load("shaping", name) is not None
+    assert rp.signal.filters.load("pulse", name) is not None
 
 # ---- Decimate offset
 
@@ -87,7 +87,7 @@ def test_stagger_needs_whole_samples():
 
 def oqpsk(syms, sps):
     d = rp.Data(syms.astype(np.complex64), Fs=1e6, sps=1)
-    return d + rp.signal.sample.up.Zeros(sps) + rp.signal.filters.load("shaping", "halfsine/halfsine") + rp.wave.Stagger()
+    return d + rp.signal.sample.up.Zeros(sps) + rp.signal.filters.load("pulse", "halfsine/halfsine") + rp.wave.Stagger()
 
 def test_oqpsk_has_constant_envelope_and_no_phase_jumps():
     """Half-sine pulses on staggered rails: |s| is constant (MSK), so the phase moves by at most pi/2 per half symbol"""
@@ -102,7 +102,7 @@ def test_oqpsk_coherent_loopback_symbols():
     sps = 8
     sym = (rng.choice([-1, 1], 300) + 1j*rng.choice([-1, 1], 300))/np.sqrt(2)
     tx = oqpsk(sym, sps)
-    rx = tx + rp.wave.Stagger(rail="i") + rp.signal.filters.load("shaping", "halfsine/halfsine") + rp.signal.sample.down.Decimate(sps, offset=sps + sps//2)
+    rx = tx + rp.wave.Stagger(rail="i") + rp.signal.filters.load("pulse", "halfsine/halfsine") + rp.signal.sample.down.Decimate(sps, offset=sps + sps//2)
     got = rx.data*2/sps # the matched filter's gain at the peak is sps/2
     n = min(len(got), len(sym))
     assert n > 250
@@ -145,7 +145,7 @@ def test_gfsk_loopback():
     rng = np.random.default_rng(7)
     sps = 8
     lev = rng.choice([-1.0, 1.0], 300).astype(np.float32)
-    w = levels_to_fm(lev, sps, 0.5, rp.signal.filters.load("shaping", "gaussian/bt0p5"))
+    w = levels_to_fm(lev, sps, 0.5, rp.signal.filters.load("pulse", "gaussian/bt0p5"))
     freq = (w + rp.wave.FMDemod(rp.wave.fm_gain(0.5, sps))).data
     found = False
     for off in range(sps):

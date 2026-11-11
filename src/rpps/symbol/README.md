@@ -4,7 +4,7 @@ A signal is built from explicit pieces, and a new kind of signal is a new config
 
 | Layer | Pieces | Operator | What flows |
 |---|---|---|---|
-| **Symbol** (`rp.symbol`, `rp.spread`) | `Constellation`, `Differential`, `Spread`, `OFDM` | `*` encodes, `/` decodes | bits, symbols, chips (a `Pipe` each; decoding ends in LLRs) |
+| **Symbol** (`rp.symbol`; codes from `rp.sequence`) | `Constellation`, `Differential`, `Spread`, `OFDM` | `*` encodes, `/` decodes | bits, symbols, chips (a `Pipe` each; decoding ends in LLRs) |
 | **Waveform** (`rp.wave`, `rp.signal.sample`, `rp.signal.filters`) | `Zeros` / `Upsample`, pulse shaping, `Stagger`, `FM`, `FMDemod` | `+` | symbols and samples (a streaming `Stage` each; any block length) |
 
 ## Constellations
@@ -27,7 +27,7 @@ Explicit: `bits * rp.symbol.load("bpsk") * rp.symbol.Differential()` is DBPSK. T
 
 ## Frame structure
 Known structure among the symbols of a frame (`rpps.symbol.frame`), restarted at each frame start a profile gives it:
-- `Header`: known symbols then a short code carrying fields (`config/mod/header`, `rp.symbol.load("dvbs2_pl")`). Receiving it
+- `Header`: known symbols then a short code carrying fields (`config/header/physical`, `rp.symbol.load_header("dvbs2_pl")`). Receiving it
   decodes the fields (every code word tried, soft) and publishes them for the profile; transmitting it builds them.
 - `Pilots`: a block of pilots after every few slots (DVB-S2: 36 after every 16 slots of 90).
 - `PhaseScramble`: each symbol turned by a multiple of 90 degrees from a binary sequence (DVB-S2 PL scrambling).
@@ -35,20 +35,20 @@ Known structure among the symbols of a frame (`rpps.symbol.frame`), restarted at
 ## Recipes
 ```python
 # 802.11b 1 Mb/s: DBPSK, Barker-11, then 11 Mcps shaped as you like
-chips = bits * rp.symbol.load("bpsk") * rp.symbol.Differential() * rp.symbol.Spread(rp.spread.load("barker11"))
+chips = bits * rp.symbol.load("bpsk") * rp.symbol.Differential() * rp.symbol.Spread(rp.sequence.load("barker11"))
 
 # O-QPSK (half-sine pulses, Q half a symbol late; this is MSK when the symbols are unit QPSK)
-wave = bits * rp.symbol.load("QPSK") + rp.signal.sample.up.Zeros(8) + rp.signal.filters.load("shaping", "halfsine") + rp.wave.Stagger()
+wave = bits * rp.symbol.load("QPSK") + rp.signal.sample.up.Zeros(8) + rp.signal.filters.load("pulse", "halfsine") + rp.wave.Stagger()
 # receive, coherent and in this order: remove the carrier phase, realign the rails, matched filter, sample
-syms = wave + rp.wave.Stagger(rail="i") + rp.signal.filters.load("shaping", "halfsine") + rp.signal.sample.down.Decimate(8, offset=12)
+syms = wave + rp.wave.Stagger(rail="i") + rp.signal.filters.load("pulse", "halfsine") + rp.signal.sample.down.Decimate(8, offset=12)
 
 # 802.15.4 2.4 GHz: 4 bits pick a 32-chip sequence, even chips on I, odd on Q
-wave = bits * rp.symbol.Spread(rp.spread.load("ieee802154_2450"), pair=True) + rp.signal.sample.up.Zeros(4) \
-       + rp.signal.filters.load("shaping", "halfsine") + rp.wave.Stagger()
+wave = bits * rp.symbol.Spread(rp.sequence.load("ieee802154_2450"), pair=True) + rp.signal.sample.up.Zeros(4) \
+       + rp.signal.filters.load("pulse", "halfsine") + rp.wave.Stagger()
 
 # GFSK (Bluetooth LE: BT 0.5, h 0.5) and 4FSK: levels from an ASK constellation, a pulse, a frequency modulator
 c = rp.symbol.ASK(2)
-wave = bits * c + rp.signal.sample.up.Zeros(8) + rp.signal.filters.load("shaping", "gaussian/bt0p5") + rp.wave.FM(0.5, c.min_distance)
+wave = bits * c + rp.signal.sample.up.Zeros(8) + rp.signal.filters.load("pulse", "gaussian/bt0p5") + rp.wave.FM(0.5, c.min_distance)
 levels = wave + rp.wave.FMDemod(rp.wave.fm_gain(0.5, 8, c.min_distance))   # then integrate over each symbol and sample
 ```
 Each is exercised in `tests/unit/test_recipes.py` and `tests/unit/test_wave.py`.
