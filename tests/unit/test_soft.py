@@ -5,12 +5,12 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.coding.types import Trellis, bcjr
+from rpps.code.types import Trellis, bcjr
 from conftest import bits, awgn
 
 def modem(name):
-    m = rp.mod.load(name)
-    m.set_mapping(m.get_maps()[0])
+    m = rp.symbol.load(name)
+    m.set_mapping(m.maps[0])
     return m
 
 # --- LLRs from the demodulator ---------------------------------------------------------------------
@@ -18,34 +18,34 @@ def modem(name):
 def test_bpsk_llr_is_closed_form(rng):
     m = modem("bpsk")
     msg = bits(rng, 2000)
-    y, var = awgn(m.constellation.modulate(msg), 3.0, rng)
-    llr = m.constellation.llr(y, var)
-    sign = 1.0 if m.points.arr[m.constellation.mapping.arr.tolist().index(0)].real > 0 else -1.0
+    y, var = awgn(m.modulate(msg), 3.0, rng)
+    llr = m.llr(y, var)
+    sign = 1.0 if m.points[m.mapping.arr.tolist().index(0)].real > 0 else -1.0
     assert np.allclose(llr, sign*4*y.real/var, rtol=1e-4, atol=1e-4)
 
 @pytest.mark.parametrize("name", ["bpsk", "qpsk", "8psk", "dvbs2_8psk"])
 def test_llr_sign_is_the_hard_decision(name, rng):
     m = modem(name)
     msg = bits(rng, 3*4000)
-    y, var = awgn(m.constellation.modulate(msg), 24.0, rng)
-    llr = m.constellation.llr(y, var)
+    y, var = awgn(m.modulate(msg), 24.0, rng)
+    llr = m.llr(y, var)
     assert len(llr) == len(msg)
     assert ((llr < 0) == msg).mean() > 0.999
-    maxlog = m.constellation.llr(y, var, maxlog=True)
+    maxlog = m.llr(y, var, maxlog=True)
     assert ((maxlog < 0) == (llr < 0)).mean() > 0.999
 
 @pytest.mark.parametrize("name", ["bpsk", "qpsk", "8psk"])
 def test_noise_estimate(name, rng):
     m = modem(name)
-    y, var = awgn(m.constellation.modulate(bits(rng, 3*20000)), 8.0, rng)
-    assert m.constellation.estimate_noise(y) == pytest.approx(var, rel=0.1)
+    y, var = awgn(m.modulate(bits(rng, 3*20000)), 8.0, rng)
+    assert m.estimate_noise(y) == pytest.approx(var, rel=0.1)
 
 def test_llr_is_calibrated(rng):
     """Among bits given |LLR| about L, the error rate is 1/(1+e^L)"""
     m = modem("qpsk")
     msg = bits(rng, 2*60000)
-    y, var = awgn(m.constellation.modulate(msg), 2.0, rng)
-    llr = m.constellation.llr(y, var)
+    y, var = awgn(m.modulate(msg), 2.0, rng)
+    llr = m.llr(y, var)
     for lo, hi in ((0.5, 1.0), (1.5, 2.5)):
         sel = (np.abs(llr) >= lo) & (np.abs(llr) < hi)
         want = np.mean(1/(1 + np.exp(np.abs(llr[sel]))))
@@ -73,7 +73,7 @@ def brute_app(codewords, llr, maxlog):
 @pytest.mark.parametrize("name", ["hamming/7_4", "hamming/15_11", "hamming/3_1"])
 @pytest.mark.parametrize("maxlog", [False, True])
 def test_trellis_matches_enumeration(name, maxlog, rng):
-    code = rp.coding.load("block", name)
+    code = rp.code.load("block", name)
     enc, dec = code._enc, code._dec
     assert type(dec).__name__ == "trellis"
     dec.maxlog = maxlog
@@ -85,7 +85,7 @@ def test_trellis_matches_enumeration(name, maxlog, rng):
         assert np.allclose(app[w], brute_app(cw, llr[w], maxlog), atol=1e-9)
 
 def test_hamming_corrects_any_single_error():
-    code = rp.coding.load("block", "hamming/7_4")
+    code = rp.code.load("block", "hamming/7_4")
     msg = np.array([1, 0, 1, 1, 0, 0, 1, 0], dtype=bool)
     coded = code._enc.encode(msg)
     for i in range(7):
@@ -94,7 +94,7 @@ def test_hamming_corrects_any_single_error():
         assert np.array_equal(code._dec.decode(bad), msg)
 
 def test_soft_trellis_beats_hard_on_hamming(rng):
-    code = rp.coding.load("block", "hamming/7_4")
+    code = rp.code.load("block", "hamming/7_4")
     msg = bits(rng, 4*4000)
     coded = code._enc.encode(msg)
     rx = (1.0 - 2.0*coded) + rng.normal(0, 0.8, len(coded))
@@ -104,7 +104,7 @@ def test_soft_trellis_beats_hard_on_hamming(rng):
     assert (soft != msg).mean() < 0.06 # Uncoded BPSK at this noise level makes about 10.6% errors
 
 def test_linear_decoder_override():
-    code = rp.coding.load("block", "hamming/7_4", decoder="linear")
+    code = rp.code.load("block", "hamming/7_4", decoder="linear")
     assert type(code._dec).__name__ == "linear" and code.decision.name == "HARD"
 
 def test_big_linear_code_falls_back():
@@ -120,7 +120,7 @@ TERMINATED = {
 
 @pytest.mark.parametrize("maxlog", [False, True])
 def test_conv_bcjr_matches_enumeration(maxlog, rng):
-    code = rp.coding.init("t", TERMINATED, decoder="bcjr")
+    code = rp.code.init("t", TERMINATED, decoder="bcjr")
     dec, K = code._dec, 6
     dec.maxlog = maxlog
     msgs = np.array(list(itertools.product([0, 1], repeat=K)), dtype=bool)
@@ -133,7 +133,7 @@ def test_conv_bcjr_matches_enumeration(maxlog, rng):
 
 def test_conv_bcjr_clean_and_hard(rng):
     for name in ("k3_5_7/1_2", "k7_133_171/1_2", "k7_171_133/3_4"):
-        code = rp.coding.load("conv", name, decoder="bcjr")
+        code = rp.code.load("conv", name, decoder="bcjr")
         msg = bits(rng, 600)
         out = code._dec.decode(code._enc.encode(msg))
         n = min(len(out), len(msg)) - 20
@@ -141,8 +141,8 @@ def test_conv_bcjr_clean_and_hard(rng):
 
 def test_bcjr_close_to_viterbi_and_better_calibrated(rng):
     msg = bits(rng, 4000)
-    code_v = rp.coding.load("conv", "k7_133_171/1_2")
-    code_b = rp.coding.load("conv", "k7_133_171/1_2", decoder="bcjr")
+    code_v = rp.code.load("conv", "k7_133_171/1_2")
+    code_b = rp.code.load("conv", "k7_133_171/1_2", decoder="bcjr")
     coded = code_v._enc.encode(msg)
     sigma = 0.9
     rx = (1.0 - 2.0*coded) + rng.normal(0, sigma, len(coded))
@@ -158,7 +158,7 @@ def test_bcjr_close_to_viterbi_and_better_calibrated(rng):
     assert wrong[conf].mean() < 1e-2 # Confident bits are right
 
 def test_bcjr_handles_puncturing(rng):
-    code = rp.coding.load("conv", "k7_171_133/3_4", decoder="bcjr")
+    code = rp.code.load("conv", "k7_171_133/3_4", decoder="bcjr")
     msg = bits(rng, 1200)
     coded = code._enc.encode(msg)
     rx = (1.0 - 2.0*coded) + rng.normal(0, 0.5, len(coded))
@@ -169,38 +169,38 @@ def test_bcjr_handles_puncturing(rng):
 # --- soft decisions through the pipeline --------------------------------------------------------------
 
 def test_decisions_default_by_decoder():
-    assert rp.coding.load("conv", "k7_171_133/3_4").decision.name == "SOFT"
-    assert rp.coding.load("block", "ldpc/gallager_96_48").decision.name == "SOFT"
-    assert rp.coding.load("block", "repeat/3").decision.name == "SOFT"
-    assert rp.coding.load("block", "hamming/7_4").decision.name == "SOFT"
-    assert rp.coding.load("block", "rs/204_188").decision.name == "SOFT" # LLRs pick the symbols to erase on a retry
+    assert rp.code.load("conv", "k7_171_133/3_4").decision.name == "SOFT"
+    assert rp.code.load("block", "ldpc/gallager_96_48").decision.name == "SOFT"
+    assert rp.code.load("block", "repeat/3").decision.name == "SOFT"
+    assert rp.code.load("block", "hamming/7_4").decision.name == "SOFT"
+    assert rp.code.load("block", "rs/204_188").decision.name == "SOFT" # LLRs pick the symbols to erase on a retry
 
 def test_repeat_adds_llrs():
-    rep = rp.coding.load("block", "repeat/3")._dec
+    rep = rp.code.load("block", "repeat/3")._dec
     llr = np.array([+3.0, -1.0, -1.0,  +1.0, +1.0, -1.5], dtype=np.float32)
     assert rep.decode(llr).tolist() == [False, False]
     assert rep.decode(np.array([1, 1, 0, 0, 1, 0], dtype=bool)).tolist() == [True, False]
 
 def run_link(ecc, mod, esn0, rng, nbits, soft=True):
     """bits -> ecc -> mod -> AWGN -> demod -> ecc, as BER of the message"""
-    ecc.decision = rp.coding.coding.Decision.SOFT if soft else rp.coding.coding.Decision.HARD
+    ecc.decision = rp.code.coding.Decision.SOFT if soft else rp.code.coding.Decision.HARD
     msg = bits(rng, nbits)
     syms = rp.Data(msg.copy()) * ecc * mod
     y, var = awgn(syms.data, esn0, rng)
-    out = (rp.base.Analog(y, pp=rp.pproc.MOD, dt=rp.dtype.SYMBOLS) / mod) / ecc
+    out = (rp.base.Analog(y, rp.Category.SYMBOL, rp.dtype.SYMBOLS) / mod) / ecc
     got = out.as_bits().data
     n = min(len(got), len(msg)) - 40
     return (got[:n] != msg[:n]).mean()
 
 def test_soft_beats_hard_end_to_end_conv(rng):
-    ecc, mod = rp.coding.load("conv", "k7_133_171/1_2"), modem("qpsk")
+    ecc, mod = rp.code.load("conv", "k7_133_171/1_2"), modem("qpsk")
     hard = run_link(ecc, mod, 2.5, np.random.default_rng(5), 6000, soft=False)
     soft = run_link(ecc, mod, 2.5, np.random.default_rng(5), 6000, soft=True)
     assert soft < hard
     assert soft < 0.01
 
 def test_soft_beats_hard_end_to_end_ldpc():
-    ecc, mod = rp.coding.load("block", "ldpc/gallager_96_48"), modem("qpsk")
+    ecc, mod = rp.code.load("block", "ldpc/gallager_96_48"), modem("qpsk")
     n = ecc.e_num*60
     hard = run_link(ecc, mod, 2.0, np.random.default_rng(9), n, soft=False)
     soft = run_link(ecc, mod, 2.0, np.random.default_rng(9), n, soft=True)
@@ -208,7 +208,7 @@ def test_soft_beats_hard_end_to_end_ldpc():
 
 def test_hard_only_decoder_still_works_behind_soft_demod(rng):
     """RS can't use LLRs: the demodulator's soft output is decided before it"""
-    ecc, mod = rp.coding.load("block", "rs/204_188"), modem("qpsk")
+    ecc, mod = rp.code.load("block", "rs/204_188"), modem("qpsk")
     msg = rp.Data(bytes(rng.integers(0, 256, 188*2).astype(np.uint8)))
     want = msg.as_bytes().hex
     out = (((msg*ecc*mod) / mod) / ecc).as_bytes().hex

@@ -27,7 +27,7 @@ def chain():
     return rp.sync.AGC(1.0, 0.01) + rp.sync.time.MM(alpha=0.1) + rp.sync.Costas.from_bandwidth(0.02, order=4)
 
 def blocks_of(path):
-    return rp.serial.File("cf64", path, Fs=8e3, sps=8)(1000)
+    return rp.source.File("cf64", path, Fs=8e3, sps=8)(1000)
 
 @pytest.mark.parametrize("how", ["threaded source", "pipelined", "both ends"])
 def test_threads_give_the_same_stream(capture, how):
@@ -70,7 +70,7 @@ def test_leaving_the_loop_stops_the_threads_and_closes_the_source():
         finally:
             closed.set()
     before = len([t for t in threading.enumerate() if t.name != "rpps-blocks"]) # threads of other tests may still be exiting
-    for i, _ in enumerate(rp.serial.source.Blocks(source()).pipelined(rp.sync.AGC() + rp.sync.AGC())):
+    for i, _ in enumerate(rp.source.source.Blocks(source()).pipelined(rp.sync.AGC() + rp.sync.AGC())):
         if i == 20:
             break
     assert closed.wait(2.0)
@@ -101,8 +101,8 @@ def test_an_sps_learned_downstream_reaches_blocks_already_in_flight(tmp_path):
     path = tmp_path / "a.iq"
     np.ones(20000, np.complex64).tofile(path)
     rec = Record()
-    src = rp.serial.File("cf64", path, Fs=8e3, sps=2.0)
-    list(src(500).pipelined(rp.sample.down.Decimate(2) + Calibrate() + rec, depth=8))
+    src = rp.source.File("cf64", path, Fs=8e3, sps=2.0)
+    list(src(500).pipelined(rp.signal.sample.down.Decimate(2) + Calibrate() + rec, depth=8))
     assert len(rec.sps) == 40 and all(s == pytest.approx(4.0) for s in rec.sps)
     assert src.stream.src_sps == pytest.approx(8.0)
 
@@ -112,7 +112,7 @@ def test_a_dropping_source_counts_what_it_discards():
         for _ in range(200):
             yield rp.Data(np.ones(64, np.complex64), Fs=1e3, stream=stream)
     got, stream = 0, None
-    for b in rp.serial.source.Blocks(source()).threaded(depth=1, drop=True):
+    for b in rp.source.source.Blocks(source()).threaded(depth=1, drop=True):
         stream = b.stream
         time.sleep(0.002) # a slow reader
         got += 1
@@ -120,7 +120,7 @@ def test_a_dropping_source_counts_what_it_discards():
 
 def test_load_reports_each_stage_against_real_time(capture):
     _, path = capture
-    src = rp.serial.File("cf64", path, Fs=8e3, sps=8)
+    src = rp.source.File("cf64", path, Fs=8e3, sps=8)
     agc, mm = rp.sync.AGC(), rp.sync.time.MM()
     (src(1000) + (agc + mm)).collect()
     assert src.stream.air == pytest.approx(len(capture[0])/8e3)

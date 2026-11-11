@@ -43,11 +43,17 @@ class Stream:
     busy: seconds each stage spent in `step`; air: seconds of signal the source produced. busy/air (`load`) over 1
         means that stage can't keep up in real time
     dropped: blocks a threaded source discarded because the stages fell behind (Blocks.threaded(drop=True))
+    pos: items the source has produced so far: the absolute position of its next block
+    t0: time [s] of the source's item 0, when the source knows it (a radio's timestamp); None otherwise
+    out_pos: items each stage has produced so far in this stream: the absolute position of its next output block
+    est: what sync stages estimated, by name ({"align": {...}}), for whoever wants to know (det stays Acquire's)
+    control: the control path (rpps.profile.control.Control): fields header steps published, position anchors, and
+        what a profile runner did with them (applied, re-run, dropped). None until a step publishes
 
     Threads (Blocks.threaded): each stage's state is used only by the thread running that stage. `det` and
     `src_sps` have one writer (Acquire); `gen` lets blocks already on their way pick up a new sps (Meta.refresh).
     """
-    __slots__ = ("states", "det", "blocks", "src_Fs", "src_sps", "gen", "busy", "air", "dropped")
+    __slots__ = ("states", "det", "blocks", "src_Fs", "src_sps", "gen", "busy", "air", "dropped", "pos", "t0", "out_pos", "est", "control")
     def __init__(self, Fs=None):
         self.states = {}
         self.det = None
@@ -58,6 +64,11 @@ class Stream:
         self.busy = {}
         self.air = 0.0
         self.dropped = 0
+        self.pos = 0
+        self.t0 = None
+        self.out_pos = {}
+        self.est = {}
+        self.control = None
 
     def load(self):
         """Fraction of real time each stage takes: {stage: busy/air}. Over 1.0, it is too slow for a live source"""
@@ -73,6 +84,11 @@ class Stream:
         self.busy = {}
         self.air = 0.0
         self.dropped = 0
+        self.pos = 0
+        self.t0 = None
+        self.out_pos = {}
+        self.est = {}
+        self.control = None
 
 class Meta:
     """The rate information of one block of data, as a stage sees it
@@ -81,9 +97,12 @@ class Meta:
         op: the rates of the block going out. A stage changes these (meta.op.Fs /= 2), the carrier applies them
         delay: group delay of the data so far [s]. A stage adds its own
         stream: the Stream this block belongs to (stage state, detection)
+        pos: absolute position of the block's first item in the stream, counted in items at this block's rate. It does
+            not depend on how the stream was cut into blocks, so estimators can place their windows by it
+        flush: this block ends the stream: a stage gives out what it was holding back
     """
-    __slots__ = ("state", "op", "delay", "stream", "gen")
-    def __init__(self, Fs=1.0, sps=0.0, cf=0.0, delay=0.0, stream=None):
+    __slots__ = ("state", "op", "delay", "stream", "gen", "pos", "flush")
+    def __init__(self, Fs=1.0, sps=0.0, cf=0.0, delay=0.0, stream=None, pos=0):
         self.stream = Stream(Fs) if stream is None else stream
         if self.stream.src_Fs is None:
             self.stream.src_Fs = Fs
@@ -93,6 +112,14 @@ class Meta:
         self.op = Rate(Fs, sps, cf)
         self.delay = delay
         self.gen = self.stream.gen
+        self.pos = int(pos)
+        self.flush = False
+
+    def time_of(self, k=0):
+        """Source time [s] of item k of this block: the stream's t0, plus the position at this rate, less the group delay.
+        None when the source gave no time anchor"""
+        t0 = self.stream.t0
+        return None if t0 is None else t0 + (self.pos + k)/self.state.Fs - self.delay
 
     @property
     def Fs(self):
@@ -121,6 +148,8 @@ class Meta:
         m.op = self.op.copy()
         m.delay = self.delay
         m.gen = self.gen
+        m.pos = self.pos
+        m.flush = False
         return m
 
     def refresh(self):

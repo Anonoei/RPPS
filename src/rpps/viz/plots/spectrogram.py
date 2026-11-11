@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colormaps
 
-from ... import dsp
+from ... import analysis
 
 from ..utils import fft, window, freq_axis, bins
 
@@ -17,7 +17,7 @@ def spectrogram(ax, samp_list, Fs=1, vbw_hz=None):
     z_min = np.inf
     z_max = -np.inf
     for i, samps in enumerate(samp_list):
-        zs[i] = dsp.psd(window(samps), Fs, vbw_hz)
+        zs[i] = analysis.psd(window(samps), Fs, vbw_hz)
         z_min = min(np.append(zs[i], z_min))
         z_max = max(np.append(zs[i], z_max))
 

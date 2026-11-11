@@ -16,7 +16,7 @@ LDU2 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0, 43, 11, 34, 36, 38, 61,
 
 @pytest.mark.parametrize("ref,word", [("rs/p25_24_12", LDU1), ("rs/p25_24_16", LDU2)])
 def test_rs_p25_on_air_words(ref, word, rng):
-    code = rp.coding.load("block", ref)._dec
+    code = rp.code.load("block", ref)._dec
     w = np.array(word)
     assert not code.syndromes(w[None]).any() # A real codeword: the definition's roots are right
     bad = w.copy()
@@ -37,7 +37,7 @@ def _rs_trial(code, rng, n_err, n_era):
     return np.array_equal(out, info), int(code.errors[0])
 
 def test_rs_errors_and_erasures(rng):
-    code = rp.coding.load("block", "p25p2_63_35")._dec
+    code = rp.code.load("block", "p25p2_63_35")._dec
     for _ in range(60):
         n_era = int(rng.integers(0, code.nroots + 1))
         n_err = int(rng.integers(0, (code.nroots - n_era)//2 + 1))
@@ -45,12 +45,12 @@ def test_rs_errors_and_erasures(rng):
         assert ok and fixed == n_err + n_era//2
 
 def test_rs_beyond_capacity_fails_cleanly(rng):
-    code = rp.coding.load("block", "p25p2_63_35")._dec
+    code = rp.code.load("block", "p25p2_63_35")._dec
     fails = [_rs_trial(code, rng, 10, 12)[1] for _ in range(20)] # 2*10 + 12 > 28
     assert fails.count(-1) >= 18
 
 def test_rs_erasure_mask_form(rng):
-    code = rp.coding.RS(24, 12, m=6, fcr=1)._dec
+    code = rp.code.RS(24, 12, m=6, fcr=1)._dec
     info = rng.integers(0, 64, (3, 12))
     cw = code.encode(info.reshape(-1), symbols=True).reshape(3, 24)
     mask = np.zeros((3, 24), bool)
@@ -63,7 +63,7 @@ def test_rs_erasure_mask_form(rng):
 @pytest.mark.parametrize("ref,sent", [("p25p2_soemi", 45), ("p25p2_ioemi", 52)])
 def test_rs_punctured(ref, sent, rng):
     """Shortened and punctured as P25 phase 2 sends its MAC: the missing parity is decoded as erasures"""
-    code = rp.coding.load("block", ref)
+    code = rp.code.load("block", ref)
     assert code._dec.den == sent
     msg = bits(rng, 6*code._dec.num)
     cw = (rp.Data(msg, flush=True) * code).data
@@ -73,12 +73,12 @@ def test_rs_punctured(ref, sent, rng):
     rx[rng.permutation(sent)[:t], 0] ^= True
     out = rp.Data(rx.reshape(-1), flush=True) / code
     d = code._dec
-    full = rp.coding.RS(d.n, d.num, m=6, fcr=1)._enc.encode(msg, symbols=False) # The same word, nothing punctured
+    full = rp.code.RS(d.n, d.num, m=6, fcr=1)._enc.encode(msg, symbols=False) # The same word, nothing punctured
     restored = np.count_nonzero(d.to_symbols(full)[d.puncture]) # Punctured symbols the decoder had to fill in
     assert np.array_equal(out.data, msg) and code.errors[0] == t + restored
 
 def test_rs_soft_retry_erases_unreliable(rng):
-    code = rp.coding.load("block", "p25p2_63_35")._dec
+    code = rp.code.load("block", "p25p2_63_35")._dec
     info = rng.integers(0, 64, 35)
     b = code.to_bits(code.encode(info, symbols=True))
     llr = np.where(b, -4.0, 4.0)
@@ -90,7 +90,7 @@ def test_rs_soft_retry_erases_unreliable(rng):
     assert code.errors[0] == -1 # The same word from hard bits is beyond errors-only decoding
 
 def test_rs_dvb_unchanged(rng):
-    code = rp.coding.load("block", "rs/204_188")
+    code = rp.code.load("block", "rs/204_188")
     msg = bits(rng, 8*188*2)
     cw = (rp.Data(msg, flush=True) * code).data.copy()
     cw[:64] ^= True # 8 byte errors in the first word
@@ -100,7 +100,7 @@ def test_rs_dvb_unchanged(rng):
 # --- cyclic codes, syndrome decoder -------------------------------------------------------------------------
 
 def test_golay_corrects_every_three_error_pattern(rng):
-    code = rp.coding.Golay(23)
+    code = rp.code.Golay(23)
     msg = bits(rng, 12)
     cw = code._enc.encode(msg)
     pats = list(itertools.combinations(range(23), 3))
@@ -110,11 +110,11 @@ def test_golay_corrects_every_three_error_pattern(rng):
         assert np.array_equal(code._dec.decode(rx), msg) and code.errors[0] == 3
 
 def test_golay23_is_perfect():
-    dec = rp.coding.Golay(23)._dec
+    dec = rp.code.Golay(23)._dec
     assert (dec.weight >= 0).all() # Every syndrome is within 3 errors of a codeword
 
 def test_extended_golay_detects_four(rng):
-    code = rp.coding.load("block", "golay/24_12")
+    code = rp.code.load("block", "golay/24_12")
     assert code._dec.t == 3
     msg = bits(rng, 12)
     cw = code._enc.encode(msg)
@@ -126,7 +126,7 @@ def test_extended_golay_detects_four(rng):
         assert code.errors[0] == -1
 
 def test_cyclic_shortened(rng):
-    code = rp.coding.Cyclic(23, 12, 0xC75, extend=True, shorten=6) # (18,6,8)
+    code = rp.code.Cyclic(23, 12, 0xC75, extend=True, shorten=6) # (18,6,8)
     assert (code._enc.num, code._enc.den, code._dec.t) == (6, 18, 3)
     msg = bits(rng, 6*20)
     cw = (rp.Data(msg, flush=True) * code).data.copy().reshape(-1, 18)
@@ -137,19 +137,19 @@ def test_cyclic_shortened(rng):
 
 def test_cyclic_rejects_non_generator():
     with pytest.raises(ValueError):
-        rp.coding.Cyclic(23, 12, 0xC77)
+        rp.code.Cyclic(23, 12, 0xC77)
     with pytest.raises(ValueError):
-        rp.coding.Cyclic(23, 13, 0xC75)
+        rp.code.Cyclic(23, 13, 0xC75)
 
 def test_cyclic_matches_bch():
     """BCH (15,7,5) by its generator: x^8+x^7+x^6+x^4+1, two errors"""
-    code = rp.coding.Cyclic(15, 7, 0b111010001)
+    code = rp.code.Cyclic(15, 7, 0b111010001)
     assert code._dec.t == 2
 
 # --- status of the other block decoders ---------------------------------------------------------------------
 
 def test_linear_own_decoder_flags_instead_of_raising(rng):
-    code = rp.coding.load("block", "hamming/p25_10_6", decoder="linear")
+    code = rp.code.load("block", "hamming/p25_10_6", decoder="linear")
     msg = bits(rng, 6*40)
     cw = code._enc.encode(msg).reshape(-1, 10).copy()
     cw[::2, [0, 3]] ^= True # Syndrome 1110 ^ 0111 = 1001: no single flip makes it
@@ -157,7 +157,7 @@ def test_linear_own_decoder_flags_instead_of_raising(rng):
     assert list(code.errors) == [-1, 0]*20
 
 def test_trellis_decoder_status(rng):
-    code = rp.coding.load("block", "hamming/7_4")
+    code = rp.code.load("block", "hamming/7_4")
     msg = bits(rng, 4*30)
     cw = code._enc.encode(msg).reshape(-1, 7).copy()
     cw[::2, 3] ^= True
@@ -166,12 +166,12 @@ def test_trellis_decoder_status(rng):
     assert list(code.errors) == [1, 0]*15
 
 def test_repeat_status():
-    rep = rp.coding.load("block", "repeat/3")._dec
+    rep = rp.code.load("block", "repeat/3")._dec
     rep.decode(np.array([1, 1, 0, 0, 0, 0, 1, 1, 1], dtype=np.uint8))
     assert list(rep.errors) == [1, 0, 0]
 
 def test_ldpc_status(rng):
-    code = rp.coding.load("block", "ldpc/gallager_96_48")
+    code = rp.code.load("block", "ldpc/gallager_96_48")
     msg = bits(rng, code._enc.num*4)
     cw = code._enc.encode(msg)
     llr = (1.0 - 2.0*cw)*4.0
@@ -180,7 +180,7 @@ def test_ldpc_status(rng):
     assert list(code.errors) == [1, 0, 0, 0]
 
 def test_crc_status(rng):
-    crc = rp.encap.load("crc", "crc16_xmodem")
+    crc = rp.link.load("crc", "crc16_xmodem")
     sent = crc._enc.encode(bits(rng, 40))
     crc._enc.decode(sent)
     assert list(crc.errors) == [0]
@@ -189,4 +189,4 @@ def test_crc_status(rng):
     assert list(crc.errors) == [-1]
 
 def test_conv_has_no_word_status():
-    assert rp.coding.load("conv", "k7_133_171/1_2").errors is None
+    assert rp.code.load("conv", "k7_133_171/1_2").errors is None

@@ -2,8 +2,21 @@
   "base": "adt",
   "type": "sequence",
   "comment": "Bluetooth LE data whitening (Core spec Vol 6 Part B 3.2): 7-bit LFSR x^7 + x^4 + 1, position 0 set to 1, positions 1-6 the channel index (MSB in position 1). Whitening and de-whitening are the same",
-  "params": {"channel": {"default": 37, "comment": "channel index 0..39"}},
+  "params": {
+    "channel": {
+      "default": 37,
+      "comment": "channel index 0..39"
+    }
+  },
   "sequences": [
-    {"register": "galois", "length": 7, "taps": [4], "state": {"each": "1 if i == 0 else (channel >> (6 - i)) & 1", "n": 7}}
+    {
+      "register": "galois",
+      "length": 7,
+      "taps": [4],
+      "state": {
+        "each": "1 if i == 0 else (channel >> (6 - i)) & 1",
+        "n": 7
+      }
+    }
   ]
 }

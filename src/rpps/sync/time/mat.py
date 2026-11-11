@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from ...base import Meta, Stage
-from ...filters.shaping import rrc_pulse
+from ...signal.filters.shaping import rrc_pulse
 
 def matrix_mf(x, centres, sps, beta=0.2, span=8):
     """Matched filter + symbol sampling as a (banded) matrix: y = W @ x

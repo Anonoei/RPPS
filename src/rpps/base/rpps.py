@@ -39,6 +39,11 @@ class Pipe:
         bits = syms / link              # the decoders, run backwards
     """
     __array_ufunc__ = None # numpy defers to the operators here instead of broadcasting over the object
+    CATEGORY = None # The rpps.base.types.Category of what it does (stages without one count as SIGNAL)
+
+    def takes(self, encode):
+        """The representations (rpps.base.types.Rep) this accepts to encode (True) or decode (False); None: not checked"""
+        return None
 
     def __str__(self) -> str:
         return "Pipe"
@@ -134,8 +139,37 @@ class Stage(Pipe):
         """Process a block, returning the output. Set meta.op (the output rates) and add to meta.delay as needed"""
         raise NotImplementedError()
 
+    def takes(self, encode=True):
+        """Representations this stage processes (rpps.base.types.Rep): samples and symbols"""
+        from .types import Rep
+        return {Rep.SAMPLES, Rep.SYMBOLS}
+
     def __radd__(self, data):
         from .data import _Data
         if not isinstance(data, _Data):
             return NotImplemented
         return data.apply(self)
+
+class BitStage(Stage):
+    """A stage on a stream of bits: channel bits or data bits, as LLRs or hard bits (sync on bits: alignment, polarity)
+
+    `step` gets a numpy array: float LLRs (positive means 0) or bools, and gives the same form back. The output keeps the
+    input's representation and form; state carries across blocks as for any stage, so any block length works.
+    """
+    def takes(self, encode=True):
+        from .types import Rep
+        return {Rep.CHANNEL, Rep.DATA}
+
+def tag_stages(package, category):
+    """Give every Stage class defined in `package` (a module or package name, submodules included) the Category `category`,
+    unless the class sets its own. In this architecture the package is the category (ARCHITECTURE.md)"""
+    import importlib, pkgutil, sys
+    root = importlib.import_module(package)
+    names = [package]
+    if hasattr(root, "__path__"):
+        names += [m.name for m in pkgutil.walk_packages(root.__path__, package + ".")]
+    for name in names:
+        mod = sys.modules.get(name) or importlib.import_module(name)
+        for obj in vars(mod).values():
+            if isinstance(obj, type) and issubclass(obj, Stage) and obj.__module__ == name and "CATEGORY" not in vars(obj):
+                obj.CATEGORY = category

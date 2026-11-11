@@ -1,17 +1,13 @@
-"""Data Containers
+"""Data containers
 
-DSP (Analog)
-  Samples [bytes] - Raw IQ samples
-    Fs, sps (sr, cf)
-  Symbols [bytes] - Synchronized IQ symbols
-(De)Modulation (Conversion)
-  Mapped [bits/bytes] - Mapped symbols
-    Hard/Soft
-Coding (Digital)
-  Coded [bits/bytes] - Coding data (ECC)
-  Scram [bits/bytes] - Scrambler data
-Communication
-  Framing [bits/bytes] - Framing data
+Every block carries three tags (see rpps.base.types and ARCHITECTURE.md):
+    CAT  the Category of the operation that made it last
+    REP  its representation: SAMPLES, SYMBOLS, CHANNEL bits, DATA bits, PACKETS
+    DT   its form (dtype): complex samples, LLRs, bits, bytes...
+
+    Analog   samples and symbols
+    Mod      symbols, and demodulated bits (LLRs or hard) on the way to the decoder
+    Digital  bits and bytes
 """
 
 from time import perf_counter
@@ -19,7 +15,7 @@ import typing
 
 import numpy as np
 
-from .types import pproc, dtype
+from .types import Category, Rep, dtype, REP_OF
 from .buffer import Buffer, Vector
 from .meta import Meta, Stream
 from .rpps import FLUSH
@@ -28,13 +24,14 @@ from ..errors import StreamError
 class _Data:
     __slots__ = (
         "_data",
-        "PP", "DT", "ctx", "meta"
+        "CAT", "REP", "DT", "ctx", "meta"
     )
 
-    def __init__(self, data=None, pp=pproc.UNK, dt=None, ctx=None, meta=None):
+    def __init__(self, data=None, cat=Category.UNK, dt=None, ctx=None, meta=None, rep=None):
         self._data: np.ndarray = data # type: ignore
-        self.PP = pp
+        self.CAT = cat
         self.DT = dt
+        self.REP = rep if rep is not None else REP_OF.get(dt) # Inferred from the form unless the maker says
         self.ctx = {} if ctx is None else ctx # State the coding/scrambling pipes carry between calls (see `derive`)
         self.meta: Meta = Meta() if meta is None else meta # Rates and the stream of the signal
 
@@ -48,9 +45,11 @@ class _Data:
     def flush(self, value):
         self.ctx[FLUSH] = bool(value)
 
-    def derive(self, data, pp, dt, cls=None, ctx=None, meta=None):
-        """New data of this stream: the stages never modify their input. `ctx` is the stream state they updated"""
-        return (cls or type(self))(data, pp, dt, dict(self.ctx) if ctx is None else ctx, self.meta if meta is None else meta)
+    def derive(self, data, cat, dt, cls=None, ctx=None, meta=None, rep=None):
+        """New data of this stream: the stages never modify their input. `ctx` is the stream state they updated.
+        rep: the representation of the new data; by default the one its form usually has (REP_OF): bits are data bits,
+        LLRs channel bits. A code transform says which side of the decoder its bits are on"""
+        return (cls or type(self))(data, cat, dt, dict(self.ctx) if ctx is None else ctx, self.meta if meta is None else meta, rep)
 
     # --- signal information ---
     @property
@@ -86,30 +85,49 @@ class _Data:
 
     def apply(self, stage):
         """Run a DSP stage on this block: `data + stage`. The stage's state lives in the stream, the rates follow"""
-        if self._data is None or self.PP == pproc.MAP or isinstance(self, Digital):
-            raise StreamError(f"{stage} processes signals, not {self.name} ({self.PP}/{self.DT})")
+        takes = stage.takes(True) if hasattr(stage, "takes") else {Rep.SAMPLES, Rep.SYMBOLS}
+        if self._data is None or (takes is not None and self.REP not in takes):
+            names = ", ".join(sorted(r.name for r in takes)) if takes else "nothing"
+            raise StreamError(f"{stage} processes {names}, not {self.REP} ({self.name}/{self.DT})")
         meta = self.meta.fork()
         meta.refresh()
+        meta.flush = self.flush
         st = meta.state_of(stage)
         t = perf_counter()
         out = stage.step(self._data, st, meta)
-        busy = meta.stream.busy
+        stream = meta.stream
+        busy = stream.busy
         busy[stage] = busy.get(stage, 0.0) + perf_counter() - t
         out = np.asarray(out)
         if out.dtype in (np.complex128, np.float64): # Samples are single precision throughout
             out = out.astype(np.complex64 if out.dtype.kind == "c" else np.float32)
+        cat = getattr(stage, "CATEGORY", None) or Category.SIGNAL
+        if self.REP in (Rep.CHANNEL, Rep.DATA): # A stage on bits: same class, representation and form
+            out_meta = meta.fork()
+            start = stream.out_pos.get(stage)
+            out_meta.pos = meta.pos if start is None else start
+            stream.out_pos[stage] = out_meta.pos + len(out)
+            return self.derive(out, cat, self.DT, ctx=dict(self.ctx), meta=out_meta, rep=self.REP)
         if out.dtype.kind == "c":
-            dt = dtype.SYMBOLS if meta.op.sps <= 1.0 and self.DT == dtype.SYMBOLS else dtype.SAMPLES
+            # One value per symbol is symbols: a stage that takes samples to one per symbol (timing recovery, an FFT)
+            # gives them, and a stage on symbols keeps them
+            dt = dtype.SYMBOLS if meta.op.sps == 1 or (meta.op.sps <= 1.0 and self.DT == dtype.SYMBOLS) else dtype.SAMPLES
         else:
             dt = dtype.REAL
-        return Analog(out, pproc.FILTER, dt, dict(self.ctx), meta.fork())
+        out_meta = meta.fork()
+        start = stream.out_pos.get(stage)
+        if start is None: # First block this stage sees in the stream: its outputs start where its input is, at the new rate
+            start = int(round(meta.pos * meta.op.Fs / meta.state.Fs)) if meta.state.Fs else 0
+        out_meta.pos = start # Then it counts its own outputs: independent of how the blocks were cut
+        stream.out_pos[stage] = start + len(out)
+        return Analog(out, cat, dt, dict(self.ctx), out_meta)
 
     def __rshift__(self, sink):
         """data >> sink: write this block to a sink"""
         return sink.write(self)
 
     def __str__(self):
-        return f"{self.name} ({self.PP}/{self.DT}) {len(self)}"
+        return f"{self.name} ({self.REP}/{self.DT}) {len(self)}"
 
     def __len__(self):
         if self._data is None:
@@ -147,7 +165,7 @@ class _Data:
 
     def copy(self):
         """Create a copy of data (the stream state is copied too)"""
-        return type(self)(self._data, self.PP, self.DT, dict(self.ctx), self.meta)
+        return type(self)(self._data, self.CAT, self.DT, dict(self.ctx), self.meta, self.REP)
 
 class Analog(_Data):
     """Analog data"""
@@ -156,21 +174,19 @@ class Analog(_Data):
 class Mod(_Data):
     """(De)Modulation data
 
-    Modulated: complex symbols (pp MOD).
-    Demodulated (pp MAP): either hard bits (MAPPED_HARD), or one LLR per bit (LLR). An LLR is
-    log(P(bit=0)/P(bit=1)), so positive means 0 and the magnitude is the confidence.
+    Symbols (rep SYMBOLS), or demodulated bits (rep CHANNEL, or DATA from a soft-output decoder): either hard bits
+    (MAPPED_HARD), or one LLR per bit (LLR). An LLR is log(P(bit=0)/P(bit=1)), so positive means 0 and the magnitude
+    is the confidence.
     """
-    def __init__(self, data=None, pp=pproc.MAP, dt=None, ctx=None, meta=None):
-        if pp == pproc.MAP and dt is None:
+    def __init__(self, data=None, cat=Category.SYMBOL, dt=None, ctx=None, meta=None, rep=None):
+        if dt is None:
             dt = dtype.LLR if np.asarray(data).dtype.kind == "f" else dtype.MAPPED_HARD
-        elif pp not in (pproc.MOD, pproc.MAP):
-            raise ValueError(f"Cannot initialize Mod from {pp}")
-        super().__init__(data, pp, dt, ctx, meta)
+        super().__init__(data, cat, dt, ctx, meta, rep)
 
     def bits(self):
         """Hard decided bits, leaving this data as it is"""
-        if self.PP != pproc.MAP:
-            raise ValueError(f"Cannot get bits of Mod {self.PP}/{self.DT}!")
+        if self.REP not in (Rep.CHANNEL, Rep.DATA):
+            raise ValueError(f"Cannot get bits of Mod {self.REP}/{self.DT}!")
         return self._data < 0 if self.DT == dtype.LLR else self._data.astype(bool)
 
     @property
@@ -188,16 +204,16 @@ class Mod(_Data):
 
     def to_analog(self):
         """Convert to Analog"""
-        if self.PP == pproc.MOD:
-            return Analog(self._data, self.PP, self.DT, self.ctx, self.meta)
-        raise ValueError(f"Cannot convert Mod {self.PP}/{self.DT} to Analog!")
+        if self.REP == Rep.SYMBOLS:
+            return Analog(self._data, self.CAT, self.DT, self.ctx, self.meta, self.REP)
+        raise ValueError(f"Cannot convert Mod {self.REP}/{self.DT} to Analog!")
 
     def to_digital(self):
         """Convert to Digital"""
-        if self.PP == pproc.MAP:
+        if self.REP in (Rep.CHANNEL, Rep.DATA):
             self.as_hard()
-            return Digital(self._data, pp=pproc.MAP, dt=dtype.BITS, ctx=self.ctx, meta=self.meta)
-        raise ValueError(f"Cannot convert Mod {self.PP}/{self.DT} to Digital!")
+            return Digital(self._data, self.CAT, dtype.BITS, self.ctx, self.meta, self.REP)
+        raise ValueError(f"Cannot convert Mod {self.REP}/{self.DT} to Digital!")
 
     def as_hard(self):
         """Make hard decisions: bit 1 where the LLR is negative"""
@@ -221,14 +237,14 @@ class Digital(_Data):
         """Return binary representation"""
         if self.is_bit():
             return self._data.astype(int)
-        raise ValueError(f"({self.PP}/{self.DT}) {self._data.dtype} cannot be shown in binary")
+        raise ValueError(f"({self.REP}/{self.DT}) {self._data.dtype} cannot be shown in binary")
 
     @property
     def hex(self):
         """Return hexadecimal implementation"""
         if self.is_byte():
             return self._data.tobytes().hex()
-        raise ValueError(f"({self.PP}/{self.DT}) {self._data.dtype} cannot be shown in hex")
+        raise ValueError(f"({self.REP}/{self.DT}) {self._data.dtype} cannot be shown in hex")
 
     def is_bit(self, strict=True):
         """Check if data is bits"""
@@ -272,7 +288,7 @@ class Digital(_Data):
         elif self.is_byte(False):
             return self._data
         else:
-            raise ValueError(f"({self.PP}/{self.DT}) {self._data.dtype} cannot get bytes")
+            raise ValueError(f"({self.REP}/{self.DT}) {self._data.dtype} cannot get bytes")
 
     def get_bits(self):
         """Return self.data as bits"""
@@ -281,29 +297,29 @@ class Digital(_Data):
         elif self.is_byte(False):
             return np.unpackbits(self._data)
         else:
-            raise ValueError(f"({self.PP}/{self.DT}) {self._data.dtype} cannot get bits")
+            raise ValueError(f"({self.REP}/{self.DT}) {self._data.dtype} cannot get bits")
 
     @classmethod
-    def from_bytes(cls, data, pp=pproc.UNK, dt=dtype.BYTES, ctx=None, meta=None):
+    def from_bytes(cls, data, cat=Category.UNK, dt=dtype.BYTES, ctx=None, meta=None, rep=None):
         """Create Digital from bytes"""
         if isinstance(data, bytes):
-            return cls(np.frombuffer(data, dtype=dtype.BYTES.dtype), pp, dt, ctx, meta)
+            return cls(np.frombuffer(data, dtype=dtype.BYTES.dtype), cat, dt, ctx, meta, rep)
         elif isinstance(data, np.ndarray):
             if data.dtype == dtype.BYTES.dtype:
-                return cls(data, pp, dt, ctx, meta)
+                return cls(data, cat, dt, ctx, meta, rep)
             raise TypeError(f"Cannot convert {type(data)} {data.shape} {data.dtype} to {cls.__name__}")
         raise TypeError(f"Cannot convert {type(data)} to {cls.__name__}")
 
     @classmethod
-    def from_bits(cls, data, pp=pproc.UNK, dt=dtype.BITS, ctx=None, meta=None):
+    def from_bits(cls, data, cat=Category.UNK, dt=dtype.BITS, ctx=None, meta=None, rep=None):
         """Create Digital from bits"""
         if isinstance(data, np.ndarray):
             if data.dtype == dtype.BITS.dtype:
-                return cls(data, pp, dt, ctx, meta)
+                return cls(data, cat, dt, ctx, meta, rep)
             raise TypeError(f"Cannot convert {type(data)} {data.shape} {data.dtype} to {cls.__name__}")
         raise TypeError(f"Cannot convert {type(data)} to {cls.__name__}")
 
-def Data(data, ctx=None, flush=False, Fs=None, sps=None, cf=None, stream=None, delay=0.0) -> Digital | Analog:
+def Data(data, ctx=None, flush=False, Fs=None, sps=None, cf=None, stream=None, delay=0.0, t0=None) -> Digital | Analog:
     """Wrapper to get correct Data type, and set PP and DT
 
     bool -> bits, uint8/bytes/str -> bytes, complex64 -> samples, float -> real samples
@@ -311,11 +327,15 @@ def Data(data, ctx=None, flush=False, Fs=None, sps=None, cf=None, stream=None, d
     flush: this ends the stream. Otherwise a partial last block is held for the next data; flushed, it is padded (encode) or dropped (decode)
     Fs, sps, cf: sample rate [Hz], samples per symbol and centre frequency [Hz] of a signal
     stream: the stream of earlier signal blocks (`out.stream`), which keeps the state of the stages across blocks
+    t0: time [s] of the stream's first item, if known (a radio's timestamp): `meta.time_of` then gives any item's time
+    Each block gets its absolute position in the stream (`meta.pos`): the items its stream produced before it
     """
     d = None
     ctx = dict(ctx) if ctx else {}
     ctx[FLUSH] = bool(flush)
     meta = Meta(1.0 if Fs is None else Fs, 0.0 if sps is None else sps, 0.0 if cf is None else cf, delay, stream)
+    if t0 is not None:
+        meta.stream.t0 = float(t0)
     if isinstance(data, Buffer):
         data = data._stor
     if isinstance(data, np.ndarray):
@@ -338,4 +358,15 @@ def Data(data, ctx=None, flush=False, Fs=None, sps=None, cf=None, stream=None, d
 
     if d is None:
         raise TypeError(f"Cannot convert {type(data)}")
+    d.meta.pos = d.meta.stream.pos # The stream's source position: this block follows what it produced before
+    d.meta.stream.pos += len(d)
     return d # type: ignore
+
+def expect(op, data, takes, encode):
+    """Refuse `data` an operator does not take: `takes` is the set of representations it accepts (None: anything).
+    Raised before any work, with what was expected"""
+    if takes is None or not isinstance(data, _Data):
+        return
+    if data.REP not in takes:
+        names = ", ".join(sorted(r.name for r in takes))
+        raise StreamError(f"{op} {'encodes' if encode else 'decodes'} {names}, not {data.REP} ({data.name}/{data.DT})")

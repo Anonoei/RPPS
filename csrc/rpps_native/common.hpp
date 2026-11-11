@@ -44,5 +44,6 @@ void register_sync(py::module_ &m);
 void register_filters(py::module_ &m);
 void register_trellis(py::module_ &m);
 void register_fec(py::module_ &m);
+void register_spread(py::module_ &m);
 
 } // namespace rpps

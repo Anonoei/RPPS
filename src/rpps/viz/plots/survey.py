@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def survey(ax, sv, chosen=None):
-    """The spectrum of a rp.dsp.Survey with every signal shaded and numbered (the chosen one stands out)"""
+    """The spectrum of a rp.analysis.Survey with every signal shaded and numbered (the chosen one stands out)"""
     if ax is None:
         fig, ax = plt.subplots(layout="constrained")
     ax.clear()

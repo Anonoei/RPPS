@@ -32,8 +32,8 @@ def all(f, s):
     ax[1].set_xlim(f[0], f[-1])
     ax[1].set_ylim(-130, 0)
 
-    for window in rp.filters.Window.s():
-        w = rp.filters.Window.get(window)(N)
+    for window in rp.signal.filters.Window.s():
+        w = rp.signal.filters.Window.get(window)(N)
         sw = s * w
         sw /= 100
         psd = np.fft.fftshift(np.fft.fft(sw))
@@ -46,27 +46,27 @@ def all(f, s):
 
 def ind(f, s):
     N = len(s)
-    # w = rp.filters.Window.get("rect")(N)
+    # w = rp.signal.filters.Window.get("rect")(N)
     # # B-Spline
-    # w = rp.filters.Window.get("bartlett")(N)
-    # w = rp.filters.Window.get("parzen")(N)
+    # w = rp.signal.filters.Window.get("bartlett")(N)
+    # w = rp.signal.filters.Window.get("parzen")(N)
     # # Polynomial
-    # w = rp.filters.Window.get("welch")(N)
+    # w = rp.signal.filters.Window.get("welch")(N)
     # # Raised-cosine
-    # w = rp.filters.Window.get("hann")(N)
-    w = rp.filters.Window.get("hamming")(N)
+    # w = rp.signal.filters.Window.get("hann")(N)
+    w = rp.signal.filters.Window.get("hamming")(N)
     # # Cosine-sum
-    # w = rp.filters.Window.get("blackman")(N)
-    # w = rp.filters.Window.get("nuttall")(N)
-    # w = rp.filters.Window.get("blackman_nuttall")(N)
-    # w = rp.filters.Window.get("blackman_harris")(N)
-    # w = rp.filters.Window.get("flattop")(N)
+    # w = rp.signal.filters.Window.get("blackman")(N)
+    # w = rp.signal.filters.Window.get("nuttall")(N)
+    # w = rp.signal.filters.Window.get("blackman_nuttall")(N)
+    # w = rp.signal.filters.Window.get("blackman_harris")(N)
+    # w = rp.signal.filters.Window.get("flattop")(N)
     # # Adjustable
-    # w = rp.filters.Window.get("acon_gaussian")(N, 0.1)
-    # w = rp.filters.Window.get("gen_gaussian(")N, 0.2)
-    # w = rp.filters.Window.get("tukey")(N, 0.5)
-    # w = rp.filters.Window.get("planck_taper")(N,0.25)
-    # w = rp.filters.Window.get("exponential")(N, 60)
+    # w = rp.signal.filters.Window.get("acon_gaussian")(N, 0.1)
+    # w = rp.signal.filters.Window.get("gen_gaussian(")N, 0.2)
+    # w = rp.signal.filters.Window.get("tukey")(N, 0.5)
+    # w = rp.signal.filters.Window.get("planck_taper")(N,0.25)
+    # w = rp.signal.filters.Window.get("exponential")(N, 60)
     s *= w
     s /= 100
 

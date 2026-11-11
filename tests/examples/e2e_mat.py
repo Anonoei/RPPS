@@ -11,13 +11,13 @@ import matplotlib.pyplot as plt
 
 def main():
     num_samps = 1024*16 # Any block size works, the stages keep the stream continuous
-    sink = rp.serial.File("cf64", "data/fm_rds_250k_1Msamples.iq", Fs=250e3, sps=250e3/1187.5, cf=99.5e6)
+    sink = rp.source.File("cf64", "data/fm_rds_250k_1Msamples.iq", Fs=250e3, sps=250e3/1187.5, cf=99.5e6)
 
-    demod = rp.mod.FMDemod() # FM Demod
-    shift = rp.filters.ShiftFreq(fo=-57e3) # Frequency shift to RDS
-    low_pass = rp.filters.low_pass(101, 7.5e3, 250e3) # Lowpass, isolate RDS
-    decimate = rp.sample.down.Decimate(10) # Decimate by 10
-    resample = rp.sample.re.Polyphase(19, 25) # Resample 25k to 19k
+    demod = rp.wave.FMDemod() # FM Demod
+    shift = rp.signal.filters.ShiftFreq(fo=-57e3) # Frequency shift to RDS
+    low_pass = rp.signal.filters.low_pass(101, 7.5e3, 250e3) # Lowpass, isolate RDS
+    decimate = rp.signal.sample.down.Decimate(10) # Decimate by 10
+    resample = rp.signal.sample.re.Polyphase(19, 25) # Resample 25k to 19k
 
     acquire = rp.sync.Acquire() # Detect baud/modulation/cfo from the first blocks
     sym_sync = rp.sync.time.Mat() # Matched filter + timing, at the detected sps

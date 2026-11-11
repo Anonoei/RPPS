@@ -4,7 +4,10 @@
   "comment": "P25 phase 1 rate 1/2 trellis code (TIA-102.BAAA) of data blocks / TSBKs: 4 states (the last input dibit), each input dibit sends a 4-bit constellation word (two dibits); 48 dibits + one zero flush dibit -> 98 dibits. The word table is the one p25_sync used; checked on air (TSBK CRCs pass)",
   "k": 2,
   "n": 4,
-  "next": {"each": "i % 4", "n": 16},
+  "next": {
+    "each": "i % 4",
+    "n": 16
+  },
   "output": [2, 12, 1, 15, 14, 0, 13, 3, 9, 7, 10, 4, 5, 11, 6, 8],
   "start": 0,
   "tail": 1

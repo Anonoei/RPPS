@@ -14,9 +14,9 @@ The data carries its sample rate and the state of every stage, so there is nothi
 ```python
 import rpps as rp
 
-mod = rp.mod.load("QPSK")           # first bit map; load("QPSK", "R090 inverted") for a rotated / spectrally inverted one. Or rp.mod.QAM(16), rp.mod.PSK(8), rp.mod.APSK(32), rp.mod.FSK(4)...
-ecc = rp.coding.Hamming(7, 4)       # or rp.coding.load("block", "hamming/7_4")
-scr = rp.scram.load("fdt", "v35")
+mod = rp.symbol.load("QPSK")           # first bit map; load("QPSK", "R090 inverted") for a rotated / spectrally inverted one. Or rp.symbol.QAM(16), rp.symbol.PSK(8), rp.symbol.APSK(32), or any point set from a config file
+ecc = rp.code.Hamming(7, 4)       # or rp.code.load("block", "hamming/7_4")
+scr = rp.code.scram.load("fdt", "v35")
 
 msg = rp.Data(b"Hello World!")
 syms = msg * scr * ecc * mod        # Scramble, encode, modulate
@@ -32,22 +32,22 @@ out = syms / link
 ### Receiving a signal
 ```python
 # docs: skip
-src = rp.serial.File("ci32t", "capture.cs16", Fs=100e6, cf=1.0e9)       # or rp.serial.Device("hackrf", cf=..., Fs=...)
-rx = (rp.filters.ShiftFreq(22.3e6)  + rp.filters.low_pass(401, 3e6, 100e6) + rp.sample.down.Decimate(8)
+src = rp.source.File("ci32t", "capture.cs16", Fs=100e6, cf=1.0e9)       # or rp.source.Device("hackrf", cf=..., Fs=...)
+rx = (rp.signal.filters.ShiftFreq(22.3e6)  + rp.signal.filters.low_pass(401, 3e6, 100e6) + rp.signal.sample.down.Decimate(8)
       + rp.sync.Acquire() + rp.sync.time.Mat() + rp.sync.phase.FFCarrier())     # stages added together make a pipeline
 
 for out in src(16384) + rx:          # blocks flow through, state carried from one to the next
     print(out.Fs, out.sps, out.det)  # rates follow the stages; Acquire's detection is on the data
 
-src(16384) + rx >> rp.serial.Sink("cf64", "symbols.iq")       # or straight into a file
+src(16384) + rx >> rp.source.Sink("cf64", "symbols.iq")       # or straight into a file
 ```
-A stage can also be applied by hand to a block: `blk + rp.filters.ShiftFreq(1e3)`.
-`rp.channel` has impairments to test against (`AWGN`, `CFO`, `Fading`, `Multipath`, `ClockDrift`...).
+A stage can also be applied by hand to a block: `blk + rp.signal.filters.ShiftFreq(1e3)`.
+`rp.signal.channel` has impairments to test against (`AWGN`, `CFO`, `Fading`, `Multipath`, `ClockDrift`...).
 
 ### Real time
 ```python
 # docs: skip
-blocks = rp.serial.Device("hackrf", cf=915e6, Fs=10e6)(65536).threaded(drop=True) # the radio is read in a thread of its own
+blocks = rp.source.Device("hackrf", cf=915e6, Fs=10e6)(65536).threaded(drop=True) # the radio is read in a thread of its own
 for out in blocks.pipelined(rx):     # and every stage of rx runs in its own thread
     ...
 print(out.stream.load())             # time each stage takes, as a fraction of real time (over 1.0: too slow)

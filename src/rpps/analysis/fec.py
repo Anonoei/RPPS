@@ -200,7 +200,7 @@ def scan_block(bits, syndrome, n, name, tag=None, max_offsets=None):
 
 def config_blocks():
     """(name, folder, config name, n, syndrome function) for the block codes in config/coding"""
-    from .. import coding
+    from .. import code as coding
     out = []
     for folder in ("block",):
         for name in coding.names(folder):
@@ -276,7 +276,7 @@ def detect_fec(streams, ks=range(3, 8), rates=(2, 3), periods=(), blocks=True, d
 
 def _label_configs(hyps):
     """Attach the matching config/coding entry to convolutional hypotheses"""
-    from .. import coding
+    from .. import code as coding
     known = {}
     for name in coding.names("conv"):
         c = coding.load("conv", name)
@@ -321,7 +321,7 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1):
     A correct hypothesis lets the decoder reproduce the received bits (the channel error rate, well below
     what a wrong one gets). Returns (hypotheses, trials).
     """
-    from .. import coding
+    from .. import code as coding
     names = names or coding.names("conv")
     hyps, trials = [], 0
     rng = np.random.default_rng(0)
@@ -351,7 +351,7 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1):
 
 def decode_conv(bits, hyp):
     """Run the config definition behind a conv-config hypothesis on a whole bit stream"""
-    from .. import coding
+    from .. import code as coding
     code = coding.load(*hyp.coding)
     seg = np.asarray(bits[hyp.params["offset"]:], dtype=np.uint8)
     nb = int(code._enc.puncture.sum()) if code._enc.puncture is not None else code._enc.den
@@ -363,14 +363,17 @@ def scan_rs(bits, names=None, interleavers=True, packets=200):
 
     Returns (hypotheses, trials). The score is how many words have all-zero syndromes.
     """
-    from .. import coding
-    from ..coding.types import rs as RS
+    from .. import code as coding
+    from ..code.types import rs as RS
     names = names or coding.names("block", "rs")
-    inters = [None] + [coding.load("interleave", n)._enc for n in coding.names("interleave")] if interleavers else [None]
+    inters = [None] + [c for c in (coding.load("interleave", n)._enc for n in coding.names("interleave"))
+                       if hasattr(c, "I") and hasattr(c, "M")] if interleavers else [None] # Forney: the ones RS sits behind
     hyps, trials = [], 0
     bits = np.asarray(bits, dtype=np.uint8)
     for name in names:
         code = coding.load("block", name)._enc
+        if getattr(code, "m", 8) != 8: # The search runs on bytes: codes over other fields (P25's GF(64)) don't apply
+            continue
         n = code.den
         # Interleavers eat (I-1)*I*M symbols of start-up; use what is left, at least 60 words
         packets = int(min(packets, max(len(bits)//8//n - 60, 0))) or packets
@@ -476,7 +479,7 @@ def recover_dual(bits, n, offset=0, trials=40, seed=0, z_min=8.0):
     return out
 
 class Guess:
-    """A guessed FEC definition. Decoding only happens from a saved config: `save` it, then rp.coding.load it"""
+    """A guessed FEC definition. Decoding only happens from a saved config: `save` it, then rp.code.load it"""
     __slots__ = ("kind", "definition", "evidence")
     FOLDER = {"block": "block", "conv": "conv"}
 
@@ -495,7 +498,7 @@ class Guess:
         """Write config/coding/<kind>/guess/<name>.json (or <path>/<kind>/guess/<name>.json). Returns the file"""
         import json
         from pathlib import Path
-        from ..coding import serial
+        from ..code import serial
         base = Path(path) if path else serial.root()
         folder = base / self.FOLDER[self.kind] / "guess"
         folder.mkdir(parents=True, exist_ok=True)
@@ -554,7 +557,7 @@ def scan_hdlc(streams, names=None, min_frames=3):
     Looks at flag counts first (a 0x7E pattern shows up at random once per 256 bits), then deframes the
     streams that have far more than that. Returns (hypotheses, trials).
     """
-    from .. import encap
+    from .. import link as encap
     names = names or encap.ls().get("frame", [])
     hyps, trials = [], 0
     for name in names:

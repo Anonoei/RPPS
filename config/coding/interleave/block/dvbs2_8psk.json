@@ -1,0 +1,8 @@
+{
+  "base": "interleave",
+  "type": "block",
+  "comment": "DVB-S2 bit interleaver for 8PSK, normal frames: the LDPC codeword written column by column into 3 columns of 21600, read row by row, so each symbol carries one bit of each column",
+  "ref": "EN 302 307-1 5.3.3",
+  "length": 64800,
+  "cols": 21600
+}

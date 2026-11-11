@@ -1,0 +1,7 @@
+{
+  "base": "shaping",
+  "type": "halfsine",
+  "comment": "Half-sine pulse of one symbol on each rail of O-QPSK (staggered by half a symbol this is MSK): IEEE 802.15.4 2.4 GHz",
+  "ref": "IEEE 802.15.4-2020 12.2.8",
+  "kind": "symbol"
+}

@@ -18,13 +18,13 @@ from pathlib import Path
 def _categories(rp):
     """name -> (title, callable returning {group: [names]})"""
     return {
-        "mod": ('Modulation  (rp.mod.load("<name>"[, "<mapping>"]))', rp.mod.ls),
-        "coding": ('Coding  (rp.coding.load(<kind>, "<family>/<name>"))', rp.coding.ls),
-        "scram": ('Scrambling  (rp.scram.load(<kind>, "<name>"))', rp.scram.ls),
-        "encap": ('Encapsulation  (rp.encap.load(<kind>, "<name>"))', rp.encap.ls),
-        "chain": ('Chains  (rp.Chain.load("<standard>/<name>"))', lambda: rp._config.ls("chain")),
-        "filters": ('Filters  (rp.filters.load(<kind>, "<family>/<name>"))', rp.filters.ls),
-        "windows": ("Built-in Windows  (rp.filters.Window.get(<name>))", lambda: {"windows": rp.filters.Window.s()}),
+        "mod": ('Modulation  (rp.symbol.load("<name>"[, "<mapping>"]))', rp.symbol.ls),
+        "coding": ('Coding  (rp.code.load(<kind>, "<family>/<name>"))', rp.code.ls),
+        "scram": ('Scrambling  (rp.code.scram.load(<kind>, "<name>"))', rp.code.scram.ls),
+        "encap": ('Encapsulation  (rp.link.load(<kind>, "<name>"))', rp.link.ls),
+        "profile": ('Profiles  (rp.profile.load("<family>/<mode>"))', rp.profile.ls),
+        "filters": ('Filters  (rp.signal.filters.load(<kind>, "<family>/<name>"))', rp.signal.filters.ls),
+        "windows": ("Built-in Windows  (rp.signal.filters.Window.get(<name>))", lambda: {"windows": rp.signal.filters.Window.s()}),
     }
 
 
@@ -71,8 +71,8 @@ def cmd_fmt(args):
 def cmd_survey(args):
     """Survey a capture and print each signal found; --plot also shows the spectrum (needs matplotlib)"""
     import rpps as rp
-    src = rp.serial.File(args.fmt, args.file, Fs=args.fs, cf=args.cf)
-    sv = rp.dsp.survey(src, samples=args.samples)
+    src = rp.source.File(args.fmt, args.file, Fs=args.fs, cf=args.cf)
+    sv = rp.analysis.survey(src, samples=args.samples)
     print(f"{src.path}: {sv.Fs/1e6:g} MS/s at {sv.cf/1e6:g} MHz, {len(sv)} signals, {sv.bin_hz:.0f} Hz bins, floor {sv.floor:.1f} dB")
     for i, s in enumerate(sv):
         print(f"  {i:>2}  {s.describe()}")
@@ -141,7 +141,7 @@ def cmd_gen_ldpc(args):
 
 def main(argv=None):
     # Category names are static so --help doesn't need to import rpps
-    names = ["mod", "coding", "scram", "encap", "chain", "filters", "windows"]
+    names = ["mod", "coding", "scram", "encap", "profile", "filters", "windows"]
     parser = argparse.ArgumentParser(prog="rpps", description="RF Parameter Processor Suite")
     sub = parser.add_subparsers(dest="cmd", required=True)
     p_ls = sub.add_parser("ls", help="list available modulations, codings, chains, filters, ...")
@@ -151,7 +151,7 @@ def main(argv=None):
     p_sv = sub.add_parser("survey", help="find and list the signals in a capture file")
     p_sv.add_argument("file", help="capture file")
     p_sv.add_argument("--fs", type=float, required=True, help="sample rate [Hz]")
-    p_sv.add_argument("--fmt", default="cf64", help="sample format, see rp.serial.formats.ls() (default: cf64, complex float32 pairs)")
+    p_sv.add_argument("--fmt", default="cf64", help="sample format, see rp.source.formats.ls() (default: cf64, complex float32 pairs)")
     p_sv.add_argument("--cf", type=float, default=0.0, help="centre frequency [Hz] (default: 0)")
     p_sv.add_argument("--samples", type=int, default=2**17, help="samples to read (default: 131072)")
     p_sv.add_argument("--plot", action="store_true", help="show the survey plot (needs matplotlib)")

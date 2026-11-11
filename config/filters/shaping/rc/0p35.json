@@ -2,5 +2,6 @@
   "base": "shaping",
   "type": "rc",
   "comment": "Raised-cosine, roll-off 0.35",
+  "kind": "symbol",
   "beta": 0.35
 }

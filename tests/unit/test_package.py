@@ -18,7 +18,7 @@ def test_import_has_no_side_effects(tmp_path):
 
 def test_definitions_ship_with_the_package():
     root = rp._config.PATH_CONFIG
-    for kind in ("mod", "coding", "scram", "encap", "chain"):
+    for kind in ("mod", "coding", "scram", "encap", "profile"):
         assert any(root.joinpath(kind).rglob("*.json")), kind
 
 def test_extra_config_path_adds_to_the_packaged_definitions(tmp_path):
@@ -27,9 +27,9 @@ def test_extra_config_path_adds_to_the_packaged_definitions(tmp_path):
     (tmp_path / "scram" / "fdt" / "mine.json").write_text(src.read_text())
     rp.add_config_path(tmp_path)
     try:
-        assert rp.scram.load("fdt", "mine") is not None
-        assert rp.scram.load("fdt", "v35") is not None # The packaged ones are still there
-        assert {"mine", "v35"} <= set(rp.scram.ls()["fdt"])
+        assert rp.code.scram.load("fdt", "mine") is not None
+        assert rp.code.scram.load("fdt", "v35") is not None # The packaged ones are still there
+        assert {"mine", "v35"} <= set(rp.code.scram.ls()["fdt"])
     finally:
         rp._config._EXTRA.remove(tmp_path)
 

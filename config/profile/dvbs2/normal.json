@@ -1,0 +1,154 @@
+{
+  "base": "profile",
+  "comment": "DVB-S2 with normal FECFRAMEs (64800 bits), QPSK and 8PSK, MODCOD by MODCOD (VCM, ACM): each PLHEADER's PLS sets the PL scrambling length, pilots, constellation, bit interleaver, LDPC, BCH and BBFRAME size of its own frame, which follows it, so nothing is re-run. One generic continuous stream; out come the BBFRAME data fields. Frames are found by their SOF and turned back by its phase, then by a line through the pilots. Transmitting, the caller's fields per frame (modcod, pilots), else the `modcod` and `pilots` parameters",
+  "ref": "EN 302 307-1",
+  "params": {
+    "sps": {
+      "default": 4,
+      "comment": "samples per symbol"
+    },
+    "modcod": {
+      "default": 4,
+      "comment": "transmit: the MODCOD of a frame the caller gives none for (4: QPSK 1/2)"
+    },
+    "pilots": {
+      "default": 1,
+      "comment": "transmit: pilots on (1) or off (0)"
+    }
+  },
+  "steps": [
+    {
+      "wave": "shape",
+      "pulse": "rrc/0p35",
+      "sps": {
+        "param": "sps"
+      }
+    },
+    {
+      "sync": "timing"
+    },
+    {
+      "sync": "frame",
+      "header": "dvbs2_pl",
+      "max_length": 33282
+    },
+    {
+      "symbol": "header",
+      "id": "pls",
+      "name": "dvbs2_pl"
+    },
+    {
+      "symbol": "scramble",
+      "id": "plscram",
+      "sequence": "adt/dvbs2_pl",
+      "offsets": [131072, 0],
+      "step": 90
+    },
+    {
+      "sync": "carrier",
+      "id": "phase",
+      "method": "pilots",
+      "lead": -77.5
+    },
+    {
+      "symbol": "pilots",
+      "id": "pilots"
+    },
+    {
+      "symbol": "constellation",
+      "id": "map",
+      "name": "dvbs2_qpsk"
+    },
+    {
+      "code": "fec",
+      "id": "bitil",
+      "type": "interleave",
+      "name": null
+    },
+    {
+      "code": "fec",
+      "id": "ldpc",
+      "type": "block",
+      "name": "ldpc/dvbs2_64800_1_2"
+    },
+    {
+      "code": "fec",
+      "id": "bch",
+      "type": "block",
+      "name": "bch/dvbs2_1_2"
+    },
+    {
+      "code": "scramble",
+      "id": "bbscram",
+      "name": "adt/dvbs2_bb"
+    },
+    {
+      "link": "header",
+      "id": "bbheader",
+      "name": "dvbs2_bb"
+    }
+  ],
+  "controls": {
+    "frame": {
+      "drive": {
+        "pls": {
+          "frame": "frame"
+        }
+      }
+    },
+    "pls": {
+      "table": "dvbs2/modcod",
+      "key": ["modcod", "short"],
+      "default": {
+        "modcod": {
+          "param": "modcod"
+        },
+        "short": 0,
+        "pilots": {
+          "param": "pilots"
+        }
+      },
+      "frame": {
+        "calc": "kbch - 80"
+      },
+      "drive": {
+        "pls": {
+          "modcod": "modcod",
+          "short": "short",
+          "pilots": "pilots"
+        },
+        "plscram": {
+          "length": {
+            "calc": "slots*90 + pilots*((slots - 1)//16)*36"
+          }
+        },
+        "phase": {
+          "slots": "slots",
+          "pilots": "pilots"
+        },
+        "pilots": {
+          "slots": "slots",
+          "pilots": "pilots"
+        },
+        "map": {
+          "name": "constellation"
+        },
+        "bitil": {
+          "name": "interleaver"
+        },
+        "ldpc": {
+          "name": "ldpc"
+        },
+        "bch": {
+          "name": "bch"
+        },
+        "bbscram": {
+          "length": "kbch"
+        },
+        "bbheader": {
+          "length": "kbch"
+        }
+      }
+    }
+  }
+}

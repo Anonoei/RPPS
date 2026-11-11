@@ -7,4 +7,5 @@ PYBIND11_MODULE(_native, m) {
     rpps::register_filters(m);
     rpps::register_trellis(m);
     rpps::register_fec(m);
+    rpps::register_spread(m);
 }

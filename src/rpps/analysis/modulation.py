@@ -6,7 +6,7 @@ corrected symbols under each candidate constellation.
 """
 import numpy as np
 
-from ..dsp.rate import find_baud
+from .rate import find_baud
 from ..math.interp import peak
 from ..math.prob import mixture_variance
 from ..sync.time.mat import matrix_mf, centres_in, best_tau
@@ -47,12 +47,12 @@ def symmetry(points, tol=1e-3, max_order=16):
 
 def candidates(names=None):
     """Load candidate constellations from config/mod: {name: unit-rms points}"""
-    from .. import mod # Late: mod imports after sync/analysis
+    from .. import symbol  # Late: symbol imports after sync/analysis
     if names is None:
-        names = [n for stems in mod.ls().values() for n in stems if not n.startswith("dvbs2_")] # Labelling variants are not separate modulations
+        names = [n for cat, stems in symbol.ls().items() if cat == "constellation/psk" for n in stems if not n.startswith("dvbs2_")] # The PSK family (differential alphabets are another folder); labelling variants are not separate modulations
     out = {}
     for name in names:
-        pts = np.asarray(mod.load(name).points.arr, dtype=np.complex128)
+        pts = np.asarray(symbol.load(name).points, dtype=np.complex128)
         out[name] = pts / np.sqrt(np.mean(np.abs(pts)**2))
     return out
 

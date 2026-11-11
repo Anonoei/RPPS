@@ -16,34 +16,37 @@ The data carries its sample rate and the state of every stage, so there is nothi
 
     import rpps as rp
 
-    mod = rp.mod.load("QPSK")
-    ecc = rp.coding.Hamming(7, 4)
-    scr = rp.scram.load("fdt", "v35")
+    mod = rp.symbol.load("QPSK")
+    ecc = rp.code.Hamming(7, 4)
+    scr = rp.code.scram.load("fdt", "v35")
 
     msg = rp.Data(b"Hello World!")
     syms = msg * scr * ecc * mod          # scramble, encode, modulate
     out = syms / mod / ecc / scr          # demodulate, decode, descramble
 
     # a receiver is stages added together; blocks flow through it with state carried along
-    rx = rp.filters.low_pass(401, 3e6, 100e6) + rp.sample.down.Decimate(8) + rp.sync.Acquire()
-    for out in rp.serial.File("ci32t", "capture.cs16", Fs=100e6, cf=1e9)(16384) + rx:
+    rx = rp.signal.filters.low_pass(401, 3e6, 100e6) + rp.signal.sample.down.Decimate(8) + rp.sync.Acquire()
+    for out in rp.source.File("ci32t", "capture.cs16", Fs=100e6, cf=1e9)(16384) + rx:
         print(out.Fs, out.sps)
 
 ## Where things are
 
-| Module | What it is |
+Packages follow the categories of ARCHITECTURE.md: data goes samples -> symbols -> channel bits -> data bits -> packets.
+
+| Package | Category: what it does |
 | --- | --- |
-| `rpps.base` | `rpps.Data`, `rpps.Pipeline`, `rpps.Pipe`, `rpps.Stage` and `rpps.Stream`: the operator machinery |
-| `rpps.serial` | Signal sources and sinks: files, sockets and radios (through pysdrlib) |
-| `rpps.filters`, `rpps.sample` | FIR/IIR filters, pulse shaping, resampling |
-| `rpps.sync` | AGC, PLLs, Costas, frequency / phase / timing recovery |
-| `rpps.equalize`, `rpps.demod`, `rpps.channel` | Equalizers, analog demodulation, channel impairments to test against |
-| `rpps.mod` | Modulation: PSK, QAM, APSK, ASK, FSK, OFDM |
-| `rpps.coding`, `rpps.chain` | FEC encoders / decoders (block, convolutional, LDPC, turbo...) and whole-standard chains |
-| `rpps.scram`, `rpps.encap` | Scramblers, CRC and framing |
-| `rpps.dsp`, `rpps.analysis` | Spectra, rate estimation and blind analysis of unknown signals |
-| `rpps.math`, `rpps.utils` | Finite fields, GF(2) algebra and other helpers |
-| `rpps.viz` | Real-time and over-time plots (`pip install rpps[viz]`) |
+| `rpps.source` | Source: sources and sinks of blocks (files, sockets, radios through pysdrlib) |
+| `rpps.signal` | Conditioning, samples to samples: filters, resampling, `channelize`, and `signal.channel`, the simulated medium |
+| `rpps.sync` | Sync, at any representation: AGC, carrier, timing, equalizers, alignment on bits (`sync.Align`) |
+| `rpps.wave` | Wave transform, symbols <-> samples: stagger (O-QPSK), frequency modulation (FSK, GFSK, GMSK, C4FM), OFDM IFFT/FFT, AM/SSB |
+| `rpps.symbol` | Symbol transform, symbols <-> channel bits: constellations (any points from config), differential coding, OFDM carriers, `Spread` |
+| `rpps.spread` | Spreading codes (Barker, GPS C/A, 802.15.4), until they become the `sequence` resource |
+| `rpps.code` | Code transform, channel bits <-> data bits: FEC, interleaving, rate matching, scrambling (`code.scram`), `Uncoded` |
+| `rpps.link` | Link transform, data bits <-> packets: CRC and framing |
+| `rpps.analysis` | Outside the data path: spectra, rate estimation, signal survey, blind analysis of modulation and FEC |
+| `rpps.base` | `rpps.Data`, `rpps.Pipe`, `rpps.Stage`, `rpps.BitStage`, `rpps.Pipeline`, `rpps.Stream`, and the type tags |
+| `rpps.math`, `rpps.utils`, `rpps.viz` | Finite fields and GF(2) algebra, helpers, plots (`pip install rpps[viz]`) |
+| `rpps.profile` | Profiles: a whole signal from one config file, receive and transmit (`rp.profile.load`) |
 
 Codes, scramblers and modulations are definitions that ship with the package; add your own with
 `rpps.add_config_path`. The per-sample loops and decoders run in C++ (`rpps._native`) with a Python fallback.
@@ -58,33 +61,28 @@ from . import _config
 from ._config import add_config_path
 
 # Import helpers/globals
-from .base.types import pproc, dtype
+from .base.types import Category, Rep, dtype
 from .base import data
 from .base.data import Data
-from .base import Pipeline, Pipe, Stage, Stream
+from .base import Pipeline, Pipe, Stage, BitStage, Stream
 
 from . import base
 from . import math
 from . import utils
 
 ## Import implementations
-from . import filters
-from . import dsp
-from . import sample
+from . import signal
 from . import sync
 from . import analysis
 
-from . import scram
-from . import coding
-from . import encap
-from . import chain
-from . import channel
-from . import equalize
-from . import demod
-from .chain import Chain
-from . import mod
+from . import code
+from . import link
+from . import spread
+from . import wave
+from . import profile
+from . import symbol
 
-from . import serial
+from . import source
 
 
 def __getattr__(name):

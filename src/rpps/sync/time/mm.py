@@ -4,7 +4,7 @@ import numpy as np
 from ... import _accel
 from ...base import Meta, Stage
 
-from ...sample import up
+from ...signal.sample import up
 
 class MM(Stage):
     """Mueller & Muller timing recovery

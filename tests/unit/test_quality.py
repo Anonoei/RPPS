@@ -27,7 +27,7 @@ def test_bits_per_symbol_and_code_rate(rng):
 def test_snr_in_the_sample_bandwidth_inverts_awgn(rng):
     q = rp.analysis.quality.measure(noisy(rng, QPSK, 10), QPSK, sps=4)
     assert q.snr_db == pytest.approx(q.esn0_db - 10*np.log10(4))
-    assert rp.channel.AWGN(esn0_db=10).snr_db(4) == pytest.approx(q.snr_db, abs=0.3)
+    assert rp.signal.channel.AWGN(esn0_db=10).snr_db(4) == pytest.approx(q.snr_db, abs=0.3)
 
 def test_track_waits_then_follows(rng):
     t = rp.analysis.quality.Track(QPSK, history=2000, minimum=500)

@@ -11,9 +11,9 @@ SCRAMS = [("fdt", "v35"), ("fdt", "fib")]
 MODS = ["bpsk", "qpsk", "8psk"]
 
 def build(code, scram, mod):
-    m = rp.mod.load(mod)
-    m.set_mapping(m.get_maps()[0])
-    return rp.coding.load(*code), rp.scram.load(*scram), m
+    m = rp.symbol.load(mod)
+    m.set_mapping(m.maps[0])
+    return rp.code.load(*code), rp.code.scram.load(*scram), m
 
 @pytest.mark.parametrize("code,scram,mod", itertools.product(CODES, SCRAMS, MODS))
 def test_pipeline_round_trip(code, scram, mod, rng):
@@ -59,17 +59,18 @@ def test_partial_last_block_is_held_until_flushed(mod):
 def test_flushing_a_decode_drops_the_partial_block():
     ecc, scr, m = build(("block", "hamming/7_4"), ("fdt", "v35"), "bpsk")
     syms = rp.Data(np.ones(32, dtype=bool), flush=True) * ecc * m   # 8 words of 7 bits
-    syms = rp.Data(syms.data[:-3], flush=True)                      # cut: 53 bits, 7 whole words and 4 left over
+    syms = rp.Data(syms.data[:-3], flush=True, sps=1)                    # cut: 53 bits, 7 whole words and 4 left over
     assert len((syms / m / ecc).data) == 28
 
 def chunked(chain, data, cuts):
     """Run `chain` (Data -> Data) on pieces of data, handing the stream state on, and end the stream"""
     ctx, outs = None, []
+    kw = {"sps": 1} if np.iscomplexobj(data) else {} # complex pieces are symbols
     for a, b in zip(cuts[:-1], cuts[1:]):
-        out = chain(rp.Data(data[a:b], ctx=ctx))
+        out = chain(rp.Data(data[a:b], ctx=ctx, **kw))
         ctx = out.ctx
         outs.append(out.data)
-    outs.append(chain(rp.Data(data[:0], ctx=ctx, flush=True)).data)
+    outs.append(chain(rp.Data(data[:0], ctx=ctx, flush=True, **kw)).data)
     return np.concatenate(outs)
 
 def test_stream_in_chunks_matches_one_shot(rng):
@@ -89,7 +90,7 @@ def test_stream_decode_in_chunks(rng):
 
 def test_scrambler_state_belongs_to_the_stream(rng):
     """Two streams through one scrambler do not disturb each other"""
-    scr = rp.scram.load("fdt", "v35")
+    scr = rp.code.scram.load("fdt", "v35")
     bits = rng.integers(0, 2, 100).astype(bool)
     a = rp.Data(bits) * scr
     b = rp.Data(bits) * scr
@@ -97,7 +98,7 @@ def test_scrambler_state_belongs_to_the_stream(rng):
     assert np.array_equal((a / scr).data, bits)
 
 def test_interleaver_streams(rng):
-    il = rp.coding.load("interleave", "forney/12_17")
+    il = rp.code.load("interleave", "forney/12_17")
     sym = rng.integers(0, 256, 12*40).astype(np.uint8)
     whole = rp.Data(sym, flush=True) * il
     got = chunked(lambda d: d * il, sym, [0, 12*7, 12*7 + 5, len(sym)])
@@ -108,7 +109,7 @@ CONV = ["k3_5_7/1_2", "k7_133_171/1_2", "k7_133_171/3_4"]
 @pytest.mark.parametrize("name", CONV)
 def test_conv_stream_keeps_the_register(name, rng):
     """The encoder register belongs to the stream: chunked equals one piece, and a second stream starts clean"""
-    ecc = rp.coding.load("conv", name)
+    ecc = rp.code.load("conv", name)
     bits = rng.integers(0, 2, 600).astype(bool)
     whole = rp.Data(bits, flush=True) * ecc
     got = chunked(lambda d: d * ecc, bits, [0, 11, 100, 333, 600])
@@ -118,14 +119,14 @@ def test_conv_stream_keeps_the_register(name, rng):
 
 @pytest.mark.parametrize("name", CONV)
 def test_conv_stream_decodes_in_chunks(name, rng):
-    ecc = rp.coding.load("conv", name)
+    ecc = rp.code.load("conv", name)
     bits = rng.integers(0, 2, 900).astype(bool)
     coded = (rp.Data(bits, flush=True) * ecc).data
     got = chunked(lambda d: d / ecc, coded, [0, 13, 250, 251, 1000, len(coded)])
     assert np.array_equal(got[:len(bits)], bits)
 
 def test_conv_stream_corrects_errors_across_chunks(rng):
-    ecc = rp.coding.load("conv", "k7_133_171/1_2")
+    ecc = rp.code.load("conv", "k7_133_171/1_2")
     bits = rng.integers(0, 2, 2000).astype(bool)
     coded = (rp.Data(bits, flush=True) * ecc).data.copy()
     coded[rng.choice(len(coded), 40, replace=False)] ^= True
@@ -139,7 +140,7 @@ TERMINATED = {
 }
 
 def test_terminated_conv_gets_its_tail_when_the_stream_ends(rng):
-    ecc = rp.coding.init("t", TERMINATED)
+    ecc = rp.code.init("t", TERMINATED)
     bits = rng.integers(0, 2, 100).astype(bool)
     coded = chunked(lambda d: d * ecc, bits, [0, 60, 100])
     assert len(coded) == 2*(100 + 2)                      # one tail for the stream, not one per chunk
@@ -148,7 +149,7 @@ def test_terminated_conv_gets_its_tail_when_the_stream_ends(rng):
     assert np.array_equal(out, bits)
 
 def test_bcjr_conv_stream_decodes_at_the_end(rng):
-    ecc = rp.coding.load("conv", "k7_133_171/1_2", decoder="bcjr")
+    ecc = rp.code.load("conv", "k7_133_171/1_2", decoder="bcjr")
     bits = rng.integers(0, 2, 300).astype(bool)
     coded = (rp.Data(bits, flush=True) * ecc).data
     first = rp.Data(coded[:200]) / ecc

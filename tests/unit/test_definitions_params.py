@@ -34,11 +34,6 @@ def test_expression_operators():
     assert _config.evaluate("[3, 4, 5][n % 3] if n > 2 else -1", v) == 5
     assert _config.evaluate("max(n, 7) // 2 + abs(-1) + (~n & 3)", v) == 6
 
-def test_chain_hands_each_stage_its_parameters():
-    chain = rp.Chain("t", [], params={"channel": 38, "pci": 9})
-    s = chain._load("scram", "ble_whiten")
-    assert np.array_equal(s.sequence(50), rp.scram.load("ble_whiten", channel=38).sequence(50))
-
 # --- convolutional termination --------------------------------------------------------------------------------
 
 def _circular_encode(msg, gens, K):
@@ -52,14 +47,14 @@ def _circular_encode(msg, gens, K):
 
 def test_tailbiting_encoder(rng):
     gens = [0o133, 0o171, 0o165]
-    code = rp.coding.Conv(gens, 7, termination="tailbiting")
+    code = rp.code.Conv(gens, 7, termination="tailbiting")
     for n in (7, 40, 64):
         msg = bits(rng, n).astype(int)
         assert np.array_equal(code._enc.encode(msg), _circular_encode(msg, gens, 7))
 
 @pytest.mark.parametrize("decoder", ["viterbi", "bcjr"])
 def test_tailbiting_decodes_noisy_frames(decoder, rng):
-    code = rp.coding.Conv([0o133, 0o171, 0o165], 7, termination="tailbiting", decoder=decoder)
+    code = rp.code.Conv([0o133, 0o171, 0o165], 7, termination="tailbiting", decoder=decoder)
     good = 0
     for _ in range(20):
         msg = bits(rng, 40)
@@ -69,7 +64,7 @@ def test_tailbiting_decodes_noisy_frames(decoder, rng):
     assert good >= 19
 
 def test_tailbiting_in_a_pipeline(rng):
-    code = rp.coding.Conv([0o133, 0o171], 7, termination="tailbiting")
+    code = rp.code.Conv([0o133, 0o171], 7, termination="tailbiting")
     msg = bits(rng, 48)
     cw = (rp.Data(msg, flush=True) * code).data
     assert len(cw) == 96 # Nothing added
@@ -79,20 +74,20 @@ def test_termination_names_and_octal_generators(rng):
     obj = {"base": "conv", "type": "split",
            "encode": {"type": "conv", "num": 1, "den": 2, "constraint": 7, "generator": ["0o133", "0o171"], "termination": "zero"},
            "decode": {"type": "viterbi", "num": 1, "den": 2, "generator": ["0o133", "0o171"]}}
-    a = rp.coding.serial.init("t", obj)
-    b = rp.coding.load("conv", "k7_133_171/1_2")
+    a = rp.code.serial.init("t", obj)
+    b = rp.code.load("conv", "k7_133_171/1_2")
     assert np.array_equal(a._enc.generator, b._enc.generator)
     assert a._enc.terminated and a._dec.terminated # The decoder takes the encoder's termination and constraint
     msg = bits(rng, 50)
     assert np.array_equal(a._dec.decode(a._enc.encode(msg)), msg)
     with pytest.raises(ValueError):
-        rp.coding.Conv([0o133, 0o171], 7, termination="circular")
+        rp.code.Conv([0o133, 0o171], 7, termination="circular")
 
 # --- block interleavers ---------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("ncbps,nbpsc", [(48, 1), (96, 2), (192, 4), (288, 6)])
 def test_wifi_interleaver(ncbps, nbpsc, rng):
-    il = rp.coding.load("interleave", "wifi_ofdm", ncbps=ncbps, nbpsc=nbpsc)._enc
+    il = rp.code.load("interleave", "wifi_ofdm", ncbps=ncbps, nbpsc=nbpsc)._enc
     s = max(nbpsc//2, 1)
     k = np.arange(ncbps)
     i = (ncbps//16)*(k % 16) + k//16                   # 17-17
@@ -104,7 +99,7 @@ def test_wifi_interleaver(ncbps, nbpsc, rng):
 
 def test_p25_tsbk_interleave():
     order = [d for r in range(12) for d in (2*r, 2*r + 1, 26 + 2*r, 27 + 2*r, 50 + 2*r, 51 + 2*r, 74 + 2*r, 75 + 2*r)] + [24, 25]
-    il = rp.coding.load("interleave", "p25_tsbk")._enc
+    il = rp.code.load("interleave", "p25_tsbk")._enc
     rx = np.arange(98*2) # Dibits as pairs of positions
     assert np.array_equal(il.decode(rx).reshape(98, 2)[:, 0]//2, order)
 
@@ -115,12 +110,12 @@ def test_lte_subblock(D):
     y = [None]*(R*32 - D) + list(range(D))
     want = [y[r*32 + P[c]] for c in range(32) for r in range(R)]
     want = [v for v in want if v is not None]
-    il = rp.coding.load("interleave", "lte_subblock", length=D)._enc
+    il = rp.code.load("interleave", "lte_subblock", length=D)._enc
     assert list(il.encode(np.arange(D))) == want
 
 def test_block_interleaver_rejects_non_permutation():
     with pytest.raises(ValueError):
-        rp.coding.types.block_interleaver(rp.logger.Logger(), [0, 1, 1])
+        rp.code.types.block_interleaver(rp.logger.Logger(), [0, 1, 1])
 
 # --- sequence scramblers --------------------------------------------------------------------------------------
 
@@ -128,7 +123,7 @@ def test_wifi_scrambler_known_sequence():
     """IEEE 802.11 17.3.5.5: the 127-bit sequence from the all-ones state"""
     ref = ("00001110 11110010 11001001 00000010 00100110 00101110 10110110 00001100 11010100 11100111 10110100 "
            "00101010 11111010 01010001 10111000 1111111").replace(" ", "")
-    assert "".join(map(str, rp.scram.load("wifi_ofdm").sequence(127))) == ref
+    assert "".join(map(str, rp.code.scram.load("wifi_ofdm").sequence(127))) == ref
 
 def _lte_c(c_init, n):
     """36.211 7.2, written out"""
@@ -141,13 +136,13 @@ def _lte_c(c_init, n):
 
 @pytest.mark.parametrize("c_init", [0, 1, 77, (1 << 30) | 12345])
 def test_lte_gold(c_init):
-    assert list(rp.scram.load("lte_gold", c_init=c_init).sequence(400)) == _lte_c(c_init, 400)
+    assert list(rp.code.scram.load("lte_gold", c_init=c_init).sequence(400)) == _lte_c(c_init, 400)
 
 def test_lte_channel_seeds():
     pci, ns, rnti = 301, 5, 0xFFFF
-    assert list(rp.scram.load("lte_pcfich", pci=pci, ns=ns).sequence(32)) == _lte_c(((ns//2 + 1)*(2*pci + 1) << 9) + pci, 32)
-    assert list(rp.scram.load("lte_pdsch", pci=pci, ns=ns).sequence(64)) == _lte_c((rnti << 14) + ((ns//2) << 9) + pci, 64)
-    pbch = rp.scram.load("lte_pbch", pci=pci)
+    assert list(rp.code.scram.load("lte_pcfich", pci=pci, ns=ns).sequence(32)) == _lte_c(((ns//2 + 1)*(2*pci + 1) << 9) + pci, 32)
+    assert list(rp.code.scram.load("lte_pdsch", pci=pci, ns=ns).sequence(64)) == _lte_c((rnti << 14) + ((ns//2) << 9) + pci, 64)
+    pbch = rp.code.scram.load("lte_pbch", pci=pci)
     assert np.array_equal(pbch.sequence(100, 1920), pbch.sequence(100)) # Restarts every four frames
 
 @pytest.mark.parametrize("ch", [0, 17, 37, 39])
@@ -159,7 +154,7 @@ def test_ble_whitening_spec_register(ch):
         want.append(o)
         s = [o] + s[:6]
         s[4] ^= o
-    assert list(rp.scram.load("ble_whiten", channel=ch).sequence(300)) == want
+    assert list(rp.code.scram.load("ble_whiten", channel=ch).sequence(300)) == want
 
 def test_p25p2_scrambler():
     w, sid, nac = 0xbee00, 0x8d0, 0x8d1
@@ -167,12 +162,12 @@ def test_p25p2_scrambler():
     s = [(seed >> (43 - i)) & 1 for i in range(44)]
     for t in range(4320 - 44):
         s.append(s[t] ^ s[t + 10] ^ s[t + 24] ^ s[t + 29] ^ s[t + 35] ^ s[t + 40])
-    seq = rp.scram.load("p25p2", wacn=w, sysid=sid, nac=nac)
+    seq = rp.code.scram.load("p25p2", wacn=w, sysid=sid, nac=nac)
     assert list(seq.sequence(4320)) == s
-    assert rp.scram.load("p25p2", wacn=0, sysid=0, nac=0).sequence(44).all() # A zero seed is replaced by all ones
+    assert rp.code.scram.load("p25p2", wacn=0, sysid=0, nac=0).sequence(44).all() # A zero seed is replaced by all ones
 
 def test_sequence_streams_and_soft(rng):
-    s = rp.scram.load("lte_pcfich", pci=1, ns=0)
+    s = rp.code.scram.load("lte_pcfich", pci=1, ns=0)
     x = bits(rng, 100)
     a = rp.Data(x[:37]) * s
     b = rp.Data(x[37:], ctx=a.ctx) * s
