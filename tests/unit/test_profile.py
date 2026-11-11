@@ -97,11 +97,12 @@ def test_a_source_of_chips_skips_the_wave_and_timing_steps():
 
 def test_applied_sync_is_skipped():
     p = rp.profile.load("ieee80211b/1m")
-    assert "+MM" in names(p.rx()) and "+MM" not in names(p.rx(applied={"timing"}))
+    assert "+OerderMeyr" in names(p.rx()) and "+OerderMeyr" not in names(p.rx(applied={"timing"}))
 
 def test_defaults_and_overrides():
-    assert "+MM" in names(rp.profile.load("ieee80211b/1m").rx()) # registry default: a loop until step 8
-    p = rp.profile.load("ieee80211b/1m", sync={"timing": {"method": "gardner"}})
+    assert "+OerderMeyr" in names(rp.profile.load("ieee80211b/1m").rx()) # registry default: first class (step 8)
+    assert "+MPower" in names(rp.profile.load("ieee80211b/long").rx())
+    p = rp.profile.load("ieee80211b/1m", sync={"timing": {"method": "gardner"}}) # the loops are there by name
     assert p.rx().ops[1][1].ted == "gardner"
 
 def test_errors():

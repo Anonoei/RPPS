@@ -1,4 +1,5 @@
-"""Adaptive equalizers: `symbols + rp.sync.equalize.CMA(11)`, the taps adapt as the stream goes by
+"""Equalizers: `symbols + rp.sync.equalize.BlockLS(qpsk)` solves the taps per window (first class);
+`symbols + rp.sync.equalize.CMA(11)` and LMS adapt them symbol by symbol (second class)
 
 Each makes one output per symbol from `sps` input samples per symbol (1, or 2 for a fractionally spaced equalizer).
 The taps carry across blocks, so any block length gives the same stream.
@@ -112,3 +113,86 @@ class LMS(_Equalizer):
         else:
             return 0.0
         return d - y
+
+class BlockLS(Stage):
+    """Equalize symbols by least squares over each window, decision directed, with the taps carried from window to window
+
+        symbols = timed + carrier + rp.sync.equalize.BlockLS(rp.symbol.load("QPSK"), taps=7)
+
+    First class (ARCHITECTURE.md, Sync methods): block estimation, where LMS and CMA adapt per symbol. Windows sit at
+    absolute stream positions, `window` seconds (at least `min_symbols`). On each, the taps w (symbol spaced, centred:
+    output n uses inputs n - taps//2 .. n + taps//2) solve min |X w - d|^2, d the constellation points nearest to X w,
+    `iters` times; the window's solution is blended with the last (`blend` of the old: the tracking across windows), and
+    that is the filter for the window. It starts as a pass-through and normalizes the power to the constellation's.
+    A window that is noise only would pull the taps anywhere: `gate` is the least fraction of decisions within half the
+    minimum distance for a window to update the taps. Latency: a window and taps//2 symbols (est: `latency`).
+    """
+    CONTROLS = {}
+
+    def __init__(self, constellation, taps=7, window=1e-3, min_symbols=1024, iters=3, blend=0.5, gate=0.5, name="equalizer"):
+        if taps < 1 or taps % 2 == 0:
+            raise ValueError("taps is an odd number")
+        self.points = np.asarray(constellation.points, dtype=np.complex128)
+        self.dmin = float(constellation.min_distance)
+        self.taps, self.window, self.min_symbols = int(taps), window, min_symbols
+        self.iters, self.blend, self.gate, self.name = int(iters), float(blend), float(gate), name
+
+    def __str__(self):
+        return f"BlockLS({self.taps})"
+
+    def pos_rate(self, decode):
+        return 1.0
+
+    def new_state(self, meta):
+        h = self.taps//2
+        w = np.zeros(self.taps, np.complex128)
+        w[h] = 1.0
+        return SimpleNamespace(buf=np.zeros(h, np.complex128), base=meta.pos - h, k=None, W=None, w=w, scaled=False,
+                               good=0.0, windows=0)
+
+    def _decide(self, y):
+        return self.points[np.argmin(np.abs(y[:, None] - self.points[None, :]), axis=1)]
+
+    def step(self, x, st, meta):
+        h = self.taps//2
+        if st.W is None:
+            st.W = max(int(round(self.window*meta.Fs)), int(self.min_symbols))
+            st.k = meta.pos//st.W
+        st.buf = np.concatenate((st.buf, np.asarray(x, dtype=np.complex128)))
+        end = st.base + len(st.buf) # input positions held: [base, end)
+        real = end
+        W, out = st.W, []
+        while True:
+            a, b = st.k*W, (st.k + 1)*W
+            need = b + h
+            if need > end:
+                if not meta.flush or a >= end - h:
+                    break
+                pad = need - end
+                st.buf = np.concatenate((st.buf, np.zeros(pad)))
+                end = need
+            a0 = max(a, st.base + h)
+            X = np.lib.stride_tricks.sliding_window_view(st.buf[a0 - h - st.base:b + h - st.base], self.taps)[:, ::-1]
+            if not st.scaled: # Unit power, as the constellation
+                st.w = st.w/np.sqrt(max(np.mean(np.abs(X[:, h])**2), 1e-30))
+                st.scaled = True
+            w = st.w
+            for _ in range(self.iters):
+                y = X @ w
+                d = self._decide(y)
+                good = float(np.mean(np.abs(y - d) < self.dmin/2))
+                if good < self.gate:
+                    break
+                w = np.linalg.lstsq(X, d, rcond=None)[0]
+            else:
+                st.w = self.blend*st.w + (1 - self.blend)*w
+                st.windows += 1
+            st.good = good
+            out.append((X @ st.w)[:max(0, min(b, real) - a0)]) # (past the stream's end on a flush: padding)
+            st.k += 1
+            if meta.flush and b + h >= end:
+                break
+        keep = min(max(st.k*W - h, st.base), end)
+        st.buf, st.base = st.buf[keep - st.base:], keep
+        meta.stream.est[self.name] = dict(taps=st.w.copy(), good=st.good, windows=st.windows, latency=(W + h)/meta.Fs)
+        return np.concatenate(out).astype(np.complex64) if out else np.zeros(0, np.complex64)

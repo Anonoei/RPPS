@@ -68,13 +68,14 @@ def _sync_method(kind, spec, ctx):
     return chosen
 
 _SYNC_DEFAULTS = {
-    "timing": {"method": "mm"},       # second class (a loop) until the first-class estimators come (migration step 8)
-    "carrier": {"method": "costas"},  # second class likewise
+    "timing": {"method": "oerder_meyr"}, # first class: block estimation tracked across windows (ARCHITECTURE.md, Sync methods)
+    "carrier": {"method": "mpower"},     # first class likewise; the loops (mm, gardner, costas) are there by name
     "align": {"method": "align"},
     "puncture": {"method": "reencode"},
     "pilots": {"method": "ls"},
     "agc": {"method": "agc"},
     "frame": {"method": "preamble"},
+    "equalize": {"method": "ls"},        # first class: block least squares per window
     "delimit": {"method": "word"},
 }
 
@@ -84,28 +85,39 @@ def _sync(kind, spec, rep, ctx):
     method = m.get("method")
     sps = ctx["params"].get("sps")
     if kind == "timing":
-        if method in ("mm", "gardner"):
+        if method == "oerder_meyr":
+            st = sync.time.OerderMeyr(m.get("sps"), m.get("window", 1e-3), m.get("min_symbols", 2048), m.get("bw", 0.25),
+                                      m.get("gate", 2.0), m.get("name", "timing"))
+        elif method in ("mm", "gardner"):
             st = sync.time.MM(m.get("alpha", 0.3), ted="mm" if method == "mm" else "gardner")
         elif method == "known":
             st = _KnownTiming(m.get("sps", sps))
         elif method == "fixed":
             st = signal.sample.down.Decimate(_need(m, "sps", "fixed timing") if sps is None else m.get("sps", sps), m["offset"])
         else:
-            raise ConfigError(f"timing: no method {method!r} (have mm, gardner, known, fixed)")
+            raise ConfigError(f"timing: no method {method!r} (have oerder_meyr, mm, gardner, known, fixed)")
         return [(STAGE, st)], [], Rep.SYMBOLS
     if kind == "carrier":
         if method == "pilots": # Data-aided, per frame, from pilot blocks (DVB-S2): their layout comes from a header
             st = sync.PilotPhase(m.get("slot", 90), m.get("every", 16), m.get("length", 36), _complex(m.get("value", [0.7071067811865476, 0.7071067811865476])),
                                  m.get("slots"), m.get("pilots", True), m.get("lead"), m.get("name", "pilots"))
             return [(STAGE, st)], [], rep
-        if method == "costas":
+        if method == "mpower":
+            order = int(m.get("order", 4))
+            offset = m.get("offset")
+            if offset is None:
+                from .. import symbol
+                offset = sync.phase.offset_of(symbol.load(m["constellation"]), order) if "constellation" in m else 0.0
+            st = sync.phase.MPower(order, offset, m.get("window", 1e-3), m.get("min_symbols", 1024), m.get("bw", 0.25),
+                                   m.get("gate", 3.0), m.get("relock", 4), m.get("name", "carrier"))
+        elif method == "costas":
             st = sync.Costas.from_bandwidth(m.get("bw", 0.01), order=m.get("order", 4))
         elif method == "ff":
             st = sync.phase.FFCarrier(m.get("window", 64))
         elif method == "none":
             return [], [], rep # The carrier is already off (an upstream source), or there is no estimator for this signal yet
         else:
-            raise ConfigError(f"carrier: no method {method!r} (have costas, ff, pilots, none)")
+            raise ConfigError(f"carrier: no method {method!r} (have mpower, costas, ff, pilots, none)")
         return [(STAGE, st)], [], rep
     if kind == "align":
         st = sync.Align(_need(m, "period", "align"), markers=m.get("markers"), pattern=m.get("pattern"),
@@ -123,6 +135,21 @@ def _sync(kind, spec, rep, ctx):
         return [(STAGE, sync.PilotEqualizer(carriers, m.get("taps")))], [], rep
     if kind == "agc":
         return [(STAGE, sync.AGC(m.get("target", 1.0), m.get("mu", 0.01)))], [], rep
+    if kind == "equalize":
+        if method == "ls":
+            from .. import symbol
+            st = sync.equalize.BlockLS(symbol.load(_need(m, "constellation", "equalize ls")), m.get("taps", 7), m.get("window", 1e-3),
+                                       m.get("min_symbols", 1024), m.get("iters", 3), m.get("blend", 0.5), m.get("gate", 0.5),
+                                       m.get("name", "equalizer"))
+        elif method == "lms":
+            from .. import symbol
+            pts = symbol.load(m["constellation"]).points if "constellation" in m else None
+            st = sync.equalize.LMS(m.get("taps", 11), m.get("mu", 0.01), points=pts)
+        elif method == "cma":
+            st = sync.equalize.CMA(m.get("taps", 11), m.get("mu", 0.01))
+        else:
+            raise ConfigError(f"equalize: no method {method!r} (have ls, lms, cma)")
+        return [(STAGE, st)], [], rep
     if kind == "frame": # Frames by a known preamble among symbols: the one a physical header definition starts with
         from .. import symbol
         h = symbol.load(_need(m, "header", "sync frame"))
@@ -141,7 +168,7 @@ def _sync(kind, spec, rep, ctx):
             raise ConfigError(f"sync delimit: {m.get('header')} has no preamble word")
         st = sync.Delimiter(word, bits, order, m.get("errors", 0), m.get("name", "delimiter"))
         return [(STAGE, st)], [], rep
-    raise ConfigError(f"sync step: no kind {kind!r} (have timing, carrier, align, puncture, pilots, agc, frame, delimit)")
+    raise ConfigError(f"sync step: no kind {kind!r} (have timing, carrier, equalize, align, puncture, pilots, agc, frame, delimit)")
 
 def _complex(v):
     return complex(v[0], v[1]) if isinstance(v, (list, tuple)) else complex(v)

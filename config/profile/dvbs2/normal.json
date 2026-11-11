@@ -1,6 +1,6 @@
 {
   "base": "profile",
-  "comment": "DVB-S2 with normal FECFRAMEs (64800 bits), QPSK and 8PSK, MODCOD by MODCOD (VCM, ACM): each PLHEADER's PLS sets the PL scrambling length, pilots, constellation, bit interleaver, LDPC, BCH and BBFRAME size of its own frame, which follows it, so nothing is re-run. One generic continuous stream; out come the BBFRAME data fields. Frames are found by their SOF and turned back by its phase, then by a line through the pilots. Transmitting, the caller's fields per frame (modcod, pilots), else the `modcod` and `pilots` parameters",
+  "comment": "DVB-S2 with normal FECFRAMEs (64800 bits), QPSK and 8PSK, MODCOD by MODCOD (VCM, ACM): each PLHEADER's PLS sets the PL scrambling length, pilots, constellation, bit interleaver, LDPC, BCH and BBFRAME size of its own frame, which follows it, so nothing is re-run. One generic continuous stream; out come the BBFRAME data fields. Timing and carrier come from block estimators tracked across windows (the carrier by the 8th power, which every DVB-S2 constellation and the pi/2-BPSK header share); frames are found by their SOF, which takes the phase's 45 degree ambiguity off, then a line through the pilots. Transmitting, the caller's fields per frame (modcod, pilots), else the `modcod` and `pilots` parameters",
   "ref": "EN 302 307-1",
   "params": {
     "sps": {
@@ -14,18 +14,29 @@
     "pilots": {
       "default": 1,
       "comment": "transmit: pilots on (1) or off (0)"
+    },
+    "pulse": {
+      "default": "rrc/0p35",
+      "comment": "the transmit pulse, and so the matched filter: rrc/0p35, rrc/0p25 or rrc/0p20 (DVB-S2's roll-offs)"
     }
   },
   "steps": [
     {
       "wave": "shape",
-      "pulse": "rrc/0p35",
+      "pulse": {
+        "param": "pulse"
+      },
       "sps": {
         "param": "sps"
       }
     },
     {
       "sync": "timing"
+    },
+    {
+      "sync": "carrier",
+      "id": "carrier",
+      "order": 8
     },
     {
       "sync": "frame",

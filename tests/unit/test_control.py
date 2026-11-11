@@ -309,7 +309,7 @@ def test_dvbs2_from_timed_symbols(s2_signal):
     """A source of timed symbols with the carrier on: the profile from the frame sync"""
     p, x, o, data, dfl = s2_signal
     rx = p.rx(start=Rep.SYMBOLS)
-    assert type(rx.ops[0][1]).__name__ == "FrameSync"
+    assert [type(op).__name__ for _, op in rx][:2] == ["MPower", "FrameSync"] # no wave, no timing
     syms = np.asarray((rp.Data(x, Fs=o.Fs, sps=4, delay=o.delay, flush=True) + p.rx().ops[0][1] + p.rx().ops[1][1]).data)
     out = rx(rp.Data((syms*np.exp(0.3j)).astype(np.complex64), sps=1, flush=True))
     assert np.array_equal(np.asarray(out.data).astype(bool), data)
