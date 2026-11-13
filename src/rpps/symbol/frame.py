@@ -28,6 +28,7 @@ import numpy as np
 from ..base import Mod, dtype
 from ..base.types import Category, Rep
 from ..errors import ConfigError
+from ..base.rpps import FRAME
 from .modulation import Modulation
 
 def _bits(value, n):
@@ -51,6 +52,7 @@ def rotating(bits, constellation, phase=0.0, rotate=0.0, start=0, cycle=None):
 class _Frame(Modulation):
     """A symbol step that restarts at every frame start (`control`)"""
     CONTROLS = {}
+    SCOPE = FRAME
     _start = True # The stream starts on a frame
 
     def control(self, **params):
@@ -270,6 +272,23 @@ class Pilots(_Frame):
             pil |= (i >= s) & (i < s + self.length)
         return pil, i >= total
 
+    def kernel(self, params, how):
+        """The batch pilot remover (decoding), for the frame layout `params` set: pilots, and what is past the frame, dropped"""
+        if how != "/":
+            return None
+        from ..parallel.kernels import Gather
+        if params:
+            self.control(**params)
+        if self.slots is None:
+            return Gather(lambda L: np.ones(L, dtype=bool), str(self))
+        total, starts = self.layout()
+        def keep(L):
+            pil = np.zeros(L, dtype=bool)
+            for s in starts:
+                pil[s:s + self.length] = True
+            return ~pil[:L] & (np.arange(L) < total)
+        return Gather(keep, str(self))
+
     def decode(self, data):
         ctx = dict(data.ctx)
         st = self._state(ctx, False)
@@ -347,6 +366,22 @@ class PhaseScramble(_Frame):
         r = self.R(int(i.max()) + 1)[i] if len(x) else np.zeros(0, np.int64)
         turn = np.exp((1j if enc else -1j)*np.deg2rad(self.step)*r)
         return self._out(data, x*turn, ctx)
+
+    def kernel(self, params, how):
+        """The batch rotation, for a frame that starts at its first symbol (`control` marks it) and restarts every `length`"""
+        if how not in ("/", "*"):
+            return None
+        from ..parallel.kernels import Rotate
+        if params:
+            self.control(**params)
+        enc, step, length = how == "*", self.step, self.length
+        def phasors(L):
+            i = np.arange(L)
+            if length:
+                i = i % length
+            r = self.R(int(i.max()) + 1)[i] if L else np.zeros(0, np.int64)
+            return np.exp((1j if enc else -1j)*np.deg2rad(step)*r)
+        return Rotate(phasors, self.name)
 
     def encode(self, data):
         return self._run(data, True)

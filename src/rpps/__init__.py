@@ -47,6 +47,7 @@ Packages follow the categories of ARCHITECTURE.md: data goes samples -> symbols 
 | `rpps.base` | `rpps.Data`, `rpps.Pipe`, `rpps.Stage`, `rpps.BitStage`, `rpps.Pipeline`, `rpps.Stream`, and the type tags |
 | `rpps.math`, `rpps.utils`, `rpps.viz` | Finite fields and GF(2) algebra, helpers, plots (`pip install rpps[viz]`) |
 | `rpps.profile` | Profiles: a whole signal from one config file, receive and transmit (`rp.profile.load`) |
+| `rpps.parallel` | Frame-parallel processing after a profile's frame boundary: executors, scheduler, `Parallel` (`profile.rx(parallel=...)`) |
 
 Constellations, pulses, filters, sequences, scramblers, codes, headers, tables and profiles are definitions that ship
 with the package, in config/ by resource (`python -m rpps ls` lists them); add your own with
@@ -81,6 +82,7 @@ from . import link
 from . import sequence
 from . import wave
 from . import profile
+from . import parallel
 from . import symbol
 
 from . import source

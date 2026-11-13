@@ -9,6 +9,7 @@ from . import _config
 from ...base import Digital, dtype
 from ...base.types import Category, Rep
 from ...base.data import expect
+from ...base.rpps import FRAME
 from ...errors import ConfigError
 from ...sequence import lfsr
 
@@ -44,6 +45,7 @@ class Scram(base.rpps.Pipe):
     # ---- header-driven control (rpps.profile.control)
 
     CONTROLS = {"length": "live"}
+    SCOPE, SCOPE_NEEDS = FRAME, ("length",) # Restarts at a frame start only when a control gives the frame length
     length = None # Bits per frame, when a profile controls it: the sequence restarts at every frame start
     _restart = False
 
@@ -180,6 +182,18 @@ class Additive(Scram):
         """Descramble LLRs (positive = 0): the sign flips where the sequence is 1"""
         llr = np.asarray(llr, dtype=np.float64)
         return llr*(1.0 - 2.0*self._bits(len(llr), start))
+
+    def kernel(self, params, how):
+        """The batch scrambler of a frame restarted every `length` bits (what a profile's control gives); the periodic and
+        packet-structured forms have none"""
+        if how not in ("/", "*"):
+            return None
+        if params:
+            self.control(**params)
+        if not self.length or self.frame is not None or self.period is not None:
+            return None
+        from ...parallel.kernels import XorMask
+        return XorMask(self.seq.bits(self.length), Category.CODE, Rep.CHANNEL if how == "*" else Rep.DATA, self.seq.name)
 
     def _stream(self, ctx, key, bits, enc):
         self._frame_start(ctx, key)

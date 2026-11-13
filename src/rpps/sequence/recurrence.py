@@ -13,6 +13,9 @@ or a register as drawn (Galois form, as Bluetooth draws its whitening LFSR):
         positions 0..L-1; each step outputs position L-1, shifts toward it, feeds the output into position 0
         and XORs it into each tap position
 """
+import json
+import threading
+
 import numpy as np
 
 
@@ -80,29 +83,45 @@ class _Component:
                 raise ValueError(f"recurrence taps {taps} must lie in 0..{L-1}")
             self.L, self.taps, self.s = L, taps, _bits(obj["init"], L, obj.get("init_order", "lsb"))
         self.step = max(1, self.L - max(self.taps)) if self.taps else self.L
+        self._lock = threading.Lock()
 
     def first(self, n):
-        """s[0 .. n-1]"""
+        """s[0 .. n-1] (one component is shared by every sequence with its definition, and by their threads)"""
         if len(self.s) < n:
-            L, taps, step = self.L, self.taps, self.step
-            s = np.concatenate((self.s, np.zeros(n - len(self.s) + step, dtype=np.uint8)))
-            t = len(self.s) - L
-            while t + L < n:
-                c = min(step, n - (t + L))
-                v = np.zeros(c, dtype=np.uint8)
-                for j in taps:
-                    v ^= s[t + j:t + j + c]
-                s[t + L:t + L + c] = v
-                t += c
-            self.s = s[:n]
+            with self._lock:
+                if len(self.s) < n: # (another thread may have extended it while this one waited)
+                    L, taps, step = self.L, self.taps, self.step
+                    s = np.concatenate((self.s, np.zeros(n - len(self.s) + step, dtype=np.uint8)))
+                    t = len(self.s) - L
+                    while t + L < n:
+                        c = min(step, n - (t + L))
+                        v = np.zeros(c, dtype=np.uint8)
+                        for j in taps:
+                            v ^= s[t + j:t + j + c]
+                        s[t + L:t + L + c] = v
+                        t += c
+                    self.s = s[:n]
         return self.s[:n]
+
+_COMPONENTS = {}
+_COMPONENTS_LOCK = threading.Lock()
+
+def _component(obj):
+    """The component of this definition: made once per process and shared, since its bits are the same wherever they are used
+    (a parallel region's workers each build the operators, and would each generate a long sequence again)"""
+    key = json.dumps(obj, sort_keys=True, default=str)
+    with _COMPONENTS_LOCK:
+        c = _COMPONENTS.get(key)
+        if c is None:
+            c = _COMPONENTS[key] = _Component(obj)
+    return c
 
 class Recurrence:
     """A binary sequence: its components XOR'd, `skip` outputs dropped first. `bits(n, start)` are its bits from position
     `start` (0 = the first after `skip`); the sequence runs on as far as it is asked"""
     def __init__(self, name, components, skip=0):
         self.name = name
-        self.components = [_Component(c) for c in components]
+        self.components = [_component(c) for c in components]
         if not self.components:
             raise ValueError(f"{name}: a sequence needs at least one component")
         self.skip = int(skip)

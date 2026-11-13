@@ -11,7 +11,12 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from .. import _accel
 from ..base import Stage, BitStage
+from ..signal.filters.convolve import convolve
+from . import track
+
+NATIVE_CORRELATION = 256 # Longest preamble (symbols) correlated directly in C++; longer ones go through the FFT
 
 class FrameSync(Stage):
     """Find frames by a known preamble among timed symbols, and give them whole and the right way round
@@ -37,6 +42,8 @@ class FrameSync(Stage):
         self.L = len(self.preamble)
         self.words = None if words is None else np.conj(np.asarray(words, dtype=np.complex128)) # (M, n), conjugated
         self.n = 0 if words is None else self.words.shape[1]
+        self._words_ri = None if words is None else np.stack((self.words.real.T, -self.words.imag.T), axis=1).reshape(2*self.n, -1).astype(np.float32) # (re, -im) pairs
+        self._words_t = None if words is None else np.ascontiguousarray(self._words_ri.T) # (words, 2n) for the C++ kernel
         self.threshold = float(threshold if threshold is not None else (0.6 if words is None else 0.5))
         self.name = name
         self.max_length = None if max_length is None else int(max_length)
@@ -59,11 +66,17 @@ class FrameSync(Stage):
             return [], None
         a, b = max(lo - L, 0), min(hi + L, len(y) - L + 1)
         seg = y[a:b + L - 1]
-        c = np.correlate(seg, self.preamble, "valid")
-        e = np.convolve(np.abs(seg)**2, np.ones(L), "valid")
-        m = np.abs(c)/np.sqrt(np.maximum(e, 1e-30)*self._ep)
+        rest = y[a:]
+        if _accel.native is not None and L <= NATIVE_CORRELATION: # C++: the direct correlation and its normalisation, on several threads
+            c, m = _accel.native.preamble_metric(np.ascontiguousarray(seg, dtype=np.complex128), self.preamble, self._ep)
+            cs = None
+        else:
+            c = convolve(seg, np.conj(self.preamble[::-1]), "valid") # = np.correlate(seg, preamble, "valid"), by FFT blocks when long
+            cs = np.concatenate(([0.0], np.cumsum(rest.real**2 + rest.imag**2))) # energy so far, from index a on
+            e = cs[L:L + len(c)] - cs[:len(c)] # the energy of every window of L
+            m = np.abs(c)/np.sqrt(np.maximum(e, 1e-30)*self._ep)
         if self.words is not None:
-            m = self._with_words(y, a, c, m)
+            m = self._with_words(rest, c, m, cs)
         out = []
         for j in np.nonzero(m > self.threshold)[0]:
             i = a + j
@@ -74,20 +87,31 @@ class FrameSync(Stage):
                 out.append((i, float(np.angle(c[j])), float(m[j])))
         return out, (c, a)
 
-    def _with_words(self, y, a, c, m):
+    def _with_words(self, y, c, m, cs):
         """The metric over the preamble and its best continuation, where the preamble alone is promising (> 0.3: random
-        data passes that one time in ten, a DVB-S2 SOF at -4 dB Es/N0 nearly always)"""
+        data passes that one time in ten, a DVB-S2 SOF at -4 dB Es/N0 nearly always). y: the samples from where c starts;
+        cs: their cumulative energy (with a leading 0), for the numpy version (the C++ one needs none)"""
         L, n = self.L, self.n
+        if _accel.native is not None: # C++: select the candidates, rank the words and normalise, in one call
+            return _accel.native.frame_metric(np.ascontiguousarray(y, dtype=np.complex128), np.ascontiguousarray(c, dtype=np.complex128),
+                                              np.ascontiguousarray(m, dtype=np.float64), L, self._words_t, 0.3)
+        if cs is None:
+            cs = np.concatenate(([0.0], np.cumsum(y.real**2 + y.imag**2)))
         out = np.zeros_like(m)
-        js = np.array([j for j in np.nonzero(m > 0.3)[0] if a + j + L + n <= len(y)], dtype=np.int64)
+        js = np.nonzero(m > 0.3)[0]
+        js = js[js + L + n <= len(y)] # (a continuation that is all there)
         if not len(js):
             return out
         ph = c[js]/np.maximum(np.abs(c[js]), 1e-30)
-        idx = (a + js)[:, None] + L + np.arange(n)[None, :]
-        tail = y[idx]*np.conj(ph)[:, None] # (candidates, n)
-        best = (tail @ self.words.T).real.max(axis=1)
-        csum = np.concatenate(([0.0], np.cumsum(np.abs(y)**2)))
-        e = csum[a + js + L + n] - csum[a + js]
+        best = np.empty(len(js))
+        y32, ph32 = y.astype(np.complex64), np.conj(ph).astype(np.complex64)
+        cols = np.arange(n)[None, :]
+        for k in range(0, len(js), 4096): # the candidates in blocks that stay in cache
+            sl = slice(k, k + 4096)
+            tail = y32[js[sl][:, None] + L + cols]*ph32[sl, None] # (candidates, n), phase taken off
+            # Re(tail . word) for every word: the (re, im) pairs of the tail are float32 rows, one real product ranks the words
+            best[sl] = (tail.view(np.float32) @ self._words_ri).max(axis=1)
+        e = cs[js + L + n] - cs[js]
         out[js] = (np.abs(c[js]) + best)/np.sqrt(np.maximum(e, 1e-30)*(L + n))
         return out
 
@@ -129,13 +153,14 @@ class FrameSync(Stage):
         """Frame st.start .. until, phase turned back; returns its length"""
         a, b = st.start - st.base, until - st.base
         y = st.buf[a:b]
-        n = np.arange(len(y)) - (self.L - 1)/2
+        c = (self.L - 1)/2
         if next_phase is None:
-            ph = np.full(len(y), st.phase)
-        else:
+            turn = np.exp(-1j*st.phase)
+        else: # a line from this preamble's phase to the next one's
             d = np.angle(np.exp(1j*(next_phase - st.phase)))
-            ph = st.phase + d*n/max(until - st.start, 1)
-        out.append(y*np.exp(-1j*ph))
+            rate = d/max(until - st.start, 1)
+            turn = track.line_phasor(st.phase - rate*c, rate, len(y))
+        out.append(y*turn)
         publish(meta, self, {"frame": st.k}, at=st.start, out=n_out)
         anchor(meta, self, st.start, n_out)
         st.k += 1

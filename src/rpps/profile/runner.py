@@ -119,6 +119,7 @@ class Runner:
                             self.span = i if self.span is None else min(self.span, i)
         self.ckpts, self.buf = [], []
         self._span_ops = set()
+        self.stop = len(self.slots) # Slots this runner runs itself: a parallel runner stops where its region starts
 
     # ---- the operators
 
@@ -150,12 +151,16 @@ class Runner:
             data = data.derive(data.data, data.CAT, data.DT, ctx=ctx, rep=data.REP)
         if self.framer is not None:
             self._frames(data, fields)
-        s0 = self.span if self.span is not None else len(self.slots)
+        s0 = self.span if self.span is not None else self.stop
         for i in range(s0):
             data = self._run_slot(i, data)
-        if s0 < len(self.slots):
+        if s0 < self.stop:
             data = self._run_span(data)
         self.ctx = dict(data.ctx)
+        return self._finish(data)
+
+    def _finish(self, data):
+        """What the runner does with what its own slots gave (a parallel runner hands it to its region)"""
         return data
 
     def _run_slot(self, i, data):
@@ -431,7 +436,7 @@ class Runner:
     # ---- receive: the re-run span
 
     def _span_slots(self):
-        return self.slots[self.span:]
+        return self.slots[self.span:self.stop]
 
     def _owned(self, key):
         return isinstance(key, tuple) and len(key) and id(key[0]) in self._span_ops
@@ -537,7 +542,7 @@ class Runner:
             nxt = max(nxt, cur + 1) if cur < end else end
             self._checkpoint(cur, ctx, len(outs))
             x = self._piece(cur, nxt, ctx, flush and nxt == end, D)
-            for i in range(s0, len(self.slots)):
+            for i in range(s0, self.stop):
                 x = self._run_slot(i, x)
             self._span_ops |= {id(s.op) for s in self._span_slots()}
             outs.append(x)

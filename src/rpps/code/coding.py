@@ -12,7 +12,7 @@ from .. import _config
 from ..base import Mod, Digital, dtype
 from ..base.types import Category, Rep
 from ..base.data import expect
-from ..base.rpps import align, FLUSH
+from ..base.rpps import align, FLUSH, FRAME, STREAM
 
 from . import types as types
 
@@ -203,8 +203,23 @@ def _code_of(obj):
 
 DEFAULT_DECODER = {"linear": "trellis", "cyclic": "syndrome"} # What decodes a code type when its definition doesn't say
 
+def _block_kernel(self, params, how):
+    """The batch decoder of a code that works on whole blocks and keeps nothing between them (block codes, block
+    interleavers), for the code as `params` (live parameters) make it; None where there is none (encoding, no code, a code with
+    memory)"""
+    if how != "/":
+        return None
+    if params:
+        self.control(**params)
+    if self._dec is None or (self.folder == "interleave" and not hasattr(self._dec, "block_bits")):
+        return None
+    from ..parallel.kernels import BlockDecode
+    return BlockDecode(self._dec, self._block(False), self.decision == Decision.SOFT, self.CATEGORY, self.DECODE_GIVES, str(self.name))
+
 class Block(Coding):
+    SCOPE = FRAME # Whole codewords
     """Parent block coding"""
+    kernel = _block_kernel
 
     @staticmethod
     def load(name, obj, decoder=None):
@@ -278,6 +293,8 @@ class Convolutional(Coding):
         return coder.encode(x) if enc else coder.decode(x)
 
 class Interleaver(Coding):
+    SCOPE = FRAME # A block interleaver; a Forney one carries delay lines (STREAM, set when loaded)
+    kernel = _block_kernel
     """Interleaver: Forney (convolutional: I branches, M symbols of delay increment, state carried along the stream)
     or block (a permutation of each block)"""
 
@@ -289,6 +306,7 @@ class Interleaver(Coding):
         out.folder = "interleave"
         if not hasattr(code, "block_bits"):
             out.CONTROLS = {"name": "restart"} # Its delay lines hold data interleaved the old way
+            out.SCOPE = STREAM
         return out
 
     def pos_rate(self, decode):

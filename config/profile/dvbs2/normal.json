@@ -20,6 +20,7 @@
       "comment": "the transmit pulse, and so the matched filter: rrc/0p35, rrc/0p25 or rrc/0p20 (DVB-S2's roll-offs)"
     }
   },
+  "parallel": "plscram",
   "steps": [
     {
       "wave": "shape",

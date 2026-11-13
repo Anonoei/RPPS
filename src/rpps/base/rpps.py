@@ -21,10 +21,18 @@ def align(ctx, key, x, block, pad, log=None):
         elif pad:
             x = np.concatenate((x[:n], rest, np.zeros(block - len(rest), dtype=x.dtype)))
             n = len(x)
-        elif log is not None:
-            log.warn(f"Dropped {len(rest)} trailing items short of a block of {block}")
+        else:
+            ctx.setdefault(DROPPED, []).append(len(rest)) # (a parallel region's worker reports it: a frame cut short)
+            if log is not None:
+                log.warn(f"Dropped {len(rest)} trailing items short of a block of {block}")
     return x[:n]
 
+STREAM, FRAME = "stream", "frame"
+# Scope of an operator's state (ARCHITECTURE.md, Parallelism). STREAM: it carries state from one frame to the next (trackers,
+# frame sync, convolutional decoders), so frames can't be processed apart. FRAME: it holds nothing across a frame start, so
+# a frame is a pure function of its data and the parameters controls gave it. Default STREAM (safe).
+
+DROPPED = "dropped" # ctx entry: items a flushed decoder had to drop, as [count, ...]
 FLUSH = "flush" # ctx entry: this is the end of the stream, so nothing is held back (set by Data)
 
 
@@ -40,6 +48,8 @@ class Pipe:
     """
     __array_ufunc__ = None # numpy defers to the operators here instead of broadcasting over the object
     CATEGORY = None # The rpps.base.types.Category of what it does (stages without one count as SIGNAL)
+    SCOPE = STREAM  # STREAM or FRAME: where its state lives (see above)
+    SCOPE_NEEDS = () # FRAME only while a control drives these parameters (a scrambler restarts at a frame start by `length`)
 
     def takes(self, encode):
         """The representations (rpps.base.types.Rep) this accepts to encode (True) or decode (False); None: not checked"""

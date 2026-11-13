@@ -9,9 +9,9 @@ import numpy as np
 
 from ..base import Mod, dtype
 from ..base.types import Category, Rep
-from ..base.rpps import align
+from ..base.rpps import align, FRAME
 from ..errors import ConfigError
-from ..math.prob import logsumexp, mixture_variance
+from ..math import demap
 
 from .modulation import Modulation
 from .mapping import Mapping, expand_maps
@@ -61,6 +61,7 @@ class Constellation(Modulation):
     # ---- header-driven control (rpps.profile.control)
 
     CONTROLS = {"name": "live", "mapping": "live"}
+    SCOPE = FRAME # Whole symbols of bits; nothing is held across frames
 
     def control(self, name=None, mapping=None):
         """Become another constellation (`name`, as `rp.symbol.load` takes it) and/or use another of its maps, from here on:
@@ -74,6 +75,15 @@ class Constellation(Modulation):
                 self.mapping = new.mapping
         if mapping is not None:
             self.mapping = self._pick_map(mapping)
+
+    def kernel(self, params, how):
+        """The batch demapper, for the constellation as `params` (live parameters) make it; encoding has none yet"""
+        if how != "/":
+            return None
+        from ..parallel.kernels import Demap
+        if params:
+            self.control(**params)
+        return Demap(self.points.copy(), self.labels().astype(bool), self.maxlog, self.name)
 
     def pos_rate(self, decode):
         """Bits per symbol decoding, symbols per bit encoding (rpps.profile positions)"""
@@ -170,9 +180,9 @@ class Constellation(Modulation):
 
         Expectation-maximisation over the Gaussian mixture of the constellation points
         """
-        y = np.asarray(syms, dtype=np.complex128).reshape(-1, 1)
-        d2 = np.abs(y - self.points[None, :])**2
-        return 2*mixture_variance(d2, iters, _MIN_VAR) # E|n|^2 is twice the variance per real dimension
+        y = np.asarray(syms, dtype=np.complex128).reshape(1, -1)
+        d2, dmin = demap.distances(np, y, self.points)
+        return float(2*demap.noise_variance(np, d2, dmin, iters, _MIN_VAR)[0]) # E|n|^2 is twice the variance per real dimension
 
     def llr(self, syms, noise_var=None, maxlog=False):
         """Per-bit log-likelihood ratios of received symbols, log(P(bit=0)/P(bit=1)), positive means 0
@@ -182,22 +192,12 @@ class Constellation(Modulation):
             log-MAP decoders do
         maxlog: use the nearest point of each bit value rather than summing over all of them
 
-        Returns a flat array, symbol after symbol, bits in the order `modulate` takes them
+        Returns a flat array, symbol after symbol, bits in the order `modulate` takes them. One implementation with the
+        batch demapper (rpps.math.demap): a frame in a batch comes out as it does alone
         """
-        syms = np.asarray(syms, dtype=np.complex128).reshape(-1)
-        if noise_var is None:
-            noise_var = self.estimate_noise(syms)
-        noise_var = max(float(noise_var), 2*_MIN_VAR)
-        logp = -np.abs(syms[:, None] - self.points[None, :])**2/noise_var # (N, points)
+        y = np.asarray(syms, dtype=np.complex128).reshape(1, -1)
         lab = self.labels().astype(bool)
-        out = np.empty((len(syms), self.bits_per_symbol), dtype=np.float32)
-        for j in range(self.bits_per_symbol):
-            one = lab[:, j]
-            if maxlog:
-                out[:, j] = logp[:, ~one].max(axis=1) - logp[:, one].max(axis=1)
-            else:
-                out[:, j] = logsumexp(logp[:, ~one]) - logsumexp(logp[:, one])
-        return out.reshape(-1)
+        return demap.llr_rows(np, y, self.points, lab, demap.mask_matrix(lab), noise_var, maxlog, floor=_MIN_VAR)[0]
 
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         """Draw the points with their labels (and the unit circle)"""

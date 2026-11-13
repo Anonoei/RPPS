@@ -147,12 +147,17 @@ class ldpc(_code):
         return (np.add.reduceat(w[:, self.var], self.cstart, axis=1) % 2).astype(np.uint8)
 
     def decode_codewords(self, llr):
-        """Min-sum on (B, N) LLRs. Returns hard decisions (B, N)"""
+        """Min-sum on (B, N) LLRs. Returns hard decisions (B, N); `converged` says which codewords satisfied every check"""
+        hard, self.converged = self.min_sum(llr)
+        return hard
+
+    def min_sum(self, llr):
+        """Min-sum on (B, N) LLRs: (hard decisions (B, N), converged (B,)). Keeps nothing on the code, so threads can share it"""
         if _accel.native is not None:
-            hard, self.converged = _accel.native.ldpc_minsum(
+            hard, converged = _accel.native.ldpc_minsum(
                 np.ascontiguousarray(llr, dtype=np.float64), self.var, self.cstart.astype(np.int64), self.deg,
                 self.order.astype(np.int64), self.vstart.astype(np.int64), self.vend.astype(np.int64), int(self.iters), float(self.alpha))
-            return hard
+            return hard, converged
         B = llr.shape[0]
         ch = llr
         v2c = ch[:, self.var].copy() # (B, E)
@@ -182,8 +187,7 @@ class ldpc(_code):
             done = ~self.syndrome(total < 0).any(axis=1)
             if done.all():
                 break
-        self.converged = done
-        return total < 0
+        return total < 0, done
 
     def decode(self, bits, soft=None):
         x = np.asarray(bits)
@@ -191,6 +195,6 @@ class ldpc(_code):
             soft = x.dtype.kind == "f"
         llr = x.astype(np.float64) if soft else 2.0*(1.0 - 2.0*x.astype(np.float64)) # Hard bit: LLR +-2
         llr = llr[:len(llr)//self.N*self.N].reshape(-1, self.N)
-        cw = self.decode_codewords(llr)
-        self.errors = word_errors(llr < 0, cw, self.converged)
+        cw, converged = self.min_sum(llr)
+        self.converged, self.errors = converged, word_errors(llr < 0, cw, converged)
         return cw[:, self.info].reshape(-1)

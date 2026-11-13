@@ -10,5 +10,6 @@ control (`controls`, `publish`, tables) and rpps.profile.runner for how runners 
 """
 from .profile import Profile, load, ls
 from .runner import Runner
+from .parallel import Region
 from .steps import Step
 from .control import publish, anchor, table, Table, Control

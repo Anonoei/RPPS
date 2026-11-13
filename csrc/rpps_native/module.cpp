@@ -8,4 +8,8 @@ PYBIND11_MODULE(_native, m) {
     rpps::register_trellis(m);
     rpps::register_fec(m);
     rpps::register_spread(m);
+    rpps::register_demap(m);
+    rpps::register_framesync(m);
+    rpps::register_firdec(m);
+    rpps::register_carrier(m);
 }

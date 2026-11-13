@@ -5,12 +5,14 @@
      "defaults": {"timing": {"method": "gardner"}},       optional: how the receiver estimates what sync steps name
      "steps": [ {"<category>": "<kind>", "id": ..., ...}, ... ]}     in receive order (see rpps.profile.steps)
      "controls": {"<header step id>": {...}}              optional: header-driven control (see rpps.profile.control)
+     "parallel": "<step id>"                              optional: the first step that runs frame by frame (see rpps.profile.parallel)
 """
 from .. import _config
 from ..base.types import Rep
 from ..errors import ConfigError
 from . import steps as _steps
 from . import control as _control
+from . import parallel as _parallel
 from .runner import Runner, Slot
 
 class Profile:
@@ -24,6 +26,7 @@ class Profile:
             raise ConfigError(f"profile {name}: no steps")
         self.steps = self._build()
         self.controls = _control.parse(obj.get("controls"), self.steps, f"profile {name}")
+        self.region = _parallel.plan(obj.get("parallel"), self.steps, self.controls, f"profile {name}")
 
     def _build(self):
         """The steps, built (each runner builds its own: header-driven control changes their operators)"""
@@ -37,17 +40,40 @@ class Profile:
             st.takes = rep
             rep = st.gives
             built.append(st)
+        if self._sync.get("timing", {}).get("fuse", True):
+            self._fuse(built)
         return built
 
-    def rx(self, start=Rep.SAMPLES, applied=()):
+    @staticmethod
+    def _fuse(steps):
+        """A matched filter right before a timing that is known (not estimated) is evaluated by it, at the instants it samples:
+        the step of the filter keeps no operator (Oerder & Meyr needs the filter's output at every sample, so nothing fuses)"""
+        from .steps import _KnownTiming
+        for a, b in zip(steps, steps[1:]):
+            if (a.category == "wave" and a.kind == "shape" and len(a.rx) == 1 and getattr(a.rx[0][1], "matched", False)
+                    and b.category == "sync" and b.kind == "timing" and len(b.rx) == 1 and isinstance(b.rx[0][1], _KnownTiming)):
+                b.rx[0][1].fuse(a.rx[0][1])
+                a.rx = []
+
+    def rx(self, start=Rep.SAMPLES, applied=(), parallel=None):
         """Receive runner. start: the representation the source gives (a demodulator's timed symbols are SYMBOLS): the steps
-        before it are skipped. applied: sync kinds the source has done already (`{"timing"}`): skipped too"""
+        before it are skipped. applied: sync kinds the source has done already (`{"timing"}`): skipped too.
+        parallel: an `rp.parallel.Parallel` (where and how the profile's parallel region runs, frame by frame); the profile
+        must have one (`"parallel"` in its definition)"""
         slots = []
         for st in self._build():
             if st.takes.value < start.value or (st.category == "sync" and st.kind in applied):
                 continue
             slots += [Slot(how, op, st, len(slots) + i) for i, (how, op) in enumerate(st.rx)]
-        return Runner(slots, f"{self.name} rx", self.controls, "rx")
+        if parallel is None:
+            return Runner(slots, f"{self.name} rx", self.controls, "rx")
+        if self.region is None:
+            raise ConfigError(f"profile {self.name}: has no parallel region (no \"parallel\" in its definition)")
+        from ..parallel.runner import ParallelRunner
+        first = self.region.steps[0].id
+        from ..parallel.worker import RegionSteps
+        make = RegionSteps(self.name, self.obj, self._sync, self.params, self.region.first)
+        return ParallelRunner(slots, f"{self.name} rx (parallel)", self.controls, "rx", make, first, parallel)
 
     def tx(self):
         """Transmit runner: the transform steps inverted, in reverse order (sync and signal steps have no transmit side).

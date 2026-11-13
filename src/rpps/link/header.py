@@ -29,13 +29,14 @@ import numpy as np
 
 from .. import _config
 from ..base import Digital, dtype
-from ..base.rpps import Pipe
+from ..base.rpps import Pipe, FRAME
 from ..base.types import Category, Rep
 from ..base.data import expect
 from ..errors import ConfigError
 
 class Header(Pipe):
     CATEGORY = Category.LINK
+    SCOPE, SCOPE_NEEDS = FRAME, ("length",) # A frame's own header and payload, when a control gives its length
 
     def __init__(self, name, fields, order="msb", crc=None, payload=None, preamble=None, framed=False):
         self.name = name

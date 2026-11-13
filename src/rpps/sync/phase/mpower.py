@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from ... import _accel
 from ...base import Stage
 from .. import track
 
@@ -48,7 +49,7 @@ class MPower(Stage):
 
     def _acquire(self, seg, n, c):
         M = self.order
-        z = _unit(seg)**M
+        z = _power(_unit(seg), M)
         N = 4*(1 << int(np.ceil(np.log2(max(len(z), 2)))))
         F = np.abs(np.fft.fft(z, N))
         i = int(np.argmax(F))
@@ -88,16 +89,15 @@ class MPower(Stage):
                         tr.started = False
                         track.update(tr, (np.angle(s) - self.offset)/M, c, rate=2*np.pi*f)
                 else:
-                    z = _unit(seg*np.exp(-1j*track.at(tr, n)))**M
-                    s = np.sum(z)
-                    st.snr = float(np.abs(s)/max(np.sum(np.abs(z)), 1e-30)*np.sqrt(len(seg)))
+                    s, mag = _measure(seg, track.at(tr, a0), tr.rate, M)
+                    st.snr = float(np.abs(s)/max(mag, 1e-30)*np.sqrt(len(seg)))
                     if st.snr >= self.gate:
                         e = track.wrap((np.angle(s) - self.offset)/M, 2*np.pi/M)
                         bw = self.bw if tr.windows >= 4 else max(self.bw, 0.6) # Wide while it pulls in
                         track.update(tr, track.at(tr, c) + e, c, 2*np.pi/M, bw)
                     else:
                         track.miss(tr, c)
-            out.append(seg*np.exp(-1j*track.at(tr, n)) if tr.started else seg)
+            out.append(_turn_back(seg, track.at(tr, a0), tr.rate) if tr.started else seg.astype(np.complex64))
             st.k += 1
             if b >= end:
                 break
@@ -109,11 +109,34 @@ class MPower(Stage):
                                           windows=tr.windows, missed=tr.missed, latency=W/meta.Fs)
         return np.concatenate(out).astype(np.complex64) if out else np.zeros(0, np.complex64)
 
+def _measure(seg, phi0, rate, M):
+    """(sum z, sum |z|) of z = unit(seg turned back by the phase line)^M: a window's measurement (one C++ call, or numpy)"""
+    if _accel.native is not None:
+        return _accel.native.mpower_sum(seg, phi0, rate, M)
+    z = _power(_unit(seg*track.line_phasor(phi0, rate, len(seg))), M)
+    return np.sum(z), float(np.sum(np.abs(z)))
+
+def _turn_back(seg, phi0, rate):
+    """seg turned back by the phase line, single precision"""
+    if _accel.native is not None:
+        return _accel.native.rotate_line(seg, phi0, rate)
+    return (seg*track.line_phasor(phi0, rate, len(seg))).astype(np.complex64)
+
 def _unit(y):
     """y with its magnitudes taken off: the phase alone goes into the M-th power (Viterbi & Viterbi with no amplitude
     weight), so a few large noise samples can't make a line, and noise alone gives |sum z| / sqrt(n) about 1"""
-    a = np.abs(y)
-    return np.where(a > 0, y/np.maximum(a, 1e-30), 0)
+    return y/np.maximum(np.abs(y), 1e-30) # (a zero stays zero)
+
+def _power(u, M):
+    """u**M for an integer M, by squaring: a complex power is several times slower than the multiplications"""
+    out, base = None, u
+    while M:
+        if M & 1:
+            out = base if out is None else out*base
+        M >>= 1
+        if M:
+            base = base*base
+    return out if out is not None else np.ones_like(u)
 
 def offset_of(constellation, order):
     """The angle of a constellation's mean point^M: what MPower takes off as `offset`"""

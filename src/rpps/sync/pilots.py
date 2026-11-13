@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from ..base import Stage
+from ..base.rpps import FRAME
 
 class PilotEqualizer(Stage):
     """Equalize OFDM carriers from their pilots: n_fft carrier values per OFDM symbol in, the same with the channel removed
@@ -61,6 +62,7 @@ class PilotPhase(Stage):
     Estimates in stream.est[name]: the last frame's phase line (phase at the start, per symbol).
     """
     CONTROLS = {"slots": "live", "pilots": "live"}
+    SCOPE = FRAME
 
     def __init__(self, slot=90, every=16, length=36, value=(1 + 1j)/np.sqrt(2), slots=None, pilots=True, lead=None,
                  name="pilots"):
@@ -80,6 +82,17 @@ class PilotPhase(Stage):
 
     def pos_rate(self, decode):
         return 1.0
+
+    def kernel(self, params, how):
+        """The batch carrier fit, for the frame layout `params` set (without one, or without pilots, the symbols pass)"""
+        from ..parallel.kernels import PilotLine
+        if params:
+            self.control(**params)
+        if self.slots is None or not self.pilots:
+            return PilotLine([], 0, self.length, self.value, None, self.name) # the symbols pass
+        from ..symbol.frame import pilot_layout
+        total, starts = pilot_layout(self.slots, self.pilots, self.slot, self.every, self.length)
+        return PilotLine(starts, total, self.length, self.value, self.lead, self.name)
 
     def new_state(self, meta):
         return SimpleNamespace(held=np.zeros(0, np.complex128), i=0)

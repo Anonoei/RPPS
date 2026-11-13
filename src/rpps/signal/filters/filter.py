@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from ...base import Meta, Stage
+from .convolve import convolve
 
 class Filter(Stage):
     pass
@@ -12,8 +13,13 @@ class FIR(Filter):
     def make_taps(self, meta: Meta):
         raise NotImplementedError()
 
+    matched = False # A matched filter (a profile sets it): its taps are scaled so that with the pulse it matches, the symbols come back at unit gain
+
     def new_state(self, meta: Meta):
-        return SimpleNamespace(taps=np.asarray(self.make_taps(meta)), hist=None)
+        taps = np.asarray(self.make_taps(meta))
+        if self.matched:
+            taps = taps/np.sum(taps*taps) # pulse * matched filter peaks at sum(h^2): taken off, so a symbol of 1 comes back as 1
+        return SimpleNamespace(taps=taps, hist=None)
 
     @staticmethod
     def stream(samples, taps, hist):
@@ -24,7 +30,7 @@ class FIR(Filter):
         buf = np.concatenate((hist, samples))
         if len(samples) == 0:
             return samples, hist
-        out = np.convolve(buf, taps, mode="valid")
+        out = convolve(buf, taps, "valid") # FFT blocks for a long filter on a long block, else np.convolve
         return out, buf[len(buf)-keep:]
 
     def step(self, samples, st, meta: Meta):

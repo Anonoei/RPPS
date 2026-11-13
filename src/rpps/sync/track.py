@@ -11,6 +11,7 @@ The state is a SimpleNamespace (`new()`), kept in the estimating stage's stream 
 """
 from types import SimpleNamespace
 
+import numpy as np
 
 def new():
     """A tracker that has seen nothing: `started` False until the first update"""
@@ -23,6 +24,18 @@ def wrap(x, period):
 def at(tr, t):
     """The tracked value at position t (any position: the correction is evaluated per item, not per window)"""
     return tr.value + tr.rate*(t - tr.at)
+
+def line_phasor(phi0, rate, length):
+    """exp(-j (phi0 + rate i)) for i in 0 .. length-1: a phase line turned into a phasor with no exponential per item. Each
+    block of about sqrt(length) items is one start phasor times the same short vector of exponentials, so it costs two
+    multiplications an item and about 2 sqrt(length) exponentials, and agrees with the direct exponential to about 1e-14"""
+    if length <= 0:
+        return np.zeros(0, np.complex128)
+    block = max(16, int(length**0.5))
+    nb = -(-length//block)
+    local = np.exp(-1j*rate*np.arange(block))
+    starts = np.exp(-1j*(phi0 + rate*block*np.arange(nb)))
+    return (starts[:, None]*local[None, :]).reshape(-1)[:length]
 
 def update(tr, measured, t, period=None, bw=0.25, rate=None):
     """A window's measurement (modulo `period` when given) at position t, its centre. rate: a measured rate to start from"""
