@@ -1,4 +1,4 @@
-"""Batch kernels of the generic operators (ARCHITECTURE.md, Parallelism)
+"""Batch kernels of the generic operators (README.dev.md, Parallelism)
 
 Each is the batch form of one operator, built from its definition (never from a protocol): `Demap` of a constellation, and so
 on. They take `[N, L]` arrays, one frame per row, and are checked row for row against the operator run frame by frame

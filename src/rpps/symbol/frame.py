@@ -1,4 +1,4 @@
-"""Known structure among the symbols of a frame (ARCHITECTURE.md, symbol): physical headers, pilot blocks, phase scrambling
+"""Known structure among the symbols of a frame (README.dev.md, symbol): physical headers, pilot blocks, phase scrambling
 
 These work frame by frame. A frame starts wherever a profile applies a change to them (rpps.profile.control): a frame
 sync publishes each frame's start, a header publishes what follows it, and each step restarts its frame there. Used on

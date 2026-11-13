@@ -1,4 +1,4 @@
-"""The unit of parallel work: one frame in, one result out (ARCHITECTURE.md, Parallelism)
+"""The unit of parallel work: one frame in, one result out (README.dev.md, Parallelism)
 
 A `Frame` holds everything needed to process it, and nothing shared: no Stream, no Meta, no ctx. It can be pickled, put in
 shared memory or sent to a device. `params` are the controlled parameters the serial front already resolved for it

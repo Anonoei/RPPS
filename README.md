@@ -72,25 +72,25 @@ Definitions (codes, scramblers, modulations) ship with the package. Add your own
 Logging is off until you ask: `rp.logger.enable("DEBUG")`.
 
 ## Roadmap
- - [ ] [Serial](https://github.com/Anonoei/RPPS/tree/main/src/rpps/serial)
+ - [ ] [Source](https://github.com/Anonoei/RPPS/tree/main/src/rpps/source)
    - [X] File
    - [ ] (Linux only) tun/tap
    - [ ] Socket
- - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/filters)
+ - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/filters)
    - [X] Pulse Shaping
    - [X] Window functions
- - [X] [Sample](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sample)
+ - [X] [Sample](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/sample)
  - [ ] [Sync](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sync)
    - [X] Frequency
    - [ ] Phase
    - [ ] Time
- - [X] [Mod](https://github.com/Anonoei/RPPS/tree/main/src/rpps/mod)
+ - [X] [Symbol](https://github.com/Anonoei/RPPS/tree/main/src/rpps/symbol)
    - [X] PSK
    - [X] QAM
    - [X] APSK
    - [X] ASK
    - [X] FSK
- - [ ] [Coding](https://github.com/Anonoei/RPPS/tree/main/src/rpps/coding)
+ - [ ] [Code](https://github.com/Anonoei/RPPS/tree/main/src/rpps/code)
    - [ ] Block
      - [X] Repetition
      - [X] Hamming (decoded on its syndrome trellis)
@@ -102,11 +102,11 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
      - [X] Viterbi (hard and soft)
      - [X] BCJR / trellis (log-MAP, max-log-MAP)
    - [X] Soft decisions (demodulator LLRs into the decoders)
- - [ ] [Scram](https://github.com/Anonoei/RPPS/tree/main/src/rpps/scram)
+ - [ ] [Scramblers](https://github.com/Anonoei/RPPS/tree/main/src/rpps/code/scram)
    - [X] fibonacci
    - [X] galois
    - [X] V.35
- - [ ] [Encapsulation](https://github.com/Anonoei/RPPS/tree/main/src/rpps/encap)
+ - [ ] [Link](https://github.com/Anonoei/RPPS/tree/main/src/rpps/link)
    - [X] CRC
    - [X] HDLC
    - [ ] PPP
@@ -115,10 +115,10 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
    - [X] Over-Time
 
 ## Contributing
+See [README.dev.md](README.dev.md) for the design, how the project is organized and implemented, and how to add to it.
  1. `git clone https://github.com/Anonoei/RPPS`
  2. `cd RPPS`
  3. `git branch -c feature/<your feature>`
- 4. `python3 builder.py -b -l` build and install rpps locally
-    - This also installs deps, and dev_deps automatically
+ 4. `python3 builder.py -s -c` installs rpps editable with its dev dependencies and builds the C++ kernels
  5. run `python3 -m pytest` (add `-m "not slow"` to skip the chain tests). Scratch scripts live in `tests/dev`
  6. Check out the `dev` branch for latest changes

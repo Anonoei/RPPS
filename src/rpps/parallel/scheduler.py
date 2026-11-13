@@ -1,4 +1,4 @@
-"""Scheduler: frames in, batches out to an executor, results back in order (ARCHITECTURE.md, Parallelism)
+"""Scheduler: frames in, batches out to an executor, results back in order (README.dev.md, Parallelism)
 
     sch = Scheduler(executor, worker, max_batch=16)
     for frame in frames:

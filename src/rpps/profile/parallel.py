@@ -1,4 +1,4 @@
-"""Where a profile's parallel region starts, and whether it can (ARCHITECTURE.md, Parallelism)
+"""Where a profile's parallel region starts, and whether it can (README.dev.md, Parallelism)
 
 A profile marks the first step of the region: `"parallel": "<step id>"`. Everything from there on runs frame by frame, and
 the steps before it (the serial front) find the frames and decide their parameters. The loader refuses a region that

@@ -1,4 +1,4 @@
-"""Profiles: one config file per signal, both directions (ARCHITECTURE.md, Profiles)
+"""Profiles: one config file per signal, both directions (README.dev.md, Profiles)
 
     {"base": "profile", "comment": "...", "ref": "...",
      "params": {"sps": {"default": 4}},

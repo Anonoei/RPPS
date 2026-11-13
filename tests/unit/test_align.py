@@ -1,4 +1,4 @@
-"""Sync on bits: Align (ARCHITECTURE.md, Migration step 3)"""
+"""Sync on bits: Align (README.dev.md)"""
 import numpy as np
 import pytest
 

@@ -1,4 +1,4 @@
-"""What each step of a profile builds (ARCHITECTURE.md, Profiles)
+"""What each step of a profile builds (README.dev.md, Profiles)
 
 A step is one dict with one category key, `{"<category>": "<kind>", ...its parameters}`, in receive order. Building it
 gives a Step: the operators it runs on receive and on transmit, and the representations it takes and gives on receive.
@@ -71,7 +71,7 @@ def _sync_method(kind, spec, ctx):
     return chosen
 
 _SYNC_DEFAULTS = {
-    "timing": {"method": "oerder_meyr"}, # first class: block estimation tracked across windows (ARCHITECTURE.md, Sync methods)
+    "timing": {"method": "oerder_meyr"}, # first class: block estimation tracked across windows (README.dev.md, Sync methods)
     "carrier": {"method": "mpower"},     # first class likewise; the loops (mm, gardner, costas) are there by name
     "align": {"method": "align"},
     "puncture": {"method": "reencode"},

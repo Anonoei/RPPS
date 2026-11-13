@@ -1,4 +1,4 @@
-"""Batch plans: a region's kernels for one set of parameters (ARCHITECTURE.md, Parallelism)
+"""Batch plans: a region's kernels for one set of parameters (README.dev.md, Parallelism)
 
 A `BatchPlan` is what a worker compiles for a `Frame.key` (the parameters the front resolved, and the frame's shape) and runs
 on every batch with that key. It chains the region's kernels, checks the lengths between them where they are known, keeps the

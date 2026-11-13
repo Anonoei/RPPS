@@ -11,7 +11,7 @@ class MPower(Stage):
 
         symbols = timed + rp.sync.phase.MPower(order=4, offset=np.pi)     # QPSK at 45 degrees: its points^4 are -1
 
-    First class (ARCHITECTURE.md, Sync methods). Windows sit at absolute stream positions, `window` seconds (at least
+    First class (README.dev.md, Sync methods). Windows sit at absolute stream positions, `window` seconds (at least
     `min_symbols`). The first window that shows the carrier acquires it: the FFT of y^M (zero padded) gives the
     frequency, |f| < 1/(2M) cycles per symbol, and the phase at its centre. After that each window measures the
     residual phase of y turned back by the tracked line, (angle(sum u^M) - offset) / M with u = y e^{-j phase} / |y|, and a block-rate

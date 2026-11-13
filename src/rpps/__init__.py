@@ -31,7 +31,7 @@ The data carries its sample rate and the state of every stage, so there is nothi
 
 ## Where things are
 
-Packages follow the categories of ARCHITECTURE.md: data goes samples -> symbols -> channel bits -> data bits -> packets.
+Packages follow the categories of README.dev.md: data goes samples -> symbols -> channel bits -> data bits -> packets.
 
 | Package | Category: what it does |
 | --- | --- |

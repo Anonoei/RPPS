@@ -1,4 +1,4 @@
-"""Profiles: a whole signal as one config file, in receive order, both directions (ARCHITECTURE.md)
+"""Profiles: a whole signal as one config file, in receive order, both directions
 
     p = rp.profile.load("ieee802154/2450", sps=4)
     wave = p.tx()(rp.Data(payload))             # transmit: the transforms inverted, in reverse order

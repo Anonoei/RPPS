@@ -1,4 +1,4 @@
-"""Frame sync: where frames start (ARCHITECTURE.md, sync)
+"""Frame sync: where frames start (README.dev.md, sync)
 
     FrameSync   symbols: correlate a known preamble (DVB-S2 SOF), give each frame from its preamble to the next one,
                 with the carrier phase the preambles measured taken off

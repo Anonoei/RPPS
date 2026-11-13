@@ -11,7 +11,7 @@ class Align(BitStage):
         aligned = bits + rp.sync.Align(period=64, markers=(0x7E,))                     # any of a set, every period
 
     Takes channel or data bits, as LLRs or hard bits, and gives the same form back, starting on a marker and with the
-    polarity put right (LLRs negated, bits inverted). This is sync on bits (ARCHITECTURE.md): block estimation, then
+    polarity put right (LLRs negated, bits inverted). This is sync on bits: block estimation, then
     tracking at the block rate.
 
     What starts each period is either

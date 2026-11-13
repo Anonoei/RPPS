@@ -1,4 +1,4 @@
-"""Profiles: a whole signal from one config file (ARCHITECTURE.md, Profiles; Migration step 6)"""
+"""Profiles: a whole signal from one config file (README.dev.md, Profiles)"""
 import numpy as np
 import pytest
 

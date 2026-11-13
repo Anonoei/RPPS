@@ -119,7 +119,7 @@ class BlockLS(Stage):
 
         symbols = timed + carrier + rp.sync.equalize.BlockLS(rp.symbol.load("QPSK"), taps=7)
 
-    First class (ARCHITECTURE.md, Sync methods): block estimation, where LMS and CMA adapt per symbol. Windows sit at
+    First class (README.dev.md, Sync methods): block estimation, where LMS and CMA adapt per symbol. Windows sit at
     absolute stream positions, `window` seconds (at least `min_symbols`). On each, the taps w (symbol spaced, centred:
     output n uses inputs n - taps//2 .. n + taps//2) solve min |X w - d|^2, d the constellation points nearest to X w,
     `iters` times; the window's solution is blended with the last (`blend` of the old: the tracking across windows), and

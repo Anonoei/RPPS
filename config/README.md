@@ -1,7 +1,7 @@
 # config/
 
 JSON definitions RPPS loads by name, one folder per **resource**: what a definition is, not which package loads it
-(ARCHITECTURE.md, Config resources). `config/<resource>/[<group>/]<name>.json`. A file's `base` picks the loader within
+(README.dev.md, Config resources). `config/<resource>/[<group>/]<name>.json`. A file's `base` picks the loader within
 the resource and its `type` the implementation; the keys each accepts are in the header of the module linked.
 
 | Resource | Holds | Example | Load | Keys |

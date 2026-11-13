@@ -1,7 +1,7 @@
 # sync
 
 Estimates something unknown about the data and corrects or aligns it, at whatever representation it can be separated
-(ARCHITECTURE.md, Sync methods). Its estimates go to `stream.est[name]`, never into the data.
+(README.dev.md, Sync methods). Its estimates go to `stream.est[name]`, never into the data.
 
 ## First class: block estimation, tracked across windows
 Windows at absolute stream positions, so any block cut gives the same output; a slow loop (`track`) carries each parameter

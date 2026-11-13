@@ -1,4 +1,4 @@
-"""The parallel runner: a serial front, then a region that runs frame by frame (ARCHITECTURE.md, Parallelism)
+"""The parallel runner: a serial front, then a region that runs frame by frame (README.dev.md, Parallelism)
 
     rx = profile.rx(parallel=rp.parallel.Parallel("thread", workers=8))
     out = rx(block)                  # as any runner; the output is the same, a frame later

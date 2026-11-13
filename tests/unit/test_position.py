@@ -1,4 +1,4 @@
-"""Absolute stream positions (ARCHITECTURE.md, Sync methods rule 1, and Migration step 2)"""
+"""Absolute stream positions (README.dev.md, Sync methods rule 1)"""
 from types import SimpleNamespace
 
 import numpy as np

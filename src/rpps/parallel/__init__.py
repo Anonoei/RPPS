@@ -1,4 +1,4 @@
-"""Parallel processing of frames (ARCHITECTURE.md, Parallelism; Migration step 10)
+"""Parallel processing of frames (README.dev.md, Parallelism)
 
 The serial front of a receiver finds frames and decides their parameters; a parallel region then takes each frame as a
 self-contained `Frame`, and a `Scheduler` batches them to an `Executor` and puts the `Result`s back in order. See

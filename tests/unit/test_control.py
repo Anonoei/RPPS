@@ -1,4 +1,4 @@
-"""Header-driven control (ARCHITECTURE.md, Header-driven control; Migration step 7)
+"""Header-driven control (README.dev.md, Header-driven control)
 
 Fields published with positions, the controls section and its tables, live / restart / none, positions carried between
 representations, the re-run buffer with drop-and-report, and transmit fields from a schedule or the caller. Then the two

@@ -1,4 +1,4 @@
-"""First-class sync estimators (ARCHITECTURE.md, Sync methods; Migration step 8)
+"""First-class sync estimators (README.dev.md, Sync methods)
 
 Block estimation per window at absolute stream positions, tracked across windows: timing (Oerder & Meyr), carrier
 (M-th power), equalization (block least squares). Each follows a drifting clock or carrier, gives the same output
