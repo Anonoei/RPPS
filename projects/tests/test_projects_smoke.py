@@ -11,7 +11,6 @@ PROJECTS = pathlib.Path(__file__).resolve().parents[1]
 FILES = sorted(p for p in PROJECTS.rglob("*.py") if "__pycache__" not in p.parts and "tests" not in p.relative_to(PROJECTS).parts and not p.name.startswith("_"))
 IDS = [str(p.relative_to(PROJECTS)) for p in FILES]
 pytest.importorskip("pysdrlib")
-pytest.importorskip("scipy")
 
 def run(code, *args, cwd=None, timeout=120):
     return subprocess.run([sys.executable, "-c", code, *args], capture_output=True, text=True, cwd=cwd, timeout=timeout)

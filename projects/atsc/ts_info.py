@@ -14,7 +14,7 @@ from collections import defaultdict
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
 import rpps as rp
 
-_CRC32 = rp.encap.load("crc", "crc32_mpeg2")._enc # MPEG-2 sections end in a CRC-32 (not reflected): the CRC over a whole intact section is 0
+_CRC32 = rp.link.load("crc", "crc32_mpeg2")._enc # MPEG-2 sections end in a CRC-32 (not reflected): the CRC over a whole intact section is 0
 
 STREAM = {0x01: "MPEG-1 video", 0x02: "MPEG-2 video", 0x03: "MPEG-1 audio", 0x04: "MPEG-2 audio", 0x0F: "AAC", 0x11: "AAC-LATM", 0x1B: "H.264 video", 0x24: "H.265 video", 0x81: "AC-3 audio", 0x87: "E-AC-3 audio"}
 

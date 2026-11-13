@@ -14,7 +14,7 @@ import argparse
 import zlib
 
 import numpy as np
-from scipy.signal import resample_poly
+from rpps.signal.sample import resample_poly
 
 import rpps as rp
 
@@ -38,20 +38,15 @@ def bursts(x, fs, factor=6.0, win=100, min_us=150):
     return [(s, e_) for s, e_ in zip(st, en) if (e_ - s)/fs*1e6 >= min_us]
 
 def despread(y, start, n, off=0.0):
-    """Correlate n consecutive symbols from start (float sample position): returns complex symbol values"""
-    out = np.empty(n, complex)
+    """Correlate n consecutive symbols from start (float sample position): returns complex symbol values (fewer when the capture ends first).
+    The fractional start is one linear interpolation of the stretch, then every symbol is the chip sums times the Barker code in one matrix product"""
     base = int(np.floor(start)); frac = start - base
-    for k in range(n):
-        i = base + k*SPS
-        seg = y[i:i + SPS + 1]
-        if len(seg) < SPS + 1:
-            return out[:k]
-        if frac:
-            seg = seg[:-1]*(1 - frac) + seg[1:]*frac
-        else:
-            seg = seg[:SPS]
-        out[k] = seg @ TEMPLATE
-    return out
+    n = min(n, (len(y) - base - 1)//SPS)
+    if n <= 0:
+        return np.zeros(0, complex)
+    seg = y[base:base + n*SPS + 1]
+    seg = seg[:-1]*(1 - frac) + seg[1:]*frac if frac else seg[:-1]
+    return seg.reshape(n, 11, OS).sum(axis=2) @ BARKER
 
 def find_timing(y, s, e, nsym=100):
     """Symbol-boundary phase (0..SPS-1) maximizing the despread energy over `nsym` symbols from about 5 symbols into the burst"""
@@ -85,15 +80,15 @@ def track(y, start, nsym):
     return np.concatenate(out) if out else np.zeros(0, complex)
 
 def descramble(bits):
+    """Self-synchronising descrambler z^-7 + z^-4 + 1 (rpps scramble/feedthrough/ieee80211b); the first 7 bits depend on the unknown register and are 0"""
     b = np.asarray(bits, np.uint8)
-    out = np.zeros(len(b), np.uint8)
-    for n in range(7, len(b)):
-        out[n] = b[n] ^ b[n - 4] ^ b[n - 7]
+    out = np.asarray(rp.code.scram.load("ieee80211b").decode(b.astype(bool))).astype(np.uint8)
+    out[:7] = 0
     return out
 
 SFD_BITS = [(0xF3A0 >> i) & 1 for i in range(16)] # transmitted LSB first
 
-_PLCP_CRC = rp.encap.load("crc", "crc16_genibus")._enc # CRC-16 CCITT, ones start, ones' complement (15.3.3.7)
+_PLCP_CRC = rp.link.load("crc", "crc16_genibus")._enc # CRC-16 CCITT, ones start, ones' complement (15.3.3.7)
 
 def crc16_plcp(bits):
     """CRC-16 of the 32 PLCP header bits (SIGNAL, SERVICE, LENGTH), as 16 bits MSB first"""

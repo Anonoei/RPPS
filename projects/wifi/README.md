@@ -4,7 +4,7 @@ Everything here is listen-only. A radio at 20 MS/s sees one 20 MHz Wi-Fi channel
 MAC frame, check the CRC-32, and report access points from their beacons. Only access points are listed. Client devices' addresses are not collected
 or printed (probe requests are only counted), and payloads are never decoded (data frames are mostly encrypted anyway).
 
-Run from the repo root. Needs a supported SDR, numpy and scipy. `wifi_scan.py` uses the shared radio helpers in `projects/common/radio_io.py`.
+Run from the repo root. Needs a supported SDR, numpy. `wifi_scan.py` uses the shared radio helpers in `projects/common/radio_io.py`.
 
 | file | what it is |
 |---|---|

@@ -36,7 +36,7 @@ def pn_modulation(u0):
     return m
 
 
-_GOLAY24 = rp.coding.load("block", "golay/24_12") # extended Golay, overall parity bit last
+_GOLAY24 = rp.code.load("block", "golay/24_12") # extended Golay, overall parity bit last
 
 
 def golay24_decode(c0):

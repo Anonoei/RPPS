@@ -13,7 +13,7 @@ import argparse
 import wave
 
 import numpy as np
-from scipy.signal import resample_poly
+from rpps.signal.sample import resample_poly
 
 DEC = 40
 

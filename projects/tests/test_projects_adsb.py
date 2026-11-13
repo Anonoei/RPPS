@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 pytest.importorskip("pysdrlib")
-pytest.importorskip("scipy")
 PROJECTS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECTS))
 import _paths  # noqa: E402,F401

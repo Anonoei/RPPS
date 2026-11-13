@@ -25,8 +25,7 @@ from fractions import Fraction
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
-import scipy.fft as sfft
-from scipy.signal import firwin, lfilter
+from rpps.signal.filters import FIR, low_pass
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
@@ -58,11 +57,11 @@ class Channelizer:
     def feed(self, x):
         self.buf = np.concatenate((self.buf, x))
         while len(self.buf) >= self.N:
-            yield self.n0, sfft.fft(self.buf[:self.N], workers=2)
+            yield self.n0, np.fft.fft(self.buf[:self.N])
             self.buf = self.buf[self.hop:]; self.n0 += self.hop
 
     def extract(self, X, n_b, kc):
-        y = sfft.ifft(sfft.ifftshift(X[(kc + self.rel) % self.N]*self.W))*(self.M/self.N)
+        y = np.fft.ifft(np.fft.ifftshift(X[(kc + self.rel) % self.N]*self.W))*(self.M/self.N)
         return (y[self.Mov:]*np.exp(-2j*np.pi*((kc*n_b) % self.N)/self.N)).astype(np.complex64)
 
 
@@ -72,15 +71,15 @@ class Chan:
 
     def __init__(self, freq, kc, on_frame, role="voice"):
         self.freq = freq; self.kc = kc; self.on_frame = on_frame; self.role = role
-        self.taps = firwin(121, 7e3, fs=RATE); self.zi = np.zeros(120, np.complex64); self.last = np.complex64(0); self.zb = np.zeros(4)
+        self.taps = low_pass(121, 7e3, fs=RATE).filt; self.zi = None; self.last = np.complex64(0); self.zb = None
         self.fi = np.zeros(0, np.float32); self.pw = np.zeros(0, np.float32); self.base = 0; self.since = 0
         self.done = []; self.level = -120.0; self.active = False; self.frames = 0; self.nac = None; self.last_frame = 0.0; self.born = time.monotonic()
 
     def push(self, y):
-        z, self.zi = lfilter(self.taps, 1, y, zi=self.zi)
+        z, self.zi = FIR.stream(y, self.taps, self.zi)
         zz = np.concatenate(([self.last], z)); self.last = z[-1]
         d = np.angle(zz[1:]*np.conj(zz[:-1]))*(RATE/(2*np.pi))
-        f, self.zb = lfilter(np.ones(5)/5, 1, d, zi=self.zb)
+        f, self.zb = FIR.stream(d, np.ones(5)/5, self.zb)
         self.fi = np.concatenate((self.fi, f.astype(np.float32))); self.pw = np.concatenate((self.pw, (np.abs(z)**2).astype(np.float32)))
         if len(self.fi) > self.KEEP:
             cut = len(self.fi) - self.KEEP; self.fi = self.fi[cut:]; self.pw = self.pw[cut:]; self.base += cut

@@ -91,17 +91,17 @@ alpha^0..alpha^19; convolutional byte interleaver B = 52, M = 4 (delay 10608 byt
 
 Not done; for later. In rough order of reuse:
 
-1. **`rp.mod.VSB` / `rp.sync.ToneLock`**: an 8VSB demodulator stage (pilot lock, matched filter, symbol clock from segment sync) and
+1. **`rp.symbol.VSB` / `rp.sync.ToneLock`**: an 8VSB demodulator stage (pilot lock, matched filter, symbol clock from segment sync) and
    a generic pilot-lock stage (`ToneLock` in `atsc_probe.py`, and `PilotPLL` in `fm_rx.py`, are the same idea).
-2. **`rp.filters.equalizer`**: least-squares / decision-directed equalizer (`train_equalizer`, `apply_equalizer`), which is general.
-3. **`rp.coding` trellis code**: the ATSC 4-state code with an uncoded precoded bit and its Viterbi decoder (`viterbi`), batched over
+2. **`rp.signal.filters.equalizer`**: least-squares / decision-directed equalizer (`train_equalizer`, `apply_equalizer`), which is general.
+3. **`rp.code` trellis code**: the ATSC 4-state code with an uncoded precoded bit and its Viterbi decoder (`viterbi`), batched over
    interleaved encoders. The decoder is vectorised across encoders and fields (~2 s per field batch).
-4. **`rp.coding` convolutional byte interleaver** (`deinterleave`) and an `rs/207_187` config (the existing RS handles it: it needs
-   only `config/coding/block/rs/207_187.json` = n 207, k 187, poly 285, fcr 0, prim 1).
+4. **`rp.code` convolutional byte interleaver** (`deinterleave`) and an `rs/207_187` config (the existing RS handles it: it needs
+   only `config/fec/block/rs/207_187.json` = n 207, k 187, poly 285, fcr 0, prim 1).
 5. **`rp.analysis` diagnostics**: the `atsc_diag.py` pattern, "one statistic per assumption", in a form that works for any
    framed/coded signal (relation-holds-% for a code, boundary-pairing scan, layout-variant search against a checksum).
 6. **Signal-quality helpers** (`fit_levels`, `mer_of`, an honest raw-symbol-error estimate from MER).
-7. **Radio control** (`gain_search.py`) belongs in pysdrlib, not RPPS; `rp.serial.Device` already needed a fix (busy-polling
+7. **Radio control** (`gain_search.py`) belongs in pysdrlib, not RPPS; `rp.source.Device` already needed a fix (busy-polling
    `get_samples`) that is in `src/rpps/serial/source.py`.
 
 ## Status
@@ -157,7 +157,7 @@ Nothing below exists yet; it is the design and the measurements it rests on.
 | of which `fit_levels` / `polyfit` | 2.0 s | 3 s |
 | rp pipeline (ShiftFreq, 201-tap low-pass; stateful, block-wise) | 1.8 s | 3 s |
 | Viterbi (`viterbi`, 24 fields batched: 288 streams) | 2.0 s | 3.4 s |
-| Reed-Solomon (`rp.coding.RS(207,187)`, per-codeword Python correction; 99.99% of codewords need it) | 24 s | 40 s |
+| Reed-Solomon (`rp.code.RS(207,187)`, per-codeword Python correction; 99.99% of codewords need it) | 24 s | 40 s |
 
 Machine: 16 cores, 46 GB, scipy 1.16 installed but **numba is not** (and scipy is not an RPPS dependency). So today the whole
 chain is ~60x slower than real time, almost all of it Reed-Solomon, then demodulation, then Viterbi.
@@ -176,7 +176,7 @@ chain is ~60x slower than real time, almost all of it Reed-Solomon, then demodul
   real time. The price is latency of a few seconds.
 - **Reed-Solomon: write a batched decoder.** Syndromes are already vectorised; the Python cost is Berlekamp-Massey, Chien search
   and Forney per codeword. All three vectorise across codewords (BM is 20 fixed iterations; Chien is a (207 x 10) evaluation per
-  word; Forney is the same). Expect 100-1000x. This also belongs in `rp.coding.RS` (it benefits DVB-S too).
+  word; Forney is the same). Expect 100-1000x. This also belongs in `rp.code.RS` (it benefits DVB-S too).
 - **Continuity across chunks.** The byte deinterleaver has 10 608 bytes of state, restarted per field; chunk at field boundaries
   and carry the last 51 segments' bytes forward. The trellis restarts per field so fields are independent (that is why batching them
   works).
@@ -206,8 +206,8 @@ streaming demodulator with folded FFT filters, (e) big-batch Viterbi and the chu
 
 `atsc_live.py` now does the scan / list / play of the design above (see README.md). Measured on the way:
 
-- **Throughput.** Reed-Solomon was the cost (5.6 s per second of air); `rp.coding.RS` through `rpps._native` (`atsc_decode.rs_decode`; it replaced the scripts' own `rs_batch.py`, same output) makes it 0.2 s. The generic numpy Viterbi
-  held a (T, W, S) int64 table (1.4 GB for 83 fields); `rp.coding` fsm now runs the same decoder in C++ (`rpps._native.viterbi_batch`; it replaced `fastvit.py`). `recover` trains on a subsample (same MER and Reed-Solomon yield) and its BLAS threads must be pinned
+- **Throughput.** Reed-Solomon was the cost (5.6 s per second of air); `rp.code.RS` through `rpps._native` (`atsc_decode.rs_decode`; it replaced the scripts' own `rs_batch.py`, same output) makes it 0.2 s. The generic numpy Viterbi
+  held a (T, W, S) int64 table (1.4 GB for 83 fields); `rp.code` fsm now runs the same decoder in C++ (`rpps._native.viterbi_batch`; it replaced `fastvit.py`). `recover` trains on a subsample (same MER and Reed-Solomon yield) and its BLAS threads must be pinned
   (`OMP_NUM_THREADS=1`: twelve workers with threads cost 63 CPU-s per chunk instead of 18). After that one 2 s chunk is ~12 CPU-s, a flat profile (resample 1.2, convolutions 1.4 + 1.5, training 0.9, fit_levels 1.3,
   pilot lock 1.4, Viterbi 0.8, RS 1.4); 8 workers give 0.4x real time because the chunk is memory-bound (2.2 GB peak). Real time needs the "calibrate once, then stream" demodulator above (one resample pass, fixed equalizer
   taps refreshed per chunk, float32 throughout): roughly 5 CPU-s per chunk.
@@ -221,8 +221,8 @@ streaming demodulator with folded FFT filters, (e) big-batch Viterbi and the chu
 
 The chunked `atsc_live.py` above runs at ~0.4x real time because `recover()` re-estimates everything from every capture. `atsc_rx.py` estimates once and tracks (`atsc_monitor.py` is the front end, README.md):
 
-- **One complex sample per symbol.** The channel centred on 0 is a complex signal 6 MHz wide, so 10.76 MS/s complex holds all of it; the real T/2 signal at 21.5 MS/s of `atsc_probe` is not needed. `atsc_front.py` does mix + low-pass +
-  fractional resample in a single C pass (polyphase windowed sinc, 512 phases, 0.15 CPU-s per second of air; the numpy chain was ~3). A complex 64-tap symbol-spaced equalizer has the same two real degrees of freedom per symbol as
+- **One complex sample per symbol.** The channel centred on 0 is a complex signal 6 MHz wide, so 10.76 MS/s complex holds all of it; the real T/2 signal at 21.5 MS/s of `atsc_probe` is not needed. `atsc_rx.Front` does mix + low-pass +
+  fractional resample in one `rp.signal.sample.FractionalPolyphase` (polyphase windowed sinc, 512 phases, native kernel on threads: ~0.04 s wall per second of air; the numpy chain was ~3). A complex 64-tap symbol-spaced equalizer has the same two real degrees of freedom per symbol as
   the 96-tap real T/2 one; its output is `Re(phasor_n * sum g_m z[n+m-24]) + bias`, the phasor making the pilot real (pilot phase per 8192 symbols, applied per 1024).
 - **Acquire once, track.** Pilot (FFT) -> clock (sync drift, as `recover`, but re-acquisition reuses the last clock: 2 passes) -> segment / field sync -> equalizer from the known symbols (field-sync PN511, every segment sync), then 2 decision-directed
   passes. Tracking per 4 fields (~97 ms): carrier phase, equalize, re-solve the equalizer on this region's decisions (normal equations, forgetting 0.2: the channel moves, so memory hurts: 0.98 gave 81% vs 96%) and equalize again, trellis,

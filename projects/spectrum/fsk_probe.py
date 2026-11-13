@@ -12,7 +12,6 @@ Not a decoder: it says whether a decoder for a given 2-FSK system is worth writi
 import argparse
 
 import numpy as np
-from scipy.signal import resample_poly
 
 import fm_audio
 

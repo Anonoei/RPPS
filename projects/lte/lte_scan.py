@@ -29,7 +29,7 @@ import types
 from collections import Counter
 
 import numpy as np
-from scipy.signal import resample_poly
+from rpps.signal.sample import resample_poly
 
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
 import gain_search
@@ -79,7 +79,7 @@ def sweep(sdr, lo, hi, step=16e6, nfft=2**14):
 # ---------------------------------------------------------------------------------------------------------------- detection
 def detect(fr, db, min_excess=6.0, min_width=2.4e6, bin_hz=100e3):
     """Plateaus of an LTE width. Returns a list of dicts (lo, hi, centre, level, cls) [Hz, dB]."""
-    from scipy.ndimage import percentile_filter
+    from rpps.math import percentile_filter
     edges = np.arange(fr.min(), fr.max() + bin_hz, bin_hz)
     idx = np.digitize(fr, edges)
     p = np.array([10*np.log10(np.mean(10**(db[idx == i]/10))) if np.any(idx == i) else np.nan for i in range(1, len(edges))])

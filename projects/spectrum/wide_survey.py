@@ -19,7 +19,7 @@ import sys
 import time
 
 import numpy as np
-from scipy.ndimage import percentile_filter
+from rpps.math import percentile_filter
 
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
 import radio_io

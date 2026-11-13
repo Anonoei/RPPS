@@ -27,8 +27,8 @@ import lte_cell
 
 # ---------------------------------------------------------------------------------------------------------------- sequences (36.211 7.2, 6.10.1)
 def gold(c_init, n):
-    """Gold sequence c(0..n-1) (36.211 7.2), from the rpps definition scram/adt/lte_gold"""
-    return rp.scram.load("lte_gold", c_init=int(c_init)).sequence(n)
+    """Gold sequence c(0..n-1) (36.211 7.2), from the rpps definition sequence/recurrence/lte_gold"""
+    return rp.sequence.load("lte_gold", c_init=int(c_init)).bits(n)
 
 def crs_values(n_id, ns, l, n_rb, n_cp=1):
     """Reference symbols r_{l,ns}(m'), m = 0..2*n_rb-1, for the cell n_id in slot ns (0..19), OFDM symbol l (36.211 6.10.1.1)"""
@@ -55,7 +55,7 @@ def sc_bin(k, nfft, n_rb):
 # ---------------------------------------------------------------------------------------------------------------- channel coding (36.212 5.1, 5.3.1)
 CONV_GENS = (0o133, 0o171, 0o165)
 
-_CRC16 = rp.encap.load("crc", "crc16_xmodem")._enc # 36.212 5.1.1 gCRC16: D^16 + D^12 + D^5 + 1, zero start
+_CRC16 = rp.link.load("crc", "crc16_xmodem")._enc # 36.212 5.1.1 gCRC16: D^16 + D^12 + D^5 + 1, zero start
 
 def crc16(bits):
     """CRC (36.212 5.1.1) of a bit list, fed MSB first; returns 16 bits"""
@@ -63,7 +63,7 @@ def crc16(bits):
 
 CRC_MASKS = {1: [0]*16, 2: [1]*16, 4: [0, 1]*8} # table 5.3.1.1-1: number of antenna ports -> mask
 
-_CONV = rp.coding.Conv(CONV_GENS, 7, termination="tailbiting") # 36.212 5.1.3.1
+_CONV = rp.code.Conv(CONV_GENS, 7, termination="tailbiting") # 36.212 5.1.3.1
 
 def conv_encode(c):
     """Tail-biting rate-1/3 encoder (5.1.3.1): returns the three (K,) output streams"""
@@ -71,10 +71,10 @@ def conv_encode(c):
 
 def subblock_perm(D):
     """For each output position of the sub-block interleaver (5.1.4.2.1) the input index, the <NULL> dummies left out (rpps interleave/block/lte_subblock)"""
-    return rp.coding.load("interleave", "lte_subblock", length=D)._enc.src
+    return rp.code.load("interleave", "lte_subblock", length=D)._enc.src
 
 def _rm(D, E):
-    return rp.coding.load("block", "ratematch/lte_conv", D=D, E=E)._enc # 5.1.4.2
+    return rp.code.load("block", "ratematch/lte_conv", D=D, E=E)._enc # 5.1.4.2
 
 
 def rate_match(d, E):

@@ -26,9 +26,9 @@ PILOT_VAL = np.array([1, 1, 1, -1], float)
 DATA_K = np.array([k for k in USED if k not in PILOTS])
 
 def _scrambler_seq(n, init=None):
-    """x[n] = x[n-7] ^ x[n-4] from a seven-bit seed (x[-7..-1], default all ones): rpps scram/adt/wifi_ofdm"""
+    """x[n] = x[n-7] ^ x[n-4] from a seven-bit seed (x[-7..-1], default all ones): rpps sequence/recurrence/wifi_ofdm"""
     seed = 127 if init is None else sum(int(b) << (6 - i) for i, b in enumerate(init))
-    return rp.scram.load("wifi_ofdm", seed=seed).sequence(n)
+    return rp.sequence.load("wifi_ofdm", seed=seed).bits(n)
 PILOT_POL = 1 - 2.0*_scrambler_seq(127)
 
 def bin_of(k):
@@ -50,7 +50,7 @@ PUNCT = {(1, 2): [1, 1], (2, 3): [1, 1, 1, 0], (3, 4): [1, 1, 1, 0, 0, 1]} # kee
 # --- convolutional code (rate 1/2, generators 133 and 171 octal, terminated with six zero bits)
 _G = (0o133, 0o171)
 
-_CONV = rp.coding.Conv(_G, 7, termination="zero")
+_CONV = rp.code.Conv(_G, 7, termination="zero")
 
 def viterbi_r12(llr_a, llr_b):
     """Soft Viterbi for the terminated K=7 code (rpps): llr_* positive = bit 0, erased (punctured) positions 0. Returns the input bits (tail included: the zero tail of a path that ends in state 0)"""
@@ -68,25 +68,20 @@ def depuncture(llr, rate):
 
 def interleave_perm(ncbps, nbpsc):
     """For each coded bit index k of the transmitted symbol: its position j after the two permutations of 17.3.5.7 (rpps interleave/block/wifi_ofdm)"""
-    return np.argsort(rp.coding.load("interleave", "wifi_ofdm", ncbps=ncbps, nbpsc=nbpsc)._enc.src)
+    return np.argsort(rp.code.load("interleave", "wifi_ofdm", ncbps=ncbps, nbpsc=nbpsc)._enc.src)
+
+_QAM = {4: rp.symbol.QAM(16), 6: rp.symbol.QAM(64)} # 802.11 Gray mapping (17.3.5.8): rpps QAM labels are the same
 
 def demap(z, nbpsc):
-    """Soft bits (positive = 0) from equalized symbols, in the order the mapper took the bits, per 802.11 Gray mapping, max-log"""
+    """Soft bits (positive = 0) from equalized symbols, in the order the mapper took the bits, per 802.11 Gray mapping, max-log.
+    BPSK and QPSK are a sign per axis; 16- and 64-QAM are rpps's `Constellation.llr` (one demapper with the batch kernel, native when built)"""
+    z = np.asarray(z)
     if nbpsc == 1:
         return -z.real
     if nbpsc == 2:
         out = np.empty(2*len(z)); out[0::2] = -z.real; out[1::2] = -z.imag
         return out*np.sqrt(2)
-    if nbpsc == 4:
-        y = np.stack((z.real, z.imag))*np.sqrt(10)
-        b = np.stack((-y, np.abs(y) - 2), -1) # (2, n, 2): [axis I/Q][symbol][bit]
-        return np.stack((b[0], b[1]), -1).reshape(len(z), 4) .reshape(-1) if False else np.concatenate([np.stack((b[0][:, 0], b[0][:, 1], b[1][:, 0], b[1][:, 1]), 1)]).reshape(-1)
-    y = np.stack((z.real, z.imag))*np.sqrt(42)
-    bits = []
-    for ax in (0, 1):
-        v = y[ax]
-        bits.append(np.stack((-v, np.abs(v) - 4, np.abs(np.abs(v) - 4) - 2), 1))
-    return np.concatenate((bits[0], bits[1]), 1).reshape(-1)
+    return _QAM[nbpsc].llr(z, maxlog=True)
 
 def bytes_lsb(bits):
     n = len(bits)//8

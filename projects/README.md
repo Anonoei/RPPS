@@ -43,7 +43,7 @@ Tries gains from 0 to 1 in steps of 0.05 and scores each: in-band SNR, minus a l
 
     python projects/common/record.py 507 20 0.6 data/capture.cf64 --gain 0.8   # MHz, MS/s, seconds, file
 
-complex64 (`rp.serial.File("cf64", ...)`). Reports peak level and the fraction of clipped samples.
+complex64 (`rp.source.File("cf64", ...)`). Reports peak level and the fraction of clipped samples.
 
 ## Conventions
 

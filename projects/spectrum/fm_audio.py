@@ -10,7 +10,8 @@ import argparse
 import wave
 
 import numpy as np
-from scipy.signal import butter, firwin, lfilter, resample_poly, sosfilt
+from rpps.signal.filters import IIR, iir, low_pass
+from rpps.signal.sample import resample_poly
 
 import burst_tones
 
@@ -25,7 +26,7 @@ def baseband(x, fs, cf, freq, bw=12e3):
     S = (np.abs(np.fft.fftshift(np.fft.fft(z[:k*n].reshape(k, n)*np.hanning(n), axis=1), axes=1))**2).mean(0); ff = np.fft.fftshift(np.fft.fftfreq(n, 1/fs1))
     c = ff[np.argmax(np.convolve(S, np.ones(8), "same"))]
     z = z*np.exp(-2j*np.pi*c*np.arange(len(z))/fs1)
-    return lfilter(firwin(201, bw, fs=fs1), 1, z)[200:], fs1
+    return low_pass(201, bw, fs=fs1).run(z), fs1
 
 
 def carrier_mask(z, fs1, n_out):
@@ -40,7 +41,7 @@ def fm_demod(z, fs1):
     """(audio at 16 kS/s with 75 us de-emphasis, carrier mask, deviation samples [Hz])"""
     dev = np.diff(np.unwrap(np.angle(z)))*fs1/(2*np.pi)
     a = resample_poly(dev, 1, int(round(fs1/16000)))
-    a = sosfilt(butter(1, 1/(2*np.pi*75e-6), fs=16000, output="sos"), a)
+    a = IIR(iir.design("butter", 1, "lowpass", 1/(2*np.pi*75e-6)/16000)).run(a)
     return a, carrier_mask(z, fs1, len(a)), dev
 
 
@@ -59,7 +60,7 @@ def features(audio, mask):
     A = np.abs(np.fft.rfft(au*np.hanning(len(au))))**2; fq = np.fft.rfftfreq(len(au), 1/16000); tot = A[fq > 20].sum()
     band = lambda lo, hi: 100*A[(fq >= lo) & (fq < hi)].sum()/tot
     low = (fq > 60) & (fq < 260); k = np.argmax(A[low])
-    v = sosfilt(butter(4, [300, 3000], "bandpass", fs=16000, output="sos"), au); env = resample_poly(np.abs(v), 1, 160)
+    v = IIR(iir.design("butter", 4, "bandpass", [300/16000, 3000/16000])).run(au); env = resample_poly(np.abs(v), 1, 160)
     E = np.abs(np.fft.rfft((env - env.mean())*np.hanning(len(env))))**2; fe = np.fft.rfftfreq(len(env), 1/100)
     syl = E[(fe >= 2) & (fe <= 8)].sum()/max(1e-12, E[(fe >= 8) & (fe <= 30)].sum())
     return dict(frac=mask.mean(), voice=band(300, 3000), low=band(20, 300), high=band(3000, 8000), tone=fq[low][k], tone_db=10*np.log10(A[low].max()/np.median(A[low])), syl=syl)

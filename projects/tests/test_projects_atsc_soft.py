@@ -5,7 +5,6 @@ import sys
 import pytest
 
 pytest.importorskip("pysdrlib")
-pytest.importorskip("scipy")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import _paths  # noqa: E402,F401
 import atsc_decode  # noqa: E402

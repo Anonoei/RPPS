@@ -20,7 +20,7 @@ import time
 from collections import defaultdict
 
 import numpy as np
-from scipy.signal import resample_poly
+from rpps.signal.sample import resample_poly
 
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
 import radio_io
