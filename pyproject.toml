@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77.0", "numpy", "pybind11>=2.12"]
+requires = ["setuptools>=77.0", "pybind11>=2.12"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -25,7 +25,8 @@ classifiers = [
     "Programming Language :: C++",
     "Programming Language :: C",
 
-    "Operating System :: OS Independent",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
 ]
 keywords = ["anonoei", "dsp", "sdr"]
 dependencies = ["numpy>=2.0", "pysdrlib>=0.4.3"]
@@ -76,7 +77,8 @@ push = false
 build = "cp312-* cp313-* cp314-*"
 skip = "*-musllinux_* *-win32"
 environment = { RPPS_REQUIRE_NATIVE = "1" }
-test-command = "python -c \"import rpps._native\""
+test-requires = ["pytest", "matplotlib"]
+test-command = "python -c \"import rpps._native\" && python {project}/tests/run_wheel_tests.py"
 
 
 [tool.pytest.ini_options]
