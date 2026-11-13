@@ -7,6 +7,7 @@ name = "rpps"
 version = "0.3.0"
 description = "RF Parameter Processor Suite"
 readme = "README.md"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [
     {name = "Anonoei", email="to+dev@an0.us"}
@@ -14,12 +15,24 @@ authors = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Natural Language :: English",
+
+    "Topic :: Scientific/Engineering",
+    "Topic :: Communications",
 
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: C++",
+    "Programming Language :: C",
+
     "Operating System :: OS Independent",
 ]
 keywords = ["anonoei", "dsp", "sdr"]
 dependencies = ["numpy>=2.0", "pysdrlib>=0.4.3"]
+
+[project.optional-dependencies]
+viz = ["matplotlib"]
+dev = ["setuptools", "matplotlib", "twine", "build", "bumpver", "pytest", "pdoc3", "scipy"] # scipy: only the tests that check against it
 
 [project.scripts]
 rpps = "rpps.cli:main"
@@ -30,10 +43,6 @@ Documentation = "https://anonoei.github.io/RPPS/"
 Repository = "https://github.com/Anonoei/RPPS.git"
 Issues = "https://github.com/Anonoei/RPPS/issues"
 Source = "https://github.com/anonoei/RPPS"
-
-[project.optional-dependencies]
-viz = ["matplotlib"]
-dev = ["matplotlib", "twine", "build", "bumpver", "pytest", "pdoc3", "scipy"] # scipy: only the tests that check against it
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -48,7 +57,7 @@ tag_scope = "default"
 pre_commit_hook = ""
 post_commit_hook = ""
 commit = true
-tag = true
+tag = false
 push = false
 
 [tool.bumpver.file_patterns]
@@ -58,10 +67,14 @@ push = false
 ]
 "src/rpps/__init__.py" = ["{version}"]
 
+
 [tool.cibuildwheel]
 # Wheels for every CPython in requires-python (python-publish.yml); each must carry rpps._native
+build = "cp312-* cp313-* cp314-*"
+skip = "*-musllinux_* *-win32"
 environment = { RPPS_REQUIRE_NATIVE = "1" }
 test-command = "python -c \"import rpps._native\""
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
