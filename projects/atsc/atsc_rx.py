@@ -45,6 +45,8 @@ CLOCK_GAIN = float(os.environ.get("ATSC_CLOCK_GAIN", "0.25")) # fraction of the 
 FORGET = 0.2 # weight kept of the previous regions' normal equations
 DD_SEGS, DD_STRIDE = 80, 2 # decision-directed rows per region: segments x every DD_STRIDE-th symbol
 SYNC = np.array([5.0, -5.0, -5.0, 5.0])
+LOW_SNR_REGIONS = 10 # regions (~0.1 s each) in a row below it that drop the lock
+MIN_LOCK_SNR = 6.0 # [dB] on the segment syncs: below this the field sync cannot be tracked (lock was lost every few seconds at -2..3 dB), so acquisition does not report "locked"
 KEY = ad.randomizer_bytes(ad.FIELD_DATA*187).reshape(ad.FIELD_DATA, 187)
 
 
@@ -187,7 +189,7 @@ class Receiver:
 
     def _reset(self):
         self.state = "acquire"; self.front = None; self.zbuf = np.zeros(0, np.complex64); self.zoff = 0; self.next_field = None
-        self.eq = Equalizer(); self.ts = TsBuilder(); self.w_p = 0.0; self.p_prev = None; self.bad_sync = 0; self.stats["state"] = "acquire"
+        self.eq = Equalizer(); self.ts = TsBuilder(); self.w_p = 0.0; self.p_prev = None; self.bad_sync = 0; self.low_snr = 0; self.lost_why = "lost"; self.stats["state"] = "acquire"
 
     def reset(self):
         self.acq = []; self.acq_n = 0; self._reset()
@@ -303,12 +305,16 @@ class Receiver:
             A3, b3 = Equalizer.normal(zext, ph, rows[m], tgt[m], wgt[m]*2.0)
             eq.solve(A2 + A3, b2 + b3)
         eq.A, eq.b = A2 + A3, b2 + b3
+        soft = ap.fit_levels(eq.apply(zext, ph)[start:start + nseg*SEG].reshape(nseg, SEG)); nz = float(np.mean((soft[np.arange(nseg) % FIELD != fs_seg][:, :4] - SYNC)**2))
+        st["snr"] = float(10*np.log10(25/nz)) if nz > 0 else None
+        if st["snr"] is None or st["snr"] < MIN_LOCK_SNR:
+            st["state"] = "too noisy"; return False # a field sync was found, but the signal is below what can be held
         self.eq = eq; self.front = fr; self.step = step; self.w_p = w_p
         self.zbuf = z; self.zoff = 0
         self.next_field = start + fs_seg*SEG
         while self.next_field < C:
             self.next_field += FIELD_SYM
-        self.ts = TsBuilder(); self.p_prev = None; self.bad_sync = 0
+        self.ts = TsBuilder(); self.p_prev = None; self.bad_sync = 0; self.low_snr = 0
         self.step_hint = step
         self.state = "track"; st["state"] = "locked"; st["acquired"] += 1; st["clock_ppm"] = float((step/(self.fs/SR) - 1)*1e6)
         return True
@@ -372,7 +378,7 @@ class Receiver:
             try:
                 if self.lost_flag:
                     with self.rlock:
-                        self.lost_flag = False; self.gen += 1; self.reset(); self.stats["state"] = "lost"
+                        self.lost_flag = False; self.gen += 1; self.reset(); self.stats["state"] = self.lost_why
                 if self.state != "track":
                     self.acq.append(x); self.acq_n += len(x)
                     if self.acq_n >= ACQ_SECONDS*self.fs:
@@ -470,6 +476,7 @@ class Receiver:
         fsv = soft[::FIELD, :4 + 511]
         corr = float(np.mean([np.dot(np.sign(f[:len(self.pn)] - f.mean()), np.sign(self.pn))/len(self.pn) for f in fsv])) if hasattr(self, "pn") else 1.0
         self.bad_sync = self.bad_sync + 1 if abs(corr) < 0.4 else 0
+        self.low_snr = self.low_snr + 1 if (st["snr"] or 0) < MIN_LOCK_SNR else 0 # regions in a row too noisy to hold
         self.sync_trace.append((round(corr, 2), round(p, 1), round(st.get("snr") or 0, 1), round(st.get("lag") or 0, 2))) # the last regions, for the report when lock is lost
         self._emit(soft)
         # advance
@@ -477,13 +484,14 @@ class Receiver:
         cut = self.next_field - C - self.zoff
         if cut > 0:
             self.zbuf = self.zbuf[cut:]; self.zoff += cut
-        if self.bad_sync >= 3:
-            st["lost"] += 1; st["state"] = "lost"
+        if self.bad_sync >= 3 or self.low_snr >= LOW_SNR_REGIONS:
+            why = "lost" if self.bad_sync >= 3 else "too noisy"; self.lost_why = why
+            st["lost"] += 1; st["state"] = why
             st["loss_trace"] = list(self.sync_trace)
             if self.threaded:
                 self.lost_flag = True; self.state = "lost"
             else:
-                self.reset(); st["state"] = "lost"
+                self.reset(); st["state"] = why
 
 
 def decode_array(x, cf, lower, fs=FS):

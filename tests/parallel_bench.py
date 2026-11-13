@@ -1,6 +1,6 @@
 """Frames per second of the DVB-S2 profile: the serial runner against the parallel runner, and where a frame's time goes
 
-    python scripts/parallel_bench.py [frames] [max_workers] [block]
+    python tests/parallel_bench.py [frames] [max_workers] [block]
 
 block: samples per block fed to the receiver (default: the whole stream as one block). In blocks the serial front of one
 block overlaps the region of the one before, as it does on a live source.

@@ -217,7 +217,7 @@ class Monitor:
                 self.log("error", f"sweep: {type(e).__name__}: {str(e)[:100]}"); time.sleep(1.0)
 
     def _probe(self, st):
-        st.gain = st.gain or live.pick_gain(self.radio, st.ch)
+        st.gain = st.gain or live.pick_gain(self.radio, st.ch, lambda t: self.log("gain", t))
         cf = live.centre(st.ch)
         self.radio.tune(cf, st.gain)
         x = self.radio.grab(2.6).astype(np.complex64)
@@ -231,7 +231,7 @@ class Monitor:
             if self.mode != "scan":
                 return # the radio is being watched: the CPU is for the receiver
             ts, err, stats = atsc_rx.decode_array(x, cf, st.lower*1e6)
-            st.locked = stats["state"] == "locked" and len(ts) > 0
+            st.locked = stats["state"] == "locked" and len(ts) > 0 and (stats.get("snr") or 0) >= atsc_rx.MIN_LOCK_SNR
             st.snr, st.ppm = stats.get("snr"), stats.get("clock_ppm")
             st.rs_ok = float(np.mean(err >= 0)) if len(err) else None
             if len(ts):
@@ -315,7 +315,7 @@ class Watch:
         mon = self.mon
         try:
             with self.radio.lock:
-                gain = self.st.gain or live.pick_gain(self.radio, self.ch)
+                gain = self.st.gain or live.pick_gain(self.radio, self.ch, lambda t: mon.log("gain", t))
                 self.radio.tune(live.centre(self.ch), gain)
                 self.rx = atsc_rx.Receiver(live.centre(self.ch), live.lower_edge(self.ch)*1e6, FS, on_ts=self._on_ts).start()
                 self.dropped0 = self.radio.dropped; mon.log("watch", f"channel {self.ch}: receiver started (gain {gain:.2f})")
@@ -503,7 +503,7 @@ def main(argv=None):
     ap.add_argument("--probe-every", type=float, default=120.0)
     ap.add_argument("--host", default="127.0.0.1"); ap.add_argument("--port", type=int, default=8035)
     a = ap.parse_args(argv)
-    radio = live.ReplayRadio(a.replay, a.replay_channel, a.replay_cf, a.replay_speed) if a.replay else live.Radio(a.remote, a.radio)
+    radio = live.ReplayRadio(a.replay, a.replay_channel, a.replay_cf, a.replay_speed) if a.replay else live.Radio(a.remote, a.radio, a.channels, a.serial, a.label, "RPPS atsc_monitor")
     mon = Monitor(radio, a.channels or live.CHANNELS, a.probe_every, a.height, a.dump_ts, not a.no_dip_dump)
     page = lambda: open(os.path.join(HERE, "atsc_monitor.html"), "rb").read() # read per request: a reload picks up edits
     srv = ThreadingHTTPServer((a.host, a.port), make_handler(mon, page)); srv.allow_remote = a.host not in ("127.0.0.1", "localhost", "::1"); srv.daemon_threads = True
