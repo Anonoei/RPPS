@@ -15,7 +15,7 @@ def build(code, scram, mod):
     m.set_mapping(m.maps[0])
     return rp.code.load(*code), rp.code.scram.load(scram), m
 
-@pytest.mark.parametrize("code,scram,mod", itertools.product(CODES, SCRAMS, MODS))
+@pytest.mark.parametrize("code,scram,mod", list(itertools.product(CODES, SCRAMS, MODS)))
 def test_pipeline_round_trip(code, scram, mod, rng):
     ecc, scr, m = build(code, scram, mod)
     raw = bytes(rng.integers(0, 256, 66).astype(np.uint8)) # 528 bits: whole blocks and symbols for every combination
