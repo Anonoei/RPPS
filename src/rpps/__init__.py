@@ -40,7 +40,7 @@ Packages follow the categories of ARCHITECTURE.md: data goes samples -> symbols 
 | `rpps.sync` | Sync, at any representation: AGC, carrier, timing, equalizers, alignment on bits (`sync.Align`) |
 | `rpps.wave` | Wave transform, symbols <-> samples: stagger (O-QPSK), frequency modulation (FSK, GFSK, GMSK, C4FM), OFDM IFFT/FFT, AM/SSB |
 | `rpps.symbol` | Symbol transform, symbols <-> channel bits: constellations (any points from config), differential coding, OFDM carriers, `Spread` |
-| `rpps.sequence` | The `sequence` resource: bit sequences (LFSRs, Gold) and chip codes (Barker, GPS C/A, 802.15.4) every operator shares |
+| `rpps.sequence` | The `sequence` resource: bit sequences (LFSRs, Gold) and chip codes (Barker, GPS C/A, 0.4.0) every operator shares |
 | `rpps.code` | Code transform, channel bits <-> data bits: FEC, interleaving, rate matching, scrambling (`code.scram`), `Uncoded` |
 | `rpps.link` | Link transform, data bits <-> packets: CRC and framing |
 | `rpps.analysis` | Outside the data path: spectra, rate estimation, signal survey, blind analysis of modulation and FEC |
@@ -54,7 +54,7 @@ with the package, in config/ by resource (`python -m rpps ls` lists them); add y
 `rpps.add_config_path`. The per-sample loops and decoders run in C++ (`rpps._native`) with a Python fallback.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __author__ = "Anonoei <to+dev@an0.us>"
 
 from . import logger
