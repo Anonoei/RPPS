@@ -1,0 +1,8 @@
+{
+  "base": "scramble",
+  "type": "feedthrough",
+  "comment": "G3RUH self-synchronizing scrambler 1+x^12+x^17 (9k6 FSK amateur satellites)",
+  "register": "galois_left",
+  "poly": [17, 12],
+  "seed": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+}

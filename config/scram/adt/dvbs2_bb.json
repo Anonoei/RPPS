@@ -1,6 +1,0 @@
-{
-  "base": "adt",
-  "comment": "DVB-S2 baseband scrambler 1+x^14+x^15, restarts at each BBFRAME",
-  "poly": [15, 14],
-  "seed": "100101010000000"
-}

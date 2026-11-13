@@ -3,9 +3,9 @@ Example showing encoding and decoding data
 """
 import rpps as rp
 
-mod = rp.mod.load("QPSK")   # starts on its first bit map; rp.mod.load("QPSK", "R090") picks another
-ecc = rp.coding.load("block", "hamming/7_4")
-scr = rp.scram.load("fdt", "v35")
+mod = rp.symbol.load("QPSK")   # starts on its first bit map; rp.symbol.load("QPSK", "R090") picks another
+ecc = rp.code.load("block", "hamming/7_4")
+scr = rp.code.scram.load("v35")
 
 print(f"Mod: {mod}")
 print(f"ECC: {ecc}")

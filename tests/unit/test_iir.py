@@ -6,7 +6,7 @@ import pytest
 import rpps as rp
 from rpps import _config
 from rpps.errors import ConfigError
-from rpps.filters import iir
+from rpps.signal.filters import iir
 
 def lfilter_ref(b, a, x):
     """y[n] = (sum b[k] x[n-k] - sum a[k] y[n-k]) / a[0], one sample at a time"""
@@ -52,7 +52,7 @@ def test_any_block_split_gives_the_same_output(x):
     assert np.abs(np.concatenate(out) - whole).max() < 1e-10
 
 def test_through_a_stream_and_reusable(x):
-    st = rp.filters.IIR(iir.design("butter", 3, "lowpass", 0.1))
+    st = rp.signal.filters.IIR(iir.design("butter", 3, "lowpass", 0.1))
     s = x.astype(np.complex64)
     a = rp.Data(s, Fs=1e3) + st
     b = rp.Data(s, Fs=1e3) + st # A new stream starts from zero state

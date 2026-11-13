@@ -1,0 +1,13 @@
+{
+  "base": "crc",
+  "type": "crc",
+  "comment": "CRC-24/LTE-A: gCRC24A of 3GPP TS 36.212 5.1.1 (transport blocks)",
+  "aliases": ["gcrc24a"],
+  "width": 24,
+  "poly": "0x864cfb",
+  "init": "0x0",
+  "refin": false,
+  "refout": false,
+  "xorout": "0x0",
+  "check": "0xcde703"
+}

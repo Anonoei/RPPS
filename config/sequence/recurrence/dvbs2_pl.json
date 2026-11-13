@@ -1,0 +1,18 @@
+{
+  "base": "sequence",
+  "type": "recurrence",
+  "comment": "DVB-S2 physical layer scrambling sequence z = x + y, the Gold code of n = 0 (x: 1 + X^7 + X^18 from x(0) = 1; y: 1 + X^5 + X^7 + X^10 + X^18 from all ones). The PL scrambler turns symbol i by 90 degrees times R(i) = 2 z(i + 131072) + z(i)",
+  "ref": "EN 302 307-1 5.5.4",
+  "sequences": [
+    {
+      "length": 18,
+      "taps": [0, 7],
+      "init": 1
+    },
+    {
+      "length": 18,
+      "taps": [0, 5, 7, 10],
+      "init": 262143
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "base": "interleave",
+  "type": "block",
+  "comment": "P25 phase 1 data / TSBK block interleave (TIA-102.BAAA): 98 dibits; dibit pairs of the coded block are sent from four columns starting at dibits 0, 26, 50, 74, the last pair at 24, 25",
+  "symbol": 2,
+  "map": "to",
+  "perm": {
+    "n": 98,
+    "each": "[0, 26, 50, 74][(i % 8)//2] + 2*(i//8) + i % 2 if i < 96 else i - 72"
+  }
+}

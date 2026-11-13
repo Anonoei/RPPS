@@ -1,0 +1,9 @@
+{
+  "base": "block",
+  "type": "cyclic",
+  "comment": "DMR Hamming (13,9,3): the (15,11) code shortened by 2 (ETSI TS 102 361-1 V2.6.1 B.3.4, equals Table B.14): BPTC columns",
+  "n": 15,
+  "k": 11,
+  "poly": "0x13",
+  "shorten": 2
+}

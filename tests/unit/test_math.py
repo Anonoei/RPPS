@@ -62,7 +62,7 @@ def test_reflect():
     assert reflect(0x01, 16) == 0x8000
 
 def test_bch_corrects_up_to_t_errors(rng):
-    code = rp.coding.load("block", "bch/dvbs2_1_2")._enc
+    code = rp.code.load("block", "bch/dvbs2_1_2")._enc
     msg = rng.integers(0, 2, code.num).astype(bool)
     coded = code.encode(msg)
     bad = coded.copy()
@@ -95,7 +95,7 @@ RS_VARIANTS = {
 @pytest.mark.parametrize("name", RS_VARIANTS)
 def test_rs_variants_correct_t_errors(name, rng):
     p = RS_VARIANTS[name]
-    rs = rp.coding.init("t", {"base": "block", "type": "rs", **p})._enc
+    rs = rp.code.init("t", {"base": "block", "type": "rs", **p})._enc
     msg = rng.integers(0, 2**p["m"], 20*p["k"]).astype(np.int64)
     cw = rs.encode(msg, symbols=True).reshape(20, p["n"])
     bad = inject(cw, rs.t, rng, m=p["m"])
@@ -108,14 +108,14 @@ def test_rs_variants_correct_t_errors(name, rng):
     assert (rs.errors == -1).mean() > 0.5
 
 def test_rs_clean_words_untouched(rng):
-    rs = rp.coding.load("block", "rs/204_188")._enc
+    rs = rp.code.load("block", "rs/204_188")._enc
     msg = rng.integers(0, 256, 188*3).astype(np.int64)
     assert np.array_equal(rs.decode(rs.encode(msg, symbols=True), symbols=True), msg)
     assert (rs.errors == 0).all()
 
 @pytest.mark.parametrize("n,k,m,poly,t", [(31, 21, 5, 0x25, 2), (63, 45, 6, 0x43, 3), (15, 7, 4, 0x13, 2)])
 def test_small_bch_codes(n, k, m, poly, t, rng):
-    code = rp.coding.init("t", {"base": "block", "type": "bch", "n": n, "k": k, "m": m, "poly": hex(poly), "t": t})._enc
+    code = rp.code.init("t", {"base": "block", "type": "bch", "n": n, "k": k, "m": m, "poly": hex(poly), "t": t})._enc
     msg = rng.integers(0, 2, 30*k).astype(bool)
     cw = code.encode(msg).reshape(30, n).astype(np.uint8)
     bad = inject(cw, t, rng, symbols=False)
@@ -124,7 +124,7 @@ def test_small_bch_codes(n, k, m, poly, t, rng):
 
 def test_rs_decoding_is_fast(rng):
     import time
-    rs = rp.coding.load("block", "rs/204_188")._enc
+    rs = rp.code.load("block", "rs/204_188")._enc
     cw = rs.encode(rng.integers(0, 256, 188*200).astype(np.int64), symbols=True).reshape(200, 204)
     bad = inject(cw, 8, rng)
     t0 = time.time()

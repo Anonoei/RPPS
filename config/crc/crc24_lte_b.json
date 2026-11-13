@@ -1,0 +1,13 @@
+{
+  "base": "crc",
+  "type": "crc",
+  "comment": "CRC-24/LTE-B: gCRC24B of 3GPP TS 36.212 5.1.1 (turbo code blocks)",
+  "aliases": ["gcrc24b"],
+  "width": 24,
+  "poly": "0x800063",
+  "init": "0x0",
+  "refin": false,
+  "refout": false,
+  "xorout": "0x0",
+  "check": "0x23ef52"
+}

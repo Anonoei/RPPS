@@ -1,0 +1,10 @@
+{
+  "base": "block",
+  "type": "cyclic",
+  "comment": "DMR Golay (20,8,7): extended Golay (24,12,8) shortened by 4 (ETSI TS 102 361-1 V2.6.1 B.3.1, equals Table B.11): slot type",
+  "n": 23,
+  "k": 12,
+  "poly": "0xc75",
+  "extend": true,
+  "shorten": 4
+}

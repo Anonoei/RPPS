@@ -1,0 +1,8 @@
+{
+  "base": "block",
+  "type": "cyclic",
+  "comment": "Golay (23,12,7), perfect, t=3: g(x) = x^11+x^10+x^6+x^5+x^4+x^2+1. P25 IMBE vectors u0-u3 (TIA-102.BABA)",
+  "n": 23,
+  "k": 12,
+  "poly": "0xc75"
+}

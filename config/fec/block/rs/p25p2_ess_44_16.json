@@ -1,0 +1,11 @@
+{
+  "base": "block",
+  "type": "rs",
+  "comment": "P25 phase 2 ESS: RS(44,16,29), (63,35) shortened by 19. Codeword = 4 x 4 ESS-B hexbits of the 4V bursts then 28 ESS-A hexbits of the 2V burst",
+  "n": 44,
+  "k": 16,
+  "m": 6,
+  "poly": 67,
+  "fcr": 1,
+  "prim": 1
+}

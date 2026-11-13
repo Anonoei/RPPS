@@ -1,0 +1,12 @@
+{
+  "base": "crc",
+  "type": "crc",
+  "comment": "CRC-24/BLE: Bluetooth LE link layer (Core spec Vol 6 Part B 3.1.1). On air bits: compute_bits / encode take them in received order; init is 0x555555 for advertising, the CRCInit of the connection otherwise",
+  "width": 24,
+  "poly": "0x65b",
+  "init": "0x555555",
+  "refin": true,
+  "refout": true,
+  "xorout": "0x0",
+  "check": "0xc25a56"
+}

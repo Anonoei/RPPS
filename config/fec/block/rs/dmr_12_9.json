@@ -1,0 +1,11 @@
+{
+  "base": "block",
+  "type": "rs",
+  "comment": "DMR Reed-Solomon (12,9,4) over GF(256), roots alpha^1..alpha^3: the full link control checksum (ETSI TS 102 361-1 V2.6.1 B.3.6, equals Table B.18). The checksum is then XOR'd with a mask (0x969696 voice LC header, 0x999999 terminator)",
+  "n": 12,
+  "k": 9,
+  "m": 8,
+  "poly": 285,
+  "fcr": 1,
+  "prim": 1
+}

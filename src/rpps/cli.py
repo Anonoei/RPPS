@@ -2,6 +2,7 @@
 RPPS command line interface
 
     python -m rpps ls [category ...]
+    python -m rpps survey <file> --fs <Hz> [--fmt <format>] [--cf <Hz>] [--plot]
     python -m rpps fmt [--check] [dir]
     python -m rpps gen-ldpc <dvb_s2_tables.hh> [table ids ...] [--out dir]
 """
@@ -17,13 +18,19 @@ from pathlib import Path
 def _categories(rp):
     """name -> (title, callable returning {group: [names]})"""
     return {
-        "mod": ('Modulation  (rp.mod.load("<name>"[, "<mapping>"]))', rp.mod.ls),
-        "coding": ('Coding  (rp.coding.load(<kind>, "<family>/<name>"))', rp.coding.ls),
-        "scram": ('Scrambling  (rp.scram.load(<kind>, "<name>"))', rp.scram.ls),
-        "encap": ('Encapsulation  (rp.encap.load(<kind>, "<name>"))', rp.encap.ls),
-        "chain": ('Chains  (rp.Chain.load("<standard>/<name>"))', lambda: rp._config.ls("chain")),
-        "filters": ('Filters  (rp.filters.load(<kind>, "<family>/<name>"))', rp.filters.ls),
-        "windows": ("Built-in Windows  (rp.filters.Window.get(<name>))", lambda: {"windows": rp.filters.Window.s()}),
+        "constellation": ('Constellations  (rp.symbol.load("<name>"[, "<mapping>"]))', rp.symbol.ls),
+        "pulse": ('Pulses  (rp.signal.filters.load("pulse", "<family>/<name>"))', lambda: rp._config.ls("pulse")),
+        "filter": ('Filters  (rp.signal.filters.load(<kind>, "<family>/<name>"))', lambda: rp._config.ls("filter")),
+        "sequence": ('Sequences  (rp.sequence.load("<name>"))', rp.sequence.ls),
+        "scramble": ('Scramblers  (rp.code.scram.load("<name>"))', rp.code.scram.ls),
+        "fec": ('FEC  (rp.code.load(<kind>, "<family>/<name>"))', lambda: rp._config.ls("fec")),
+        "interleave": ('Interleavers  (rp.code.load("interleave", "<type>/<name>"))', lambda: rp._config.ls("interleave")),
+        "crc": ('CRCs  (rp.link.load("crc", "<name>"))', lambda: rp._config.ls("crc")),
+        "frame": ('Frames  (rp.link.load("frame", "<name>"))', lambda: rp._config.ls("frame")),
+        "header": ('Headers  (rp.symbol.load_header("<name>"), rp.link.load("header", "<name>"))', lambda: rp._config.ls("header")),
+        "table": ('Tables  (rp.profile.table("<family>/<name>"))', lambda: rp._config.ls("table")),
+        "profile": ('Profiles  (rp.profile.load("<family>/<mode>"))', rp.profile.ls),
+        "windows": ("Built-in Windows  (rp.signal.filters.Window.get(<name>))", lambda: {"windows": rp.signal.filters.Window.s()}),
     }
 
 
@@ -67,6 +74,25 @@ def cmd_fmt(args):
     return 1 if changed and args.check else 0
 
 
+def cmd_survey(args):
+    """Survey a capture and print each signal found; --plot also shows the spectrum (needs matplotlib)"""
+    import rpps as rp
+    src = rp.source.File(args.fmt, args.file, Fs=args.fs, cf=args.cf)
+    sv = rp.analysis.survey(src, samples=args.samples)
+    print(f"{src.path}: {sv.Fs/1e6:g} MS/s at {sv.cf/1e6:g} MHz, {len(sv)} signals, {sv.bin_hz:.0f} Hz bins, floor {sv.floor:.1f} dB")
+    for i, s in enumerate(sv):
+        print(f"  {i:>2}  {s.describe()}")
+    if args.plot:
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            print("--plot needs matplotlib (pip install rpps[viz])", file=sys.stderr)
+            return 1
+        sv.plot()
+        plt.show()
+    return 0
+
+
 _LDPC_RATES = {"B1": "1_4", "B2": "1_3", "B3": "2_5", "B4": "1_2", "B5": "3_5", "B6": "2_3", "B7": "3_4", "B8": "4_5",
                "B9": "5_6", "B10": "8_9", "B11": "9_10"}
 
@@ -98,13 +124,13 @@ def _ldpc_rows(t):
 
 
 def cmd_gen_ldpc(args):
-    """Turn DVB-S2 LDPC parity address tables (EN 302 307 annex B/C) into config/coding/block/ldpc files
+    """Turn DVB-S2 LDPC parity address tables (EN 302 307 annex B/C) into config/fec/block/ldpc files
 
     The input is xdsopl/LDPC's dvb_s2_tables.hh (https://github.com/xdsopl/LDPC). It is read as data, never executed.
     """
     from rpps._config import PATH_CONFIG
     tables = _ldpc_parse(Path(args.tables).read_text())
-    root = Path(args.out) if args.out else PATH_CONFIG / "coding" / "block" / "ldpc"
+    root = Path(args.out) if args.out else PATH_CONFIG / "fec" / "block" / "ldpc"
     root.mkdir(parents=True, exist_ok=True)
     for i in args.ids or ["B5", "B7"]:
         t = tables[i]
@@ -121,12 +147,22 @@ def cmd_gen_ldpc(args):
 
 def main(argv=None):
     # Category names are static so --help doesn't need to import rpps
-    names = ["mod", "coding", "scram", "encap", "chain", "filters", "windows"]
+    names = ["constellation", "pulse", "filter", "sequence", "scramble", "fec", "interleave", "crc", "frame", "header", "table",
+             "profile", "windows"]
     parser = argparse.ArgumentParser(prog="rpps", description="RF Parameter Processor Suite")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p_ls = sub.add_parser("ls", help="list available modulations, codings, chains, filters, ...")
+    p_ls = sub.add_parser("ls", help="list the definitions there are, by resource")
     p_ls.add_argument("category", nargs="*", choices=names, help="limit output to these categories (default: all)")
     p_ls.set_defaults(fn=cmd_ls)
+
+    p_sv = sub.add_parser("survey", help="find and list the signals in a capture file")
+    p_sv.add_argument("file", help="capture file")
+    p_sv.add_argument("--fs", type=float, required=True, help="sample rate [Hz]")
+    p_sv.add_argument("--fmt", default="cf64", help="sample format, see rp.source.formats.ls() (default: cf64, complex float32 pairs)")
+    p_sv.add_argument("--cf", type=float, default=0.0, help="centre frequency [Hz] (default: 0)")
+    p_sv.add_argument("--samples", type=int, default=2**17, help="samples to read (default: 131072)")
+    p_sv.add_argument("--plot", action="store_true", help="show the survey plot (needs matplotlib)")
+    p_sv.set_defaults(fn=cmd_survey)
 
     p_fmt = sub.add_parser("fmt", help="rewrite config json files in one style")
     p_fmt.add_argument("dir", nargs="?", help="config directory (default: the shipped config)")
@@ -136,7 +172,7 @@ def main(argv=None):
     p_gen = sub.add_parser("gen-ldpc", help="generate DVB-S2 LDPC config files from dvb_s2_tables.hh")
     p_gen.add_argument("tables", help="path to xdsopl/LDPC dvb_s2_tables.hh")
     p_gen.add_argument("ids", nargs="*", help="table ids, e.g. B5 B7 (default: B5 B7)")
-    p_gen.add_argument("--out", help="output directory (default: the shipped config/coding/block/ldpc)")
+    p_gen.add_argument("--out", help="output directory (default: the shipped config/fec/block/ldpc)")
     p_gen.set_defaults(fn=cmd_gen_ldpc)
 
     args = parser.parse_args(argv)

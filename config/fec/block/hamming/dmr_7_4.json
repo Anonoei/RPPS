@@ -1,0 +1,8 @@
+{
+  "base": "block",
+  "type": "cyclic",
+  "comment": "DMR Hamming (7,4,3), g(x) = x^3 + x + 1 (ETSI TS 102 361-1 V2.6.1 B.3.5, equals Table B.17)",
+  "n": 7,
+  "k": 4,
+  "poly": "0xb"
+}

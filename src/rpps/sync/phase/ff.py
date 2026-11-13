@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from ...base import Stage, Meta
-from ...filters.filter import FIR
+from ...signal.filters.filter import FIR
 
 class FFCarrier(Stage):
     """Feed-forward carrier correction for M-fold symmetric (PSK) symbols. No loop

@@ -1,0 +1,14 @@
+{
+  "base": "sequence",
+  "type": "recurrence",
+  "comment": "CCSDS pseudo-randomizer 1+x^3+x^5+x^7+x^8: the register's output bits from its seed, as a recurrence",
+  "ref": "CCSDS 131.0-B",
+  "sequences": [
+    {
+      "length": 8,
+      "taps": [0, 3, 5, 7],
+      "init": [0, 1, 0, 1, 1, 0, 0, 0]
+    }
+  ],
+  "skip": 8
+}

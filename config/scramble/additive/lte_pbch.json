@@ -1,0 +1,20 @@
+{
+  "base": "scramble",
+  "type": "additive",
+  "comment": "LTE PBCH scrambling (36.211 6.6.1): c_init = N_ID^cell, over the 1920 bits of four radio frames (start = 480 * (SFN mod 4))",
+  "params": {
+    "pci": {
+      "comment": "physical cell id 0..503",
+      "example": 77
+    }
+  },
+  "sequence": {
+    "name": "lte_gold",
+    "args": {
+      "c_init": {
+        "param": "pci"
+      }
+    }
+  },
+  "period": 1920
+}

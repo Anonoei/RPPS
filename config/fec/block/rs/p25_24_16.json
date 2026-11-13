@@ -1,0 +1,11 @@
+{
+  "base": "block",
+  "type": "rs",
+  "comment": "P25 phase 1 LDU2 encryption sync: RS(24,16,9) over GF(64), roots alpha^1..alpha^8 (TIA-102.BAAA). Checked on air: real LDU2s are codewords",
+  "n": 24,
+  "k": 16,
+  "m": 6,
+  "poly": 67,
+  "fcr": 1,
+  "prim": 1
+}

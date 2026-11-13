@@ -27,7 +27,7 @@ class Hypothesis:
         self.name = name
         self.z = z
         self.params = params or {}
-        self.coding = coding # (folder, config name) when it is in config/coding
+        self.coding = coding # (folder, config name) when it is in config/fec
 
     def __repr__(self):
         c = f" [{self.coding[0]}/{self.coding[1]}]" if self.coding else ""
@@ -199,8 +199,8 @@ def scan_block(bits, syndrome, n, name, tag=None, max_offsets=None):
     return hyps, trials
 
 def config_blocks():
-    """(name, folder, config name, n, syndrome function) for the block codes in config/coding"""
-    from .. import coding
+    """(name, folder, config name, n, syndrome function) for the block codes in config/fec"""
+    from .. import code as coding
     out = []
     for folder in ("block",):
         for name in coding.names(folder):
@@ -275,8 +275,8 @@ def detect_fec(streams, ks=range(3, 8), rates=(2, 3), periods=(), blocks=True, d
     return Report(hyps, trials, facts)
 
 def _label_configs(hyps):
-    """Attach the matching config/coding entry to convolutional hypotheses"""
-    from .. import coding
+    """Attach the matching config/fec entry to convolutional hypotheses"""
+    from .. import code as coding
     known = {}
     for name in coding.names("conv"):
         c = coding.load("conv", name)
@@ -289,7 +289,7 @@ def _label_configs(hyps):
                 if gs in forms or tuple(reversed(gs)) in forms:
                     h.coding = ("conv", name)
 
-# --- Identifying a chain from config/coding definitions ---------------------------------------------------
+# --- Identifying a chain from config/fec definitions ---------------------------------------------------
 
 def find_sync(bits, markers=(0x47, 0xB8), period=204):
     """Bit offset and byte phase at which `markers` repeat every `period` bytes. Returns (fraction, bit offset, phase)"""
@@ -316,12 +316,12 @@ def _mismatch(code, seg):
     return int(np.sum(e[:n] != seg[:n].astype(bool))), n
 
 def scan_defined_conv(streams, names=None, steps=2500, skip=0.1):
-    """Try every convolutional definition in config/coding/conv on every bit mapping and puncture alignment
+    """Try every convolutional definition in config/fec/conv on every bit mapping and puncture alignment
 
     A correct hypothesis lets the decoder reproduce the received bits (the channel error rate, well below
     what a wrong one gets). Returns (hypotheses, trials).
     """
-    from .. import coding
+    from .. import code as coding
     names = names or coding.names("conv")
     hyps, trials = [], 0
     rng = np.random.default_rng(0)
@@ -351,7 +351,7 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1):
 
 def decode_conv(bits, hyp):
     """Run the config definition behind a conv-config hypothesis on a whole bit stream"""
-    from .. import coding
+    from .. import code as coding
     code = coding.load(*hyp.coding)
     seg = np.asarray(bits[hyp.params["offset"]:], dtype=np.uint8)
     nb = int(code._enc.puncture.sum()) if code._enc.puncture is not None else code._enc.den
@@ -359,18 +359,20 @@ def decode_conv(bits, hyp):
     return code._dec.decode(seg)
 
 def scan_rs(bits, names=None, interleavers=True, packets=200):
-    """Find a Reed-Solomon code (config/coding/block type rs), optionally behind an interleaver (config/coding/interleave)
+    """Find a Reed-Solomon code (config/fec/block type rs), optionally behind an interleaver (config/interleave)
 
     Returns (hypotheses, trials). The score is how many words have all-zero syndromes.
     """
-    from .. import coding
-    from ..coding.types import rs as RS
+    from .. import code as coding
     names = names or coding.names("block", "rs")
-    inters = [None] + [coding.load("interleave", n)._enc for n in coding.names("interleave")] if interleavers else [None]
+    inters = [None] + [c for c in (coding.load("interleave", n)._enc for n in coding.names("interleave"))
+                       if hasattr(c, "I") and hasattr(c, "M")] if interleavers else [None] # Forney: the ones RS sits behind
     hyps, trials = [], 0
     bits = np.asarray(bits, dtype=np.uint8)
     for name in names:
         code = coding.load("block", name)._enc
+        if getattr(code, "m", 8) != 8: # The search runs on bytes: codes over other fields (P25's GF(64)) don't apply
+            continue
         n = code.den
         # Interleavers eat (I-1)*I*M symbols of start-up; use what is left, at least 60 words
         packets = int(min(packets, max(len(bits)//8//n - 60, 0))) or packets
@@ -379,12 +381,7 @@ def scan_rs(bits, names=None, interleavers=True, packets=200):
             for off in range(8):
                 B = np.packbits(b[off:][:(len(b)-off)//8*8]).astype(np.int64)
                 for inter in inters:
-                    if inter is None:
-                        C = B
-                        phases = range(n)
-                    else:
-                        phases = range(n)
-                    for ph in phases:
+                    for ph in range(n):
                         seg = B[ph:ph+(packets + 20)*n]
                         if len(seg) < 80*n:
                             continue
@@ -476,7 +473,7 @@ def recover_dual(bits, n, offset=0, trials=40, seed=0, z_min=8.0):
     return out
 
 class Guess:
-    """A guessed FEC definition. Decoding only happens from a saved config: `save` it, then rp.coding.load it"""
+    """A guessed FEC definition. Decoding only happens from a saved config: `save` it, then rp.code.load it"""
     __slots__ = ("kind", "definition", "evidence")
     FOLDER = {"block": "block", "conv": "conv"}
 
@@ -492,10 +489,10 @@ class Guess:
         return f"<Guess conv K={d['encode']['constraint']} rate {d['encode']['num']}/{d['encode']['den']} {self.evidence}>"
 
     def save(self, name, path=None):
-        """Write config/coding/<kind>/guess/<name>.json (or <path>/<kind>/guess/<name>.json). Returns the file"""
+        """Write config/fec/<kind>/guess/<name>.json (or <path>/<kind>/guess/<name>.json). Returns the file"""
         import json
         from pathlib import Path
-        from ..coding import serial
+        from ..code import serial
         base = Path(path) if path else serial.root()
         folder = base / self.FOLDER[self.kind] / "guess"
         folder.mkdir(parents=True, exist_ok=True)
@@ -549,12 +546,12 @@ def guess_block(bits, n=None, offsets=None, hints=()):
     return None
 
 def scan_hdlc(streams, names=None, min_frames=3):
-    """HDLC framing (config/encap/frame): many flags, and frames whose FCS checks out
+    """HDLC framing (config/frame): many flags, and frames whose FCS checks out
 
     Looks at flag counts first (a 0x7E pattern shows up at random once per 256 bits), then deframes the
     streams that have far more than that. Returns (hypotheses, trials).
     """
-    from .. import encap
+    from .. import link as encap
     names = names or encap.ls().get("frame", [])
     hyps, trials = [], 0
     for name in names:

@@ -17,7 +17,6 @@ class BlitManager:
         size = self.fig.get_size_inches()
         if (self.size != size).any():
             self.size = size
-            print(f"Saving BG")
             self._bg = self.canvas.copy_from_bbox(self.canvas.figure.bbox)
         self._draw_animated()
 

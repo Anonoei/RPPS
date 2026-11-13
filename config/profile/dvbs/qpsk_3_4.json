@@ -1,0 +1,70 @@
+{
+  "base": "profile",
+  "comment": "DVB-S QPSK, convolutional code K=7 171/133 punctured to 3/4, Forney interleaver I=12, RS(204,188), energy dispersal, MPEG-TS out. QPSK carries the code's two outputs on I and Q, I first, a 1 negative",
+  "ref": "EN 300 421",
+  "aliases": ["dvbs_3_4"],
+  "params": {
+    "sps": {
+      "default": 4,
+      "comment": "samples per symbol"
+    }
+  },
+  "steps": [
+    {
+      "wave": "shape",
+      "pulse": "rrc/0p35",
+      "sps": {
+        "param": "sps"
+      }
+    },
+    {
+      "sync": "timing"
+    },
+    {
+      "sync": "carrier",
+      "order": 4,
+      "constellation": "qpsk"
+    },
+    {
+      "symbol": "constellation",
+      "name": "qpsk",
+      "mapping": "R090 inverted"
+    },
+    {
+      "sync": "puncture",
+      "fec": "k7_171_133/3_4"
+    },
+    {
+      "code": "fec",
+      "type": "conv",
+      "name": "k7_171_133/3_4"
+    },
+    {
+      "sync": "align",
+      "period": 204,
+      "pattern": [184, 71, 71, 71, 71, 71, 71, 71],
+      "name": "packets"
+    },
+    {
+      "code": "fec",
+      "type": "interleave",
+      "name": "forney/12_17"
+    },
+    {
+      "code": "fec",
+      "type": "block",
+      "name": "rs/204_188"
+    },
+    {
+      "sync": "align",
+      "period": 188,
+      "pattern": [184, 71, 71, 71, 71, 71, 71, 71],
+      "name": "frames",
+      "start": "pattern"
+    },
+    {
+      "code": "scramble",
+      "name": "additive/dvb_energy"
+    }
+  ]
+}

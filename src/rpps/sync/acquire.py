@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from ..base import Stage
-from ..dsp.rate import find_baud
+from ..analysis.rate import find_baud
 from ..analysis.modulation import detect
 
 class Acquire(Stage):

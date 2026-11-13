@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from .. import _accel
 from ..base import Stage
 
 class AGC(Stage):
@@ -36,6 +37,12 @@ class AGC(Stage):
         return SimpleNamespace(gain=self.init)
 
     def step(self, samples, st, meta):
+        if _accel.native is not None:
+            x = np.ascontiguousarray(samples)
+            if x.dtype not in (np.complex64, np.complex128, np.float32, np.float64):
+                x = x.astype(np.float32)
+            out, st.gain = _accel.native.agc(x, float(st.gain), float(self.mu), float(self.target), float(self.min), float(self.max), bool(self.log))
+            return out
         out = np.empty(len(samples), dtype=samples.dtype if samples.dtype.kind == "c" else np.float32)
         gain, mu, target, lo, hi = st.gain, self.mu, self.target, self.min, self.max
         amp = np.abs(samples)

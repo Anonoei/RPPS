@@ -23,7 +23,7 @@ radar = colors.LinearSegmentedColormap.from_list("RT-radar", (
     (1.00, (1.0, 1.0, 1.0)),
 ))
 
-gray = colors.LinearSegmentedColormap.from_list("RT-radar", (
+gray = colors.LinearSegmentedColormap.from_list("RT-gray", (
     (0.00, (0.0, 0.0, 0.0)),
     (0.50, (0.5, 0.5, 0.5)),
     (1.00, (1.0, 1.0, 1.0)),

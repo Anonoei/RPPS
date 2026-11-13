@@ -1,0 +1,12 @@
+{
+  "base": "block",
+  "type": "rs",
+  "comment": "P25 phase 2 S-OEMI (SACCH): (63,35) shortened to (54,26) and punctured by its last 9 parity symbols: 45 hexbits sent, 156 info bits",
+  "n": 54,
+  "k": 26,
+  "m": 6,
+  "poly": 67,
+  "fcr": 1,
+  "prim": 1,
+  "puncture": [-9, -8, -7, -6, -5, -4, -3, -2, -1]
+}

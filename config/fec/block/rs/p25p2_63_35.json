@@ -1,0 +1,11 @@
+{
+  "base": "block",
+  "type": "rs",
+  "comment": "P25 phase 2 RS(63,35,29) over GF(64), roots alpha^1..alpha^28 (TIA-102.BBAC Annex A): the code the ESS and MAC codes are derived from",
+  "n": 63,
+  "k": 35,
+  "m": 6,
+  "poly": 67,
+  "fcr": 1,
+  "prim": 1
+}

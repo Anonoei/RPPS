@@ -24,19 +24,20 @@ def x():
     return (rng.standard_normal(20000) + 1j*rng.standard_normal(20000)).astype(np.complex64)
 
 def taps():
-    return rp.filters.designer.designer(101, 7.5e3, fs=250e3)
+    return rp.signal.filters.designer.designer(101, 7.5e3, fs=250e3)
 
 STAGES = {
-    "FMDemod": (lambda: rp.mod.FMDemod(), dict(Fs=250e3)),
-    "ShiftFreq": (lambda: rp.filters.ShiftFreq(-57e3), dict(Fs=250e3)),
-    "ShiftFreqIdx": (lambda: rp.filters.ShiftFreqIdx(0.01), dict(Fs=250e3)),
-    "FIR": (lambda: rp.filters.filters.ConvFilter(taps()), dict(Fs=250e3)),
-    "ShiftTime": (lambda: rp.filters.ShiftTime(0.3), dict(Fs=250e3)),
-    "Decimate": (lambda: rp.sample.down.Decimate(10), dict(Fs=250e3, sps=10)),
-    "FractionalSpline": (lambda: rp.sample.down.FractionalSpline(0.37), dict(Fs=250e3, sps=10)),
-    "Polyphase": (lambda: rp.sample.re.Polyphase(19, 25), dict(Fs=25e3, sps=25)),
-    "SincUp": (lambda: rp.sample.up.Sinc(4), dict(Fs=25e3, sps=1)),
-    "Biphase": (lambda: rp.filters.ShapingBiphase(), dict(Fs=19e3, sps=16)),
+    "FMDemod": (lambda: rp.wave.FMDemod(), dict(Fs=250e3)),
+    "ShiftFreq": (lambda: rp.signal.filters.ShiftFreq(-57e3), dict(Fs=250e3)),
+    "ShiftFreqIdx": (lambda: rp.signal.filters.ShiftFreqIdx(0.01), dict(Fs=250e3)),
+    "FIR": (lambda: rp.signal.filters.filters.ConvFilter(taps()), dict(Fs=250e3)),
+    "ShiftTime": (lambda: rp.signal.filters.ShiftTime(0.3), dict(Fs=250e3)),
+    "Decimate": (lambda: rp.signal.sample.down.Decimate(10), dict(Fs=250e3, sps=10)),
+    "FractionalSpline": (lambda: rp.signal.sample.down.FractionalSpline(0.37), dict(Fs=250e3, sps=10)),
+    "Polyphase": (lambda: rp.signal.sample.re.Polyphase(19, 25), dict(Fs=25e3, sps=25)),
+    "FractionalPolyphase": (lambda: rp.signal.sample.FractionalPolyphase(0.5381, cutoff=3.7e6, shift=-0.5e6), dict(Fs=20e6, sps=2, cf=604e6)),
+    "SincUp": (lambda: rp.signal.sample.up.Sinc(4), dict(Fs=25e3, sps=1)),
+    "Biphase": (lambda: rp.signal.filters.ShapingBiphase(), dict(Fs=19e3, sps=16)),
     "AGC": (lambda: rp.sync.AGC(1.0, 0.01), dict(Fs=1e3)),
     "Costas": (lambda: rp.sync.Costas(0.05, 0.001, 4), dict(Fs=1e3, sps=1)),
 }
@@ -63,19 +64,19 @@ def test_mm_does_not_depend_on_block_size():
     assert np.allclose(ref[:n], y[:n], atol=1e-4)
 
 def test_a_stage_is_reusable_across_streams(x):
-    stage = rp.filters.ShiftFreq(1e3)
+    stage = rp.signal.filters.ShiftFreq(1e3)
     a = rp.Data(x[:100], Fs=1e5) + stage
     b = rp.Data(x[:100], Fs=1e5) + stage # a new stream: the oscillator starts again
     assert np.array_equal(a.data, b.data)
 
 def test_rates_follow_the_stages(x):
     d = rp.Data(x[:5000], Fs=250e3, sps=10, cf=100e6)
-    out = d + rp.filters.ShiftFreq(25e3) + rp.sample.down.Decimate(5)
+    out = d + rp.signal.filters.ShiftFreq(25e3) + rp.signal.sample.down.Decimate(5)
     assert out.Fs == 50e3 and out.sps == 2 and out.cf == 100e6 + 25e3
     assert d.Fs == 250e3 and d.cf == 100e6 # The input is untouched
 
 def test_group_delay_is_per_block_not_summed(x):
-    lpf = rp.filters.low_pass(101, 5e3, 250e3)
+    lpf = rp.signal.filters.low_pass(101, 5e3, 250e3)
     stream, delays = None, []
     for i in range(3):
         d = rp.Data(x[i*1000:(i+1)*1000], Fs=250e3, stream=stream)
@@ -84,7 +85,7 @@ def test_group_delay_is_per_block_not_summed(x):
     assert delays[0] == pytest.approx(50/250e3) and len(set(delays)) == 1
 
 def test_pipelines_compose_and_match_the_operators(x):
-    a, b, c = rp.filters.ShiftFreq(1e3), rp.filters.low_pass(51, 40e3, 250e3), rp.sample.down.Decimate(4)
+    a, b, c = rp.signal.filters.ShiftFreq(1e3), rp.signal.filters.low_pass(51, 40e3, 250e3), rp.signal.sample.down.Decimate(4)
     rx = a + b + c
     assert isinstance(rx, rp.base.Pipeline) and len(rx) == 3
     ref = rp.Data(x[:4000], Fs=250e3) + a + b + c
@@ -93,9 +94,9 @@ def test_pipelines_compose_and_match_the_operators(x):
     assert len(a + (b + c)) == 3 and len((a + b) + c) == 3
 
 def test_digital_pipelines_encode_forward_and_decode_backward():
-    m = rp.mod.load("QPSK"); m.set_mapping(m.get_maps()[0])
-    ecc = rp.coding.load("block", "hamming/7_4")
-    scr = rp.scram.load("fdt", "v35")
+    m = rp.symbol.load("QPSK"); m.set_mapping(m.maps[0])
+    ecc = rp.code.load("block", "hamming/7_4")
+    scr = rp.code.scram.load("v35")
     link = scr * ecc * m
     msg = rp.Data(b"Hello World!")
     syms = msg * link
@@ -104,13 +105,13 @@ def test_digital_pipelines_encode_forward_and_decode_backward():
 
 def test_stages_reject_digital_data():
     with pytest.raises(rp.errors.StreamError):
-        rp.Data(b"abc") + rp.filters.ShiftFreq(1.0)
+        rp.Data(b"abc") + rp.signal.filters.ShiftFreq(1.0)
 
 def test_blocks_flow_through_pipelines(tmp_path, x):
     path = tmp_path / "a.iq"
     x[:5000].tofile(path)
-    rx = rp.filters.ShiftFreq(1e3) + rp.sample.down.Decimate(5)
-    src = rp.serial.File("cf64", path, Fs=100e3, cf=1e6)
+    rx = rp.signal.filters.ShiftFreq(1e3) + rp.signal.sample.down.Decimate(5)
+    src = rp.source.File("cf64", path, Fs=100e3, cf=1e6)
     got = (src(777) + rx).collect() # 777 doesn't divide 5000: a short last block
     ref = (rp.Data(x[:5000], Fs=100e3) + rx).data
     assert len(got) == len(ref) and np.allclose(got, ref, atol=1e-5)
@@ -121,26 +122,26 @@ def test_sink_round_trip(tmp_path, x):
     (x[:3000]*0.2).astype(np.complex64).tofile(src)
     for fmt, tol in (("ci32t", 1/32768), ("ci16t", 1/128), ("cf64", 1e-7)):
         out = tmp_path / f"b.{fmt}"
-        with rp.serial.Sink(fmt, out) as sink:
-            rp.serial.File("cf64", src)(1000) >> sink
-        back = rp.serial.File(fmt, out).read(3000)
+        with rp.source.Sink(fmt, out) as sink:
+            rp.source.File("cf64", src)(1000) >> sink
+        back = rp.source.File(fmt, out).read(3000)
         assert np.abs(back - x[:3000]*0.2).max() <= tol
 
 def test_file_seek_resumes_where_it_was(tmp_path, x):
     path = tmp_path / "a.iq"
     x[:1000].tofile(path)
-    f = rp.serial.File("cf64", path)
+    f = rp.source.File("cf64", path)
     f.read(100)
     f.seek(400)
     assert np.array_equal(f.read(10), x[400:410])
 
 CHANNEL = {
-    "AWGN": (lambda: rp.channel.AWGN(10, seed=1), dict(Fs=1e4)),
-    "CFO": (lambda: rp.channel.CFO(300), dict(Fs=1e4)),
-    "Fading": (lambda: rp.channel.Fading(50, seed=2), dict(Fs=1e4)),
-    "ClockDrift": (lambda: rp.channel.ClockDrift(200), dict(Fs=1e4)),
-    "TimingOffset": (lambda: rp.channel.TimingOffset(0.4), dict(Fs=1e4)),
-    "Multipath": (lambda: rp.channel.Multipath([1, 0.4j], [0, 3]), dict(Fs=1e4)),
+    "AWGN": (lambda: rp.signal.channel.AWGN(10, seed=1), dict(Fs=1e4)),
+    "CFO": (lambda: rp.signal.channel.CFO(300), dict(Fs=1e4)),
+    "Fading": (lambda: rp.signal.channel.Fading(50, seed=2), dict(Fs=1e4)),
+    "ClockDrift": (lambda: rp.signal.channel.ClockDrift(200), dict(Fs=1e4)),
+    "TimingOffset": (lambda: rp.signal.channel.TimingOffset(0.4), dict(Fs=1e4)),
+    "Multipath": (lambda: rp.signal.channel.Multipath([1, 0.4j], [0, 3]), dict(Fs=1e4)),
 }
 
 @pytest.mark.parametrize("name", CHANNEL)
@@ -154,14 +155,14 @@ def test_channel_stages_do_not_depend_on_block_size(name, x):
         assert np.allclose(y, ref, atol=1e-4)
 
 MORE = {
-    "FractionalSpline cubic": (lambda: rp.sample.down.FractionalSpline(0.73, "cubic"), dict(Fs=1e4, sps=8)),
-    "CMA": (lambda: rp.equalize.CMA(7, 0.003, sps=2), dict(Fs=1e4, sps=2)),
-    "LMS": (lambda: rp.equalize.LMS(5, 0.01, sps=1, points=[1, -1, 1j, -1j]), dict(Fs=1e4, sps=1)),
-    "AMDemod": (lambda: rp.demod.AMDemod(), dict(Fs=1e4)),
-    "SSBDemod": (lambda: rp.demod.SSBDemod(2000, "usb", 51), dict(Fs=1e4)),
-    "Squelch": (lambda: rp.demod.Squelch(-3.0), dict(Fs=1e4)),
-    "DCBlock": (lambda: rp.demod.DCBlock(), dict(Fs=1e4)),
-    "Deemphasis": (lambda: rp.demod.Deemphasis(), dict(Fs=1e4)),
+    "FractionalSpline cubic": (lambda: rp.signal.sample.down.FractionalSpline(0.73, "cubic"), dict(Fs=1e4, sps=8)),
+    "CMA": (lambda: rp.sync.equalize.CMA(7, 0.003, sps=2), dict(Fs=1e4, sps=2)),
+    "LMS": (lambda: rp.sync.equalize.LMS(5, 0.01, sps=1, points=[1, -1, 1j, -1j]), dict(Fs=1e4, sps=1)),
+    "AMDemod": (lambda: rp.wave.AMDemod(), dict(Fs=1e4)),
+    "SSBDemod": (lambda: rp.wave.SSBDemod(2000, "usb", 51), dict(Fs=1e4)),
+    "Squelch": (lambda: rp.sync.Squelch(-3.0), dict(Fs=1e4)),
+    "DCBlock": (lambda: rp.signal.DCBlock(), dict(Fs=1e4)),
+    "Deemphasis": (lambda: rp.signal.Deemphasis(), dict(Fs=1e4)),
 }
 
 @pytest.mark.parametrize("name", MORE)

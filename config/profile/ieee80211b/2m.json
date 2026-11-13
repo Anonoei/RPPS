@@ -1,0 +1,38 @@
+{
+  "base": "profile",
+  "comment": "IEEE 802.11b DSSS 2 Mb/s: DQPSK, Barker-11 at 11 Mchip/s, self-synchronizing scrambler. The standard sets a spectral mask rather than a pulse: RRC 0.35 here",
+  "ref": "IEEE 802.11-2020 16",
+  "params": {
+    "sps": {
+      "default": 4,
+      "comment": "samples per chip"
+    }
+  },
+  "steps": [
+    {
+      "wave": "shape",
+      "pulse": "rrc/0p35",
+      "sps": {
+        "param": "sps"
+      }
+    },
+    {
+      "sync": "timing"
+    },
+    {
+      "symbol": "spread",
+      "sequence": "barker11"
+    },
+    {
+      "symbol": "differential"
+    },
+    {
+      "symbol": "constellation",
+      "name": "qpsk_axes"
+    },
+    {
+      "code": "scramble",
+      "name": "feedthrough/ieee80211b"
+    }
+  ]
+}

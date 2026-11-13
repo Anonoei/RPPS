@@ -1,0 +1,8 @@
+{
+  "base": "block",
+  "type": "cyclic",
+  "comment": "DMR Hamming (15,11,3), g(x) = x^4 + x + 1 (ETSI TS 102 361-1 V2.6.1 B.3.4, equals Table B.15): BPTC rows",
+  "n": 15,
+  "k": 11,
+  "poly": "0x13"
+}

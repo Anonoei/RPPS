@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P25 Monitor</title>
+<style>
+:root {
+  /* console: warm paper-dark ground, signal-amber for what is live, green for clear audio, red for encrypted */
+  --bg: #15171a; --panel: #1d2024; --line: #2c3036; --ink: #e6e3dc; --dim: #8d9199;
+  --live: #f2b134; --clear: #6fcf8a; --enc: #e0675b; --p2: #7aa7e0;
+  --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) { --bg: #f1efe9; --panel: #fbfaf6; --line: #d9d5ca; --ink: #1f2226; --dim: #6a6f77; --live: #b57400; --clear: #1e7f3f; --enc: #b3382c; --p2: #2f60a8; color-scheme: light; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); padding-inline: max(16px, env(safe-area-inset-left, 0px)); padding-block: 16px 40px; }
+main { max-width: 1040px; margin: 0 auto; display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+h1 { font: 600 20px/1.2 var(--sans); margin: 0; letter-spacing: .01em; }
+.stats { display: flex; flex-wrap: wrap; gap: 4px 18px; font: 12px var(--mono); color: var(--dim); }
+.stats b { color: var(--ink); font-weight: 500; }
+.warn { color: var(--enc) !important; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; }
+button { font: 600 13px var(--sans); color: var(--ink); background: transparent; border: 1px solid var(--dim); padding: 6px 12px; cursor: pointer; }
+button:hover { border-color: var(--live); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+button[aria-pressed="true"] { background: var(--live); color: #15171a; border-color: var(--live); }
+button:disabled { opacity: .35; cursor: not-allowed; }
+.now { font: 13px var(--mono); color: var(--dim); flex: 1 1 220px; min-width: 0; }
+.now b { color: var(--live); font-weight: 600; }
+.meter { width: 120px; height: 8px; background: var(--line); }
+.meter i { display: block; height: 100%; width: 0; background: var(--live); }
+label { font-size: 12px; color: var(--dim); display: flex; gap: 8px; align-items: center; }
+h2 { font: 600 12px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin: 0 0 8px; }
+.wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+tr:last-child td { border-bottom: 0; }
+td.n { font-family: var(--mono); }
+.chip { display: inline-block; font: 600 11px var(--sans); letter-spacing: .04em; padding: 1px 8px; border: 1px solid currentColor; }
+.clear { color: var(--clear); } .encrypted { color: var(--enc); } .phase2 { color: var(--p2); } .unverified { color: var(--dim); }
+tr.live td:first-child { box-shadow: inset 3px 0 var(--live); }
+tr.sel { background: color-mix(in srgb, var(--live) 10%, transparent); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--line); margin-right: 6px; }
+.dot.on { background: var(--live); }
+.scanbar { display: grid; gap: 6px; background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; }
+.scanbar .row { display: flex; flex-wrap: wrap; gap: 4px 20px; font: 12px var(--mono); color: var(--dim); align-items: center; }
+.scanbar .row b { color: var(--ink); font-weight: 500; }
+.playing { color: var(--live) !important; font-weight: 600; }
+.sweep { height: 3px; background: var(--line); overflow: hidden; }
+.sweep i { display: block; height: 100%; width: 30%; background: var(--live); animation: sweep 2.4s linear infinite; }
+.sweep.hold i { width: 100%; animation: none; background: var(--clear); }
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .sweep i { animation: none; width: 100%; opacity: .4; } }
+tr.play td { background: color-mix(in srgb, var(--clear) 14%, transparent); }
+.empty { padding: 18px 12px; color: var(--dim); }
+.tune { background: var(--panel); border: 1px solid var(--line); padding: 12px; display: grid; gap: 10px; }
+canvas { width: 100%; height: 190px; display: block; }
+.facts { display: flex; flex-wrap: wrap; gap: 4px 22px; font: 12px var(--mono); color: var(--dim); }
+.facts b { color: var(--ink); font-weight: 500; }
+.log { background: var(--panel); border: 1px solid var(--line); max-height: 260px; overflow-y: auto; font: 12px/1.5 var(--mono); }
+.log div { display: grid; grid-template-columns: 56px 1fr; gap: 10px; padding: 3px 12px; border-bottom: 1px solid var(--line); }
+.log div:last-child { border-bottom: 0; }
+.log .t { color: var(--dim); } .log .grant .x { color: var(--ink); } .log .call .x { color: var(--clear); } .log .enc .x { color: var(--enc); }
+.two { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+footer { color: var(--dim); font-size: 12px; max-width: 70ch; }
+@media (prefers-reduced-motion: no-preference) { .meter i { transition: width .08s linear; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>P25 Monitor</h1>
+    <div class="stats" id="stats" aria-live="off"></div>
+  </header>
+
+  <section>
+    <h2>How the radio is tuned</h2>
+    <div class="tune">
+      <canvas id="spec" role="img" aria-label="Spectrum of the captured band with the decoded channels marked"></canvas>
+      <div class="facts" id="facts"></div>
+    </div>
+  </section>
+
+  <section class="scanbar" aria-label="Scan status">
+    <div class="row" id="scanline"></div>
+    <div class="sweep" id="sweep" aria-hidden="true"><i></i></div>
+  </section>
+
+  <section class="bar" aria-label="Listening">
+    <button id="start" type="button">Start audio</button>
+    <button id="scan" type="button" aria-pressed="false" disabled>Scan clear talkgroups</button>
+    <button id="off" type="button" disabled>Stop listening</button>
+    <button id="tone" type="button" disabled>Test sound</button>
+    <div class="now" id="now">Audio is off. Start audio, then pick a talkgroup or scan.</div>
+    <div class="meter" aria-hidden="true"><i id="lvl"></i></div>
+    <label for="vol">Volume <input id="vol" type="range" min="0" max="1" step="0.05" value="0.8"></label>
+  </section>
+
+  <section>
+    <h2>Talkgroups from the control channel</h2>
+    <div class="wrap"><table>
+      <thead><tr><th>Talkgroup</th><th>Voice channel</th><th>Status</th><th>Heard</th><th>Last grant</th><th>Grants</th><th></th></tr></thead>
+      <tbody id="tgs"><tr><td colspan="7" class="empty">Waiting for the control channel. Talkgroups appear as the system grants calls.</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <div class="two">
+    <section>
+      <h2>What it is doing</h2>
+      <div class="log" id="log"><div><span class="t"></span><span class="x">Waiting for events.</span></div></div>
+    </section>
+    <section>
+      <h2>Recent clear calls (kept in memory)</h2>
+      <div class="wrap"><table>
+        <thead><tr><th>Talkgroup</th><th>Channel</th><th>Length</th><th>Ago</th><th></th></tr></thead>
+        <tbody id="recent"><tr><td colspan="5" class="empty">No clear call heard yet. The next one is kept here so you can play it back.</td></tr></tbody>
+      </table></div>
+    </section>
+  </div>
+
+  <section>
+    <h2>Channels being decoded</h2>
+    <div class="wrap"><table>
+      <thead><tr><th>Frequency</th><th>Role</th><th>Level</th><th>Frames</th><th>NAC</th><th>Now</th></tr></thead>
+      <tbody id="chs"></tbody>
+    </table></div>
+  </section>
+
+  <footer>
+    Only calls whose encryption algorithm reads "unencrypted" are decoded. Encrypted talkgroups are listed from their grants and never followed. Status comes from the grant's encrypted flag and the algorithm ID seen in voice frames; a talkgroup with no voice seen yet shows as unverified. Audio stays in memory on this machine.
+  </footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let ctx = null, gainNode = null, nextT = 0, sel = {mode: "off", tg: null}, lastState = null;
+
+function age(s) { if (s == null) return "–"; if (s < 90) return Math.round(s) + " s"; if (s < 5400) return Math.round(s / 60) + " min"; return Math.round(s / 3600) + " h"; }
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+async function post(mode, tg) {
+  const r = await fetch("/api/listen", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({mode, tg})});
+  sel = await r.json(); render(lastState);
+}
+
+async function startAudio() {
+  if (ctx) return;
+  ctx = new AudioContext(); gainNode = ctx.createGain(); gainNode.gain.value = +$("vol").value; gainNode.connect(ctx.destination);
+  $("start").disabled = true; $("start").textContent = "Audio on"; $("scan").disabled = false; $("off").disabled = false; $("tone").disabled = false;
+  const res = await fetch("/audio"); const rd = res.body.getReader(); let left = new Uint8Array(0);
+  while (true) {
+    const {value, done} = await rd.read(); if (done) break;
+    const buf = new Uint8Array(left.length + value.length); buf.set(left); buf.set(value, left.length);
+    const n = buf.length >> 1; left = buf.slice(n * 2);
+    if (!n) continue;
+    play(new Int16Array(buf.buffer.slice(0, n * 2)));
+  }
+}
+
+function play(pcm, reset) {
+  const n = pcm.length, f = new Float32Array(n); let pk = 0;
+  for (let i = 0; i < n; i++) { f[i] = pcm[i] / 32768; pk = Math.max(pk, Math.abs(f[i])); }
+  const ab = ctx.createBuffer(1, n, 8000); ab.copyToChannel(f, 0);
+  const s = ctx.createBufferSource(); s.buffer = ab; s.connect(gainNode);
+  if (reset || nextT - ctx.currentTime > 1.5 || nextT < ctx.currentTime) nextT = ctx.currentTime + 0.15;
+  s.start(nextT); nextT += n / 8000;
+  $("lvl").style.width = Math.min(100, pk * 110) + "%"; setTimeout(() => $("lvl").style.width = "0", 250);
+}
+
+function testTone() { if (!ctx) return; const p = new Int16Array(4000); for (let i = 0; i < p.length; i++) p[i] = 9000 * Math.sin(2 * Math.PI * 440 * i / 8000) * Math.min(1, i / 200, (p.length - i) / 200); play(p, true); }
+
+async function replay(i) { if (!ctx) return; const r = await fetch("/api/recent/" + i); const b = await r.arrayBuffer(); play(new Int16Array(b.slice(0, b.byteLength & ~1)), true); }
+
+function render(st) {
+  if (!st) return; lastState = st; sel = st.sel;
+  const stats = $("stats"); stats.textContent = "";
+  const add = (k, v, bad) => { const s = el("span"); s.append(k + " "); const b = el("b", bad ? "warn" : "", v); s.append(b); stats.append(s); };
+  add("capture", st.cf.toFixed(1) + " MHz, " + st.fs + " MS/s");
+  if (st.system && st.system.sysid != null) add("system", "0x" + st.system.sysid.toString(16).toUpperCase());
+  add("load", st.load.toFixed(2), st.load > 0.9); add("dropped blocks", st.overruns, st.overruns > 0); add("up", age(st.uptime));
+
+  const tb = $("tgs"); tb.textContent = "";
+  if (!st.tgs.length) { const tr = el("tr"); const td = el("td", "empty", "Waiting for the control channel. Talkgroups appear as the system grants calls."); td.colSpan = 7; tr.append(td); tb.append(tr); }
+  for (const t of st.tgs) {
+    const tr = el("tr"); const live = t.audio_age != null && t.audio_age < 2; if (live) tr.className = "live"; if (st.playing && st.playing.tg === t.tg) tr.className = "play"; if (sel.mode === "tg" && sel.tg === t.tg) tr.classList.add("sel");
+    tr.append(el("td", "n", String(t.tg) + (t.emergency ? "  EMERG" : "")));
+    tr.append(el("td", "n", t.freq ? t.freq.toFixed(4) + " MHz" : "–"));
+    const sc = el("td"); const base = {clear: "clear", encrypted: "encrypted", phase2: "phase 2", unverified: "unverified"}[t.status]; const label = t.p2 ? (t.status === "phase2" ? (t.enc_flag ? "phase 2, flagged encrypted" : "phase 2") : "phase 2, " + base) : base;
+    sc.append(el("span", "chip " + t.status, label)); if (t.alg && t.status === "encrypted" && t.alg !== "unencrypted") sc.append(" " + t.alg); tr.append(sc);
+    tr.append(el("td", "n", t.audio_s ? t.audio_s + " s in " + t.calls + (t.calls === 1 ? " call" : " calls") : "–"));
+    tr.append(el("td", "n", age(t.grant_age))); tr.append(el("td", "n", String(t.grants)));
+    const bt = el("td"); const b = el("button", "", sel.mode === "tg" && sel.tg === t.tg ? "Listening" : "Listen");
+    b.type = "button"; b.disabled = !ctx || t.status === "encrypted" || t.status === "phase2" || (t.p2 && !st.p2_audio); b.onclick = () => post("tg", t.tg); bt.append(b); tr.append(bt); tb.append(tr);
+  }
+  const cb = $("chs"); cb.textContent = "";
+  for (const c of st.channels) {
+    const tr = el("tr"); if (st.playing && st.playing.freq === c.freq) tr.className = "play"; const f = el("td", "n"); f.append(el("span", "dot" + (c.call || (c.role === "control" && c.age != null && c.age < 2) ? " on" : "")), c.freq.toFixed(4) + " MHz"); tr.append(f);
+    tr.append(el("td", "", c.kind === "p2" ? "voice (phase 2)" : c.role)); tr.append(el("td", "n", c.level.toFixed(0) + " dB" + (c.active ? "" : "  idle"))); tr.append(el("td", "n", String(c.frames)));
+    tr.append(el("td", "n", c.nac != null ? "0x" + c.nac.toString(16).toUpperCase() : "–")); tr.append(el("td", st.playing && st.playing.freq === c.freq ? "n playing" : "n", c.kind === "p2" ? (c.lch.length ? c.lch.map(l => "slot " + l.lch + ": " + (l.active ? "talkgroup " + (l.tg ?? "?") + (l.source ? " from " + l.source : "") + ", " + (l.alg ?? "algorithm unknown") : "idle")).join("  |  ") : "phase 2, waiting for slots") : st.playing && st.playing.freq === c.freq ? "playing, talkgroup " + (c.tg ?? "?") : c.call ? "talkgroup " + (c.tg ?? "?") + ", " + (c.cstate === "clear" ? "clear, decoding" : c.cstate === "encrypted" ? "encrypted, skipped" : "checking encryption") : c.role === "control" ? "control" : "idle")); cb.append(tr);
+  }
+  renderExtras(st);
+  $("scan").setAttribute("aria-pressed", sel.mode === "scan");
+  const now = $("now"); now.textContent = "";
+  if (!ctx) now.textContent = "Audio is off. Start audio, then pick a talkgroup or scan.";
+  else if (sel.mode === "off") now.textContent = "Not listening. Pick a talkgroup or scan clear talkgroups.";
+  else if (sel.mode === "scan") { now.append("Scanning clear talkgroups. "); const l = st.tgs.find(t => t.audio_age != null && t.audio_age < 2); now.append(l ? ["Now: ", el("b", "", "talkgroup " + l.tg)] : "Waiting for a call."); }
+  else { now.append("Listening to "); now.append(el("b", "", "talkgroup " + sel.tg)); const l = st.tgs.find(t => t.tg === sel.tg); now.append(l && l.audio_age != null && l.audio_age < 2 ? ", on air." : ", waiting for a call."); }
+}
+
+function renderScan(st) {
+  const sl = $("scanline"); sl.textContent = ""; const sc = st.scan, p = st.playing;
+  const add = (k, v, cls) => { const s = el("span"); s.append(k + " "); s.append(el("b", cls || "", v)); sl.append(s); };
+  const mode = sel.mode === "scan" ? "scanning clear talkgroups" : sel.mode === "tg" ? "holding talkgroup " + sel.tg : "listening is off";
+  add("mode", mode);
+  add("watching", "control + " + sc.watching + " voice channel" + (sc.watching === 1 ? "" : "s"));
+  if (sel.mode !== "off") add("now", p ? "talkgroup " + (p.tg ?? "?") + " on " + p.freq.toFixed(4) + " MHz, " + p.for_s + " s" : sel.mode === "scan" ? "waiting for a clear call" : "waiting for talkgroup " + sel.tg, p ? "playing" : "");
+  const busy = st.channels.filter(c => c.role === "voice" && c.call);
+  add("on air", busy.length ? busy.map(c => (c.tg ?? "?") + " (" + (c.cstate === "clear" ? "clear" : c.cstate === "encrypted" ? "encrypted, skipped" : "checking") + ")").join(", ") : "nothing");
+  add("this session", sc.clear + " clear, " + sc.encrypted + " encrypted calls");
+  const sw = $("sweep"); sw.className = "sweep" + (p ? " hold" : ""); sw.hidden = sel.mode === "off";
+}
+
+function renderExtras(st) {
+  renderScan(st);
+  const r = st.radio || {}, fa = $("facts"); fa.textContent = "";
+  const add = (k, v) => { const s = el("span"); s.append(k + " "); s.append(el("b", "", v)); fa.append(s); };
+  if (r.cf != null) {
+    add("source", r.source); add("centre", r.cf.toFixed(3) + " MHz"); add("sample rate", r.fs + " MS/s");
+    add("decodable span", (r.cf - r.usable / 2).toFixed(2) + " to " + (r.cf + r.usable / 2).toFixed(2) + " MHz");
+    add("gain", r.gain.toFixed(2)); add("clock correction", "+" + r.ppm + " ppm");
+  }
+  const c = st.control || {}; add("control blocks", c.ok + " good, " + c.bad + " bad");
+  const ops = Object.entries(c.ops || {}).map(([k, v]) => k + " " + v).join(", "); if (ops) add("messages", ops);
+  add("audio listeners", String(st.clients));
+  const inp = st.input; if (inp) { const bad = inp.clip > 1e-4; const s = el("span"); s.append("input "); s.append(el("b", bad ? "warn" : "", inp.rms_db.toFixed(0) + " dBFS, " + (inp.clip * 100).toFixed(3) + "% clipped" + (bad ? " (too much gain)" : ""))); fa.append(s); }
+  const lg = $("log"); lg.textContent = "";
+  if (!st.events.length) { const d = el("div"); d.append(el("span", "t"), el("span", "x", "Nothing yet. Events appear as the control channel grants calls and voice frames arrive.")); lg.append(d); }
+  for (const e of st.events) { const d = el("div", e.kind); d.append(el("span", "t", age(e.age)), el("span", "x", e.text)); lg.append(d); }
+  const rb = $("recent"); rb.textContent = "";
+  if (!st.recent.length) { const tr = el("tr"); const td = el("td", "empty", "No clear call heard yet. The next one is kept here so you can play it back."); td.colSpan = 5; tr.append(td); rb.append(tr); }
+  for (const x of st.recent) {
+    const tr = el("tr"); tr.append(el("td", "n", x.tg != null ? String(x.tg) : "?"), el("td", "n", x.freq.toFixed(4) + " MHz"), el("td", "n", x.seconds + " s"), el("td", "n", age(x.age)));
+    const bt = el("td"); const b = el("button", "", "Play"); b.type = "button"; b.disabled = !ctx; b.onclick = () => replay(x.i); bt.append(b); tr.append(bt); rb.append(tr);
+  }
+}
+
+let spec = null;
+async function pollSpec() {
+  try { const r = await fetch("/api/spectrum"); spec = await r.json(); drawSpec(); } catch (e) {}
+  setTimeout(pollSpec, 1000);
+}
+function cssv(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function drawSpec() {
+  const cv = $("spec"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  if (!spec || !lastState) { g.fillStyle = cssv("--dim"); g.font = "12px " + cssv("--mono"); g.fillText("Waiting for samples.", 10, 20); return; }
+  const L = 38, R = 8, T = 18, B = 22, pw = W - L - R, ph = H - T - B, n = spec.db.length;
+  const fmin = spec.f0, fmax = spec.f0 + spec.step * (n - 1), X = f => L + (f - fmin) / (fmax - fmin) * pw;
+  const s = spec.db.slice().sort((a, b) => a - b), lo = s[Math.floor(n * 0.05)] - 3, hi = Math.max(s[Math.floor(n * 0.995)] + 3, lo + 20), Y = v => T + ph - (Math.min(Math.max(v, lo), hi) - lo) / (hi - lo) * ph;
+  const r = lastState.radio || {}, ink = cssv("--ink"), dim = cssv("--dim"), line = cssv("--line"), live = cssv("--live"), clear = cssv("--clear");
+  g.font = "11px " + cssv("--mono"); g.textBaseline = "alphabetic";
+  // outside the decodable span
+  if (r.usable) { g.fillStyle = line; g.globalAlpha = 0.45; const a = X(r.cf - r.usable / 2), b = X(r.cf + r.usable / 2); g.fillRect(L, T, Math.max(0, a - L), ph); g.fillRect(b, T, Math.max(0, L + pw - b), ph); g.globalAlpha = 1; }
+  // grid and axis
+  g.strokeStyle = line; g.fillStyle = dim; g.lineWidth = 1; g.textAlign = "center";
+  const step = (fmax - fmin) > 3 ? 0.5 : 0.25;
+  for (let f = Math.ceil(fmin / step) * step; f <= fmax; f += step) { const x = Math.round(X(f)) + .5; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke(); g.fillText(f.toFixed(2), x, H - 6); }
+  g.textAlign = "right"; for (let v = Math.ceil(lo / 10) * 10; v <= hi; v += 10) { const y = Math.round(Y(v)) + .5; g.beginPath(); g.moveTo(L, y); g.lineTo(L + pw, y); g.stroke(); g.fillText(v.toFixed(0), L - 4, y + 4); }
+  // trace
+  g.beginPath(); g.moveTo(X(fmin), T + ph); spec.db.forEach((v, i) => g.lineTo(X(fmin + i * spec.step), Y(v))); g.lineTo(X(fmax), T + ph); g.closePath();
+  g.fillStyle = ink; g.globalAlpha = 0.14; g.fill(); g.globalAlpha = 1; g.strokeStyle = ink; g.lineWidth = 1; g.beginPath(); spec.db.forEach((v, i) => { const x = X(fmin + i * spec.step), y = Y(v); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
+  // centre
+  if (r.cf) { g.setLineDash([4, 4]); g.strokeStyle = dim; const x = Math.round(X(r.cf)) + .5; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke(); g.setLineDash([]); g.fillStyle = dim; g.textAlign = "center"; g.fillText("tuned centre", x, T - 5); }
+  // channels in use
+  for (const c of lastState.channels) {
+    const x = X(c.freq), w = Math.max(3, 0.0125 / (fmax - fmin) * pw), on = c.call || (c.role === "control" && c.age != null && c.age < 2);
+    g.fillStyle = c.role === "control" ? live : clear; g.globalAlpha = on ? 0.55 : 0.28; g.fillRect(x - w / 2, T, w, ph); g.globalAlpha = 1;
+    g.fillStyle = c.role === "control" ? live : clear; g.textAlign = "center"; const pl = lastState.playing && lastState.playing.freq === c.freq; if (pl) { g.fillStyle = cssv("--ink"); g.globalAlpha = 0.9; g.fillRect(x - w, T, 2 * w, ph); g.globalAlpha = 1; g.fillStyle = clear; }
+    g.fillText((pl ? "\u25B6 TG " + (lastState.playing.tg ?? "?") + " " : c.role === "control" ? "ctl " : "") + c.freq.toFixed(4), Math.min(Math.max(x, L + 40), L + pw - 40), T + 10 + (c.role === "control" ? 0 : 12));
+  }
+  g.textAlign = "left"; g.fillStyle = dim; g.fillText("dB, relative", 2, T - 5);
+}
+window.addEventListener("resize", drawSpec);
+
+async function poll() {
+  try { const r = await fetch("/api/state"); render(await r.json()); } catch (e) { $("now").textContent = "Lost the monitor process. Is it still running?"; }
+  setTimeout(poll, 600);
+}
+$("tone").onclick = testTone; $("start").onclick = startAudio; $("scan").onclick = () => post(sel.mode === "scan" ? "off" : "scan"); $("off").onclick = () => post("off");
+$("vol").oninput = e => { if (gainNode) gainNode.gain.value = +e.target.value; };
+poll(); pollSpec();
+</script>
+</body>
+</html>

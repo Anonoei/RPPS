@@ -1,0 +1,93 @@
+{
+  "base": "profile",
+  "comment": "IEEE 802.11b DSSS with the long PLCP: SYNC, SFD and the PLCP header at 1 Mb/s DBPSK, then the PSDU at the rate the header's SIGNAL field gives (1 or 2 Mb/s DQPSK), switched mid-packet. Barker-11 at 11 Mchip/s (timing and carrier estimated on the chips, the carrier by the 4th power: every chip is on an axis), self-synchronizing scrambler, RRC 0.35 for the spectral mask. Receiving, the header is read after the demapper has demapped the PSDU at the old rate, so the runner re-runs that span from its buffer; transmitting, SIGNAL comes from the caller's fields, else the `signal` parameter",
+  "ref": "IEEE 802.11-2020 16.2, 16.4",
+  "params": {
+    "sps": {
+      "default": 4,
+      "comment": "samples per chip"
+    },
+    "signal": {
+      "default": 20,
+      "comment": "transmit: the PSDU rate in 100 kb/s, 10 or 20, unless the caller gives one per packet"
+    }
+  },
+  "steps": [
+    {
+      "wave": "shape",
+      "pulse": "rrc/0p35",
+      "sps": {
+        "param": "sps"
+      }
+    },
+    {
+      "sync": "timing"
+    },
+    {
+      "sync": "carrier",
+      "order": 4
+    },
+    {
+      "symbol": "spread",
+      "sequence": "barker11"
+    },
+    {
+      "symbol": "differential"
+    },
+    {
+      "symbol": "constellation",
+      "id": "map",
+      "name": "bpsk"
+    },
+    {
+      "code": "scramble",
+      "name": "feedthrough/ieee80211b"
+    },
+    {
+      "sync": "delimit",
+      "id": "sfd",
+      "header": "ieee80211b_plcp"
+    },
+    {
+      "link": "header",
+      "id": "plcp",
+      "name": "ieee80211b_plcp"
+    }
+  ],
+  "controls": {
+    "sfd": {
+      "drive": {
+        "plcp": {
+          "frame": "frame"
+        }
+      }
+    },
+    "plcp": {
+      "table": "ieee80211b/rate",
+      "key": "signal",
+      "default": {
+        "signal": 10,
+        "frame_bits": null
+      },
+      "schedule": [
+        {
+          "signal": {
+            "param": "signal"
+          }
+        }
+      ],
+      "reach": 64,
+      "drive": {
+        "plcp": {
+          "signal": "signal"
+        },
+        "map": {
+          "name": "constellation"
+        },
+        "sfd": {
+          "length": "frame_bits"
+        }
+      }
+    }
+  }
+}

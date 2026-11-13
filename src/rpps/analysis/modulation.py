@@ -6,25 +6,27 @@ corrected symbols under each candidate constellation.
 """
 import numpy as np
 
-from ..dsp.rate import find_baud
+from .rate import find_baud
 from ..math.interp import peak
 from ..math.prob import mixture_variance
 from ..sync.time.mat import matrix_mf, centres_in, best_tau
+from .quality import measure
 
 class Detection:
     """Result of `detect`. Stored in meta.stream.det"""
     __slots__ = (
         "mod", "baud", "sps", "beta", "tau",
         "cfo", "phase", "M", "gain",
-        "scores", "n"
+        "scores", "n", "esn0", "ebn0"
     )
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
 
     def __str__(self):
+        q = "" if self.esn0 is None else f", Es/N0 {self.esn0:.1f} dB, Eb/N0 {self.ebn0:.1f} dB"
         return (f"{self.mod}: baud {self.baud:.1f}, sps {self.sps:.4f}, beta {self.beta}, "
-                f"cfo {self.cfo:.1f} Hz, margin {self.margin:.3f} nats/sym")
+                f"cfo {self.cfo:.1f} Hz, margin {self.margin:.3f} nats/sym{q}")
 
     __repr__ = __str__
 
@@ -44,13 +46,13 @@ def symmetry(points, tol=1e-3, max_order=16):
     return 1
 
 def candidates(names=None):
-    """Load candidate constellations from config/mod: {name: unit-rms points}"""
-    from .. import mod # Late: mod imports after sync/analysis
+    """Load candidate constellations from config/constellation: {name: unit-rms points}"""
+    from .. import symbol  # Late: symbol imports after sync/analysis
     if names is None:
-        names = [n for stems in mod.ls().values() for n in stems if not n.startswith("dvbs2_")] # Labelling variants are not separate modulations
+        names = [n for cat, stems in symbol.ls().items() if cat == "psk" for n in stems if not n.startswith("dvbs2_")] # The PSK family (differential alphabets are another folder); labelling variants are not separate modulations
     out = {}
     for name in names:
-        pts = np.asarray(mod.load(name).points.arr, dtype=np.complex128)
+        pts = np.asarray(symbol.load(name).points, dtype=np.complex128)
         out[name] = pts / np.sqrt(np.mean(np.abs(pts)**2))
     return out
 
@@ -95,7 +97,7 @@ def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8):
     """Find symbol rate, timing, modulation, frequency offset and phase from baseband samples
 
     x: complex baseband at Fs, with the signal of interest centred and filtered
-    names: candidate modulations, default everything in config/mod
+    names: candidate modulations, default everything in config/constellation
     betas: RRC roll-offs to try
     Returns a Detection; its tau is relative to x[0].
     """
@@ -117,10 +119,11 @@ def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8):
         top = max(scores, key=scores.get)
         if best is None or scores[top] > best[0]:
             M, cfo, phase = fits[top]
+            q = measure(correct(y, cands[top], M)[0], cands[top])
             baud = Fs/sps
             best = (scores[top], Detection(
                 mod=top, baud=baud, sps=sps, beta=beta, tau=tau,
                 cfo=cfo*baud, phase=phase, M=M, gain=gain,
-                scores=scores, n=len(y)
+                scores=scores, n=len(y), esn0=q.esn0_db, ebn0=q.ebn0_db
             ))
     return best[1]

@@ -1,0 +1,92 @@
+import rpps as rp
+import rpps.viz
+import numpy as np
+import matplotlib.pyplot as plt
+
+def main():
+    N = 128 # number of samples to simulate
+    Fs = 300 # sample rate
+    Ts = 1/Fs # sample period
+    cf = 0
+
+    t = np.arange(N)/Fs
+    s = np.exp(2j*np.pi*cf*t)
+    f = np.arange(N) - N//2
+
+    n_pwr = 0.0000001
+    _awgn = (np.random.randn(len(s)) + 1j*np.random.randn(len(s)))/np.sqrt(2)
+    s += _awgn*np.sqrt(n_pwr)
+
+    all(f, s)
+    # ind(f, s)
+
+
+def all(f, s):
+    N = len(s)
+    fig, ax = plt.subplots(1,2)
+    fig.tight_layout()
+    ax[0].grid(True)
+    ax[1].grid(True)
+
+    ax[0].set_xlim(f[0], f[-1])
+    ax[1].set_xlim(f[0], f[-1])
+    ax[1].set_ylim(-130, 0)
+
+    for window in rp.signal.filters.Window.s():
+        w = rp.signal.filters.Window.get(window)(N)
+        sw = s * w
+        sw /= 100
+        psd = np.fft.fftshift(np.fft.fft(sw))
+        psd = 10*np.log10(np.abs(psd)**2)
+        ax[0].plot(f, w, label=window)
+        ax[1].plot(f, psd, label=window)
+    fig.legend()
+    plt.show()
+    exit()
+
+def ind(f, s):
+    N = len(s)
+    # w = rp.signal.filters.Window.get("rect")(N)
+    # # B-Spline
+    # w = rp.signal.filters.Window.get("bartlett")(N)
+    # w = rp.signal.filters.Window.get("parzen")(N)
+    # # Polynomial
+    # w = rp.signal.filters.Window.get("welch")(N)
+    # # Raised-cosine
+    # w = rp.signal.filters.Window.get("hann")(N)
+    w = rp.signal.filters.Window.get("hamming")(N)
+    # # Cosine-sum
+    # w = rp.signal.filters.Window.get("blackman")(N)
+    # w = rp.signal.filters.Window.get("nuttall")(N)
+    # w = rp.signal.filters.Window.get("blackman_nuttall")(N)
+    # w = rp.signal.filters.Window.get("blackman_harris")(N)
+    # w = rp.signal.filters.Window.get("flattop")(N)
+    # # Adjustable
+    # w = rp.signal.filters.Window.get("acon_gaussian")(N, 0.1)
+    # w = rp.signal.filters.Window.get("gen_gaussian(")N, 0.2)
+    # w = rp.signal.filters.Window.get("tukey")(N, 0.5)
+    # w = rp.signal.filters.Window.get("planck_taper")(N,0.25)
+    # w = rp.signal.filters.Window.get("exponential")(N, 60)
+    s *= w
+    s /= 100
+
+    psd = np.fft.fftshift(np.fft.fft(s))
+    psd = 10*np.log10(np.abs(psd)**2)
+
+    fig, ax = plt.subplots(1,2)
+    fig.tight_layout()
+    ax[0].grid(True)
+    ax[1].grid(True)
+
+    ax[0].set_xlim(f[0], f[-1])
+    ax[1].set_xlim(f[0], f[-1])
+
+    ax[0].fill_between(f, w, 0)
+    ax[1].fill_between(f, psd, -130)
+
+
+    ax[1].set_ylim(-130, 0)
+    plt.show()
+
+if __name__ == "__main__":
+    main()

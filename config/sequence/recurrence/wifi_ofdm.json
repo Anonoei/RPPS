@@ -1,0 +1,21 @@
+{
+  "base": "sequence",
+  "type": "recurrence",
+  "comment": "IEEE 802.11a/g OFDM data scrambler (17.3.5.5): S(x) = x^7 + x^4 + 1, x[n] = x[n-7] ^ x[n-4]. seed: the register x[-7..-1] (bit 6 = x[-7]); a receiver reads it from the first 7 SERVICE bits",
+  "params": {
+    "seed": {
+      "default": 127
+    }
+  },
+  "sequences": [
+    {
+      "length": 7,
+      "taps": [0, 3],
+      "init_order": "msb",
+      "init": {
+        "param": "seed"
+      }
+    }
+  ],
+  "skip": 7
+}

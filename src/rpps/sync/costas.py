@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from .. import _accel
 from ..base import Meta, Stage
 
 def _o2(sym):
@@ -27,7 +28,7 @@ class Costas(Stage):
     """
     __slots__ = (
         "alpha", "beta",
-        "err_func"
+        "err_func", "order", "offset", "_builtin"
     )
     def __init__(self, alpha, beta, order=2, offset=0.0):
         """alpha, beta: proportional and integral gain (see `from_bandwidth`)
@@ -42,6 +43,9 @@ class Costas(Stage):
             self.err_func = _oM(order, offset)
         else:
             raise ValueError(f"Costas order must be 2 or more, got {order}")
+        self.order = int(order)
+        self.offset = float(offset)
+        self._builtin = self.err_func # A replaced err_func runs in Python
 
     @classmethod
     def from_bandwidth(cls, bw, order=2, damping=0.7071, offset=0.0):
@@ -66,7 +70,12 @@ class Costas(Stage):
         return out
 
     def step(self, samples, st, meta: Meta):
-        out = np.zeros(len(samples), dtype=np.result_type(samples.dtype, np.complex64))
+        dt = np.result_type(samples.dtype, np.complex64)
+        if _accel.native is not None and self.err_func is self._builtin:
+            out, st.pha, st.freq = _accel.native.costas(np.ascontiguousarray(samples, dtype=dt), float(st.pha), float(st.freq),
+                                                        float(self.alpha), float(self.beta), self.order, self.offset)
+            return out
+        out = np.zeros(len(samples), dtype=dt)
         for i, sym in enumerate(samples):
             out[i] = self.run(sym, st)
         return out

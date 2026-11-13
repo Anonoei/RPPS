@@ -1,0 +1,26 @@
+{
+  "base": "table",
+  "comment": "DVB-S2 MODCODs with normal frames (64800 bits) that have constellations and codes here: QPSK 1/4 to 9/10, 8PSK 3/5 to 9/10. slots: 90-symbol slots per frame; interleaver: the bit interleaver (none for QPSK); kbch: BBFRAME bits",
+  "ref": "EN 302 307-1 5.5.2.2, tables 5a, 7a",
+  "key": ["modcod", "short"],
+  "columns": ["modcod", "short", "constellation", "slots", "interleaver", "ldpc", "bch", "kbch"],
+  "rows": [
+    [1, 0, "dvbs2_qpsk", 360, null, "ldpc/dvbs2_64800_1_4", "bch/dvbs2_1_4", 16008],
+    [2, 0, "dvbs2_qpsk", 360, null, "ldpc/dvbs2_64800_1_3", "bch/dvbs2_1_3", 21408],
+    [3, 0, "dvbs2_qpsk", 360, null, "ldpc/dvbs2_64800_2_5", "bch/dvbs2_2_5", 25728],
+    [4, 0, "dvbs2_qpsk", 360, null, "ldpc/dvbs2_64800_1_2", "bch/dvbs2_1_2", 32208],
+    [5, 0, "dvbs2_qpsk", 360, null, "ldpc/dvbs2_64800_3_5", "bch/dvbs2_3_5", 38688],
+    [6, 0, "dvbs2_qpsk", 360, null, "ldpc/dvbs2_64800_2_3", "bch/dvbs2_2_3", 43040],
+    [7, 0, "dvbs2_qpsk", 360, null, "ldpc/dvbs2_64800_3_4", "bch/dvbs2_3_4", 48408],
+    [8, 0, "dvbs2_qpsk", 360, null, "ldpc/dvbs2_64800_4_5", "bch/dvbs2_4_5", 51648],
+    [9, 0, "dvbs2_qpsk", 360, null, "ldpc/dvbs2_64800_5_6", "bch/dvbs2_5_6", 53840],
+    [10, 0, "dvbs2_qpsk", 360, null, "ldpc/dvbs2_64800_8_9", "bch/dvbs2_8_9", 57472],
+    [11, 0, "dvbs2_qpsk", 360, null, "ldpc/dvbs2_64800_9_10", "bch/dvbs2_9_10", 58192],
+    [12, 0, "dvbs2_8psk", 240, "dvbs2_8psk_210", "ldpc/dvbs2_64800_3_5", "bch/dvbs2_3_5", 38688],
+    [13, 0, "dvbs2_8psk", 240, "dvbs2_8psk", "ldpc/dvbs2_64800_2_3", "bch/dvbs2_2_3", 43040],
+    [14, 0, "dvbs2_8psk", 240, "dvbs2_8psk", "ldpc/dvbs2_64800_3_4", "bch/dvbs2_3_4", 48408],
+    [15, 0, "dvbs2_8psk", 240, "dvbs2_8psk", "ldpc/dvbs2_64800_5_6", "bch/dvbs2_5_6", 53840],
+    [16, 0, "dvbs2_8psk", 240, "dvbs2_8psk", "ldpc/dvbs2_64800_8_9", "bch/dvbs2_8_9", 57472],
+    [17, 0, "dvbs2_8psk", 240, "dvbs2_8psk", "ldpc/dvbs2_64800_9_10", "bch/dvbs2_9_10", 58192]
+  ]
+}

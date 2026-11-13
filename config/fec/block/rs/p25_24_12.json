@@ -1,0 +1,11 @@
+{
+  "base": "block",
+  "type": "rs",
+  "comment": "P25 phase 1 LDU1 link control: RS(24,12,13) over GF(64), shortened from (63,51), roots alpha^1..alpha^12 (TIA-102.BAAA). Checked on air: real LDU1s are codewords",
+  "n": 24,
+  "k": 12,
+  "m": 6,
+  "poly": 67,
+  "fcr": 1,
+  "prim": 1
+}

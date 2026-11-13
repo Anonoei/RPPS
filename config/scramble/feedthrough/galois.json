@@ -1,0 +1,8 @@
+{
+  "base": "scramble",
+  "type": "feedthrough",
+  "comment": "Galois LFSR feedthrough scrambler",
+  "register": "galois_left",
+  "poly": [16, 14, 13, 11],
+  "seed": [1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1]
+}

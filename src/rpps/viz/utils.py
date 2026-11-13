@@ -1,6 +1,5 @@
 import numpy as np
 
-from .. import filters
 
 def window(samps):
     return samps * np.hamming(len(samps))  # apply a Hamming window
