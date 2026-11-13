@@ -1,68 +1,76 @@
-name: tests
+name: Tests
+
 on:
   push:
-    branches: [dev, main]
+    branches: [main, dev]
   pull_request:
   workflow_dispatch:
 
-concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
+
+concurrency:
+  # head_ref is the PR's branch, ref_name the pushed one: a push and the pull_request run it triggers share a group, so one cancels the other
+  group: tests-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 env:
   MPLBACKEND: Agg
 
 jobs:
-  pytest:
-    name: pytest (${{ matrix.os }}, Python ${{ matrix.python }})
+  test:
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python }}
+          python-version: ${{ matrix.python-version }}
           cache: pip
+          cache-dependency-path: pyproject.toml
       - name: Install pysdrlib
-        # From PyPI once a release with File(path, fmt), partial reads and FileSink exists, otherwise from main
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install "pysdrlib>=0.3.1" || pip install "git+https://github.com/Anonoei/pysdrlib.git"
+          pip install "pysdrlib>=0.4.3" || pip install "git+https://github.com/Anonoei/pysdrlib.git"
+
       - name: Install test requirements
         run: pip install pytest numpy matplotlib pybind11 # no scipy: RPPS must not need it
+
       - name: Build the C++ kernels (rpps._native)
         env:
           RPPS_REQUIRE_NATIVE: "1"
         run: python setup.py build_ext -i
+
       - name: Fast tests
         run: python -m pytest -q -m "not slow" --durations=10
+
       - name: Fast tests without the kernels (the Python loops)
-        if: matrix.python == '3.12'
+        if: matrix.python-version == '3.12'
         env:
           RPPS_NO_NATIVE: "1"
         run: python -m pytest -q -m "not slow"
+
       - name: Oracle tests against scipy
         # scipy is not a dependency; these tests compare remez, resample_poly, convolve and the IIR designs with it
-        if: matrix.python == '3.12'
+        if: matrix.python-version == '3.12'
         run: |
           pip install scipy
           python -m pytest -q -m "not slow" tests/unit/test_remez.py tests/unit/test_numpy_only.py tests/unit/test_iir.py tests/unit/test_channel_sync.py tests/unit/test_filters_config.py
+
       - name: Slow tests (chain decoding)
-        if: matrix.python == '3.12'
+        if: matrix.python-version == '3.12'
         run: python -m pytest -q -m slow
 
   package:
     # The built wheel has to carry config/ and run the README example from a clean environment
-    name: wheel and sdist
+    name: Wheel and sdist
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -88,7 +96,7 @@ jobs:
       - name: Install into a clean environment and run the examples
         run: |
           python -m venv /tmp/clean
-          /tmp/clean/bin/pip install "pysdrlib>=0.3.1" dist/*.whl || /tmp/clean/bin/pip install "git+https://github.com/Anonoei/pysdrlib.git" dist/*.whl
+          /tmp/clean/bin/pip install "pysdrlib>=0.4.3" dist/*.whl || /tmp/clean/bin/pip install "git+https://github.com/Anonoei/pysdrlib.git" dist/*.whl
           cd /tmp
           /tmp/clean/bin/python "$GITHUB_WORKSPACE/tests/example.py"
           /tmp/clean/bin/python "$GITHUB_WORKSPACE/tests/example_ls.py" > /dev/null
@@ -96,7 +104,7 @@ jobs:
 
   docs:
     # Same build as deploy-docs, so a docstring that breaks pdoc fails the pull request
-    name: docs build
+    name: Docs build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -108,7 +116,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip pdoc3
-          pip install "pysdrlib>=0.3.1" || pip install "git+https://github.com/Anonoei/pysdrlib.git"
+          pip install "pysdrlib>=0.4.3" || pip install "git+https://github.com/Anonoei/pysdrlib.git"
           pip install ".[viz]"
       - run: python -m pdoc -o docs --html --force --template-dir pdoc_templates src/rpps
       - run: test -f docs/rpps/index.html

@@ -66,7 +66,7 @@ jobs:
     timeout-minutes: 15
     environment:
       name: pypi
-      url: https://pypi.org/project/rpps/${{ github.event.release.name }}
+      url: https://pypi.org/project/rpps/${{ github.event.release.tag_name }}
     permissions:
       id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
     if: github.event_name == 'release' && github.event.action == 'published'
@@ -80,7 +80,7 @@ jobs:
           TAG: ${{ github.event.release.tag_name }}
         run: |
           version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
-          if [ "$TAG" != "$version" ]; then
+          if [ "$TAG" != "v$version" ]; then
             echo "::error::release tag '$TAG' does not match pyproject.toml version '$version'"
             exit 1
           fi

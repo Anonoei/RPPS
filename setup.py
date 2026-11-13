@@ -56,6 +56,8 @@ def native_extensions():
     return [Pybind11Extension("rpps._native", srcs, include_dirs=["csrc/rpps_native"], cxx_std=17, extra_compile_args=args)]
 
 setup(
+    name="rpps",
+    include_package_data=True,
     cmdclass={"build_py": BuildWithConfig, "build_ext": OptionalBuildExt},
     ext_modules=native_extensions(),
 )
