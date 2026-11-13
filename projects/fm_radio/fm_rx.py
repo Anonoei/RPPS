@@ -27,7 +27,7 @@ import rpps as rp
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
 import radio_io
 from radio_io import device
-from rpps.sample.down import interpolate_stream
+from rpps.signal.sample.down import interpolate_stream
 from rds_link import RDS, PTY
 
 FS = 2.4e6 # Capture rate: /5 -> 480 kS/s MPX, /10 -> 48 kS/s audio
@@ -71,11 +71,11 @@ class PilotPLL(rp.base.Stage):
         st.phase = (st.phase + st.freq*n) % (2*np.pi)
         return out.astype(np.float32)
 
-class Deemphasis(rp.filters.IIR):
+class Deemphasis(rp.signal.filters.IIR):
     """Broadcast FM boosts the highs: one pole at 1/(2*pi*tau) takes the boost back out (75 us US, 50 us elsewhere)"""
     def __init__(self, tau, fs):
         alpha = 1 - np.exp(-1/(tau*fs))
-        super().__init__(rp.filters.iir.single_pole(alpha))
+        super().__init__(rp.signal.filters.iir.single_pole(alpha))
 
 # ---------------------------------------------------------------------------------------------- output
 
@@ -176,13 +176,13 @@ class Speaker:
 
 def survey(sdr_args, cf, seconds=0.3):
     """Capture a moment on the air and find the signals in it. Returns the Survey"""
-    src = rp.serial.Device(device(), rx_gain=sdr_args.gain, cf=cf, Fs=FS)
+    src = rp.source.Device(device(), rx_gain=sdr_args.gain, cf=cf, Fs=FS)
     n, parts = 0, []
     for blk in src(BLOCK):
         parts.append(np.asarray(blk.data)); n += BLOCK
         if n >= max(2**18, seconds*FS):
             break
-    return rp.dsp.survey(np.concatenate(parts), Fs=FS, cf=src.cf, more=0, baud=False)
+    return rp.analysis.survey(np.concatenate(parts), Fs=FS, cf=src.cf, more=0, baud=False)
 
 def scan(args):
     """Step across the FM band in 2 MHz hops (one capture is 2.4 MHz wide) and list what is on the air
@@ -234,7 +234,7 @@ def probe(args, carrier, seconds):
     Stops once it has the name and text, when `seconds` is up, or early (4 s) when there is no RDS to find.
     """
     st = build(args, carrier)
-    src = rp.serial.Device(device(), rx_gain=args.gain, cf=carrier - OFFSET, Fs=FS, sps=FS/RDS_BAUD)
+    src = rp.source.Device(device(), rx_gain=args.gain, cf=carrier - OFFSET, Fs=FS, sps=FS/RDS_BAUD)
     fo, afc, pilot = -OFFSET, 0.0, 0.0
     t0 = time.monotonic()
     dec = st.rds.decoder
@@ -295,29 +295,29 @@ def acquire(args):
 
 def build(args, carrier):
     """The stages. Returns a namespace with the pipelines and the stages whose state we read"""
-    front, Fs_mpx, D = rp.filters.channel(0.0, CHANNEL, FS, oversample=2.39)
-    shift = rp.filters.ShiftFreq(-OFFSET) # The carrier sits OFFSET above the tuned frequency; AFC adjusts this
+    front, Fs_mpx, D = rp.signal.channelize(0.0, CHANNEL, FS, oversample=2.39)
+    shift = rp.signal.filters.ShiftFreq(-OFFSET) # The carrier sits OFFSET above the tuned frequency; AFC adjusts this
     front = shift + front[1:] # (channel's own shift is the first item, for a signal at 0)
     assert abs(Fs_mpx - 480e3) < 1, Fs_mpx
     # Audio: both paths end up 15 kHz wide at 48 kS/s, same filters so L+R and L-R stay in time
     def audio_lp():
-        lp, Fs_a, _ = rp.filters.channel(0.0, 2*15e3, Fs_mpx, oversample=1.5) # 480k / 10
+        lp, Fs_a, _ = rp.signal.channelize(0.0, 2*15e3, Fs_mpx, oversample=1.5) # 480k / 10
         assert abs(Fs_a - AUDIO) < 1, Fs_a # A wrong rate here is a pitch shift and dropouts
         return lp[1:] # Not its ShiftFreq(0): that would make the real audio complex
     tau = args.tau*1e-6
     return SimpleNamespace(
-        front=front, shift=shift, demod=rp.mod.FMDemod(gain=-0.5), # FMDemod's sign is opposite the frequency's
+        front=front, shift=shift, demod=rp.wave.FMDemod(gain=-0.5), # FMDemod's sign is opposite the frequency's
         mono_lp=audio_lp(), diff_lp=audio_lp(), pll=PilotPLL(),
-        notch_m=rp.filters.IIR(rp.filters.iir.biquad("notch", PILOT/AUDIO, q=8.0)),
-        notch_s=rp.filters.IIR(rp.filters.iir.biquad("notch", PILOT/AUDIO, q=8.0)),
+        notch_m=rp.signal.filters.IIR(rp.signal.filters.iir.biquad("notch", PILOT/AUDIO, q=8.0)),
+        notch_s=rp.signal.filters.IIR(rp.signal.filters.iir.biquad("notch", PILOT/AUDIO, q=8.0)),
         deemph_m=Deemphasis(tau, AUDIO), deemph_s=Deemphasis(tau, AUDIO),
         rds=rds_chain())
 
 def rds_chain():
     """MPX at 480 kS/s -> 1187.5 baud BPSK symbols"""
-    front, Fs, D = rp.filters.channel(57e3, 15e3, 480e3, oversample=1.6) # -> 24 kS/s
+    front, Fs, D = rp.signal.channelize(57e3, 15e3, 480e3, oversample=1.6) # -> 24 kS/s
     assert abs(Fs - 24e3) < 1, Fs
-    pre = front + rp.sample.re.Polyphase(19, 24) + rp.filters.ShapingBiphase() # 19 kS/s = 16 samples per symbol
+    pre = front + rp.signal.sample.re.Polyphase(19, 24) + rp.signal.filters.ShapingBiphase() # 19 kS/s = 16 samples per symbol
     sym = rp.sync.time.MM(0.05, 0.0, 32, biphase=True)
     costas = rp.sync.Costas(0.132, 0.00932, order=2)
     return SimpleNamespace(pre=pre, post=sym + costas, sym=sym, costas=costas,
@@ -341,7 +341,7 @@ def run(args):
     carrier = acquire(args)
     cf = carrier - OFFSET
     st = build(args, carrier)
-    src = rp.serial.Device(device(), rx_gain=args.gain, cf=cf, Fs=FS, sps=FS/RDS_BAUD)
+    src = rp.source.Device(device(), rx_gain=args.gain, cf=cf, Fs=FS, sps=FS/RDS_BAUD)
     q = queue.Queue(maxsize=24)
     stop = threading.Event()
     threading.Thread(target=reader, args=(src(BLOCK), q, stop), daemon=True).start()

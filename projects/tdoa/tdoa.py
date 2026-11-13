@@ -25,7 +25,8 @@ import sys
 import numpy as np
 
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
-from scipy.optimize import least_squares
+from rpps.math import least_squares
+from rpps.signal.filters import low_pass
 
 C = 299792458.0
 
@@ -149,10 +150,9 @@ def gdop(rx, pos, ref=0):
 
 def _c4fm_like(n, fs, baud=4800, rng=None):
     """A band-limited 4-level FM signal (stand-in for a P25 channel), complex baseband"""
-    from scipy.signal import firwin
     rng = rng or np.random.default_rng(0)
     sps = fs/baud; sym = rng.choice([-3, -1, 1, 3], int(n/sps) + 4).astype(float)
-    x = np.repeat(sym, int(np.ceil(sps)))[:n]; x = np.convolve(x, firwin(int(sps*3) | 1, 0.6*baud, fs=fs), "same")
+    x = np.repeat(sym, int(np.ceil(sps)))[:n]; x = np.convolve(x, low_pass(int(sps*3) | 1, 0.6*baud, fs=fs).filt, "same")
     return np.exp(1j*2*np.pi*1800*np.cumsum(x)/3/fs)
 
 

@@ -19,8 +19,8 @@ from types import SimpleNamespace
 import numpy as np
 
 import rpps as rp
-from rpps.filters.shaping import rrc_pulse
-from rpps.sample.down import interpolate_stream
+from rpps.signal.filters.shaping import rrc_pulse
+from rpps.signal.sample.down import interpolate_stream
 
 SYMBOL_RATE = 4.5e6*684/286 # 10.7622 MBd
 PILOT_OFFSET = 309440.559 # Pilot above the channel's lower edge [Hz]
@@ -77,9 +77,9 @@ def find_pilot(x, Fs, cf, lower):
 def to_symbol_rate_signal(x, Fs, cf, f_pilot):
     """Centre, filter and pilot-lock. Returns the real VSB signal at Fs, and the pilot lock stage's state"""
     center = f_pilot + (3e6 - PILOT_OFFSET)
-    pre = rp.filters.ShiftFreq(-(center - cf)) + rp.filters.low_pass(201, 3.0e6, Fs) # The 6 MHz channel, centred
+    pre = rp.signal.filters.ShiftFreq(-(center - cf)) + rp.signal.filters.low_pass(201, 3.0e6, Fs) # The 6 MHz channel, centred
     lock = ToneLock(-(3e6 - PILOT_OFFSET)) # The pilot is 2.69 MHz below the centre
-    src = rp.serial.File.__new__(rp.serial.File) # unused: blocks come from the array below
+    src = rp.source.File.__new__(rp.source.File) # unused: blocks come from the array below
     out = []
     state = None
     for blk in _blocks(x, Fs, cf, 2**20) + pre + lock:
@@ -89,23 +89,16 @@ def to_symbol_rate_signal(x, Fs, cf, f_pilot):
 
 def _blocks(x, Fs, cf, size):
     """Blocks of an array as a stream (the same Data a File source gives)"""
-    from rpps.serial.source import Blocks, Source
+    from rpps.source.source import Blocks, Source
     class Arr(Source):
         def _samples(self, count):
             for i in range(0, len(x), count):
                 yield self._block(x[i:i + count], flush=i + count >= len(x))
     return Arr(Fs, cf)(size)
 
-try:
-    from scipy.signal import oaconvolve as _oa
-except ImportError: # scipy is optional: np.convolve is the same, only slower on long inputs
-    _oa = None
-
 def _convolve(a, h, mode="full"):
-    """np.convolve, by FFT overlap-add when scipy is there and the filter is long enough to win"""
-    if _oa is None or len(h) < 16 or len(a) < 8192:
-        return np.convolve(a, h, mode)
-    out = _oa(a, h, mode="full" if mode == "full" else "same")
+    """np.convolve, by FFT overlap-add when the filter is long enough to win"""
+    out = rp.signal.filters.convolve(a, h, mode)
     return out.astype(a.dtype, copy=False) if np.isrealobj(a) and np.isrealobj(h) else out
 
 def resample(y, step, pos0=1.0, block=1 << 20):

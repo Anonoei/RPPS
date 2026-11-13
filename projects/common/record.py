@@ -4,7 +4,7 @@
     python projects/common/record.py 104.8 2.4 8 data/fm.cf64            # MHz, MS/s, seconds, file
 
 Pick the gain with gain_search.py first: the right setting depends on the band and on what else is on the air.
-Read it back with rp.serial.File("cf64", path, Fs=..., cf=...).
+Read it back with rp.source.File("cf64", path, Fs=..., cf=...).
 """
 import argparse
 import os
@@ -31,7 +31,7 @@ def main():
     time.sleep(0.2)
     sdr.get_samples()
     n, want, peak, clipped = 0, int(a.fs*1e6*a.seconds), 0.0, 0
-    with rp.serial.Sink("cf64", a.path) as sink:
+    with rp.source.Sink("cf64", a.path) as sink:
         while n < want:
             b = sdr.get_samples()
             if b is None or not len(b):

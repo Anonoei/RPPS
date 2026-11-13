@@ -41,8 +41,8 @@ LS_BITS = np.array([
     1374, 1375, 1376, 1377, 1378, 1379, 1380, 1381, 1382, 1383, 1384, 1385,
     1386, 1387, 1388, 1389, 1390, 1391, 1392, 1393, 1394, 1395, 1396, 1397,
 ])
-_HAMMING = rp.coding.load("block", "hamming/p25_10_6", decoder="syndrome") # Hamming (10,6,3): 6 data bits, 4 parity
-_RS = {0x5: rp.coding.load("block", "rs/p25_24_12")._dec, 0xA: rp.coding.load("block", "rs/p25_24_16")._dec} # LDU1 link control, LDU2 encryption sync
+_HAMMING = rp.code.load("block", "hamming/p25_10_6", decoder="syndrome") # Hamming (10,6,3): 6 data bits, 4 parity
+_RS = {0x5: rp.code.load("block", "rs/p25_24_12")._dec, 0xA: rp.code.load("block", "rs/p25_24_16")._dec} # LDU1 link control, LDU2 encryption sync
 ALGO = {0x80: "unencrypted", 0x81: "DES-OFB", 0x84: "AES-256", 0xAA: "ADP (RC4)", 0x9F: "DES-XL", 0x83: "3DES", 0x85: "AES-128"}
 
 

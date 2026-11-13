@@ -11,7 +11,7 @@ Run from the repo root. Difficulty: beginner. Needs a supported SDR and `pw-play
     python projects/fm_radio/fm_rx.py 105.1 --no-audio --rds # decode only
     python projects/fm_radio/fm_rx.py 105.1 --wav out.wav    # record the audio too
 
-What it does: surveys around the dial frequency (`rp.dsp.survey`) to find the carrier, tunes 300 kHz below it
+What it does: surveys around the dial frequency (`rp.analysis.survey`) to find the carrier, tunes 300 kHz below it
 (keeping the radio's DC spike out of the signal), streams at 2.4 MS/s, and channelizes to the 480 kS/s MPX signal.
 From the MPX it takes mono (L+R), stereo (L-R, switched in when the 19 kHz pilot is locked), and RDS (57 kHz).
 

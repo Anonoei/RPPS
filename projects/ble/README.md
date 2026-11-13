@@ -3,7 +3,7 @@
 Listen-only. A single radio cannot follow a BLE connection (it hops over 37 data channels), but advertising sits on three fixed channels: **37 = 2402, 38 = 2426, 39 = 2480 MHz**.
 These programs capture them, find packets, check the CRC-24, and summarize who is advertising. Only advertising packets are read.
 
-Run from the repo root. Needs a supported SDR, numpy and scipy. The radio helpers are in `projects/common/radio_io.py`.
+Run from the repo root. Needs a supported SDR, numpy. The radio helpers are in `projects/common/radio_io.py`.
 
 | file | what it is |
 |---|---|

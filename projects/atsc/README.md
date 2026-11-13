@@ -11,7 +11,7 @@ Run from the repo root. [ATSC.md](ATSC.md) has the full story: the method, the p
 Like `p25_dmr/p25_monitor.py`: a small HTTP server (127.0.0.1) and one page. The sweep finds the stations (pilot level) and probes each (SNR on the segment syncs, Reed-Solomon yield, PSIP names and streams); pick a program and
 press Watch: the radio goes to that channel, the streaming receiver decodes it in real time, ffmpeg re-encodes the program (deinterlace, H.264 / AAC, fragmented MP4) and the page plays it through Media Source Extensions
 (`/video`, ~3-5 s behind). While watching it shows lock state, SNR, Reed-Solomon yield, symbol-clock error, seconds behind real time, per-thread load, bit rate, the channel's spectrum and an SNR / yield history.
-The receiver is `atsc_rx.py` (`Receiver.feed()` / `.start()` + `.push()`, `decode_array()` for a finished capture) on `atsc_front.py` (the whole front end in one C pass: mix, filter, resample to one complex sample per symbol).
+The receiver is `atsc_rx.py` (`Receiver.feed()` / `.start()` + `.push()`, `decode_array()` for a finished capture) on `rp.signal.sample.FractionalPolyphase` (the whole front end in one pass: mix, filter, resample to one complex sample per symbol).
 The page plays `/video`; `ffmpeg -i http://127.0.0.1:8035/video out.mp4` while watching shows whether the server side is fine.
 
 ## atsc_live.py: chunked tools: list, watch, curses monitor (older, not real time)
@@ -27,7 +27,7 @@ The page plays `/video`; `ffmpeg -i http://127.0.0.1:8035/video out.mp4` while w
 The monitor sweeps the channels (pilot over the data around it: an FFT), then probes each station in worker processes (2 s capture, lock, SNR from the segment syncs, Reed-Solomon yield, PAT / PMT / PSIP) and keeps
 refreshing. Status: OK (>= 90% of codewords corrected), marginal, weak, no lock. `watch` captures continuously, decodes overlapping ~2 s chunks in a process pool, numbers every field from its time so the overlaps are
 dropped and the chunks join, keeps the packets of the chosen program and paces them to the player at the stream's rate.
-Speed: the trellis and Reed-Solomon stages are `rp.coding` (`trellis/atsc_8vsb`, `RS(207, 187)`, run by the `rpps._native` C++ kernels when built, `RPPS_NO_NATIVE=1` for the Python loops; `atsc_decode.rs_decode` batches the codewords), `atsc_probe` trains each equalizer on at most 120 000 symbols and works in blocks.
+Speed: the trellis and Reed-Solomon stages are `rp.code` (`trellis/atsc_8vsb`, `RS(207, 187)`, run by the `rpps._native` C++ kernels when built, `RPPS_NO_NATIVE=1` for the Python loops; `atsc_decode.rs_decode` batches the codewords), `atsc_probe` trains each equalizer on at most 120 000 symbols and works in blocks.
 **It is not real time on a laptop yet**: a 2 s chunk costs ~12 CPU-seconds and, being memory-bound, 8 workers decode about 0.4 s of air per second (measured on an 8-core Ryzen). `watch` therefore skips chunks (a gap)
 when the pool is behind, and the stream is only continuous when the air is slower than that (`--replay-speed 0.35` is: the output decodes to 1080p in ffmpeg). What is left is in ATSC.md ("Getting to real time").
 Remote radio notes: after a retune the pipeline holds ~0.25 s of the old frequency (`Radio.tune` flushes 0.45 s), and a few blocks per second are dropped on the link (`dropped blocks` in the status): a chunk with a gap does not lock.
@@ -45,7 +45,7 @@ and the slicer error rate. Tune so the radio's DC spike is outside the 6 MHz cha
     python projects/atsc/atsc_decode.py data/atsc19.cf64 --fs 20 --cf 507 --lower 500 --out ch19.ts --save-soft data/atsc19_soft.npy
     python projects/atsc/atsc_diag.py layout --soft data/atsc19_soft.npy      # one check per assumption: relation, levels, edges, rotation, ...
 
-The decoder runs the trellis (Viterbi), byte layout, de-interleaver, Reed-Solomon (rp.coding.RS(207, 187)), derandomizer and
+The decoder runs the trellis (Viterbi), byte layout, de-interleaver, Reed-Solomon (rp.code.RS(207, 187)), derandomizer and
 writes the MPEG transport stream. The diagnostics are what found each problem on the way (every one prints a number that is ~50%
 when its assumption is wrong). **projects/atsc/ATSC.md** has the story, the parameters, the traps, and what should become part of RPPS.
 

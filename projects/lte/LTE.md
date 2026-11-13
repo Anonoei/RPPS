@@ -166,7 +166,7 @@ Things learnt on the way:
 
 A 28-bit cell identity is a 20-bit eNodeB ID plus an 8-bit cell ID (an earlier note here had the split wrong). Bands 13 and 5 are the same site (eNodeB 7441); band 4 is eNodeB 307441.
 Each cell's SIB5 lists the other two (EARFCN 5230 = 751.0 MHz, 2560 = 885.0, 2050 = 2120.0). The 20 MHz carrier needs 30.72 MS/s, a 20 MS/s radio cannot: capture at 20 MS/s and
-`scipy.signal.resample_poly` by 192/125; the outer RBs are attenuated by the radio's baseband filter but the CRS-based equalizer simply weights them down, and everything decoded.
+`rp.signal.sample.resample_poly` by 192/125; the outer RBs are attenuated by the radio's baseband filter but the CRS-based equalizer simply weights them down, and everything decoded.
 
 **`lte_scan.py`** does the whole job: `--scan` sweeps the bands (20 MS/s tiles, gain stepped down per tile until nothing clips), finds plateaus of LTE widths (4.5 / 9 / 13.5 / 18 MHz occupied),
 then for each: the full gain search, capture, resample to the LTE rate, cell search, MIB, SIB1, and with `--traffic` the load measurement. `--carrier MHz --bw N` skips the sweep;
@@ -236,7 +236,7 @@ The 700-900 MHz band clipped heavily at LNA 32 / VGA 24 (10% of samples): strong
 1. ~~PBCH / MIB~~, ~~PCFICH / PDCCH / SIB1~~, ~~SI messages~~ done (above).
 2. ~~The other carriers~~ done (above); the original plan: targets from SIB5: **885.0 MHz (band 5, 10 MHz)** and **2120.0 MHz (band 4, 20 MHz)**, same chain, with per-band gain tuning (always, per the artifact rule).
    The 20 MHz carrier needs 30.72 MS/s but a radio limited to 20 MS/s cannot: capture at 20 MS/s (covers +-10 MHz, the carrier is +-9) and resample to 30.72 MS/s
-   (`rp.sample.re.Polyphase`, ratio 192/125); everything downstream (FFT 2048, 100 RB) is already parameterised by `nfft`. The same SIB1 reading then says which operator and band each is.
+   (`rp.signal.sample.re.Polyphase`, ratio 192/125); everything downstream (FFT 2048, 100 RB) is already parameterised by `nfft`. The same SIB1 reading then says which operator and band each is.
 3. **Combine retransmissions** (soft-combine the four RVs of SIB1; HARQ) for weak cells: `lte_turbo.dematch(..., d)` already accumulates.
 4. **Cell survey on neighbour PCIs** (SIB4 excluded cells 91, 396; a cell search at 751 MHz finds only the strongest cell: look for other PSS roots at lower levels by cancelling the first).
 5. **Into RPPS**: an OFDM demodulator with CRS channel estimation, PSS/SSS searcher, tail-biting and turbo decoders, a control-channel blind decoder, and the 36.331 ASN.1 build step.

@@ -8,11 +8,11 @@
 
 The offline receiver (atsc_probe.recover + atsc_decode) estimates everything from the whole capture and costs ~6 CPU-seconds per second of air. This one estimates once and then tracks:
   acquire (first ~0.8 s): pilot (FFT) -> clock (segment-sync drift, as recover does) -> segment and field sync -> an equalizer trained on the field syncs and the segment syncs, then on its own decisions.
-  track (every 4 fields, ~0.1 s): atsc_front.py gives the channel at ONE complex sample per symbol; the pilot's phase (per 8192 symbols) turns it into the real 8VSB signal, a 64-tap complex equalizer at the symbol
+  track (every 4 fields, ~0.1 s): `Front` (rpps `FractionalPolyphase`) gives the channel at ONE complex sample per symbol; the pilot's phase (per 8192 symbols) turns it into the real 8VSB signal, a 64-tap complex equalizer at the symbol
   spacing removes the channel (the two real degrees of freedom per symbol of the T/2 real equalizer of atsc_probe), the segments go through the trellis (C), the byte de-interleaver (state carried), Reed-Solomon
   (atsc_decode.rs_decode: all codewords in one call, rpps._native) and the de-randomizer, field after field, with no chunk edges. The equalizer is re-solved every region from decision-directed least squares with a forgetting factor; the
   segment-sync position of the unequalized signal drives the symbol clock; a field sync that stops correlating drops back to acquire.
-Meant to be upstreamed into RPPS (rp.mod.VSB, rp.filters.equalizer).
+Meant to be upstreamed into RPPS (rp.symbol.VSB, rp.signal.filters.equalizer).
 """
 import argparse
 import queue
@@ -23,14 +23,15 @@ import time
 from collections import deque
 
 import numpy as np
-from scipy.signal import oaconvolve
+from rpps.signal.filters import convolve
 
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
 import atsc_decode as ad
-import atsc_front
 import atsc_probe as ap
+import rpps as rp
 
 FS = 20e6
+FRONT_CUTOFF = 3.7e6 # [Hz] flat over the 6 MHz channel (+-3 MHz), 60 dB down by 7.7 MHz (the first alias of the 10.76 MS/s output)
 SEG, FIELD = ap.SEG, ap.FIELD
 FIELD_SYM = SEG*FIELD # 260 416 symbols
 SR = ap.SYMBOL_RATE
@@ -93,6 +94,35 @@ def parabola(prof, k):
     return k + (0.5*(a - c)/den if den else 0.0)
 
 
+
+class Front:
+    """The channel centred and resampled to the symbol rate, one complex sample per symbol: `rp.signal.sample.FractionalPolyphase` with the channel's offset fused in
+
+        f = Front(cf, center_hz, step)           # step: input samples per symbol (20e6 / 10.7622e6 = 1.8582, trimmed to the clock error)
+        z = f.process(block)                     # complex64, continuous across blocks (oscillator phase, filter history and the fractional read position are carried)
+        f.step = ...                             # the clock trim: takes effect from the next block
+
+    A 6 MHz channel centred on 0 is a complex signal 6 MHz wide, so one complex sample per symbol (10.76 MS/s) holds all of it with no aliasing, and the real T/2 signal
+    the offline receiver (atsc_probe) builds at 21.5 MS/s is not needed: a complex equalizer at one sample per symbol has the same two real degrees of freedom per symbol (see
+    the module docstring). Z[0] is input sample 0 (no startup skip).
+    """
+    def __init__(self, cf, center_hz, step, fs=FS):
+        self.cf, self.fs, self.stream = cf, fs, None
+        self.stage = rp.signal.sample.FractionalPolyphase(1.0/step, cutoff=FRONT_CUTOFF, shift=cf - center_hz)
+
+    @property
+    def step(self):
+        return 1.0/self.stage.ratio
+
+    @step.setter
+    def step(self, v):
+        self.stage.ratio = 1.0/float(v)
+
+    def process(self, x):
+        d = rp.Data(np.ascontiguousarray(x, np.complex64), Fs=self.fs, sps=1, cf=self.cf, stream=self.stream)
+        self.stream = d.stream
+        return np.asarray((d + self.stage).data)
+
 class Equalizer:
     """Complex symbol-spaced FIR + bias: out_n = Re(phasor_n * sum_m g_m z[n + m - C]) + bias, trained by (decision-directed) least squares on normal equations kept with a forgetting factor"""
     def __init__(self):
@@ -102,7 +132,7 @@ class Equalizer:
     def apply(self, zext, ph):
         """zext: the symbols with C before and L - C after the n of interest; returns the equalized real signal for the len(ph) symbols between"""
         n = len(ph)
-        y = oaconvolve(zext, self.g[::-1], mode="full")[L - 1:L - 1 + n]
+        y = convolve(zext, self.g[::-1], mode="full")[L - 1:L - 1 + n]
         return (y*ph).real.astype(np.float32) + np.float32(self.bias)
 
     @staticmethod
@@ -184,7 +214,7 @@ class Receiver:
     # ------------------------------------------------------------------ acquisition
     def _chain(self, x, center, step):
         """Front + carrier + raw real signal for a capture; returns (front, z, raw real, w_p, residual slope)"""
-        fr = atsc_front.Front(self.cf, center, step, self.fs)
+        fr = Front(self.cf, center, step, self.fs)
         z = fr.process(x)
         w_p = -2*np.pi*PILOT_REL*step/self.fs
         ph, slope = carrier(z, 0, w_p)

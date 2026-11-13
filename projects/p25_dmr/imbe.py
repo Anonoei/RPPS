@@ -43,8 +43,8 @@ GAMMA_W = float(np.sum(T.WR)*np.sqrt(np.sum(np.square(T.WS))/np.sum(np.square(T.
 
 # ---------------------------------------------------------------------------------------------------- error control codes
 # Golay (23,12) for u0-u3 and Hamming (15,11) for u4-u6 (TIA-102.BABA), from the RPPS definitions; integers MSB first
-_GOLAY = rp.coding.load("block", "golay/23_12")
-_HAMMING = rp.coding.load("block", "hamming/imbe_15_11", decoder="syndrome")
+_GOLAY = rp.code.load("block", "golay/23_12")
+_HAMMING = rp.code.load("block", "hamming/imbe_15_11", decoder="syndrome")
 
 
 def _int_bits(v, n):

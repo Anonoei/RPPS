@@ -1,4 +1,4 @@
-"""The live ATSC monitor's parts: the batched Reed-Solomon decoder (atsc_decode.rs_decode, against the Python rp.coding.RS), the native Viterbi (against the Python one), PSI tables, the stitching clock and the channel plan"""
+"""The live ATSC monitor's parts: the batched Reed-Solomon decoder (atsc_decode.rs_decode, against the Python rp.code.RS), the native Viterbi (against the Python one), PSI tables, the stitching clock and the channel plan"""
 import pathlib
 import sys
 
@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 
 pytest.importorskip("pysdrlib")
-pytest.importorskip("scipy")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import _paths  # noqa: E402,F401
 import atsc_decode  # noqa: E402
@@ -18,8 +17,8 @@ RNG = np.random.default_rng(7)
 
 
 def codewords(n):
-    """n valid ATSC RS(207, 187) codewords from rp.coding.RS's encoder"""
-    enc = rp.coding.RS(207, 187)._dec
+    """n valid ATSC RS(207, 187) codewords from rp.code.RS's encoder"""
+    enc = rp.code.RS(207, 187)._dec
     msg = RNG.integers(0, 256, (n, 187), dtype=np.uint8)
     return np.array([np.asarray(enc.encode(m.astype(np.int64), symbols=True)).astype(np.uint8) for m in msg]).reshape(n, 207), msg
 
@@ -60,7 +59,7 @@ def test_rs_matches_rp_on_mixed_damage():
         pos = RNG.choice(207, k, replace=False)
         bad[i, pos] ^= RNG.integers(1, 256, k, dtype=np.uint8)
     d0, e0 = atsc_decode.rs_decode(bad)
-    ref = rp.coding.RS(207, 187)._dec
+    ref = rp.code.RS(207, 187)._dec
     saved = _accel.native
     _accel.native = None # the Python reference loop
     try:
@@ -110,7 +109,7 @@ def make_ts(packets):
 
 def section(table_id, body):
     sec = bytes([table_id]) + (0xB000 | (len(body) + 4)).to_bytes(2, "big") + body
-    crc = rp.encap.load("crc", "crc32_mpeg2")._enc
+    crc = rp.link.load("crc", "crc32_mpeg2")._enc
     c = int(crc.compute(sec)) if not hasattr(crc.compute(sec), "tobytes") else int(crc.compute(sec))
     return sec + c.to_bytes(4, "big")
 
@@ -132,31 +131,37 @@ def test_parse_psi_programs_and_names():
         atsc_live.resolve_program(psi, "4")
 
 
-# ---- the streaming receiver (atsc_front, atsc_rx, rs C, SIMD Viterbi) ------------------------------------------------------------------------------------------------------------
+# ---- the streaming receiver (atsc_rx.Front, atsc_rx, rs C, SIMD Viterbi) ------------------------------------------------------------------------------------------------------------
 
-import atsc_front  # noqa: E402
 import atsc_rx  # noqa: E402
 
 CAPTURE = pathlib.Path(__file__).resolve().parents[2]/"data"/"atsc"/"atsc35_6s.cf64"
 
 
-def test_front_kernel_and_continuity():
-    k = atsc_front.kernel()
-    assert k.shape == (atsc_front.NPH + 1, 2*atsc_front.H) and np.allclose(k.sum(axis=1), 1, atol=1e-5)
+def test_front_continuity():
     x = (RNG.standard_normal(300000) + 1j*RNG.standard_normal(300000)).astype(np.complex64)
-    step = 20e6/atsc_front.SYMBOL_RATE
-    whole = atsc_front.Front(604e6, 604.5e6, step).process(x)
-    f = atsc_front.Front(604e6, 604.5e6, step)
+    step = 20e6/atsc_rx.SR
+    whole = atsc_rx.Front(604e6, 604.5e6, step).process(x)
+    f = atsc_rx.Front(604e6, 604.5e6, step)
     parts = np.concatenate([f.process(x[i:i + 70001]) for i in range(0, len(x), 70001)])
-    n = min(len(whole), len(parts))
-    assert n > 150000 and np.abs(whole[:n] - parts[:n]).max() < 1e-3 # blocks of any size give the same stream
+    assert len(whole) == len(parts) > 150000 and np.abs(whole - parts).max() < 1e-3 # blocks of any size give the same stream
 
 
 def test_front_moves_a_tone_to_the_symbol_rate_baseband():
     fs = 20e6; n = 2_000_000
     x = np.exp(2j*np.pi*(604.3e6 - 604e6)*np.arange(n)/fs).astype(np.complex64) # a tone 0.3 MHz above the centre
-    z = atsc_front.Front(604e6, 604.3e6, fs/atsc_front.SYMBOL_RATE).process(x) # centred on it: DC
+    z = atsc_rx.Front(604e6, 604.3e6, fs/atsc_rx.SR).process(x) # centred on it: DC
     assert abs(np.mean(z[1000:])) > 0.95 and np.std(z[1000:]) < 0.02
+
+
+def test_front_clock_trim_changes_the_rate_from_the_next_block():
+    f = atsc_rx.Front(604e6, 604.5e6, 20e6/atsc_rx.SR)
+    x = np.ones(400000, np.complex64)
+    a = len(f.process(x))
+    f.step *= 1 + 100e-6
+    b = len(f.process(x))
+    want = 400000*atsc_rx.SR/20e6
+    assert abs(a - want) < 20 and abs(b - want*(1 - 100e-6)) < 20 and a - b >= 8 # 100 ppm of ~215k symbols is ~21 fewer (the blocks differ by the few the filter holds back)
 
 
 def test_ts_builder_matches_offline_chain():

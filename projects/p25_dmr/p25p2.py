@@ -22,7 +22,8 @@ from collections import Counter
 from fractions import Fraction
 
 import numpy as np
-from scipy.signal import firwin, lfilter, resample_poly
+from rpps.signal.sample import resample_poly
+from rpps.signal.filters import FIR, low_pass
 
 import rpps as rp
 
@@ -48,9 +49,9 @@ VOICE_SYMS = {"4V": [11, 48, 96, 133], "2V": [11, 48]} # first symbol of each vo
 GAP = 10 # symbols of ISCH half at each end of a slot
 
 
-# ---- Reed-Solomon codes: (63,35,29) over GF(64), roots alpha^1 .. alpha^28 (Annex A), and the codes derived from it (config/coding/block/rs/p25p2_*)
-_RS_ESS = rp.coding.load("block", "rs/p25p2_ess_44_16")._dec
-_RS_EMI = {(26, 45, 9): rp.coding.load("block", "rs/p25p2_soemi")._dec, (30, 52, 6): rp.coding.load("block", "rs/p25p2_ioemi")._dec}
+# ---- Reed-Solomon codes: (63,35,29) over GF(64), roots alpha^1 .. alpha^28 (Annex A), and the codes derived from it (config/fec/block/rs/p25p2_*)
+_RS_ESS = rp.code.load("block", "rs/p25p2_ess_44_16")._dec
+_RS_EMI = {(26, 45, 9): rp.code.load("block", "rs/p25p2_soemi")._dec, (30, 52, 6): rp.code.load("block", "rs/p25p2_ioemi")._dec}
 
 
 def emi_decode(bits, k_info, n_total, erase_tail):
@@ -107,15 +108,15 @@ def decode_duid(bits8):
 
 # ---- scrambling ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def scramble_sequence(wacn, sysid, nac, n=4320):
-    """The outbound scramble sequence (rpps scram/adt/p25p2): 44-bit LFSR from WACN / system ID / colour code, one superframe of n bits"""
-    return rp.scram.load("p25p2", wacn=wacn, sysid=sysid, nac=nac).sequence(n)
+    """The outbound scramble sequence (rpps sequence/recurrence/p25p2): 44-bit LFSR from WACN / system ID / colour code, one superframe of n bits"""
+    return rp.sequence.load("p25p2", wacn=wacn, sysid=sysid, nac=nac).bits(n)
 
 
 # ---- demodulation -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def baseband48(x, fs, cf, freq):
     """Complex baseband of the channel at freq, 8 kHz low-pass, 48 kS/s"""
     z, fs1 = burst_tones.channel(x, fs, cf, freq)
-    z = lfilter(firwin(121, 8e3, fs=fs1), 1, z)[120:]
+    z = low_pass(121, 8e3, fs=fs1).run(z)
     q = Fraction(48000, int(round(fs1)))
     return resample_poly(z, q.numerator, q.denominator).astype(np.complex64)
 
@@ -185,7 +186,7 @@ def burst_fields(bits):
     return np.concatenate([bits[2*s:2*s + 2] for s in (10, 47, 132, 169)])
 
 
-_CRC12 = rp.encap.load("crc", "crc12_p25")._enc
+_CRC12 = rp.link.load("crc", "crc12_p25")._enc
 
 def crc12_ok(pdu_bits):
     """CRC-12 (x^12+x^11+x^7+x^4+x^2+x+1, inverted remainder) in the last 12 bits of the PDU"""
@@ -355,12 +356,12 @@ class ChanP2:
     params() gives (WACN, system ID, colour code) for descrambling, or None while they are not known yet"""
     def __init__(self, freq, kc, params, on_slots):
         self.freq = freq; self.kc = kc; self.params = params; self.on_slots = on_slots; self.role = "voice"; self.kind = "p2"
-        self.taps = firwin(121, 8e3, fs=48000); self.zi = np.zeros(120, np.complex64)
+        self.taps = low_pass(121, 8e3, fs=48000).filt; self.zi = None
         self.z = np.zeros(0, np.complex64); self.base = 0; self.since = 0; self.dec = None; self.key = None; self.last_abs = -1
         self.level = -120.0; self.active = False; self.frames = 0; self.nac = None; self.last_frame = 0.0; self.score = 0.0; self.slots_ok = 0
 
     def push(self, y):
-        z, self.zi = lfilter(self.taps, 1, y, zi=self.zi)
+        z, self.zi = FIR.stream(y, self.taps, self.zi)
         self.z = np.concatenate((self.z, z.astype(np.complex64)))
         if len(self.z) > 3*48000:
             cut = len(self.z) - 3*48000; self.z = self.z[cut:]; self.base += cut

@@ -33,7 +33,7 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
-from scipy.ndimage import percentile_filter
+from rpps.math import percentile_filter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401

@@ -16,10 +16,11 @@ import sys
 from collections import Counter
 
 import numpy as np
-from rpps.coding.types.bchgf import bchgf
+from rpps.code.types.bchgf import bchgf
 import rpps as rp
 from rpps.logger import Logger
-from scipy.signal import firwin, lfilter, resample_poly
+from rpps.signal.sample import resample_poly
+from rpps.signal.filters import low_pass
 
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
 import burst_tones
@@ -36,10 +37,10 @@ def symbols(x, fs, cf, freq):
     S = (np.abs(np.fft.fftshift(np.fft.fft(z[:k*n].reshape(k, n)*np.hanning(n), axis=1), axes=1))**2).mean(0); ff = np.fft.fftshift(np.fft.fftfreq(n, 1/fs1))
     c = ff[np.argmax(np.convolve(S, np.ones(8), "same"))]
     z = z*np.exp(-2j*np.pi*c*np.arange(len(z))/fs1)
-    z = lfilter(firwin(121, 7e3, fs=fs1), 1, z)[120:]
+    z = low_pass(121, 7e3, fs=fs1).run(z)
     q = Fraction(48000).limit_denominator(1) / Fraction(int(round(fs1))) # channel rate -> 48 kS/s (10 samples per symbol), whatever the capture's sample rate
     z = resample_poly(z, q.numerator, q.denominator)
-    fi = lfilter(np.ones(5)/5, 1, np.diff(np.unwrap(np.angle(z)))*48000/(2*np.pi)); fi -= np.median(fi)
+    fi = np.convolve(np.diff(np.unwrap(np.angle(z)))*48000/(2*np.pi), np.ones(5)/5)[:len(z) - 1]; fi -= np.median(fi)
     ph = max(range(10), key=lambda p: np.mean(np.abs(fi[p::10]))); s = fi[ph::10]
     a = np.abs(s)
     k = np.mean(a[a > np.percentile(a, 50)])/2.0
@@ -95,9 +96,9 @@ def nid(sn, i):
 
 # --- trunking signalling blocks (TSDU): 196 bits = 98 dibits, interleaved, 1/2-rate trellis coded -> 12 bytes (10 data + CRC-16). Layout checked against OP25's p25p1_fdma.cc: status dibits dropped
 # (every 36th), blocks start 112 bits after the sync; the interleave takes dibit pairs from four columns that start at dibits 0, 26, 50 and 74.
-_DEINTERLEAVE = rp.coding.load("interleave", "p25_tsbk")._enc # 98 dibits from four columns (interleave/block/p25_tsbk)
-_TRELLIS = rp.coding.load("block", "trellis/p25_1_2")._dec # rate 1/2 trellis code, Viterbi decoded
-_CRC = rp.encap.load("crc", "crc16_gsm")._enc # CRC-CCITT, inverted remainder
+_DEINTERLEAVE = rp.code.load("interleave", "p25_tsbk")._enc # 98 dibits from four columns (interleave/block/p25_tsbk)
+_TRELLIS = rp.code.load("block", "trellis/p25_1_2")._dec # rate 1/2 trellis code, Viterbi decoded
+_CRC = rp.link.load("crc", "crc16_gsm")._enc # CRC-CCITT, inverted remainder
 
 
 def frame_bits(sn, i, nblocks=3):

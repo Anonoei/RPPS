@@ -35,6 +35,7 @@ STAGES = {
     "Decimate": (lambda: rp.signal.sample.down.Decimate(10), dict(Fs=250e3, sps=10)),
     "FractionalSpline": (lambda: rp.signal.sample.down.FractionalSpline(0.37), dict(Fs=250e3, sps=10)),
     "Polyphase": (lambda: rp.signal.sample.re.Polyphase(19, 25), dict(Fs=25e3, sps=25)),
+    "FractionalPolyphase": (lambda: rp.signal.sample.FractionalPolyphase(0.5381, cutoff=3.7e6, shift=-0.5e6), dict(Fs=20e6, sps=2, cf=604e6)),
     "SincUp": (lambda: rp.signal.sample.up.Sinc(4), dict(Fs=25e3, sps=1)),
     "Biphase": (lambda: rp.signal.filters.ShapingBiphase(), dict(Fs=19e3, sps=16)),
     "AGC": (lambda: rp.sync.AGC(1.0, 0.01), dict(Fs=1e3)),

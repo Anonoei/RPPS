@@ -5,7 +5,7 @@
     python projects/adsb/adsb.py data/adsb/a.cf64                 # a saved 2 MS/s capture (cf64 at 1090 MHz)
 
 Mode S replies are 8 us of preamble (pulses at 0, 1, 3.5, 4.5 us) and 56 or 112 bits of pulse-position modulation at 1 Mbit/s: a pulse in the first half of a microsecond is a 1, in the second half a 0.
-At 2 MS/s that is two samples per bit. A message counts when its 24-bit CRC (poly 0xFFF409, rpps.encap.crc) is zero (DF17 / DF18 extended squitter, DF11 all-call replies carry the interrogator id in the CRC so
+At 2 MS/s that is two samples per bit. A message counts when its 24-bit CRC (poly 0xFFF409, rpps.link.crc) is zero (DF17 / DF18 extended squitter, DF11 all-call replies carry the interrogator id in the CRC so
 only DF17 / 18 are kept). The ICAO address is the aircraft; type codes 1-4 give the callsign, 9-18 barometric altitude and a CPR position (decoded globally from an even and an odd frame within 10 s),
 19 ground speed and track. ADS-B is a public broadcast meant to be received by anyone. Meant to be upstreamed into RPPS.
 """
@@ -22,7 +22,7 @@ import radio_io
 import rpps as rp
 
 FS = 2e6
-_CRC = rp.encap.load("crc", "crc24_mode_s")._enc
+_CRC = rp.link.load("crc", "crc24_mode_s")._enc
 CHARS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ##### ###############0123456789######"
 
 
