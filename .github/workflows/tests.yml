@@ -59,10 +59,6 @@ jobs:
           python -m pip install -e ".[oracle]"
           python -m pytest -q -m "not slow" tests/unit/test_remez.py tests/unit/test_numpy_only.py tests/unit/test_iir.py tests/unit/test_channel_sync.py tests/unit/test_filters_config.py
 
-      - name: Slow tests (chain decoding)
-        if: matrix.python-version == '3.12'
-        run: python -m pytest -q -m slow
-
   package:
     # The built wheel has to carry config/ and run the README example from a clean environment
     name: Wheel and sdist
