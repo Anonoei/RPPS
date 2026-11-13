@@ -32,7 +32,10 @@ dependencies = ["numpy>=2.0", "pysdrlib>=0.4.3"]
 
 [project.optional-dependencies]
 viz = ["matplotlib"]
-dev = ["setuptools", "matplotlib", "twine", "build", "bumpver", "pytest", "pdoc3", "scipy"] # scipy: only the tests that check against it
+test = ["pytest"]
+oracle = ["scipy"] # only the tests that check against it: RPPS itself must not need it
+docs = ["pdoc3"]
+dev = ["rpps[viz,test,oracle,docs]", "twine", "build", "bumpver"]
 
 [project.scripts]
 rpps = "rpps.cli:main"
