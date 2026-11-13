@@ -1,4 +1,4 @@
-"""Executors: where a parallel region runs (ARCHITECTURE.md, Parallelism)
+"""Executors: where a parallel region runs (README.dev.md, Parallelism)
 
 An executor takes batches of frames that share a key and gives back their results. The work itself is a `worker`: a
 callable `worker(frames) -> [Result]` (one result per frame, same order), built by the region once per executor, so every

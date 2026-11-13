@@ -1,4 +1,4 @@
-"""Type tags every block of data carries (see ARCHITECTURE.md, Type tags)
+"""Type tags every block of data carries (see README.dev.md, Type tags)
 
     Category  the kind of operation that made the data last
     Rep       where in the chain the data is: samples -> symbols -> channel bits -> data bits -> packets

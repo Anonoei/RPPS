@@ -1,6 +1,6 @@
 """Data containers
 
-Every block carries three tags (see rpps.base.types and ARCHITECTURE.md):
+Every block carries three tags (see rpps.base.types):
     CAT  the Category of the operation that made it last
     REP  its representation: SAMPLES, SYMBOLS, CHANNEL bits, DATA bits, PACKETS
     DT   its form (dtype): complex samples, LLRs, bits, bytes...

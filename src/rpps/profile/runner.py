@@ -1,4 +1,4 @@
-"""Profile runners: a profile's operators on a stream of blocks, with header-driven control (ARCHITECTURE.md)
+"""Profile runners: a profile's operators on a stream of blocks, with header-driven control
 
 A runner holds one slot per operator. Each slot knows its step, how far it has read its input, and how its input
 positions map to its output positions (control.PosMap). Changes come from the control path (rpps.profile.control):

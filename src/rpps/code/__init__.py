@@ -1,4 +1,4 @@
-"""Code transform: channel bits <-> data bits (ARCHITECTURE.md)
+"""Code transform: channel bits <-> data bits (README.dev.md)
 
 FEC encoders and decoders, interleaving, rate matching, scrambling (`code.scram`), and `Uncoded` for links with no FEC.
 Each step takes either channel or data bits, because a code transform is often several steps.

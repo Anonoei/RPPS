@@ -1,4 +1,4 @@
-"""Link headers: fields, a CRC, and the payload they announce (ARCHITECTURE.md, link and Header-driven control)
+"""Link headers: fields, a CRC, and the payload they announce (README.dev.md, link and Header-driven control)
 
 A definition, config/header/link/<name>.json, `rp.link.load("header", "ieee80211b_plcp")`:
 

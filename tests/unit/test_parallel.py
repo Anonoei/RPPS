@@ -1,5 +1,5 @@
-"""Parallel processing of frames: work units, executors, scheduler and the profile's parallel region (ARCHITECTURE.md,
-Parallelism; Migration step 10)"""
+"""Parallel processing of frames: work units, executors, scheduler and the profile's parallel region (README.dev.md,
+Parallelism)"""
 import threading
 import time
 

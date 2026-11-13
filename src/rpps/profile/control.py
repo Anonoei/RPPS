@@ -1,4 +1,4 @@
-"""Header-driven control: the control path that runs back up a chain (ARCHITECTURE.md, Header-driven control)
+"""Header-driven control: the control path that runs back up a chain (README.dev.md, Header-driven control)
 
 A header step (a physical header, a link header) and a frame sync publish what they decoded, with the absolute stream
 position it applies from. A profile's `controls` maps those fields, through an optional table, to parameters of other

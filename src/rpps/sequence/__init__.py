@@ -1,4 +1,4 @@
-"""The sequence resource (ARCHITECTURE.md, Config resources): bit and chip sequences, config/sequence/<type>/<name>.json
+"""The sequence resource (README.dev.md, Config resources): bit and chip sequences, config/sequence/<type>/<name>.json
 
 One engine for every operator that uses a known sequence: a scrambler XORs one in (`rp.code.scram`), a spreader multiplies
 by one (`rp.symbol.Spread`), a phase scrambler turns symbols by one (`rp.symbol.PhaseScramble`), a code-phase search looks

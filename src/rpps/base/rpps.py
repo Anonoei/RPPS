@@ -28,7 +28,7 @@ def align(ctx, key, x, block, pad, log=None):
     return x[:n]
 
 STREAM, FRAME = "stream", "frame"
-# Scope of an operator's state (ARCHITECTURE.md, Parallelism). STREAM: it carries state from one frame to the next (trackers,
+# Scope of an operator's state (README.dev.md, Parallelism). STREAM: it carries state from one frame to the next (trackers,
 # frame sync, convolutional decoders), so frames can't be processed apart. FRAME: it holds nothing across a frame start, so
 # a frame is a pure function of its data and the parameters controls gave it. Default STREAM (safe).
 
@@ -172,7 +172,7 @@ class BitStage(Stage):
 
 def tag_stages(package, category):
     """Give every Stage class defined in `package` (a module or package name, submodules included) the Category `category`,
-    unless the class sets its own. In this architecture the package is the category (ARCHITECTURE.md)"""
+    unless the class sets its own. In this architecture the package is the category (README.dev.md)"""
     import importlib, pkgutil, sys
     root = importlib.import_module(package)
     names = [package]

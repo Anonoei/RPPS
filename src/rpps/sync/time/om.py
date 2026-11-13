@@ -18,7 +18,7 @@ class OerderMeyr(Stage):
 
         symbols = matched + rp.sync.time.OerderMeyr()
 
-    First class (ARCHITECTURE.md, Sync methods). Windows sit at absolute stream positions [k*W, (k+1)*W): W is `window`
+    First class (README.dev.md, Sync methods). Windows sit at absolute stream positions [k*W, (k+1)*W): W is `window`
     seconds, at least `min_symbols` symbols (the square-law line is weak: at roll-off 0.2 it is about 3% of the power, so it
     wants a few thousand samples). Each window's timing phase is the angle of sum |x[n]|^2 exp(-j 2 pi n / sps), and a
     block-rate loop (rpps.sync.track) carries the phase and the clock's rate (ppm: the transmitter's clock fast by that much) from window to window, so a clock some ppm

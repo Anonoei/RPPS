@@ -1,4 +1,4 @@
-"""Batch kernels against the operators they are the batch form of, frame by frame (ARCHITECTURE.md, Parallelism)
+"""Batch kernels against the operators they are the batch form of, frame by frame (README.dev.md, Parallelism)
 
 Each kernel is run on a batch and every row compared with the operator run alone on that frame (the `LoopKernel` path, which
 is the oracle): bits exactly, soft values to float32 rounding."""

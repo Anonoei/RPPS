@@ -1,4 +1,4 @@
-"""Conditioning: samples to samples, without knowing what signal they carry (ARCHITECTURE.md)
+"""Conditioning: samples to samples, without knowing what signal they carry
 
     filters     FIR/IIR design, windows, frequency shifts, the polyphase channelizer, pulse shaping
     sample      sample-rate changes: decimation, interpolation, rational resampling

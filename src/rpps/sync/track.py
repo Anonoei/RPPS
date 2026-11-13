@@ -1,4 +1,4 @@
-"""Block-rate tracking (ARCHITECTURE.md, Sync methods): a slow loop run once per window over the window estimates
+"""Block-rate tracking (README.dev.md, Sync methods): a slow loop run once per window over the window estimates
 
 A first-class estimator measures a parameter on each window (block estimation); this carries the parameter and its rate
 from window to window, gating outliers, so a drifting clock or carrier is followed without a staircase: the value at
