@@ -35,6 +35,7 @@ import numpy as np
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
 import atsc_decode as ad
 import atsc_probe as ap
+import atsc_rx
 import radio_io
 import ts_info
 
@@ -45,8 +46,10 @@ FIELD_S = ap.FIELD*ap.SEG/ap.SYMBOL_RATE # one field: 24.2 ms
 CW_S = FIELD_S/ad.FIELD_DATA # one transport packet (one Reed-Solomon codeword)
 FIELD_CW = ad.FIELD_DATA
 OVERLAP_FIELDS = 3 # chunks overlap by this many fields so the end of one (lost to the deinterleaver) is the middle of the next
-GAINS = [0.9, 0.8, 0.7, 0.6, 0.55, 0.4, 0.2] # gain fractions, highest gain first; the first that does not clip wins
-DEFAULT_GAIN = 0.7
+GAIN_COARSE = [0.55, 0.45, 0.35] # gain fractions tried first by pick_gain, then the steps either side of the best (a HackRF decodes a given channel over a narrow window: too high overloads it, too low leaves the 8-bit ADC short of bits)
+GAIN_STEP, GAIN_RANGE = 0.05, (0.2, 0.7)
+GAIN_SECONDS = 2.0 # capture per trial (the receiver needs ~1.3 s to acquire)
+DEFAULT_GAIN = 0.4 # where a channel is first looked at (the pilot sweep): clean on a HackRF, no overload from the neighbours
 CHANNELS = list(range(7, 14)) + list(range(14, 37))
 
 
@@ -68,12 +71,15 @@ class Radio:
     """A radio (local, or a pysdrlib server's with `remote`; `driver` picks which, see radio_io.driver_name): tune with a flush of the stale samples, per-channel gain, grab, read"""
     STALE = 0.45 # seconds of samples still queued from the old frequency after a retune (a remote HackRF has ~0.25 s in its pipeline)
 
-    def __init__(self, remote=None, driver=None):
+    def __init__(self, remote=None, driver=None, channels=None, serial=None, label=None, program="RPPS atsc"):
+        """channels: the TV channels this will tune across: a remote server is told the span and the sample rate it needs, so it hands out a radio that can (and not, say, an HF-only one)"""
         remote = remote or os.environ.get("PYSDRLIB_REMOTE")
-        self.sdr = radio_io.open_radio(cf=500e6, fs=FS, remote=remote, driver=driver)
+        cfs = [centre(c) for c in channels or CHANNELS]
+        self.sdr = radio_io.open_radio(cf=500e6, fs=FS, remote=remote, driver=driver, program=program, serial=serial, label=label,
+                                       need=dict(freq=(min(cfs), max(cfs)), rate=FS), want=dict(freq=cfs[0], rate=FS))
         self.sdr.start_rx()
         self.lock = threading.RLock() # one user of the radio at a time
-        self.name = f"{radio_io.driver_name(driver, remote)} " + (f"at {remote}" if remote else "(local)")
+        self.name = f"{getattr(self.sdr, 'id', None) or radio_io.driver_name(driver, remote)} " + (f"at {remote}" if remote else "(local)")
         self.cf = 500e6
 
     @property
@@ -111,7 +117,7 @@ class ReplayRadio:
         self.x = np.memmap(path, np.complex64, "r")
         self.channel = channel; self.file_cf = cf_mhz*1e6; self.speed = speed
         self.pos = 0; self.t = time.monotonic(); self.cf = 0.0
-        self.lock = threading.RLock(); self.name = f"replay of {os.path.basename(path)} as channel {channel}"; self.dropped = 0
+        self.gain_matters = False; self.lock = threading.RLock(); self.name = f"replay of {os.path.basename(path)} as channel {channel}"; self.dropped = 0
         self.rng = np.random.default_rng(1)
 
     def tune(self, cf, gain=None):
@@ -160,16 +166,37 @@ def pilot_level(radio, ch, gain=None):
     return float(over), clip
 
 
-def pick_gain(radio, ch):
-    """The highest gain on the ladder that does not clip on this channel (the 20 MHz window holds its neighbours too)"""
-    cf = centre(ch)
-    for g in GAINS:
-        radio.tune(cf, g) if g is GAINS[0] else radio.gain(g)
-        time.sleep(0.05)
-        radio.grab(0.05) # settle after the gain change
-        if radio_io.clipped(radio.grab(0.15)) < 1e-4:
-            return g
-    return GAINS[-1]
+def _gain_trial(radio, cf, ch, g):
+    """(score, snr, rs_ok) of the channel at gain `g`: a capture through the streaming receiver. Overload (clipping) and no lock score worst; else the locked SNR, with the Reed-Solomon yield breaking ties"""
+    radio.tune(cf, g)
+    x = radio.grab(GAIN_SECONDS).astype(np.complex64)
+    if radio_io.clipped(x) > 2e-4:
+        return -1e3, None, 0.0
+    _, err, st = atsc_rx.decode_array(x, cf, lower_edge(ch)*1e6)
+    rs = float(np.mean(err >= 0)) if len(err) else 0.0
+    snr = st.get("snr") if st["state"] == "locked" else None
+    return (-100.0 if snr is None else snr) + 100*rs, snr, rs
+
+
+def pick_gain(radio, ch, log=None):
+    """The gain at which the channel decodes best: the coarse gains first, then the steps either side of the best. A radio whose gain does nothing (a replay) is not searched.
+    No gain that locks: DEFAULT_GAIN. `log(text)` gets each trial"""
+    if not getattr(radio, "gain_matters", True):
+        return DEFAULT_GAIN
+    cf = centre(ch); tried = {}
+    def trial(g):
+        g = round(min(max(g, GAIN_RANGE[0]), GAIN_RANGE[1]), 3)
+        if g not in tried:
+            tried[g] = _gain_trial(radio, cf, ch, g)
+            if log:
+                log(f"channel {ch} gain {g}: " + ("clipping" if tried[g][0] == -1e3 else f"SNR {tried[g][1]} dB, Reed-Solomon ok {100*tried[g][2]:.0f}%" if tried[g][1] is not None else "no lock"))
+    for g in GAIN_COARSE:
+        trial(g)
+    best = max(tried, key=lambda g: tried[g][0])
+    for g in (best - GAIN_STEP, best + GAIN_STEP):
+        trial(g)
+    best = max(tried, key=lambda g: tried[g][0])
+    return best if tried[best][1] is not None else DEFAULT_GAIN
 
 # ------------------------------------------------------------------------------------------------ transport stream tables
 
@@ -542,7 +569,7 @@ def open_player(spec, title):
 def make_radio(a):
     if a.replay:
         return ReplayRadio(a.replay, a.replay_channel, a.replay_cf, speed=a.replay_speed)
-    return Radio(a.remote, a.radio)
+    return Radio(a.remote, a.radio, a.channels, a.serial, a.label, "RPPS atsc_live")
 
 
 def make_pool(a):

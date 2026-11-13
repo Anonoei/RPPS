@@ -83,22 +83,32 @@ def describe(sdr, channel=0):
 def add_radio_args(ap):
     """`--radio DRIVER` and `--remote ADDRESS` for an argparse parser: which radio a script uses, so two scripts (or two radios of one script) can each have their own"""
     ap.add_argument("--radio", metavar="DRIVER", help="pysdrlib driver to use (default $RPPS_RADIO, else the first radio found)")
+    ap.add_argument("--serial", help="open the radio with this serial number (a remote server lists them: `pysdrlib client ADDRESS list`)")
+    ap.add_argument("--label", help="open a radio whose label contains this")
     ap.add_argument("--remote", metavar="ADDRESS", help="use a radio hosted by a pysdrlib server, e.g. tcp://HOST:5555 (default $PYSDRLIB_REMOTE, else a local radio)")
 
 def channels_wanted():
     """1, or 2 when $RPPS_CHANNELS asks for both channels of a two-channel radio"""
     return int(os.environ.get("RPPS_CHANNELS", "1"))
 
-def open_radio(cf=2437e6, fs=20e6, remote=None, driver=None, gain=DEFAULT_GAIN):
-    """Open a radio and tune it. remote: a pysdrlib server address (tcp://host:5555, see `pysdrlib server`) to use a radio on another machine; defaults to the
+def open_radio(cf=2437e6, fs=20e6, remote=None, driver=None, gain=DEFAULT_GAIN, program=None, serial=None, label=None, need=None, want=None):
+    """Open a radio and tune it. program / serial / label / need / want say who this program is and what it needs, for a remote radio (pysdrlib >= 0.4.3): the server shows `program` next to the radio it has
+    taken, `serial` / `label` pick a unit, and `need` (a radio that cannot is never used) / `want` (the nearest wins) are dicts of freq (Hz, or a (low, high) span), rate, bandwidth, channels, tx. With any of
+    serial / label / need / want and no driver (`driver=`, $RPPS_RADIO) the server chooses the radio, instead of this taking the first type it hosts. A local radio ignores them. remote: a pysdrlib server address (tcp://host:5555, see `pysdrlib server`) to use a radio on another machine; defaults to the
     PYSDRLIB_REMOTE environment variable, so every script that opens its radio here can be pointed at a remote one without a flag. The returned object has the same
     methods either way (initialize, start_rx, read, set_rx_gain, close...). Start it with `start_rx(sdr)`."""
     remote = remote or os.environ.get("PYSDRLIB_REMOTE")
     if remote:
-        sdr = pysdrlib.connect(remote, driver_name(driver, remote), reuse=True) # takes over a hosted radio of the type nobody controls, else opens one; already open
+        choice = {k: v for k, v in dict(serial=serial, label=label, need=need, want=want).items() if v is not None}
+        driver = driver or os.environ.get("RPPS_RADIO") or (None if choice else _server_driver(remote))
+        sdr = pysdrlib.connect(remote, driver, reuse=True, program=program, **choice) # takes over a hosted radio of the type nobody controls, else opens one; already open
     else:
         sdr = device(driver=driver); sdr.open()
     sdr.initialize(cf=cf, Fs=fs, rx_gain=gain)
+    got = sdr.get_rx_sample_rate()
+    if got and abs(got - fs) > 1e-3*fs: # a radio that only has fixed rates (an RX-888) snaps to the nearest: the scripts' filters and timing are for `fs`, so a radio that cannot run at it is the wrong one
+        sdr.close()
+        raise RuntimeError(f"{getattr(sdr, 'id', None) or sdr.NAME} runs at {got/1e6:g} MS/s, not the {fs/1e6:g} requested: pick another radio (--radio DRIVER, --serial, --label)")
     antenna = os.environ.get("RPPS_ANTENNA")
     if antenna:
         sdr.set_rx_antenna(antenna)
