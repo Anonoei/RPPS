@@ -1,0 +1,18 @@
+{
+  "base": "constellation",
+  "comment": "BPSK",
+  "points": [
+    {"mag": 1, "pha": 0},
+    {"mag": 1, "pha": 180}
+  ],
+  "maps": [
+    {
+      "map": [0, 1],
+      "comment": "R000"
+    },
+    {
+      "map": [1, 0],
+      "comment": "R180"
+    }
+  ]
+}

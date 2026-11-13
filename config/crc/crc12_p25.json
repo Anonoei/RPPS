@@ -1,0 +1,12 @@
+{
+  "base": "crc",
+  "type": "crc",
+  "comment": "P25 Phase 2 MAC PDU CRC-12 (TIA-102.BBAC): x^12+x^11+x^7+x^4+x^2+x+1, inverted remainder. Check value computed here, not from a catalogue",
+  "width": 12,
+  "poly": "0x897",
+  "init": "0x0",
+  "refin": false,
+  "refout": false,
+  "xorout": "0xfff",
+  "check": "0x9e4"
+}

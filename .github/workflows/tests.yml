@@ -1,52 +1,67 @@
-name: tests
+name: Tests
+
 on:
   push:
+    branches: [main, dev]
   pull_request:
   workflow_dispatch:
 
-concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
+
+concurrency:
+  # head_ref is the PR's branch, ref_name the pushed one: a push and the pull_request run it triggers share a group, so one cancels the other
+  group: tests-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 env:
   MPLBACKEND: Agg
 
 jobs:
-  pytest:
-    name: pytest (${{ matrix.os }}, Python ${{ matrix.python }})
+  test:
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python }}
+          python-version: ${{ matrix.python-version }}
           cache: pip
-      - name: Install pysdrlib
-        # From PyPI once a release with File(path, fmt), partial reads and FileSink exists, otherwise from main
-        shell: bash
+          cache-dependency-path: pyproject.toml
+      # Dependencies, extras and the build requirements (setuptools, pybind11) all come from pyproject.toml.
+      # The editable install builds rpps._native in place; RPPS_REQUIRE_NATIVE makes a failed build an error.
+      - name: Install package
+        env:
+          RPPS_REQUIRE_NATIVE: "1"
         run: |
           python -m pip install --upgrade pip
-          pip install "pysdrlib>=0.3.1" || pip install "git+https://github.com/Anonoei/pysdrlib.git"
-      - name: Install test requirements
-        run: pip install pytest numpy scipy matplotlib
+          python -m pip install -e ".[viz,test]"
+
       - name: Fast tests
         run: python -m pytest -q -m "not slow" --durations=10
-      - name: Slow tests (chain decoding)
-        if: matrix.python == '3.12'
-        run: python -m pytest -q -m slow
+
+      - name: Fast tests without the kernels (the Python loops)
+        if: matrix.python-version == '3.12'
+        env:
+          RPPS_NO_NATIVE: "1"
+        run: python -m pytest -q -m "not slow"
+
+      - name: Oracle tests against scipy
+        # scipy is not a dependency; tests that compare against it use pytest.importorskip, so they only run here
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m pip install -e ".[oracle]"
+          python -m pytest -q -m "not slow"
 
   package:
     # The built wheel has to carry config/ and run the README example from a clean environment
-    name: wheel and sdist
+    name: Wheel and sdist
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -72,7 +87,7 @@ jobs:
       - name: Install into a clean environment and run the examples
         run: |
           python -m venv /tmp/clean
-          /tmp/clean/bin/pip install "pysdrlib>=0.3.1" dist/*.whl || /tmp/clean/bin/pip install "git+https://github.com/Anonoei/pysdrlib.git" dist/*.whl
+          /tmp/clean/bin/pip install dist/*.whl
           cd /tmp
           /tmp/clean/bin/python "$GITHUB_WORKSPACE/tests/example.py"
           /tmp/clean/bin/python "$GITHUB_WORKSPACE/tests/example_ls.py" > /dev/null
@@ -80,7 +95,7 @@ jobs:
 
   docs:
     # Same build as deploy-docs, so a docstring that breaks pdoc fails the pull request
-    name: docs build
+    name: Docs build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -91,8 +106,7 @@ jobs:
           cache: pip
       - name: Install
         run: |
-          python -m pip install --upgrade pip pdoc3
-          pip install "pysdrlib>=0.3.1" || pip install "git+https://github.com/Anonoei/pysdrlib.git"
-          pip install ".[viz]"
-      - run: python -m pdoc -o docs --html --force src/rpps
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[viz,docs]"
+      - run: python -m pdoc -o docs --html --force --template-dir pdoc_templates src/rpps
       - run: test -f docs/rpps/index.html

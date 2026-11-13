@@ -1,0 +1,13 @@
+{
+  "base": "crc",
+  "type": "crc",
+  "comment": "CRC-16/GENIBUS. IEEE 802.11b (DSSS) PLCP header CRC over SIGNAL, SERVICE, LENGTH (IEEE 802.11 15.3.3.7)",
+  "aliases": ["dsss_plcp"],
+  "width": 16,
+  "poly": "0x1021",
+  "init": "0xffff",
+  "refin": false,
+  "refout": false,
+  "xorout": "0xffff",
+  "check": "0xd64e"
+}

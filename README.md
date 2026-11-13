@@ -14,9 +14,9 @@ The data carries its sample rate and the state of every stage, so there is nothi
 ```python
 import rpps as rp
 
-mod = rp.mod.load("QPSK")           # first bit map; load("QPSK", "R090 inverted") for a rotated / spectrally inverted one. Or rp.mod.QAM(16), rp.mod.PSK(8), rp.mod.APSK(32), rp.mod.FSK(4)...
-ecc = rp.coding.Hamming(7, 4)       # or rp.coding.load("block", "hamming/7_4")
-scr = rp.scram.load("fdt", "v35")
+mod = rp.symbol.load("QPSK")           # first bit map; load("QPSK", "R090 inverted") for a rotated / spectrally inverted one. Or rp.symbol.QAM(16), rp.symbol.PSK(8), rp.symbol.APSK(32), or any point set from a config file
+ecc = rp.code.Hamming(7, 4)       # or rp.code.load("block", "hamming/7_4")
+scr = rp.code.scram.load("v35")
 
 msg = rp.Data(b"Hello World!")
 syms = msg * scr * ecc * mod        # Scramble, encode, modulate
@@ -32,24 +32,39 @@ out = syms / link
 ### Receiving a signal
 ```python
 # docs: skip
-src = rp.serial.File("ci32t", "capture.cs16", Fs=100e6, cf=1.0e9)       # or rp.serial.Device("hackrf", cf=..., Fs=...)
-rx = (rp.filters.ShiftFreq(22.3e6)  + rp.filters.low_pass(401, 3e6, 100e6) + rp.sample.down.Decimate(8)
+src = rp.source.File("ci32t", "capture.cs16", Fs=100e6, cf=1.0e9)       # or rp.source.Device("hackrf", cf=..., Fs=...)
+rx = (rp.signal.filters.ShiftFreq(22.3e6)  + rp.signal.filters.low_pass(401, 3e6, 100e6) + rp.signal.sample.down.Decimate(8)
       + rp.sync.Acquire() + rp.sync.time.Mat() + rp.sync.phase.FFCarrier())     # stages added together make a pipeline
 
 for out in src(16384) + rx:          # blocks flow through, state carried from one to the next
     print(out.Fs, out.sps, out.det)  # rates follow the stages; Acquire's detection is on the data
 
-src(16384) + rx >> rp.serial.Sink("cf64", "symbols.iq")       # or straight into a file
+src(16384) + rx >> rp.source.Sink("cf64", "symbols.iq")       # or straight into a file
 ```
-A stage can also be applied by hand to a block: `blk + rp.filters.ShiftFreq(1e3)`.
-`rp.channel` has impairments to test against (`AWGN`, `CFO`, `Fading`, `Multipath`, `ClockDrift`...).
+A stage can also be applied by hand to a block: `blk + rp.signal.filters.ShiftFreq(1e3)`.
+`rp.signal.channel` has impairments to test against (`AWGN`, `CFO`, `Fading`, `Multipath`, `ClockDrift`...).
+
+### Real time
+```python
+# docs: skip
+blocks = rp.source.Device("hackrf", cf=915e6, Fs=10e6)(65536).threaded(drop=True) # the radio is read in a thread of its own
+for out in blocks.pipelined(rx):     # and every stage of rx runs in its own thread
+    ...
+print(out.stream.load())             # time each stage takes, as a fraction of real time (over 1.0: too slow)
+```
+The per-sample loops (AGC, Costas, timing recovery, equalizers, IIR, demodulators) and the decoders (Viterbi, trellis,
+BCJR / turbo, LDPC, Reed-Solomon, BCH) run in C++ (`rpps._native`, built with the package) and release the GIL, so
+threads run them in parallel; batches of codewords are spread over the cores (`RPPS_THREADS` sets how many).
+Without a compiler RPPS uses its Python loops (the reference: `RPPS_NO_NATIVE=1` forces them). Compare with
+`python tests/bench_stages.py`.
 
 ### Real-time spectrum
 ![RT](/media/example_rt.jpg?raw=true "Real-time Persistent Spectrum")
 - [file](https://github.com/Anonoei/RPPS/tree/main/tests/dev/viz_rt.py)
 
 ## Install
-1. Run `python3 -m pip install rpps` (`rpps[viz]` adds matplotlib for `rp.viz`)
+1. Run `python3 -m pip install rpps` (`rpps[viz]` adds matplotlib for `rp.viz`). From a checkout, `python builder.py -c`
+   (or `python setup.py build_ext -i`) builds the C++ kernels in place; it needs pybind11 and a C++17 compiler
 2. In your project, `import rpps as rp`
 
 Definitions (codes, scramblers, modulations) ship with the package. Add your own without touching it:
@@ -57,25 +72,25 @@ Definitions (codes, scramblers, modulations) ship with the package. Add your own
 Logging is off until you ask: `rp.logger.enable("DEBUG")`.
 
 ## Roadmap
- - [ ] [Serial](https://github.com/Anonoei/RPPS/tree/main/src/rpps/serial)
+ - [ ] [Source](https://github.com/Anonoei/RPPS/tree/main/src/rpps/source)
    - [X] File
    - [ ] (Linux only) tun/tap
    - [ ] Socket
- - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/filters)
+ - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/filters)
    - [X] Pulse Shaping
    - [X] Window functions
- - [X] [Sample](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sample)
+ - [X] [Sample](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/sample)
  - [ ] [Sync](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sync)
    - [X] Frequency
    - [ ] Phase
    - [ ] Time
- - [X] [Mod](https://github.com/Anonoei/RPPS/tree/main/src/rpps/mod)
+ - [X] [Symbol](https://github.com/Anonoei/RPPS/tree/main/src/rpps/symbol)
    - [X] PSK
    - [X] QAM
    - [X] APSK
    - [X] ASK
    - [X] FSK
- - [ ] [Coding](https://github.com/Anonoei/RPPS/tree/main/src/rpps/coding)
+ - [ ] [Code](https://github.com/Anonoei/RPPS/tree/main/src/rpps/code)
    - [ ] Block
      - [X] Repetition
      - [X] Hamming (decoded on its syndrome trellis)
@@ -87,11 +102,11 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
      - [X] Viterbi (hard and soft)
      - [X] BCJR / trellis (log-MAP, max-log-MAP)
    - [X] Soft decisions (demodulator LLRs into the decoders)
- - [ ] [Scram](https://github.com/Anonoei/RPPS/tree/main/src/rpps/scram)
+ - [ ] [Scramblers](https://github.com/Anonoei/RPPS/tree/main/src/rpps/code/scram)
    - [X] fibonacci
    - [X] galois
    - [X] V.35
- - [ ] [Encapsulation](https://github.com/Anonoei/RPPS/tree/main/src/rpps/encap)
+ - [ ] [Link](https://github.com/Anonoei/RPPS/tree/main/src/rpps/link)
    - [X] CRC
    - [X] HDLC
    - [ ] PPP
@@ -100,10 +115,10 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
    - [X] Over-Time
 
 ## Contributing
+See [README.dev.md](README.dev.md) for the design, how the project is organized and implemented, and how to add to it.
  1. `git clone https://github.com/Anonoei/RPPS`
  2. `cd RPPS`
  3. `git branch -c feature/<your feature>`
- 4. `python3 builder.py -b -l` build and install rpps locally
-    - This also installs deps, and dev_deps automatically
+ 4. `python3 builder.py -s -c` installs rpps editable with its dev dependencies and builds the C++ kernels
  5. run `python3 -m pytest` (add `-m "not slow"` to skip the chain tests). Scratch scripts live in `tests/dev`
  6. Check out the `dev` branch for latest changes

@@ -1,0 +1,17 @@
+{
+  "base": "constellation",
+  "comment": "QPSK with the points on the axes: the phase-change alphabet of IEEE 802.11b DQPSK (use with Differential). Dibits 00 01 11 10 are phase changes of 0 90 180 270 degrees",
+  "ref": "IEEE 802.11-2020 16.4.6.5",
+  "points": [
+    {"mag": 1, "pha": 0},
+    {"mag": 1, "pha": 90},
+    {"mag": 1, "pha": 180},
+    {"mag": 1, "pha": 270}
+  ],
+  "maps": [
+    {
+      "map": [0, 1, 3, 2],
+      "comment": "R000 Grey"
+    }
+  ]
+}

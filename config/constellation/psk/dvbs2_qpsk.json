@@ -1,0 +1,17 @@
+{
+  "base": "constellation",
+  "comment": "DVB-S2 QPSK labelling: the first bit on I, the second on Q, a 0 positive",
+  "ref": "EN 302 307-1 5.4.1",
+  "points": [
+    {"mag": 1, "pha": 45},
+    {"mag": 1, "pha": 135},
+    {"mag": 1, "pha": 225},
+    {"mag": 1, "pha": 315}
+  ],
+  "maps": [
+    {
+      "map": [0, 2, 3, 1],
+      "comment": "DVB-S2 QPSK: label (b0b1) of the point at 45 + k*90 degrees"
+    }
+  ]
+}

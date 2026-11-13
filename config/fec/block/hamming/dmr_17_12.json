@@ -1,0 +1,9 @@
+{
+  "base": "block",
+  "type": "cyclic",
+  "comment": "DMR Hamming (17,12,3), g(x) = x^5 + x^2 + 1 shortened from (31,26) (ETSI TS 102 361-1 V2.6.1 B.3.3, equals Table B.13)",
+  "n": 31,
+  "k": 26,
+  "poly": "0x25",
+  "shorten": 14
+}

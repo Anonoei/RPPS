@@ -9,15 +9,25 @@ unless noted.
 """
 import numpy as np
 
-def berlekamp_massey(gf, S, nroots):
-    """Error locator sigma (nroots+1 coefficients, lowest degree first) and its degree L from the syndromes"""
+from .. import _accel
+
+def berlekamp_massey(gf, S, nroots, gamma=None):
+    """Error locator sigma (nroots+1 coefficients, lowest degree first) and its degree L from the syndromes
+
+    gamma: the erasure locator (lowest degree first, its degree is the number of erasures e). The result is then
+    the errors-and-erasures locator, of degree L = e + errors, found from the remaining nroots - e syndromes.
+    """
     sigma = np.zeros(nroots + 1, dtype=np.int64)
-    sigma[0] = 1
+    if gamma is None:
+        sigma[0], e = 1, 0
+    else:
+        e = len(gamma) - 1
+        sigma[:e + 1] = gamma
     prev = sigma.copy()
-    L, m, b = 0, 1, 1
-    for n in range(nroots):
+    L, m, b = e, 1, 1
+    for n in range(e, nroots):
         d = int(S[n])
-        for i in range(1, L + 1):
+        for i in range(1, min(L, n) + 1):
             d ^= int(gf.mul(sigma[i], S[n - i]))
         if d == 0:
             m += 1
@@ -26,11 +36,22 @@ def berlekamp_massey(gf, S, nroots):
         shifted = np.zeros(nroots + 1, dtype=np.int64)
         shifted[m:] = gf.mul(int(gf.mul(d, gf.inv(b))), prev[:nroots + 1 - m])
         sigma = sigma ^ shifted
-        if 2*L <= n:
-            L, prev, b, m = n + 1 - L, T, d, 1
+        if 2*L <= n + e:
+            L, prev, b, m = n + 1 - L + e, T, d, 1
         else:
             m += 1
     return sigma, L
+
+def erasure_locator(gf, positions, N, prim=1):
+    """Gamma(x) = prod (1 + X_j x), X_j = alpha^((N-1-pos)*prim): lowest degree first"""
+    g = np.array([1], dtype=np.int64)
+    for pos in positions:
+        X = int(gf.pow_alpha(((N - 1 - int(pos))*prim) % (gf.size - 1)))
+        nxt = np.zeros(len(g) + 1, dtype=np.int64)
+        nxt[:-1] = g
+        nxt[1:] ^= gf.mul(g, X)
+        g = nxt
+    return g
 
 def chien(gf, sigma, L, N, prim=1):
     """Positions of a word of length N whose locator root is sigma(alpha^(-(N-1-pos)*prim)) = 0"""
@@ -62,14 +83,30 @@ def forney(gf, S, sigma, L, positions, N, nroots, fcr=0, prim=1):
         values.append(int(gf.mul(gf.mul(num, gf.inv(den)), gf.pow(x, 1 - fcr))))
     return np.array(values, dtype=np.int64)
 
-def correct(gf, S, N, nroots, t, fcr=0, prim=1, binary=False):
+def correct(gf, S, N, nroots, t, fcr=0, prim=1, binary=False, erasures=()):
     """Find the errors of one word from its syndromes. Returns (positions, values) or None if uncorrectable
 
     t: errors the code corrects. binary: values are all 1 and not computed (BCH)
+    erasures: positions known to be unreliable (or not sent): with e of them, up to (nroots - e)//2 further errors
+    are corrected. Their values are found like any error's, and may be 0 (the symbol was right after all)
     """
-    sigma, L = berlekamp_massey(gf, S, nroots)
-    if L > t:
-        return None
+    erasures = sorted(set(int(p) for p in erasures))
+    if _accel.native is not None and np.ndim(S) == 1 and len(S) >= nroots:
+        return _accel.native.cyclic_correct(np.ascontiguousarray(S, dtype=np.int64), gf.exp, gf.log, int(N), int(nroots), int(t),
+                                            int(fcr), int(prim), bool(binary), erasures)
+    e = len(erasures)
+    if e:
+        if binary:
+            raise ValueError("Erasures need a non-binary code (Reed-Solomon)")
+        if e > nroots:
+            return None
+        sigma, L = berlekamp_massey(gf, S, nroots, erasure_locator(gf, erasures, N, prim))
+        if 2*L - e > nroots:
+            return None
+    else:
+        sigma, L = berlekamp_massey(gf, S, nroots)
+        if L > t:
+            return None
     positions = chien(gf, sigma, L, N, prim)
     if len(positions) != L:
         return None

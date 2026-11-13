@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sweep Monitor</title>
+<style>
+:root {
+  /* spectrum analyser: graphite ground, phosphor-amber live trace, teal for averages, violet for peak hold */
+  --bg: #14161a; --panel: #1b1e23; --line: #2a2e35; --ink: #e4e2db; --dim: #8b9099;
+  --live: #f2b134; --avg: #4fc3b0; --peak: #8d7ad6; --tile: #f2b134; --warn: #e0675b;
+  --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) { --bg: #f2f0ea; --panel: #fbfaf6; --line: #d8d4c9; --ink: #1f2226; --dim: #6a6f77; --live: #b57400; --avg: #00796b; --peak: #5b45b0; --tile: #b57400; --warn: #b3382c; color-scheme: light; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); padding-inline: max(16px, env(safe-area-inset-left, 0px)); padding-block: 16px 40px; }
+main { max-width: 1280px; margin: 0 auto; display: grid; gap: 14px; }
+header { display: flex; flex-wrap: wrap; gap: 6px 20px; align-items: baseline; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+h1 { font: 600 20px/1.2 var(--sans); margin: 0; }
+h2 { font: 600 12px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin: 0 0 6px; }
+.facts { display: flex; flex-wrap: wrap; gap: 4px 18px; font: 12px var(--mono); color: var(--dim); }
+.facts b { color: var(--ink); font-weight: 500; } .warn { color: var(--warn) !important; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; background: var(--panel); border: 1px solid var(--line); padding: 8px 12px; }
+.bar label { font-size: 12px; color: var(--dim); display: flex; gap: 6px; align-items: center; }
+input[type=number] { width: 84px; font: 13px var(--mono); background: var(--bg); color: var(--ink); border: 1px solid var(--line); padding: 4px 6px; }
+button { font: 600 13px var(--sans); color: var(--ink); background: transparent; border: 1px solid var(--dim); padding: 5px 12px; cursor: pointer; }
+button:hover { border-color: var(--live); } button[aria-pressed="true"] { background: var(--live); color: #14161a; border-color: var(--live); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+.plot { background: var(--panel); border: 1px solid var(--line); position: relative; }
+canvas { display: block; width: 100%; }
+#spec { height: 300px; cursor: crosshair; } #wf { height: 280px; cursor: crosshair; }
+.readout { position: absolute; top: 6px; right: 10px; font: 12px var(--mono); color: var(--ink); background: color-mix(in srgb, var(--bg) 80%, transparent); padding: 2px 8px; pointer-events: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font: 12px var(--mono); color: var(--dim); padding: 6px 10px 8px; border-top: 1px solid var(--line); }
+.legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 6px; }
+.wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 5px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+td.n { font-family: var(--mono); } tr:last-child td { border-bottom: 0; } tbody tr { cursor: pointer; } tbody tr:hover { background: color-mix(in srgb, var(--live) 8%, transparent); }
+.empty { padding: 14px 12px; color: var(--dim); }
+footer { color: var(--dim); font-size: 12px; max-width: 80ch; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Sweep Monitor</h1>
+    <div class="facts" id="facts"></div>
+  </header>
+
+  <section class="bar" aria-label="Controls">
+    <button id="pause" type="button" aria-pressed="false">Pause</button>
+    <label for="lo">From <input id="lo" type="number" step="10" min="1"> MHz</label>
+    <label for="hi">to <input id="hi" type="number" step="10" max="6000"> MHz</label>
+    <button id="apply" type="button">Apply range</button>
+    <button id="reset" type="button">Reset zoom</button>
+    <label for="floor">Floor <input id="floor" type="number" step="5"> dB</label>
+    <label for="top">Top <input id="top" type="number" step="5"> dB</label>
+    <button id="auto" type="button" aria-pressed="true">Auto scale</button>
+    <button id="rstpeak" type="button">Reset peak hold</button>
+  </section>
+
+  <section class="bar" aria-label="Sweep settings">
+    <label for="step">Tile width <input id="step" type="number" min="1" max="20" step="1" list="tiles"> MHz</label>
+    <datalist id="tiles"><option value="2"><option value="4"><option value="8"><option value="10"><option value="16"><option value="20"></datalist>
+    <label for="fs">Sample rate <input id="fs" type="number" min="2" max="20" step="0.5" placeholder="auto"> MS/s</label>
+    <label for="dwell">Dwell <input id="dwell" type="number" min="0" step="any"> <select id="dunit" aria-label="Dwell unit"><option value="samples">samples</option><option value="seconds">seconds</option></select></label>
+    <label for="settle">Settle <input id="settle" type="number" min="0" max="2000" step="10"> ms</label>
+    <label for="gmode">Gain <select id="gmode"><option value="auto">auto (highest with headroom, held between tiles)</option><option value="fixed">fixed</option></select></label>
+    <span id="gfix" hidden><label for="g0">gain (0-1) <input id="g0" type="number" min="0" max="1" step="0.05" value="0.4" style="width:70px"></label></span>
+    <label for="alt"><input id="alt" type="checkbox"> shift the tile grid every other sweep</label>
+    <label for="altfs"><input id="altfs" type="checkbox"> alternate the sample rate (confirms spurs)</label>
+    <label for="altgain"><input id="altgain" type="checkbox"> odd sweeps at a slightly lower gain (confirms overload products)</label>
+    <label for="flatten"><input id="flatten" type="checkbox"> flatten tiles</label>
+    <label for="match"><input id="match" type="checkbox"> correct gain-setting level errors</label>
+    <label for="headroom">Headroom <input id="headroom" type="number" min="0.1" max="1" step="0.05" style="width:64px"> of full scale</label>
+    <label for="decay">Peak decay <input id="decay" type="number" min="0" max="20" step="0.05" style="width:64px"> dB/sweep</label>
+    <button id="applyset" type="button">Apply settings</button>
+    <span class="facts" id="est"></span>
+  </section>
+
+  <section>
+    <h2>Spectrum: where the radio is looking, and what it has seen</h2>
+    <div class="plot"><canvas id="spec" role="img" aria-label="Stitched spectrum of the sweep, with the radio's current tile marked"></canvas><div class="readout" id="ro1"></div>
+      <div class="legend"><span><i style="background:var(--live)"></i>sweep in progress</span><span><i style="background:var(--avg)"></i>average of the last 8 confirmed sweeps</span><span><i style="background:var(--peak)"></i>peak hold (confirmed, decaying)</span><span><i style="background:var(--warn);opacity:.55"></i>seen but not confirmed</span>
+        <span><i style="background:var(--tile);opacity:.5;height:10px"></i>the tile the radio is on now</span><span>drag to zoom, double-click to reset</span></div></div>
+  </section>
+
+  <section>
+    <h2>Spectrogram: completed sweeps, newest on top</h2>
+    <div class="plot"><canvas id="wf" role="img" aria-label="Spectrogram of the completed sweeps"></canvas><div class="readout" id="ro2"></div></div>
+  </section>
+
+  <section>
+    <h2>Strongest signals in the average (click one to zoom to it)</h2>
+    <div class="wrap"><table><thead><tr><th>Frequency</th><th>Width</th><th>Over the floor</th><th>Level</th><th>Allocation</th></tr></thead>
+      <tbody id="em"><tr><td colspan="5" class="empty">Waiting for the first complete sweep.</td></tr></tbody></table></div>
+  </section>
+
+  <footer>Levels are relative to the antenna input at 0 dB gain, corrected for the gain used on each tile; they are not calibrated. Each tile has the shape all tiles share removed, the level error of each gain setting is learned where neighbouring tiles used different ones, and a sweep counts toward the average, the peak hold and the spectrogram only where the neighbouring sweep (another sample rate, tile grid and no RF amp) agrees: spurs, combs and images move with those, real signals do not. What only one sweep showed is the red trace; a burst can be there. The HackRF's multiples of 20 MHz are not removed from the display.</footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let st = null, live = null, avg = null, peak = null, raw = null, rows = new Map(), view = null, auto = true, drag = null, hover = null, lastSweeps = -1;
+const LUT = (() => { const l = new Uint8ClampedArray(256*4); for (let i = 0; i < 256; i++) { const t = i/255; const c = t < .5 ? [20 + 40*t*2, 22 + 140*t*2, 40 + 100*t*2] : [60 + 190*(t - .5)*2, 162 + 70*(t - .5)*2, 140 - 90*(t - .5)*2]; l.set([c[0], c[1], c[2], 255], i*4); } return l; })();
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const dbOf = b => st.d0 + (b - 1)/254*(st.d1 - st.d0);
+const fOf = i => st.f0 + i*st.bin_mhz;
+
+function range() { return view || [st.lo, st.hi]; }
+function colMax(arr, W, a, b, fn) {  // per pixel column: the max over the bins in the view (fn maps a byte to a value), -1 where no data
+  const out = new Float32Array(W).fill(-1e9); if (!arr) return out;
+  const i0 = Math.max(0, Math.floor((a - st.f0)/st.bin_mhz)), i1 = Math.min(arr.length - 1, Math.ceil((b - st.f0)/st.bin_mhz)), n = i1 - i0 + 1;
+  for (let i = i0; i <= i1; i++) { const v = arr[i]; if (!v) continue; const x = Math.min(W - 1, Math.floor((i - i0)/n*W)); const d = fn(v); if (d > out[x]) out[x] = d; }
+  return out;
+}
+
+function drawSpec() {
+  const cv = $("spec"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight; if (!st) return;
+  if (cv.width !== Math.round(W*dpr)) { cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr); }
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const L = 44, R = 10, T = 12, B = 40, pw = W - L - R, ph = H - T - B, [a, b] = range(), X = f => L + (f - a)/(b - a)*pw;
+  const ink = css("--ink"), dim = css("--dim"), line = css("--line");
+  const A = colMax(avg, pw, a, b, dbOf), P = colMax(peak, pw, a, b, dbOf), V = colMax(live, pw, a, b, dbOf), U = colMax(raw, pw, a, b, dbOf);
+  let lo, hi;
+  if (auto) { const v = Array.from(A).filter(x => x > -1e8).sort((x, y) => x - y); const pk = Array.from(P).filter(x => x > -1e8); lo = v.length ? v[Math.floor(v.length*.05)] - 4 : st.d0; hi = (pk.length ? Math.max(...pk) : st.d1) + 4; $("floor").value = Math.round(lo); $("top").value = Math.round(hi); }
+  else { lo = +$("floor").value; hi = +$("top").value; }
+  if (hi - lo < 10) hi = lo + 10;
+  const Y = d => T + ph - (Math.min(Math.max(d, lo), hi) - lo)/(hi - lo)*ph;
+  g.font = "11px " + css("--mono"); g.strokeStyle = line; g.fillStyle = dim; g.lineWidth = 1; g.textAlign = "right";
+  for (let d = Math.ceil(lo/10)*10; d <= hi; d += 10) { const y = Math.round(Y(d)) + .5; g.beginPath(); g.moveTo(L, y); g.lineTo(L + pw, y); g.stroke(); g.fillText(d, L - 5, y + 4); }
+  const span = b - a, step = [1, 2, 5, 10, 20, 50, 100, 200, 500].find(s => span/s <= 14) || 500; g.textAlign = "center";
+  for (let f = Math.ceil(a/step)*step; f <= b; f += step) { const x = Math.round(X(f)) + .5; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke(); g.fillText(f.toFixed(step < 1 ? 1 : 0), x, T + ph + 13); }
+  // allocation strip
+  for (const [i, bd] of st.bands.entries()) { if (bd.hi < a || bd.lo > b) continue; const x0 = Math.max(L, X(bd.lo)), x1 = Math.min(L + pw, X(bd.hi)); g.fillStyle = i % 2 ? line : css("--panel"); g.globalAlpha = 1; g.fillRect(x0, T + ph + 17, x1 - x0, 14); g.strokeStyle = dim; g.strokeRect(x0 + .5, T + ph + 17.5, x1 - x0 - 1, 13); g.fillStyle = dim; g.textAlign = "left"; g.save(); g.beginPath(); g.rect(x0, T + ph + 17, x1 - x0, 14); g.clip(); if (x1 - x0 > 30) g.fillText(bd.name, x0 + 3, T + ph + 28); g.restore(); }
+  // the tile the radio is on
+  if (st.tile && st.tile.cf != null) { const c = st.tile.cf, h = st.step/2; const x0 = Math.max(L, X(c - h)), x1 = Math.min(L + pw, X(c + h)); if (x1 > x0) { g.fillStyle = css("--tile"); g.globalAlpha = .16; g.fillRect(x0, T, x1 - x0, ph); g.globalAlpha = .9; g.fillRect(x0, T, 2, ph); g.globalAlpha = 1; g.textAlign = "left"; g.fillStyle = css("--tile"); g.fillText(c.toFixed(1) + " MHz, tile " + st.tile.i + "/" + st.tile.n, Math.min(x0 + 5, L + pw - 150), T + 12); } }
+  const draw = (arr, color, lw) => { g.strokeStyle = color; g.lineWidth = lw; g.beginPath(); let pen = false; for (let x = 0; x < pw; x++) { if (arr[x] < -1e8) { pen = false; continue; } const y = Y(arr[x]); if (!pen) { g.moveTo(L + x, y); pen = true; } else g.lineTo(L + x, y); } g.stroke(); };
+  draw(P, css("--peak"), 1); g.globalAlpha = .55; draw(U.map((u, i) => u > A[i] + 3 ? u : -1e9), css("--warn"), 1); g.globalAlpha = 1; draw(A, css("--avg"), 1.2); draw(V, css("--live"), 1.4);
+  if (drag) { g.fillStyle = ink; g.globalAlpha = .12; g.fillRect(Math.min(drag[0], drag[1]), T, Math.abs(drag[1] - drag[0]), ph); g.globalAlpha = 1; }
+  if (hover != null) { const x = L + (hover - a)/(b - a)*pw; g.strokeStyle = ink; g.globalAlpha = .4; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke(); g.globalAlpha = 1; }
+  cv._geo = {L, pw, a, b};
+}
+
+function drawWf() {
+  const cv = $("wf"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight; if (!st) return;
+  if (cv.width !== Math.round(W*dpr)) { cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr); }
+  const g = cv.getContext("2d"); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const L = 44, R = 10, pw = W - L - R, [a, b] = range(), rowh = 5, nrows = Math.floor(H/rowh);
+  const lo = +$("floor").value, hi = +$("top").value; const img = g.createImageData(Math.round(pw), nrows*rowh);
+  const ids = [...rows.keys()].sort((x, y) => y - x);
+  const put = (arr, r) => { const c = colMax(arr, Math.round(pw), a, b, dbOf); for (let x = 0; x < c.length; x++) { if (c[x] < -1e8) continue; const t = Math.min(255, Math.max(0, Math.round((c[x] - lo)/(hi - lo)*255))); for (let k = 0; k < rowh; k++) img.data.set(LUT.subarray(t*4, t*4 + 4), ((r*rowh + k)*img.width + x)*4); } };
+  put(live, 0);   // the sweep in progress is the top row, completed ones follow
+  for (let r = 1; r < nrows && r - 1 < ids.length; r++) put(rows.get(ids[r - 1]), r);
+  g.putImageData(img, L*dpr, 0);
+  g.font = "11px " + css("--mono"); g.fillStyle = css("--ink"); g.textAlign = "right"; g.fillText("now", L - 6, 10);
+  const t = st.t_sweep || 0; if (t) { g.fillStyle = css("--dim"); g.fillText("-" + Math.round(t*(nrows - 1)) + " s", L - 6, nrows*rowh - 2); }
+  cv._geo = {L, pw, a, b};
+}
+
+function tableOf(st) {
+  const tb = $("em"); tb.textContent = "";
+  if (!st.emitters.length) { const tr = el("tr"); const td = el("td", "empty", st.sweeps ? "Nothing stands out by more than 8 dB." : "Waiting for the first complete sweep."); td.colSpan = 5; tr.append(td); tb.append(tr); return; }
+  for (const e of st.emitters) { const tr = el("tr"); tr.append(el("td", "n", e.f.toFixed(3) + " MHz"), el("td", "n", (e.w*1000).toFixed(0) + " kHz"), el("td", "n", "+" + e.ex + " dB"), el("td", "n", e.db + " dB"), el("td", "", e.band)); tr.onclick = () => { const w = Math.max(2, e.w*8); view = [e.f - w, e.f + w]; redraw(); }; tb.append(tr); }
+}
+
+function facts(st) {
+  const f = $("facts"); f.textContent = "";
+  const add = (k, v, bad) => { const s = el("span"); s.append(k + " "); s.append(el("b", bad ? "warn" : "", v)); f.append(s); };
+  add("source", st.source); add("range", st.lo + "-" + st.hi + " MHz");
+  if (st.tile && st.tile.cf != null) add("radio at", st.tile.cf.toFixed(1) + " MHz, tile " + st.tile.i + " of " + st.tile.n);
+  add("tile shape", st.flat ? "subtracted" : "learning"); if (st.geometry && st.params.alt_fs) add("sweeps alternate", st.geometry[0][0] + " / " + st.geometry[1][0] + " MS/s"); if (st.params.alt_gain) add("odd sweeps", "no RF amp");
+  if (st.tile && st.tile.gain !== null) add("gain", st.tile.gain.toFixed(2));
+  add("sweeps", String(st.sweeps)); if (st.t_sweep) add("sweep time", st.t_sweep + " s");
+  if (st.paused) add("state", "paused", true); if (st.error) add("radio", st.error, true);
+}
+
+function redraw() { drawSpec(); drawWf(); }
+
+function fillSettings(p) {
+  $("step").value = p.step; $("fs").min = p.fs_min; $("fs").max = p.fs_max; $("fs").value = p.fs_auto ? "" : p.fs; $("dwell").value = p.dwell.value; $("dunit").value = p.dwell.unit; $("settle").value = Math.round(p.settle*1000);
+  $("altfs").checked = p.alt_fs; $("altgain").checked = p.alt_gain; $("flatten").checked = p.flatten; $("match").checked = p.match; $("headroom").value = p.headroom; $("decay").value = p.peak_decay;
+  $("gmode").value = p.gain !== null ? "fixed" : "auto"; if (p.gain !== null) { $("g0").value = p.gain; } $("gfix").hidden = p.gain === null; $("alt").checked = p.alt;
+}
+function estimate(st) {
+  const p = st.params, tiles = Math.ceil((st.hi - st.lo)/p.step), per = p.settle + p.dwell_samples/(p.fs*1e6), e = $("est"); e.textContent = "";
+  const add = (k, v) => { const s = el("span"); s.append(k + " "); s.append(el("b", "", v)); e.append(s); };
+  add("sample rate", p.fs + " MS/s" + (p.fs_auto ? " (auto)" : "")); add("tiles", String(tiles)); add("per tile", (per*1000).toFixed(0) + " ms + gain check"); add("bins", "50 kHz");
+  if (st.tile_s) add("measured per tile", (st.tile_s*1000).toFixed(0) + " ms");
+}
+
+async function bin(url) { const r = await fetch(url); return r.ok ? new Uint8Array(await r.arrayBuffer()) : null; }
+async function tick() {
+  try {
+    st = await (await fetch("/api/status")).json();
+    if (!$("lo").dataset.set) { $("lo").value = st.lo; $("hi").value = st.hi; $("lo").dataset.set = 1; }
+    live = await bin("/api/live");
+    if (st.sweeps !== lastSweeps) {
+      if (st.sweeps < lastSweeps) rows.clear();
+      lastSweeps = st.sweeps; const s = await bin("/api/summary"); if (s && s.length === 3*st.n) { avg = s.subarray(0, st.n); peak = s.subarray(st.n, 2*st.n); raw = s.subarray(2*st.n); }
+      for (let k = Math.max(0, st.sweeps - 60); k < st.sweeps; k++) if (!rows.has(k)) { const r = await bin("/api/row/" + k); if (r) rows.set(k, r); }
+      for (const k of [...rows.keys()]) if (k < st.sweeps - 60) rows.delete(k);
+      tableOf(st);
+    }
+    if (!$("step").dataset.set) { fillSettings(st.params); $("step").dataset.set = 1; }
+    estimate(st); facts(st); $("pause").setAttribute("aria-pressed", st.paused); $("pause").textContent = st.paused ? "Resume" : "Pause"; redraw();
+  } catch (e) { $("facts").textContent = "Lost the sweep monitor process. Is it still running?"; }
+  setTimeout(tick, 700);
+}
+
+async function control(body) { const r = await fetch("/api/control", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}); if (r.ok) { st = await r.json(); } return r.ok; }
+$("pause").onclick = () => control({pause: !st.paused});
+$("apply").onclick = async () => { const ok = await control({lo: +$("lo").value, hi: +$("hi").value}); if (ok) { view = null; avg = peak = null; rows.clear(); lastSweeps = -1; } };
+$("gmode").onchange = () => { $("gfix").hidden = $("gmode").value !== "fixed"; };
+$("applyset").onclick = async () => {
+  const body = {step: +$("step").value, fs: $("fs").value === "" ? 0 : +$("fs").value, dwell: {unit: $("dunit").value, value: +$("dwell").value}, settle: +$("settle").value/1000,
+    gain: $("gmode").value === "fixed" ? +$("g0").value : null, alt: $("alt").checked,
+    alt_fs: $("altfs").checked, alt_gain: $("altgain").checked, flatten: $("flatten").checked, match: $("match").checked, headroom: +$("headroom").value, peak_decay: +$("decay").value};
+  const ok = await control(body); $("applyset").textContent = ok ? "Applied" : "Rejected: check the ranges"; setTimeout(() => $("applyset").textContent = "Apply settings", 1800); if (ok) fillSettings(st.params);
+};
+$("rstpeak").onclick = () => control({reset_peak: true}).then(() => { peak = null; lastSweeps = -1; });
+$("reset").onclick = () => { view = null; redraw(); };
+$("auto").onclick = () => { auto = !auto; $("auto").setAttribute("aria-pressed", auto); redraw(); };
+for (const id of ["floor", "top"]) $(id).oninput = () => { auto = false; $("auto").setAttribute("aria-pressed", false); redraw(); };
+
+function wire(cv, ro) {
+  const fAt = ev => { const gm = cv._geo; if (!gm) return null; const x = ev.offsetX - gm.L; return x < 0 || x > gm.pw ? null : gm.a + x/gm.pw*(gm.b - gm.a); };
+  cv.onmousemove = ev => {
+    const f = fAt(ev); hover = f; if (drag) { drag[1] = ev.offsetX; }
+    if (f == null) { $(ro).textContent = ""; } else if (st) { const i = Math.round((f - st.f0)/st.bin_mhz); const parts = [f.toFixed(3) + " MHz"]; const bd = st.bands.find(x => f >= x.lo && f < x.hi); if (live && live[i]) parts.push(dbOf(live[i]).toFixed(1) + " dB live"); if (avg && avg[i]) parts.push(dbOf(avg[i]).toFixed(1) + " dB avg"); if (bd) parts.push(bd.name); $(ro).textContent = parts.join("  |  "); }
+    redraw();
+  };
+  cv.onmouseleave = () => { hover = null; drag = null; $(ro).textContent = ""; redraw(); };
+  if (cv.id === "spec") {
+    cv.onmousedown = ev => { drag = [ev.offsetX, ev.offsetX]; };
+    cv.onmouseup = ev => { if (drag && Math.abs(drag[1] - drag[0]) > 6) { const gm = cv._geo, f0 = gm.a + (Math.min(drag[0], drag[1]) - gm.L)/gm.pw*(gm.b - gm.a), f1 = gm.a + (Math.max(drag[0], drag[1]) - gm.L)/gm.pw*(gm.b - gm.a); view = [Math.max(st.lo, f0), Math.min(st.hi, f1)]; } drag = null; redraw(); };
+    cv.ondblclick = () => { view = null; redraw(); };
+  }
+}
+wire($("spec"), "ro1"); wire($("wf"), "ro2");
+window.addEventListener("resize", redraw);
+tick();
+</script>
+</body>
+</html>

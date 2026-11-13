@@ -1,0 +1,9 @@
+{
+  "base": "scramble",
+  "type": "feedthrough",
+  "comment": "IEEE 802.11b DSSS self-synchronizing scrambler, 1 + z^-4 + z^-7. Seeded 1101100 for a long preamble; a descrambler needs no seed after 7 bits",
+  "ref": "IEEE 802.11-2020 16.2.4",
+  "register": "fibonacci",
+  "poly": [7, 4],
+  "seed": [1, 1, 0, 1, 1, 0, 0]
+}

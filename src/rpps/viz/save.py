@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import matplotlib.animation as manim
 
 class FFmpegMP4:
@@ -14,7 +13,7 @@ class FFmpegMP4:
     ...
     writer.close()
     """
-    def __init__(self, fig, fps, path, metadata=None, dpi=100):
+    def __init__(self, fig, fps, path, metadata=None, dpi=200):
         self.fig = fig
         self.path = path
         self.dpi = dpi

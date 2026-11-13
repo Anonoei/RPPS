@@ -1,0 +1,9 @@
+{
+  "base": "interleave",
+  "type": "block",
+  "comment": "DVB-S2 bit interleaver for 8PSK rate 3/5, normal frames: as dvbs2_8psk with the columns read in the order 2, 1, 0",
+  "ref": "EN 302 307-1 5.3.3",
+  "length": 64800,
+  "cols": 21600,
+  "row_perm": [2, 1, 0]
+}

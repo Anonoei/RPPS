@@ -21,10 +21,18 @@ def align(ctx, key, x, block, pad, log=None):
         elif pad:
             x = np.concatenate((x[:n], rest, np.zeros(block - len(rest), dtype=x.dtype)))
             n = len(x)
-        elif log is not None:
-            log.warn(f"Dropped {len(rest)} trailing items short of a block of {block}")
+        else:
+            ctx.setdefault(DROPPED, []).append(len(rest)) # (a parallel region's worker reports it: a frame cut short)
+            if log is not None:
+                log.warn(f"Dropped {len(rest)} trailing items short of a block of {block}")
     return x[:n]
 
+STREAM, FRAME = "stream", "frame"
+# Scope of an operator's state (README.dev.md, Parallelism). STREAM: it carries state from one frame to the next (trackers,
+# frame sync, convolutional decoders), so frames can't be processed apart. FRAME: it holds nothing across a frame start, so
+# a frame is a pure function of its data and the parameters controls gave it. Default STREAM (safe).
+
+DROPPED = "dropped" # ctx entry: items a flushed decoder had to drop, as [count, ...]
 FLUSH = "flush" # ctx entry: this is the end of the stream, so nothing is held back (set by Data)
 
 
@@ -39,6 +47,13 @@ class Pipe:
         bits = syms / link              # the decoders, run backwards
     """
     __array_ufunc__ = None # numpy defers to the operators here instead of broadcasting over the object
+    CATEGORY = None # The rpps.base.types.Category of what it does (stages without one count as SIGNAL)
+    SCOPE = STREAM  # STREAM or FRAME: where its state lives (see above)
+    SCOPE_NEEDS = () # FRAME only while a control drives these parameters (a scrambler restarts at a frame start by `length`)
+
+    def takes(self, encode):
+        """The representations (rpps.base.types.Rep) this accepts to encode (True) or decode (False); None: not checked"""
+        return None
 
     def __str__(self) -> str:
         return "Pipe"
@@ -134,8 +149,37 @@ class Stage(Pipe):
         """Process a block, returning the output. Set meta.op (the output rates) and add to meta.delay as needed"""
         raise NotImplementedError()
 
+    def takes(self, encode=True):
+        """Representations this stage processes (rpps.base.types.Rep): samples and symbols"""
+        from .types import Rep
+        return {Rep.SAMPLES, Rep.SYMBOLS}
+
     def __radd__(self, data):
         from .data import _Data
         if not isinstance(data, _Data):
             return NotImplemented
         return data.apply(self)
+
+class BitStage(Stage):
+    """A stage on a stream of bits: channel bits or data bits, as LLRs or hard bits (sync on bits: alignment, polarity)
+
+    `step` gets a numpy array: float LLRs (positive means 0) or bools, and gives the same form back. The output keeps the
+    input's representation and form; state carries across blocks as for any stage, so any block length works.
+    """
+    def takes(self, encode=True):
+        from .types import Rep
+        return {Rep.CHANNEL, Rep.DATA}
+
+def tag_stages(package, category):
+    """Give every Stage class defined in `package` (a module or package name, submodules included) the Category `category`,
+    unless the class sets its own. In this architecture the package is the category (README.dev.md)"""
+    import importlib, pkgutil, sys
+    root = importlib.import_module(package)
+    names = [package]
+    if hasattr(root, "__path__"):
+        names += [m.name for m in pkgutil.walk_packages(root.__path__, package + ".")]
+    for name in names:
+        mod = sys.modules.get(name) or importlib.import_module(name)
+        for obj in vars(mod).values():
+            if isinstance(obj, type) and issubclass(obj, Stage) and obj.__module__ == name and "CATEGORY" not in vars(obj):
+                obj.CATEGORY = category

@@ -7,11 +7,11 @@ def main():
     # print(f"Encoding {msg}")
     enc_msg = rp.Data(msg)
 
-    mod = rp.mod.load("QPSK")
-    mod.set_mapping(mod.get_maps()[0])
-    # ecc = rp.coding.load("block", "repeat/5")
-    ecc = rp.coding.load("block", "hamming/7_4")
-    scr = rp.scram.load("fdt", "v35")
+    mod = rp.symbol.load("QPSK")
+    mod.set_mapping(mod.maps[0])
+    # ecc = rp.code.load("block", "repeat/5")
+    ecc = rp.code.load("block", "hamming/7_4")
+    scr = rp.code.scram.load("v35")
 
     # print(f"Mod: {mod}")
     # print(f"ECC: {ecc}")
