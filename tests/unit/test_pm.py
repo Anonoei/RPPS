@@ -42,3 +42,23 @@ def test_no_carrier_is_not_pm():
     rng = np.random.default_rng(2)
     x = (rng.standard_normal(100000) + 1j*rng.standard_normal(100000))/np.sqrt(2)
     assert pm.analyze(x, FS).carrier is None
+
+def test_drifting_carrier_beside_a_spur():
+    """A long capture: the carrier drifts 15 Hz (spread over many fine bins) and a steady spur stands taller; the carrier
+    is the line that holds the power when tracked"""
+    rng = np.random.default_rng(3)
+    n = 2**22
+    t = np.arange(n)/FS
+    drift = 2*np.pi*np.cumsum(-1200 - 15*t/t[-1])/FS
+    x = np.exp(1j*(0.8*nrz(rng, n, FS/20e3) + drift))
+    x = x + 0.2*np.exp(2j*np.pi*-29e3*t) + 0.05*(rng.standard_normal(n) + 1j*rng.standard_normal(n))
+    p = pm.analyze(x, FS)
+    assert p.carrier == pytest.approx(-1200, abs=20) and p.index == pytest.approx(0.8, abs=0.08)
+
+def test_rate_lines_without_data_are_not_data():
+    """Tones near DC (no data on the carrier) give phi^2 lines; their soft symbols are not two clusters"""
+    rng = np.random.default_rng(4)
+    n = 400000
+    t = np.arange(n)/FS
+    x = channel(rng, 0.5*np.sin(2*np.pi*3e3*t) + 0.4*np.sin(2*np.pi*5e3*t))
+    assert pm.analyze(x, FS).rate is None

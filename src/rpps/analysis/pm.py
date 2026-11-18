@@ -50,32 +50,56 @@ class PM:
 
     __repr__ = __str__
 
+BIMODAL = 2.5 # mean |soft symbol| over its scatter for data on the carrier (Es/N0 ~8 dB and up)
+PATTERN = 0.8 # sign agreement at some lag up to 64 symbols over this: a pattern of tones, not data
 MIN_SHARE = 0.05 # A carrier line holding less of the power than this is a pilot or a leak, not a PM carrier
 
+def _smooth(z, L):
+    """z through a triangular window of about L samples (two running means: O(n), where a convolution is O(n L))"""
+    h = max(1, L//2)
+    for _ in range(2):
+        c = np.concatenate(([0], np.cumsum(z)))
+        a = np.clip(np.arange(len(z)) - h//2, 0, len(z))
+        b = np.clip(a + h, 0, len(z))
+        z = (c[b] - c[a])/np.maximum(b - a, 1)
+    return z
+
 def carrier_phase(x, Fs, fc, loop=200.0):
-    """phi(t): the phase of x around a carrier at fc (Hz), the carrier's own phase taken from x smoothed over 1/loop
-    seconds (a narrow loop: it follows drift and phase noise slower than that, never the data)"""
+    """(phi, z, ref): phi(t) the phase of x around a carrier at fc (Hz); z, x with fc taken off; ref, the carrier as the
+    loop sees it, z smoothed over about 1/loop seconds (a narrow loop: it follows drift and phase noise slower than that,
+    never the data)"""
     x = np.asarray(x, dtype=np.complex128)
     n = np.arange(len(x))
     z = x*np.exp(-2j*np.pi*fc/Fs*n)
-    L = max(3, int(Fs/loop)) | 1
-    ref = np.convolve(z, np.hanning(L), mode="same")
-    return np.angle(z*np.conj(ref)), z
+    ref = _smooth(z, max(3, int(Fs/loop)))
+    return np.angle(z*np.conj(ref)), z, ref
 
-def analyze(x, Fs, pfa=1e-6, loop=200.0, lo=None):
+def share_of(z, ref):
+    """The carrier's part of the power: the tracked carrier's power over all of it (a carrier that drifts or wanders over
+    the capture keeps its share; |mean z|^2 would average it away)"""
+    return float(np.mean(np.abs(ref)**2)/max(np.mean(np.abs(z)**2), 1e-300))
+
+def analyze(x, Fs, pfa=1e-6, loop=200.0, lo=None, candidates=4, max_samples=2**22):
     """Residual carrier, index, data rate on the carrier, tones and subcarriers of baseband samples x (see the module)"""
-    x = np.asarray(x, dtype=np.complex128)
+    x = np.asarray(x, dtype=np.complex128)[:max_samples]
     if len(x) < 4096:
         return PM(why="too few samples")
-    if len(x) >= 1024:
-        G, _, _ = cyclic.occupied(x, Fs)
-        x = np.fft.ifft(np.fft.fft(x)*G)
-    ls = [l for l in cyclic.lines(x/np.sqrt(np.mean(np.abs(x)**2)), Fs, -Fs/2, Fs/2, pfa, top=1) if l.significant]
+    G, _, _ = cyclic.occupied(x, Fs)
+    x = np.fft.ifft(np.fft.fft(x)*G)
+    # Carrier candidates from a short span (a carrier drifting some Hz over the capture stays in a bin of it; over all of
+    # it, it would spread over many fine bins under a steady spur), each judged by the share it holds when tracked
+    span = int(min(len(x), max(4096, 2**int(np.log2(4*Fs/loop)))))
+    xs = x[:span]
+    ls = [l for l in cyclic.lines(xs/np.sqrt(np.mean(np.abs(xs)**2)), Fs, -Fs/2, Fs/2, pfa, top=candidates) if l.significant]
     if not ls:
         return PM(why="no carrier line")
-    fc = ls[0].freq
-    phi, z = carrier_phase(x, Fs, fc, loop)
-    share = float(np.abs(np.mean(z))**2/np.mean(np.abs(z)**2))
+    best = None
+    for l in ls:
+        phi_, z_, ref_ = carrier_phase(x, Fs, l.freq, loop)
+        sh = share_of(z_, ref_)
+        if best is None or sh > best[0]:
+            best = (sh, l.freq, phi_, z_)
+    share, fc, phi, z = best
     if share < MIN_SHARE:
         return PM(why=f"the line at {fc:.1f} Hz holds {100*share:.1f}% of the power: a pilot or a leak")
     lo = 2*loop if lo is None else lo
@@ -99,6 +123,15 @@ def analyze(x, Fs, pfa=1e-6, loop=200.0, lo=None):
         g = np.diff(phi)**2 # transitions pulse at the boundaries
         c = np.sum(g*np.exp(-2j*np.pi*rate/Fs*n[1:]))
         tau = float((-np.angle(c)/(2*np.pi)*Fs/rate) % (Fs/rate) + 1.0)
+        # Data really on the carrier demodulates to two clusters (a mean |y| several times its scatter); lines of a rate
+        # alone (tones, products of subcarriers near DC) do not
+        y = biphase_symbols(phi, Fs, rate, tau) if biphase else nrz(phi, Fs, rate, tau)
+        a = np.abs(y)
+        sg = np.sign(y)
+        # ... and data (scrambled or not) changes from symbol to symbol unpredictably, where tones repeat a pattern
+        periodic = len(sg) >= 256 and max(abs(np.mean(sg[k:]*sg[:-k])) for k in range(1, 65)) > PATTERN
+        if len(a) < 16 or np.mean(a) < BIMODAL*np.std(a) or periodic:
+            rate, biphase, tau = None, False, None
     harmonic = lambda f: rate is not None and abs(f/rate - round(f/rate)) < tol(f)/rate and round(f/rate) >= 1
     l2 = [l for l in l2 if not harmonic(l.freq)]
     lp = [l for l in lp if not harmonic(l.freq)]
@@ -162,3 +195,12 @@ def nrz(phi, Fs, rate, tau):
     j = np.round(b + sps).astype(np.int64)
     ok = j <= len(phi)
     return (c[j[ok]] - c[i[ok]])/sps
+
+def biphase_symbols(phi, Fs, rate, tau):
+    """Soft symbols of biphase (Manchester) data on the carrier: the first half-bit's integral less the second's"""
+    sps = Fs/rate
+    c = np.concatenate(([0.0], np.cumsum(phi)))
+    b = tau + sps*np.arange(int((len(phi) - tau)//sps))
+    i, m, j = (np.round(b + f*sps).astype(np.int64) for f in (0.0, 0.5, 1.0))
+    ok = j <= len(phi)
+    return ((c[m[ok]] - c[i[ok]]) - (c[j[ok]] - c[m[ok]]))/sps
