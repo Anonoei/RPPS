@@ -1,7 +1,7 @@
 import numpy as np
 
 from ... import _accel
-from ._code import _code, register, word_errors
+from ._code import _code, register, word_errors, as_llr
 from ...math.gf2 import systematic, to_checks
 
 def gallager(n, wc=3, wr=6, seed=0):
@@ -190,10 +190,7 @@ class ldpc(_code):
         return total < 0, done
 
     def decode(self, bits, soft=None):
-        x = np.asarray(bits)
-        if soft is None:
-            soft = x.dtype.kind == "f"
-        llr = x.astype(np.float64) if soft else 2.0*(1.0 - 2.0*x.astype(np.float64)) # Hard bit: LLR +-2
+        llr = as_llr(bits, soft, 2.0)
         llr = llr[:len(llr)//self.N*self.N].reshape(-1, self.N)
         cw, converged = self.min_sum(llr)
         self.converged, self.errors = converged, word_errors(llr < 0, cw, converged)

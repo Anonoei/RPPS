@@ -1,6 +1,6 @@
 import numpy as np
 
-from ._code import _code, register
+from ._code import _code, register, as_llr
 from .interleave import rowcol
 
 CONV_PERM = [1, 17, 9, 25, 5, 21, 13, 29, 3, 19, 11, 27, 7, 23, 15, 31, 0, 16, 8, 24, 4, 20, 12, 28, 2, 18, 10, 26, 6, 22, 14, 30]
@@ -64,10 +64,7 @@ class ratematch(_code):
         return np.concatenate([w[self.index] for w in x[:len(x)//n*n].reshape(-1, n)]) if len(x) >= n else x[:0]
 
     def decode(self, values, soft=None):
-        x = np.asarray(values)
-        if soft is None:
-            soft = x.dtype.kind == "f"
-        llr = x.astype(np.float64) if soft else 1.0 - 2.0*x.astype(np.float64)
+        llr = as_llr(values, soft)
         out = []
         for w in llr[:len(llr)//self.E*self.E].reshape(-1, self.E):
             acc = np.zeros(3*self.D)

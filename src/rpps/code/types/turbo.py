@@ -1,6 +1,6 @@
 import numpy as np
 
-from ._code import _code, register, word_errors
+from ._code import _code, register, word_errors, as_llr
 from .trellis import Trellis, bcjr
 
 def qpp(K, f1, f2):
@@ -114,10 +114,7 @@ class turbo(_code):
         return app[:len(Ls)]
 
     def decode(self, bits, soft=None):
-        x = np.asarray(bits)
-        if soft is None:
-            soft = x.dtype.kind == "f"
-        llr = x.astype(np.float64) if soft else 2.0*(1.0 - 2.0*x.astype(np.float64))
+        llr = as_llr(bits, soft, 2.0)
         K, n = self.Kb, self.den
         words = llr[:len(llr)//n*n].reshape(-1, n)
         out, finals = [], []

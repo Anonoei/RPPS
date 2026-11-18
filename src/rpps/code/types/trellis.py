@@ -16,7 +16,7 @@ under confident. `maxlog=True` is the cheap approximation (Viterbi-like) and doe
 import numpy as np
 
 from ... import _accel
-from ._code import _code, register, word_errors
+from ._code import _code, register, word_errors, as_llr
 from .viterbi import viterbi
 from .conv import termination_of, generators_of
 from ..blocker import block
@@ -114,9 +114,6 @@ def bcjr(tr, llr, start=0, end=0, maxlog=False):
         beta = b_new - b_new.max(axis=1, keepdims=True)
     return np.nan_to_num(out, nan=0.0, posinf=1e4, neginf=-1e4)
 
-def _hard_to_llr(x, hard_llr):
-    return hard_llr*(1.0 - 2.0*np.asarray(x, dtype=np.float64))
-
 @register("bcjr")
 class bcjr_conv(viterbi):
     """BCJR (MAP) decoder for feed-forward convolutional codes: same definition as `viterbi`
@@ -140,10 +137,7 @@ class bcjr_conv(viterbi):
 
     def app(self, bits, soft=None):
         """A-posteriori LLR of each information bit (the tail of a terminated code is left out)"""
-        x = np.asarray(bits)
-        if soft is None:
-            soft = x.dtype.kind == "f"
-        llr = x.astype(np.float64) if soft else _hard_to_llr(x, self.hard_llr)
+        llr = as_llr(bits, soft, self.hard_llr)
         llr = self.depuncture(llr)                                   # (T, n)
         if self.termination == "tailbiting": # Three laps from and to any state, the middle one kept
             T = len(llr)
@@ -177,10 +171,7 @@ class trellis(_code):
 
     def app(self, bits, soft=None):
         """A-posteriori LLRs of the coded bits, (words, n)"""
-        x = np.asarray(bits)
-        if soft is None:
-            soft = x.dtype.kind == "f"
-        llr = x.astype(np.float64) if soft else _hard_to_llr(x, self.hard_llr)
+        llr = as_llr(bits, soft, self.hard_llr)
         llr = block(llr[:len(llr)//self.den*self.den], self.den)
         return bcjr(self.trellis, llr[:, :, None], start=0, end=0, maxlog=self.maxlog)
 
