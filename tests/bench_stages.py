@@ -2,6 +2,7 @@
 
     python tests/bench_stages.py              # every stage, 1 M samples
     python tests/bench_stages.py -n 4000000 --block 65536
+    python tests/bench_stages.py --blocks     # block-rate sync stages, filters, TX shaping: best of 5 at two block sizes
 """
 import argparse
 import time
@@ -77,6 +78,54 @@ def rate(make, x, block, rates, native):
     finally:
         _accel.native = saved
 
+def test_signals(n, sps=4, frame=1000, seed=1):
+    """QPSK at `sps` samples per symbol (RRC 0.35, a small carrier offset, noise) and its symbols with a known preamble
+    every `frame` symbols. Made with numpy alone, so the stages under test don't make their own input"""
+    rng = np.random.default_rng(seed)
+    nsym = n//sps
+    syms = np.exp(1j*np.pi/4*(2*rng.integers(0, 4, nsym) + 1))
+    pre = np.exp(1j*np.pi/4*(2*np.random.default_rng(7).integers(0, 4, 64) + 1))
+    for k in range(0, nsym - len(pre), frame):
+        syms[k:k+len(pre)] = pre
+    up = np.zeros(nsym*sps, dtype=np.complex128)
+    up[::sps] = syms
+    h = rp.signal.filters.ShapingRRC(None, sps, 0.35).pulse
+    x = np.convolve(up, h/np.sqrt(np.sum(h*h)), "same")
+    x *= np.exp(2j*np.pi*1e-4*np.arange(len(x)))
+    x += 0.1*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    s = syms*np.exp(2j*np.pi*2e-4*np.arange(nsym)) + 0.1*(rng.standard_normal(nsym) + 1j*rng.standard_normal(nsym))
+    return x.astype(np.complex64), s.astype(np.complex64), pre
+
+def block_stages(pre, sps=4):
+    """(name, make, input 'x' or 's', rates): the block-rate stages, filters and shifts, the TX shaping"""
+    Fs = 4e6
+    xr, sr = dict(Fs=Fs, sps=sps), dict(Fs=Fs/sps, sps=1)
+    F = rp.signal.filters
+    return [
+        ("FIR 129", lambda: F.low_pass(129, 0.5e6, Fs), "x", xr),
+        ("FIR 1025", lambda: F.low_pass(1025, 0.5e6, Fs), "x", xr),
+        ("ShiftFreq", lambda: F.ShiftFreq(10e3), "x", xr),
+        ("OerderMeyr", lambda: rp.sync.time.OerderMeyr(sps), "x", xr),
+        ("MPower", lambda: rp.sync.phase.MPower(4), "s", sr),
+        ("FrameSync", lambda: rp.sync.FrameSync(pre), "s", sr),
+        ("BlockLS", lambda: rp.sync.equalize.BlockLS(rp.symbol.load("QPSK")), "s", sr),
+        ("TX Zeros+RRC sps4", lambda: rp.signal.sample.up.Zeros(4) + F.ShapingRRC(65, 4), "s", sr),
+        ("TX Zeros+RRC sps8", lambda: rp.signal.sample.up.Zeros(8) + F.ShapingRRC(129, 8), "s", sr),
+    ]
+
+def best_rate(make, x, block, rates, repeat):
+    """Best of `repeat` runs (one process: a shared machine's load makes runs across processes incomparable), items/s"""
+    best = 0.0
+    for _ in range(repeat):
+        stage, stream = make(), None
+        t = time.perf_counter()
+        for i in range(0, len(x), block):
+            d = rp.Data(x[i:i+block], stream=stream, **rates)
+            stream = d.stream
+            d + stage
+        best = max(best, len(x)/(time.perf_counter() - t))
+    return best
+
 def chain():
     """A receiver after the channel filter: matched filter, AGC, timing, carrier (sps 8 in, symbols out)"""
     taps = rp.signal.filters.designer.designer(129, 0.6e6, fs=8e6)
@@ -104,7 +153,17 @@ def main():
     ap.add_argument("--block", type=int, default=16384, help="block length")
     ap.add_argument("--python-n", type=int, default=100_000, help="samples for the (slow) Python loops")
     ap.add_argument("--no-decoders", action="store_true", help="skip the FEC decoders")
+    ap.add_argument("--blocks", action="store_true", help="only the block-rate stages, filters and TX shaping, best of --repeat")
+    ap.add_argument("--repeat", type=int, default=5, help="runs per block-rate stage (the best is kept)")
     a = ap.parse_args()
+    if a.blocks:
+        x, s, pre = test_signals(a.n)
+        print(f"{'block stage':20s} " + " ".join(f"{f'MS/s @{b}':>12s}" for b in (4096, 65536)))
+        for name, make, which, rates in block_stages(pre):
+            data = x if which == "x" else s
+            r = [best_rate(make, data, b, rates, a.repeat) for b in (4096, 65536)]
+            print(f"{name:20s} " + " ".join(f"{v/1e6:12.2f}" for v in r))
+        return
     rng = np.random.default_rng(0)
     x = (rng.standard_normal(a.n) + 1j*rng.standard_normal(a.n)).astype(np.complex64)
     print(f"{'stage':16s} {'python MS/s':>12s} {'native MS/s':>12s} {'speedup':>8s}")
