@@ -60,3 +60,14 @@ def test_gcd():
 def test_degree_limit():
     with pytest.raises(ValueError):
         R.search(np.zeros(100, np.uint8), 30)
+
+@pytest.mark.parametrize("poly, p_one", [(DVB, 0.2), (DENSE, 0.1)])
+def test_keystream_by_fast_correlation(poly, p_one):
+    """The data 80% (90%) zeros: the keystream decoded through f and its squares and regenerated: the data comes back"""
+    rng = np.random.default_rng(5)
+    n = 20000
+    data = (rng.random(n) < p_one).astype(np.uint8)
+    k = lfsr(poly, n)
+    ks = R.keystream(data ^ k, poly)
+    assert np.array_equal(ks.bits, k) and ks.agree > 0.95
+    assert np.array_equal(ks.data, data)
