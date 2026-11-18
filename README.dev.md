@@ -79,7 +79,9 @@ setup.py             builds the native module and copies config/ into the wheel
 
 What each package holds, by category, is in [Where things are](#where-things-are).
 
-`python -m rpps ls` lists every definition; `python -m rpps fmt` rewrites config files in the canonical style.
+`python -m rpps ls` lists every definition, `python -m rpps show fec/block/rs/204_188` prints one, `python -m rpps rx <profile>
+<capture> --fs <Hz>` receives a file, and `python -m rpps fmt` rewrites config files in the canonical style. In code,
+`rp.load("<resource>/<name>", **params)` loads any definition.
 
 ## Design
 
@@ -341,7 +343,7 @@ What the loader builds:
 
 ```
 rx = carrier sync + Stagger("i") + halfsine (matched) + timing sync + Spread(pair) decode
-tx = Spread(pair) encode + Zeros(4) + halfsine + Stagger("q")
+tx = Spread(pair) encode + Interpolate(4, halfsine) + Stagger("q")
 ```
 
 Transmit is the transforms in reverse, without the sync steps. The carrier is corrected before `Stagger("i")`, because a
@@ -353,8 +355,8 @@ The profile loader knows how each wave step pairs:
 
 | Step kind | Receive (as written) | Transmit (inverted) |
 |---|---|---|
-| `shape` with a **symbol** pulse (rrc, rc, halfsine, rect) | matched filter: the pulse time-reversed and conjugated (the same taps for symmetric real pulses) | `up.Zeros(sps)` + pulse |
-| `shape` with a **frequency** pulse (gaussian, rect for FSK) | none: the discriminator in the `fm` step handles it | `up.Zeros(sps)` + pulse |
+| `shape` with a **symbol** pulse (rrc, rc, halfsine, rect) | matched filter: the pulse time-reversed and conjugated (the same taps for symmetric real pulses) | `up.Interpolate(sps, pulse)` (zero stuffing and the pulse in polyphase form) |
+| `shape` with a **frequency** pulse (gaussian, rect for FSK) | none: the discriminator in the `fm` step handles it | `up.Interpolate(sps, pulse)` |
 | `stagger` | `Stagger("i", delay)` | `Stagger("q", delay)` |
 | `fm` | `FMDemod(fm_gain(h, sps, step))` + integrate over the symbol | `FM(h, step)` |
 | `ofdm` | remove cyclic prefix + FFT | IFFT + cyclic prefix |
@@ -620,7 +622,7 @@ refuses channel bits and a constellation refuses samples.
 
 - **A code transform is often several steps** (Viterbi, deinterleave, Reed-Solomon, descramble), so each code step takes
   both channel and data bits; the boundary that is enforced is the link's.
-- **An uncoded link says so:** `rp.coding.Uncoded()` is the code step of a link with no FEC (ADS-B, many packet radios).
+- **An uncoded link says so:** `rp.code.Uncoded()` is the code step of a link with no FEC (ADS-B, many packet radios).
   It turns channel bits into data bits, LLRs staying LLRs.
 - **A complex array is samples unless it says otherwise:** `rp.Data(x)` is SAMPLES, `rp.Data(x, sps=1)` is SYMBOLS.
 - **Stages take samples and symbols;** `BitStage` takes channel and data bits and gives the same form back.
@@ -642,6 +644,8 @@ kernels, the parallel runner's internals, how to add things) is in the sections 
 | First-class sync | `sync.time.OerderMeyr`, `sync.phase.MPower`, `sync.equalize.BlockLS`, tracked by `sync.track`; the profile defaults for `timing`, `carrier`, `equalize` |
 | Config by resource | `config/<resource>/`; `sequence` split from `scramble`; `rp.spread` became `rp.sequence` |
 | Parallel runner | Frame-parallel region after the frame boundary: `ParallelRunner`, `Scheduler`, thread and process executors, batch kernels, C++ demapper and front-end kernels. Output equals the serial runner's bit for bit |
+| Extending profiles | Step kinds and sync methods from a registry (`rp.profile.steps.register_step`, `register_sync_method`), any `Stage` by module path; `rp.load(path)` for any definition; `rp.Tee` branches |
+| Sources | `Source.REP` / `APPLIED` (`profile.rx(source=src)`), `Source.ppm` (clock error on Fs and cf), WAV out (`write_wav`, `WavSink`); pysdrlib only imported when a source or sink is used |
 
 **Not yet**
 - `dvbs2/normal`: short frames, 16/32APSK and dummy frames (their PLS is reported, the frame is not decoded).
@@ -652,6 +656,9 @@ kernels, the parallel runner's internals, how to add things) is in the sections 
 - The parallel runner numbers its output from 0 and a dropped frame leaves no gap (the serial runner keeps positions).
 - Fusing the matched filter with Oerder & Meyr timing (its square-law line needs the filter at every sample), and evaluating
   the pulse exactly at fractional instants instead of interpolating.
+- Branches inside a profile (`rp.Tee` works on operators and `Blocks`; the profile runner's control and re-run assume one chain).
+- Moving the remaining project DSP up: burst / energy detection gated on the noise floor, symbol level slicers, the FM pilot
+  PLL, one allocation table for the scanners (projects/TODO.md section 2).
 - A GPU backend (`xp = cupy`) and an FPGA backend from `BatchPlan.describe()`. The seams are in; what is missing is kernels
   for the front's estimators and device-resident constants in `Kernel`.
 
@@ -747,7 +754,12 @@ Adding a kernel:
 Pitfalls found the hard way:
 - **Use `long long` for loop and tap indices.** CPython's build flags include `-fno-strict-overflow`, so `int` indices are not
   widened and a kernel that was fast alone ran 3x slower inside the module.
-- **`target_clones("avx2,fma")` makes separate clones**, not one with both; use `"arch=haswell"` for both.
+- **Clone for AVX2 only:** `target_clones("avx2", "default")`. `"avx2,fma"` makes separate clones, and `"arch=haswell"` (both)
+  made the 4-accumulator dot product of `firdec.cpp` about 40% slower: FMA lengthens the accumulator chain. Add FMA only with
+  more accumulators and a benchmark (`tests/bench_stages.py --blocks`).
+- **Size chunks by work, not items:** `parallel_for` hands chunks to a persistent pool (`parallel.hpp`; no thread start per call,
+  reset after a fork). A fixed 2048-output chunk left a 4k block of a 1025-tap filter on two threads; chunks of about 128k
+  multiply-adds spread it.
 - **Keep BLAS products out of per-block paths.** OpenBLAS threads inside a call and spins between calls, which slows the
   single-threaded numpy and native code around it (block mode was 20-60% slower until the frame sync's product became one C++
   call). `OPENBLAS_NUM_THREADS=1` shows whether it is the cause.
@@ -813,8 +825,14 @@ to see it, `python -m rpps fmt --check` to check the style, and the contract tes
 **A new implementation of a function (a new code type, a new sync method):**
 1. Put it in the package of its category (the rule: what it takes and gives, see [The rule](#the-rule)).
 2. Subclass `Pipe` (invertible), `Stage` or `BitStage`; set `CATEGORY`, `takes`, and `SCOPE` if it holds nothing across frames.
-3. Register its loader so a file's `type` can select it.
+3. Register its loader so a file's `type` can select it, and its profile step: `rp.profile.steps.register_step(category, kind)`
+   (a builder giving the receive and transmit operators), or for a sync method `register_sync_method(kind, method)`. A
+   profile can also name any `Stage` by its module path, with no registration: `{"signal": "stage", "class": "mypkg.Gain",
+   "args": {...}}`. The step builders pass on only what a step gives, so an operator's own defaults stand for the rest.
 4. Write the Python version first, with the block-cut test; move the hot loop to C++ after, keeping the Python as the reference.
+
+**Branches:** `data + rp.Tee(a=..., b=...)` runs each branch in a stream of its own, so one stage can serve several (FM stereo:
+one audio chain for L+R and L-R). Profiles stay one chain.
 
 **A sync estimator:** estimate from a window with block operations (FFT, correlation, least squares), at absolute positions,
 tracked across windows by `sync.track`. A per-sample loop is second class and selected by name in the profile's `defaults`.

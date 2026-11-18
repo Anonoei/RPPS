@@ -82,8 +82,8 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
  - [X] [Sample](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/sample)
  - [ ] [Sync](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sync)
    - [X] Frequency
-   - [ ] Phase
-   - [ ] Time
+   - [X] Phase (M-th power, Costas, pilots)
+   - [X] Time (Oerder & Meyr, Mueller & Muller, Gardner, timing locked loop)
  - [X] [Symbol](https://github.com/Anonoei/RPPS/tree/main/src/rpps/symbol)
    - [X] PSK
    - [X] QAM
@@ -110,9 +110,7 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
    - [X] CRC
    - [X] HDLC
    - [ ] PPP
- - [ ] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz)
-   - [X] Real-Time (STFT)
-   - [X] Over-Time
+ - [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey
 
 ## Contributing
 See [README.dev.md](README.dev.md) for the design, how the project is organized and implemented, and how to add to it.
