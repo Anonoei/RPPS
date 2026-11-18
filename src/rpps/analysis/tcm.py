@@ -1,0 +1,197 @@
+"""Trellis-coded modulation found blind: the parity check a trellis code puts on the constellation's labels
+
+    found = rp.analysis.tcm.search(symbols, 8)            # locked symbols (any phase), an 8-point PSK
+    print(found[0])                                       # e.g. "h = (11, 02, 04) octal, natural labels, rotation 3:
+                                                          #  Ungerboeck 8 states, z 41.0"
+
+A trellis code over an M-point constellation with m = log2 M label bits (z^0 the least significant) satisfies a parity
+check (Ungerboeck 1982):  sum_i h^i(D) z^i(D) = 0  over GF(2), every symbol. Ungerboeck's systematic feedback codes are
+written by those h^i (octal); a pragmatic code (a rate-1/2 convolutional code on the low bits, the rest uncoded) has one
+too (its two generators, crossed); so has any other linear trellis code. Over a window of W = nu + 1 symbols a check is a
+W m-bit vector, and with hard decisions it holds more often than not: (1 - 2p)^weight of the time, p the label bit error
+rate. Counting the windows of the stream by value and taking the Walsh-Hadamard transform of the counts gives, for every
+one of the 2^(W m) vectors at once, how many windows it holds on minus how many it fails (the WHT-BM method of rate k/n
+convolutional code recovery). A check stands out against the sqrt(N) of chance.
+
+The labels depend on what is not known: the carrier phase (M rotations, and conjugation for an inverted spectrum) and
+the labelling (natural, i.e. set partitioning, for Ungerboeck codes; Gray for pragmatic ones; or the constellation's
+own). Every combination is tried; the label permutation does the rotation, so decisions are made once.
+"""
+import numpy as np
+
+# Ungerboeck's 8PSK rate 2/3 codes (1987, Part II, table III): states -> (h0, h1, h2) octal
+UNGERBOECK_8PSK = {4: (0o5, 0o2, 0o0), 8: (0o11, 0o2, 0o4), 16: (0o23, 0o4, 0o16), 32: (0o45, 0o16, 0o34),
+                   64: (0o103, 0o30, 0o66), 128: (0o277, 0o54, 0o122), 256: (0o435, 0o72, 0o130)}
+# Rate 1/2 codes on QPSK / 4-level labels, (h0, h1): the same table for 4 points (Ungerboeck 1987, table I)
+UNGERBOECK_4 = {4: (0o5, 0o2), 8: (0o13, 0o4), 16: (0o23, 0o6), 32: (0o45, 0o10), 64: (0o103, 0o024)}
+
+class Check:
+    """A parity check found: h (one polynomial per label bit, z^0 first, as ints whose bit d is the delay-d tap), nu
+    (memory), labels ('natural', 'gray' or 'own'), rotation (points the decisions were turned by), conj, z (its bias
+    over chance), holds (fraction of windows it holds on), match (the known code it is, or None)"""
+    __slots__ = ("h", "nu", "labels", "rotation", "conj", "z", "holds", "match")
+    def __init__(self, **kw):
+        for k in self.__slots__:
+            setattr(self, k, kw.get(k))
+
+    @property
+    def octal(self):
+        return tuple(f"{p:o}" for p in self.h)
+
+    def __str__(self):
+        m = f": {self.match}" if self.match else ""
+        c = ", conjugated" if self.conj else ""
+        return (f"h = ({', '.join(self.octal)}) octal (z^0 first), nu {self.nu}, {self.labels} labels, rotation "
+                f"{self.rotation}{c}, holds {100*self.holds:.1f}%, z {self.z:.1f}{m}")
+
+    __repr__ = __str__
+
+def fwht(a):
+    """Walsh-Hadamard transform (unnormalized) of a length-2^B array, a copy"""
+    a = np.array(a, dtype=np.float64)
+    n = len(a)
+    h = 1
+    while h < n:
+        a = a.reshape(-1, 2, h)
+        a = np.stack((a[:, 0] + a[:, 1], a[:, 0] - a[:, 1]), axis=1).reshape(n)
+        h *= 2
+    return a
+
+def decisions(y, M):
+    """Nearest of M PSK points at angles 2 pi k / M + offset (the offset taken from the M-th power): k, 0..M-1"""
+    y = np.asarray(y, dtype=np.complex128)
+    off = np.angle(np.sum(y**M))/M if M > 1 else 0.0
+    # Points at off + 2 pi k/M; for the usual offsets (0 or pi/M) this is the nearest point
+    return np.round((np.angle(y) - off)/(2*np.pi/M)).astype(np.int64) % M
+
+def labellings(M, own=None):
+    """{name: label of the point at angle index k}"""
+    k = np.arange(M)
+    out = {"natural": k, "gray": k ^ (k >> 1)}
+    if own is not None:
+        out["own"] = np.asarray(own, dtype=np.int64)
+    return out
+
+def window_counts(z, m, W):
+    """Counts of every W-symbol window of m-bit labels z, as an index whose bit (W-1-d) m + i is z^i at delay d"""
+    z = np.asarray(z, dtype=np.int64)
+    idx = np.zeros(len(z) - W + 1, dtype=np.int64)
+    for j in range(W): # j = W-1-d: oldest symbol of the window at j = 0
+        idx |= z[j:len(z) - W + 1 + j] << (j*m)
+    return np.bincount(idx, minlength=1 << (W*m)), len(idx)
+
+def _polys(v, m, W):
+    """Window vector -> per-label-bit polynomials (bit d = delay d), shifted so the smallest delay used is 0"""
+    h = [0]*m
+    for j in range(W):
+        d = W - 1 - j
+        for i in range(m):
+            if v >> (j*m + i) & 1:
+                h[i] |= 1 << d
+    low = min(((p & -p).bit_length() - 1 for p in h if p), default=0)
+    return [p >> low for p in h]
+
+def _vector(h, m, W, shift=0):
+    v = 0
+    for i, p in enumerate(h):
+        for d in range(W):
+            if p >> d & 1 and d + shift < W:
+                v |= 1 << ((W - 1 - d - shift)*m + i)
+            elif p >> d & 1:
+                return None
+    return v
+
+def _rank(vs):
+    rows, r = list(vs), 0
+    basis = []
+    for v in rows:
+        for b in basis:
+            v = min(v, v ^ b)
+        if v:
+            basis.append(v)
+            r += 1
+    return r
+
+def _match(h, m):
+    table = UNGERBOECK_8PSK if m == 3 else UNGERBOECK_4 if m == 2 else {}
+    for states, ref in table.items():
+        if list(ref) == list(h):
+            return f"Ungerboeck {states} states"
+    return None
+
+def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4):
+    """Parity checks of a trellis code on M-PSK symbols y (locked to within a rotation). max_nu: largest memory tried
+    (windows of max_nu + 1 symbols: (max_nu + 1) log2 M bits, 2^that candidates). own: the constellation's labels by
+    angle index, tried as well. Returns Checks, most significant first (empty: no code of that memory on these labels)"""
+    m = int(round(np.log2(M)))
+    W = max_nu + 1
+    if W*m > 24:
+        raise ValueError(f"{W*m}-bit windows: keep (max_nu + 1) log2 M within 24")
+    k = decisions(y, M)
+    labs = labellings(M, own)
+    if labelling is not None:
+        labs = {labelling: labs[labelling]}
+    variants = [(name, lab, r, c) for name, lab in labs.items() for r in range(M) for c in ((False, True) if conj else (False,))]
+    tests = len(variants)*(1 << (W*m))
+    zmin = np.sqrt(2*np.log(tests/pfa))
+    found = []
+    for name, lab, r, c in variants:
+        kk = (-k if c else k) + r
+        z = lab[kk % M]
+        counts, N = window_counts(z, m, W)
+        bias = fwht(counts)
+        bias[0] = 0
+        zs = bias/np.sqrt(N)
+        best = np.argsort(-np.abs(zs))[:64]
+        for v in best:
+            if abs(zs[v]) < zmin:
+                break
+            found.append((abs(float(zs[v])), int(v), name, r, c, float((N + bias[v])/(2*N)), N))
+    found.sort(key=lambda t: -t[0])
+    out = []
+    span = {} # per variant: vectors of the checks taken and their shifts
+    for zv, v, name, r, c, holds, N in found:
+        key = (name, r, c)
+        have = span.setdefault(key, [])
+        if have and _rank(have + [v]) == _rank(have):
+            continue # A shift or sum of checks already taken
+        h = _polys(v, m, W)
+        nu = max(p.bit_length() for p in h) - 1
+        out.append(Check(h=h, nu=nu, labels=name, rotation=r, conj=c, z=zv, holds=holds if holds >= 0.5 else 1 - holds,
+                         match=_match(h, m)))
+        for s in range(W):
+            u = _vector(h, m, W, s)
+            if u is not None:
+                have.append(u)
+        if len(out) >= 4*top:
+            break
+    # Equivalent forms of one code turn up under several rotations / labellings with about the same z: put the one a
+    # table names first, then the unconjugated, then the smallest rotation
+    zb = lambda c: round(np.log(c.z)/0.05) # 5% buckets
+    out.sort(key=lambda c: (-zb(c), c.match is None, c.conj, c.rotation))
+    return out[:top]
+
+def encode(bits, h, m):
+    """A systematic feedback trellis encoder for the check h (z^0's polynomial h[0] with taps at delay 0 and nu): the
+    upper m-1 label bits are bits (rows of m-1, z^1 first), z^0 is solved from sum_i h^i z^i = 0. Returns labels"""
+    bits = np.asarray(bits, dtype=np.int64).reshape(-1, m - 1)
+    n = len(bits)
+    h0 = h[0]
+    nu = max(p.bit_length() for p in h) - 1
+    if not (h0 & 1 and h0 >> nu & 1):
+        raise ValueError("h0 needs taps at delay 0 and nu")
+    z = np.zeros((n, m), dtype=np.int64)
+    z[:, 1:] = bits
+    for t in range(n):
+        acc = 0
+        for d in range(1, nu + 1):
+            if t - d < 0:
+                break
+            if h0 >> d & 1:
+                acc ^= z[t - d, 0]
+        for i in range(1, m):
+            for d in range(0, nu + 1):
+                if t - d >= 0 and h[i] >> d & 1:
+                    acc ^= z[t - d, i]
+        z[t, 0] = acc
+    return (z << np.arange(m)).sum(axis=1)
