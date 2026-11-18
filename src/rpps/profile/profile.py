@@ -55,11 +55,14 @@ class Profile:
                 b.rx[0][1].fuse(a.rx[0][1])
                 a.rx = []
 
-    def rx(self, start=Rep.SAMPLES, applied=(), parallel=None):
+    def rx(self, start=Rep.SAMPLES, applied=(), parallel=None, source=None):
         """Receive runner. start: the representation the source gives (a demodulator's timed symbols are SYMBOLS): the steps
         before it are skipped. applied: sync kinds the source has done already (`{"timing"}`): skipped too.
+        source: an rp.source.Source, which says both (its REP and APPLIED).
         parallel: an `rp.parallel.Parallel` (where and how the profile's parallel region runs, frame by frame); the profile
         must have one (`"parallel"` in its definition)"""
+        if source is not None:
+            start, applied = source.REP, source.APPLIED
         slots = []
         for st in self._build():
             if st.takes.value < start.value or (st.category == "sync" and st.kind in applied):

@@ -275,3 +275,15 @@ def test_wav_out(tmp_path):
     with wave.open(str(tmp_path/"b.wav")) as w:
         z = np.frombuffer(w.readframes(len(x)), np.int16)
     assert np.array_equal(z, np.round(x*32767).astype(np.int16))
+
+def test_source_clock_error_and_what_it_gives():
+    src = rp.source.Memory(np.zeros(100, np.complex64), Fs=1e6, cf=100e6)
+    src.ppm = 15.0
+    b = next(iter(src(50)))
+    assert b.Fs == pytest.approx(1e6*(1 + 15e-6)) and b.cf == pytest.approx(100e6*(1 + 15e-6))
+    assert src.REP == rp.Rep.SAMPLES and not src.APPLIED
+    class Timed(rp.source.Memory):
+        REP, APPLIED = rp.Rep.SYMBOLS, frozenset({"timing"})
+    p = rp.profile.load("ieee802154/2450")
+    names = lambda r: [type(op).__name__ for _, op in r.ops]
+    assert names(p.rx(source=Timed(np.zeros(4, np.complex64)))) == names(p.rx(start=rp.Rep.SYMBOLS, applied={"timing"}))
