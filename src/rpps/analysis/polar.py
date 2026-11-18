@@ -7,7 +7,7 @@ A polar codeword is x = u G with G = F^(x n), F = [[1, 0], [1, 1]]; G is its own
 of the x bits in column i of G. The frozen positions of u are 0 in every frame; the information positions are 0 half the
 time. From LLRs, each u_i's LLR is the tanh-product of its column's x LLRs (as a parity check's); averaged over frames
 (as the expected 0-ness) it is high at frozen positions and near zero at information ones: a test per position (the
-hypothesis test of Tu, Yang, Feng & Niu 2026, without the list search of blind SCL recognition, Liu et al. 2026, that
+hypothesis test of arXiv 2606.17705, without the list search of blind SCL recognition, arXiv 2605.13331, that
 copes with more noise). A position whose column is heavy sees many x errors; those are the early positions, the ones a
 real code freezes (column 0 is the parity of all N bits): a (64, 32) Reed-Muller-like frozen set is found exactly at
 Es/N0 6 dB from 400 frames.
