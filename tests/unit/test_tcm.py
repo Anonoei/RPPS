@@ -56,3 +56,12 @@ def test_correlated_labels_are_not_a_code():
     assert tcm.search(y, 8, max_nu=2) == []
     c = tcm.search(y, 8, max_nu=2, correlations=True)
     assert c and not c[0].code and "not a code" in str(c[0])
+
+def test_soft_finds_the_code_hard_misses():
+    """Ungerboeck 16 states at Es/N0 5 dB: hard decisions find no check, soft scoring does"""
+    rng = np.random.default_rng(1)
+    lab = tcm.encode(rng.integers(0, 2, (20000, 2)), list(tcm.UNGERBOECK_8PSK[16]), 3)
+    y = noisy(rng, lab, 8, 5.0, turn=3)
+    assert tcm.search(y, 8, max_nu=4) == []
+    c = tcm.search(y, 8, max_nu=4, soft=True)
+    assert c and c[0].match == "Ungerboeck 16 states"

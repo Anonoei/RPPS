@@ -84,10 +84,28 @@ def gcd(*polys):
         g = a
     return g
 
-def search(bits, max_degree=20, pfa=1e-6, top=8):
+def soft_z(t, taps):
+    """The soft statistic of a check over signed reliabilities t = tanh(LLR/2) (s's +-1 expected values): sum over
+    positions of the product over its taps, over its own standard deviation (a check that holds makes it large)"""
+    t = np.asarray(t, dtype=np.float64)
+    L = max(taps)
+    N = len(t)
+    p = np.ones(N - L)
+    for j in taps:
+        p = p*t[L - j:N - j]
+    return float(abs(p.sum())/np.sqrt(max(np.sum(p**2), 1e-300))), float(np.sign(p.sum()))
+
+def search(bits, max_degree=20, pfa=1e-6, top=8, llr=None, shortlist=256):
     """Checks f(D) s = 0 with a constant term, of degree up to max_degree (memory: 2^(max_degree+1) counts), significant at
     pfa over all of them, multiples of a stronger smaller one dropped: Recurrences, smallest degree first among the
-    strongest"""
+    strongest.
+
+    llr: soft values of the bits (log P(0)/P(1); bits may then be None): the hard transform shortlists the `shortlist`
+    strongest candidates, significant or not, and each is scored by the product of its own taps' tanh(LLR/2) (2-4 dB more
+    than hard decisions: a check over 3 taps no longer pays for errors in the 18 other bits of a window)"""
+    if llr is not None:
+        llr = np.asarray(llr, dtype=np.float64)
+        bits = (llr < 0).astype(np.uint8)
     if max_degree > 24:
         raise ValueError("max_degree up to 24 (2^25 counts); a sparse search (rpps.analysis.scrambler) goes further")
     L = int(max_degree)
@@ -97,6 +115,16 @@ def search(bits, max_degree=20, pfa=1e-6, top=8):
     w[::2] = 0 # No constant term: a shift of a smaller check (or nothing)
     z = np.abs(w)/np.sqrt(n)
     zmin = np.sqrt(2*np.log((1 << L)/pfa))
+    if llr is not None:
+        t = np.tanh(np.clip(llr, -30, 30)/2)
+        cand = np.argsort(-z)[:shortlist]
+        z = np.zeros_like(z)
+        for v in cand:
+            v = int(v)
+            taps = [j for j in range(L + 1) if v >> j & 1]
+            zz, sg = soft_z(t, taps)
+            z[v] = zz
+            w[v] = sg*abs(w[v]) # the sign (holds or fails) from the soft sum; the size for `bias` stays the hard one's
     idx = np.flatnonzero(z >= zmin)
     idx = idx[np.argsort(-z[idx])][:512]
     out = []

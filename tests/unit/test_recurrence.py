@@ -71,3 +71,17 @@ def test_keystream_by_fast_correlation(poly, p_one):
     ks = R.keystream(data ^ k, poly)
     assert np.array_equal(ks.bits, k) and ks.agree > 0.95
     assert np.array_equal(ks.data, data)
+
+def test_soft_finds_what_hard_misses():
+    """A five-term feedthrough over 70/30 data at Es/N0 -4 dB (19% raw errors): soft scoring holds it well over the
+    threshold, by more than hard decisions do"""
+    rng = np.random.default_rng(6)
+    data = (rng.random(N) < 0.3).astype(np.uint8)
+    s = feedthrough(data, DENSE)
+    sigma = np.sqrt(1/(2*10**(-4/10)))
+    llr = 2*(1 - 2.0*s + sigma*rng.standard_normal(N))/sigma**2
+    hard = R.search((llr < 0).astype(np.uint8), 20)
+    soft = R.search(None, 20, llr=llr)
+    assert soft[0].poly == DENSE
+    zh = next((r.z for r in hard if r.poly == DENSE), 0.0)
+    assert soft[0].z > 1.3*zh

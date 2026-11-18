@@ -151,12 +151,46 @@ def _expected(h, p):
         b *= (1 - 2*p[i])**bin(poly).count("1")
     return (1 + b)/2
 
-def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4, correlations=False):
+def _label_tanh(y, M, lab, r, c):
+    """tanh(LLR/2) of each label bit (N, m) for one variant (labelling, rotation r, conjugated c), max-log over the points
+    at the measured noise: +1 sure 0, -1 sure 1"""
+    from . import quality
+    m = int(round(np.log2(M)))
+    y = np.asarray(y, dtype=np.complex128)
+    off = np.angle(np.sum(y**M))/M if M > 1 else 0.0
+    pts = np.exp(1j*(2*np.pi*np.arange(M)/M + off))
+    q = quality.measure(y, pts)
+    yn = y/np.sqrt(np.mean(np.abs(y)**2))
+    d2 = np.abs(yn[:, None] - pts[None, :])**2 # (N, M)
+    p = np.arange(M)
+    label = lab[((-p if c else p) + r) % M] # the label point p stands for in this variant
+    T = np.zeros((len(y), m))
+    for i in range(m):
+        one = (label >> i) & 1 == 1
+        llr = (d2[:, one].min(axis=1) - d2[:, ~one].min(axis=1))/(2*q.sigma**2)
+        T[:, i] = np.tanh(np.clip(llr, -60, 60)/2)
+    return T
+
+def _soft_z(T, v, m, W):
+    """The soft statistic of check vector v (window bit (W-1-d) m + i: label bit i at delay d) over label tanh values T"""
+    N = len(T)
+    p = np.ones(N - W + 1)
+    for j in range(W):
+        d = W - 1 - j
+        for i in range(m):
+            if v >> (j*m + i) & 1:
+                p = p*T[W - 1 - d:N - d, i]
+    return float(abs(p.sum())/np.sqrt(max(np.sum(p**2), 1e-300)))
+
+def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4, correlations=False, soft=False,
+           shortlist=32):
     """Parity checks of a trellis code on M-PSK symbols y (locked to within a rotation). max_nu: largest memory tried
     (windows of max_nu + 1 symbols: (max_nu + 1) log2 M bits, 2^that candidates). own: the constellation's labels by
     angle index, tried as well. Returns Checks, most significant first (empty: no code of that memory on these labels).
     A check that holds well short of what a code's would at this noise is a correlation of the labels (ISI, a wrong rate or
-    modulation), not a code: left out unless `correlations`, and marked (Check.code False)"""
+    modulation), not a code: left out unless `correlations`, and marked (Check.code False).
+    soft: each variant's `shortlist` strongest hard candidates, significant or not, are scored by the product of their
+    taps' label-bit tanh(LLR/2) (max-log at the measured noise): a few dB more than hard decisions"""
     m = int(round(np.log2(M)))
     W = max_nu + 1
     if W*m > 24:
@@ -177,6 +211,13 @@ def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4,
         bias = fwht(counts)
         bias[0] = 0
         zs = bias/np.sqrt(N)
+        if soft:
+            T = _label_tanh(y, M, lab, r, c)
+            for v in np.argsort(-np.abs(zs))[:shortlist]:
+                zv = _soft_z(T, int(v), m, W)
+                if zv >= zmin:
+                    found.append((zv, int(v), name, r, c, float((N + bias[v])/(2*N)), N))
+            continue
         best = np.argsort(-np.abs(zs))[:64]
         for v in best:
             if abs(zs[v]) < zmin:
@@ -204,7 +245,8 @@ def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4,
             break
     # Equivalent forms of one code turn up under several rotations / labellings with about the same z: put the one a
     # table names first, then the unconjugated, then the smallest rotation
-    zb = lambda c: round(np.log(c.z)/0.05) # 5% buckets
+    # (soft: a labelling's own LLRs score its equivalent forms a little differently: wider buckets)
+    zb = lambda c: round(np.log(c.z)/(0.15 if soft else 0.05)) # 5% buckets
     out.sort(key=lambda c: (not c.code, -zb(c), c.match is None, c.conj, c.rotation))
     if not correlations:
         out = [c for c in out if c.code]
