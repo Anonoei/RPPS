@@ -2,6 +2,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from ... import _accel
+
 from .filter import Filter, FIR
 
 def _cdtype(samples):
@@ -24,9 +26,13 @@ class ShiftFreq(Filter):
 
     def step(self, samples, st, meta):
         inc = 2*np.pi*self.fo/meta.Fs
+        meta.op.cf += self.fo
+        if _accel.native is not None and samples.dtype == np.complex64:
+            out = np.empty_like(samples) # a rotating phasor in C++, on several threads: no exponential per sample
+            st.phase = _accel.native.rotate_into(np.ascontiguousarray(samples), out, st.phase, inc, 0)
+            return out
         out = samples * np.exp(1j*(st.phase + inc*np.arange(len(samples))))
         st.phase = (st.phase + inc*len(samples)) % (2*np.pi)
-        meta.op.cf += self.fo
         return out.astype(_cdtype(samples), copy=False)
 
 class ShiftFreqIdx(ShiftFreq):

@@ -111,6 +111,8 @@ def block_stages(pre, sps=4):
         ("BlockLS", lambda: rp.sync.equalize.BlockLS(rp.symbol.load("QPSK")), "s", sr),
         ("TX Zeros+RRC sps4", lambda: rp.signal.sample.up.Zeros(4) + F.ShapingRRC(65, 4), "s", sr),
         ("TX Zeros+RRC sps8", lambda: rp.signal.sample.up.Zeros(8) + F.ShapingRRC(129, 8), "s", sr),
+        ("TX Interpolate sps4", lambda: rp.signal.sample.up.Interpolate(4, F.ShapingRRC(65, 4)), "s", sr),
+        ("TX Interpolate sps8", lambda: rp.signal.sample.up.Interpolate(8, F.ShapingRRC(129, 8)), "s", sr),
     ]
 
 def best_rate(make, x, block, rates, repeat):

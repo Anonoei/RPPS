@@ -16,6 +16,24 @@ namespace {
 
 constexpr long long RESTART = 64; // samples between exact phasor starts
 
+#if defined(__GNUC__) && defined(__x86_64__) && !defined(__clang__)
+#define RPPS_CLONES __attribute__((target_clones("avx2", "default")))
+#else
+#define RPPS_CLONES
+#endif
+
+// sum_k y[j+k] conj(pre[k]) for one position: the preamble metric's inner loop, vectorised
+RPPS_CLONES
+static void correlate_at(const cf64 *y, const cf64 *pre, long long L, double *cr_out, double *ci_out) {
+    double cr = 0.0, ci = 0.0;
+    for (long long k = 0; k < L; k++) {
+        const double yr = y[k].real(), yi = y[k].imag(), pr = pre[k].real(), pi = pre[k].imag();
+        cr += yr*pr + yi*pi;
+        ci += yi*pr - yr*pi;
+    }
+    *cr_out = cr; *ci_out = ci;
+}
+
 // e^{-j (phi0 + rate i)}, i = 0 .. n-1, handed to f(i, wr, wi). Plain real arithmetic throughout: std::complex products and
 // std::abs are far slower (NaN handling, hypot).
 template <typename F>
@@ -36,10 +54,12 @@ static inline void line(double phi0, double rate, long long n, F f) {
 
 // (sum_i z_i, sum_i |z_i|) of z_i = unit(y_i e^{-j(phi0 + rate i)})^M: what a window's carrier measurement is made of.
 // unit(y) = y / max(|y|, 1e-30), so a zero stays zero; the power is by squaring
-py::tuple mpower_sum(carray<cf64> y_a, double phi0, double rate, int M) {
+template <typename C>
+py::tuple mpower_sum(carray<C> y_a, double phi0, double rate, int M) {
     const long long n = y_a.size();
-    const cf64 *y = y_a.data();
+    const C *y = y_a.data();
     double sr = 0.0, si = 0.0, mag = 0.0;
+    py::gil_scoped_release nogil;
     line(phi0, rate, n, [&](long long i, double wr, double wi) {
         const double yr = y[i].real()*wr - y[i].imag()*wi, yi = y[i].real()*wi + y[i].imag()*wr;
         const double a = std::sqrt(yr*yr + yi*yi), inv = 1.0/std::max(a, 1e-30);
@@ -50,17 +70,21 @@ py::tuple mpower_sum(carray<cf64> y_a, double phi0, double rate, int M) {
         }
         sr += rr; si += ri; mag += rm;
     });
+    py::gil_scoped_acquire gil;
     return py::make_tuple(cf64(sr, si), mag);
 }
 
 // y turned back by the phase line, as single precision
-py::array_t<cf32> rotate_line(carray<cf64> y_a, double phi0, double rate) {
+template <typename C>
+py::array_t<cf32> rotate_line(carray<C> y_a, double phi0, double rate) {
     const long long n = y_a.size();
     py::array_t<cf32> out(static_cast<py::ssize_t>(n));
     cf32 *o = out.mutable_data();
-    const cf64 *y = y_a.data();
+    const C *y = y_a.data();
+    py::gil_scoped_release nogil;
     line(phi0, rate, n, [&](long long i, double wr, double wi) {
-        o[i] = cf32(static_cast<float>(y[i].real()*wr - y[i].imag()*wi), static_cast<float>(y[i].real()*wi + y[i].imag()*wr));
+        const double yr = y[i].real(), yi = y[i].imag();
+        o[i] = cf32(static_cast<float>(yr*wr - yi*wi), static_cast<float>(yr*wi + yi*wr));
     });
     return out;
 }
@@ -76,7 +100,7 @@ py::tuple preamble_metric(carray<cf64> y_a, carray<cf64> pre_a, double ep, int t
     cf64 *co = c.mutable_data();
     double *mo = m.mutable_data();
     const cf64 *y = y_a.data(), *pre = pre_a.data();
-    constexpr long long CHUNK = 4096;
+    const long long CHUNK = std::max(256LL, std::min(4096LL, (1LL << 17)/L)); // about 128k multiply-adds a chunk
     {
         py::gil_scoped_release nogil;
         parallel_for((n + CHUNK - 1)/CHUNK, threads, [&](long long blk) {
@@ -84,12 +108,8 @@ py::tuple preamble_metric(carray<cf64> y_a, carray<cf64> pre_a, double ep, int t
             double e = 0.0; // the window energy, slid along; started afresh every chunk so rounding does not build up
             for (long long k = 0; k < L; k++) e += std::norm(y[a + k]);
             for (long long j = a; j < end; j++) {
-                double cr = 0.0, ci = 0.0;
-                for (long long k = 0; k < L; k++) { // y[j+k] * conj(pre[k])
-                    const double yr = y[j + k].real(), yi = y[j + k].imag(), pr = pre[k].real(), pi = pre[k].imag();
-                    cr += yr*pr + yi*pi;
-                    ci += yi*pr - yr*pi;
-                }
+                double cr, ci;
+                correlate_at(y + j, pre, L, &cr, &ci); // y[j+k] * conj(pre[k])
                 co[j] = cf64(cr, ci);
                 mo[j] = std::sqrt(cr*cr + ci*ci)/std::sqrt(std::max(e, 1e-30)*ep);
                 if (j + 1 < end) e += std::norm(y[j + L]) - std::norm(y[j]);
@@ -103,10 +123,13 @@ py::tuple preamble_metric(carray<cf64> y_a, carray<cf64> pre_a, double ep, int t
 } // namespace
 
 void register_carrier(py::module_ &m) {
-    m.def("mpower_sum", &mpower_sum, "mpower_sum(y complex128, phi0, rate, M) -> (sum z, sum |z|), z = unit(y e^{-j(phi0 + rate i)})^M",
-          py::arg("y"), py::arg("phi0"), py::arg("rate"), py::arg("order"));
-    m.def("rotate_line", &rotate_line, "rotate_line(y complex128, phi0, rate) -> y e^{-j(phi0 + rate i)} (complex64)",
-          py::arg("y"), py::arg("phi0"), py::arg("rate"));
+    // complex64 first and without conversion, so single precision input is read as it is (the sums are in double either way)
+    const char *mdoc = "mpower_sum(y complex64/128, phi0, rate, M) -> (sum z, sum |z|), z = unit(y e^{-j(phi0 + rate i)})^M";
+    m.def("mpower_sum", &mpower_sum<cf32>, mdoc, py::arg("y").noconvert(), py::arg("phi0"), py::arg("rate"), py::arg("order"));
+    m.def("mpower_sum", &mpower_sum<cf64>, mdoc, py::arg("y"), py::arg("phi0"), py::arg("rate"), py::arg("order"));
+    const char *rdoc = "rotate_line(y complex64/128, phi0, rate) -> y e^{-j(phi0 + rate i)} (complex64)";
+    m.def("rotate_line", &rotate_line<cf32>, rdoc, py::arg("y").noconvert(), py::arg("phi0"), py::arg("rate"));
+    m.def("rotate_line", &rotate_line<cf64>, rdoc, py::arg("y"), py::arg("phi0"), py::arg("rate"));
     m.def("preamble_metric", &preamble_metric, "preamble_metric(y complex128, preamble complex128, energy, threads) -> (c, m): the correlation and the normalised metric of every position",
           py::arg("y"), py::arg("preamble"), py::arg("energy"), py::arg("threads") = 0);
 }

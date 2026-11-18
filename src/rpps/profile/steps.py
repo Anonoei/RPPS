@@ -253,7 +253,7 @@ def _wave(kind, spec, rep, ctx):
     sps = spec.get("sps", ctx["params"].get("sps"))
     if kind == "shape":
         make, pulse_kind = _pulse(_need(spec, "pulse", "wave shape"))
-        tx = [(STAGE, signal.sample.up.Zeros(int(_need({"sps": sps}, "sps", "wave shape")))), (STAGE, make())]
+        tx = [(STAGE, signal.sample.up.Interpolate(int(_need({"sps": sps}, "sps", "wave shape")), make()))] # Zeros + pulse, polyphase
         rx = []
         if pulse_kind == "symbol": # (a frequency pulse has no matched filter)
             f = make()

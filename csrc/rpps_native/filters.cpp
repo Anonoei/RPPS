@@ -10,22 +10,25 @@ namespace {
 // ---------------------------------------------------------------- IIR: second-order sections, transposed direct form II
 // x: (n, c) columns filtered alike (c = 1 real, 2 real and imaginary); sos: (S, 6) rows [b0 b1 b2 1 a1 a2];
 // z: (S, 2, c) state, the same state space IIR keeps: y = b0 x + z1, z1 <- -a1 z1 + z2 + (b1 - a1 b0) x, z2 <- -a2 z1 + (b2 - a2 b0) x
-py::tuple sos_filter(carray<double> x_a, carray<double> sos_a, carray<double> z_a) {
+template <typename T> // the samples' type (float32 or float64), in and out; the state and the arithmetic are double
+py::tuple sos_filter(carray<T> x_a, carray<double> sos_a, carray<double> z_a) {
     check_shape(x_a, {-1, -1}, "x");
     const py::ssize_t n = x_a.shape(0), c = x_a.shape(1);
     check_shape(sos_a, {-1, 6}, "sos");
     const py::ssize_t S = sos_a.shape(0);
     check_shape(z_a, {S, 2, c}, "z");
-    py::array_t<double> y_a({n, c});
+    py::array_t<T> y_a({n, c});
     py::array_t<double> zo_a({S, static_cast<py::ssize_t>(2), c});
-    const double *x = x_a.data(), *sos = sos_a.data();
-    double *y = y_a.mutable_data(), *z = zo_a.mutable_data();
+    const T *x = x_a.data();
+    const double *sos = sos_a.data();
+    T *y = y_a.mutable_data();
+    double *z = zo_a.mutable_data();
     std::copy(z_a.data(), z_a.data() + S*2*c, z);
     {
         py::gil_scoped_release nogil;
         for (py::ssize_t col = 0; col < c; col++) {
             for (py::ssize_t i = 0; i < n; i++) {
-                double v = x[i*c + col];
+                double v = static_cast<double>(x[i*c + col]);
                 for (py::ssize_t s = 0; s < S; s++) {
                     const double *r = sos + s*6;
                     double &z1 = z[(s*2 + 0)*c + col], &z2 = z[(s*2 + 1)*c + col];
@@ -35,7 +38,7 @@ py::tuple sos_filter(carray<double> x_a, carray<double> sos_a, carray<double> z_
                     z1 = n1;
                     v = out;
                 }
-                y[i*c + col] = v;
+                y[i*c + col] = static_cast<T>(v);
             }
         }
     }
@@ -121,7 +124,9 @@ py::tuple one_pole(carray<S> x_a, A y, double a) {
 } // namespace
 
 void register_filters(py::module_ &m) {
-    m.def("sos_filter", &sos_filter, "sos_filter(x (n, c), sos (S, 6), z (S, 2, c)) -> (y, z)", py::arg("x"), py::arg("sos"), py::arg("z"));
+    const char *sdoc = "sos_filter(x (n, c) float32/64, sos (S, 6), z (S, 2, c)) -> (y as x, z), in double inside";
+    m.def("sos_filter", &sos_filter<float>, sdoc, py::arg("x").noconvert(), py::arg("sos"), py::arg("z"));
+    m.def("sos_filter", &sos_filter<double>, sdoc, py::arg("x"), py::arg("sos"), py::arg("z"));
     m.def("am_demod", &am_demod, "am_demod(env, mean, have, alpha) -> (out, mean, have)", py::arg("env"), py::arg("mean"), py::arg("have"), py::arg("alpha"));
 
 #define RPPS_DEF_SQUELCH(S) m.def("squelch", &squelch<S>, "squelch(x, level, have, open, lo, hi, alpha) -> (y, level, have, open)", \

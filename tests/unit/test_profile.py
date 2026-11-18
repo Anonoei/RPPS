@@ -27,7 +27,7 @@ def test_802154_builds_the_documented_pairs():
     # ... unless asked not to
     apart = rp.profile.load("ieee802154/2450", sync={"timing": {"method": "known", "fuse": False}})
     assert names(apart.rx()) == ["+Stagger", "+Designed", "+_KnownTiming", "/Spread"]
-    assert names(p.tx()) == ["*Spread", "+Zeros", "+Designed", "+Stagger"]
+    assert names(p.tx()) == ["*Spread", "+Interpolate", "+Stagger"]
     assert str(p.rx().ops[0][1]) == "Stagger(i)" and str(p.tx().ops[-1][1]) == "Stagger(q)"
     assert [s.takes for s in p.steps] == [Rep.SAMPLES, Rep.SAMPLES, Rep.SAMPLES, Rep.SAMPLES, Rep.SYMBOLS]
 

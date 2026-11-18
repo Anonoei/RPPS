@@ -39,7 +39,7 @@ class OerderMeyr(Stage):
         return "OerderMeyr"
 
     def new_state(self, meta):
-        return SimpleNamespace(buf=np.zeros(0, np.complex128), base=None, k=None, W=None, m=None, tr=track.new(), snr=0.0)
+        return SimpleNamespace(buf=np.zeros(0, np.complex64), base=None, k=None, W=None, m=None, tr=track.new(), snr=0.0)
 
     def step(self, x, st, meta):
         sps = float(self.sps or meta.sps)
@@ -50,7 +50,8 @@ class OerderMeyr(Stage):
         for a0, b, seg in track.windows(st, x, meta, W):
             end = st.base + len(st.buf)
             if len(seg) >= 16*sps:
-                p = np.abs(seg)**2*np.exp(-2j*np.pi*np.arange(a0, b)/sps)
+                seg = seg.astype(np.complex128) # (held as it came, single precision; the line is summed in double)
+                p = (seg.real**2 + seg.imag**2)*track.line_phasor(2*np.pi*a0/sps, 2*np.pi/sps, len(seg)) # |x|^2 e^{-j 2 pi n / sps}
                 X = np.sum(p)
                 st.snr = float(np.abs(X)/max(np.sum(np.abs(seg)**2), 1e-30)*np.sqrt(len(seg)))
                 if st.snr >= self.gate:

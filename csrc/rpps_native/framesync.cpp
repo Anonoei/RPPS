@@ -14,7 +14,7 @@ namespace rpps {
 namespace {
 
 #if defined(__GNUC__) && defined(__x86_64__) && !defined(__clang__)
-#define RPPS_CLONES __attribute__((target_clones("avx2,fma", "default")))
+#define RPPS_CLONES __attribute__((target_clones("avx2", "default")))
 #else
 #define RPPS_CLONES
 #endif

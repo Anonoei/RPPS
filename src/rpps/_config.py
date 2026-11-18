@@ -81,6 +81,37 @@ def ls(domain, path=None):
 def _files(base):
     return sorted(base.rglob("*.json")) if base.is_dir() else []
 
+_INDEX = {} # str(directory) -> its definitions by path, by name and (once asked for) by alias
+
+def _index(base, fresh=False):
+    """The definitions below `base`, scanned once and again when `fresh` (a miss: a file may have been written since)"""
+    key = str(base)
+    if fresh or key not in _INDEX:
+        files = _files(base)
+        names = {}
+        for f in files:
+            names.setdefault(f.stem.lower(), []).append(f)
+        _INDEX[key] = {"files": files, "aliases": None, "names": names,
+                       "rel": {f.relative_to(base).with_suffix("").as_posix().lower(): f for f in files}}
+    return _INDEX[key]
+
+def _lookup(domain, ref, ref_l, base, fresh):
+    idx = _index(base, fresh)
+    hit = idx["rel"].get(ref_l)
+    if hit is None and "/" not in ref_l:
+        same = idx["names"].get(ref_l, [])
+        if len(same) > 1:
+            raise ConfigError(f"{domain}/{ref} is ambiguous, use one of {sorted(f.relative_to(base).with_suffix('').as_posix() for f in same)}")
+        hit = same[0] if same else None
+    if hit is None:
+        if idx["aliases"] is None:
+            idx["aliases"] = {}
+            for f in idx["files"]:
+                for a in read(f).get("aliases", []):
+                    idx["aliases"].setdefault(str(a).lower(), f)
+        hit = idx["aliases"].get(ref_l)
+    return hit
+
 def locate(domain, ref, category=None, path=None):
     """Find a definition by reference: (file, parts) or (None, None). `parts` is the file's path below the domain, without ".json",
     e.g. ("block", "rs", "204_188"): the category, the group folders, the name.
@@ -92,19 +123,9 @@ def locate(domain, ref, category=None, path=None):
     ref_l = ref.lower().strip("/")
     for root in _roots(domain, path):
         base = root / category if category and not (category == domain and not (root / category).is_dir()) else root
-        files = _files(base)
-        rel = {f.relative_to(base).with_suffix("").as_posix().lower(): f for f in files}
-        hit = rel.get(ref_l)
-        if hit is None and "/" not in ref_l:
-            same = [f for f in files if f.stem.lower() == ref_l]
-            if len(same) > 1:
-                raise ConfigError(f"{domain}/{ref} is ambiguous, use one of {sorted(f.relative_to(base).with_suffix('').as_posix() for f in same)}")
-            hit = same[0] if same else None
-        if hit is None:
-            for f in files:
-                if ref_l in [str(a).lower() for a in read(f).get("aliases", [])]:
-                    hit = f
-                    break
+        hit = _lookup(domain, ref, ref_l, base, False)
+        if hit is None or not hit.exists(): # Not there when the folder was scanned, or gone since
+            hit = _lookup(domain, ref, ref_l, base, True)
         if hit is not None:
             return hit, hit.relative_to(root).with_suffix("").parts
     return None, None

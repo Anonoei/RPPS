@@ -110,3 +110,38 @@ def test_kernels_release_the_gil():
     for h in th: h.join()
     parallel = time.perf_counter() - t
     assert parallel < 0.8*serial
+
+@pytest.mark.parametrize("taps", [1, 33, 1025])
+@pytest.mark.parametrize("cut", [[3000], [1, 2047, 7, 900]]) # short blocks: where the direct (native) path runs
+def test_fir_stream_matches_python(taps, cut):
+    rng = np.random.default_rng(3)
+    x = (rng.standard_normal(sum(cut)) + 1j*rng.standard_normal(sum(cut))).astype(np.complex64)
+    h = rp.signal.filters.designer.designer(taps, 0.2) if taps > 1 else np.ones(1)
+    make = lambda: rp.signal.filters.filters.ConvFilter(h)
+    nat, _ = run(make, x, cut, True, Fs=1.0)
+    py, _ = run(make, x, cut, False, Fs=1.0)
+    ref = np.convolve(x, h)[:len(x)]
+    assert nat.dtype == np.complex64
+    np.testing.assert_allclose(nat, py, atol=1e-4*np.sqrt(taps))
+    np.testing.assert_allclose(nat, ref, atol=1e-4*np.sqrt(taps))
+
+def test_fft_convolution_stays_single_and_close():
+    rng = np.random.default_rng(4)
+    x = (rng.standard_normal(1 << 16) + 1j*rng.standard_normal(1 << 16)).astype(np.complex64)
+    h = rp.signal.filters.designer.designer(257, 0.1).astype(np.float32)
+    from rpps.signal.filters.convolve import fft_pays
+    assert fft_pays(len(x), len(h))
+    y = rp.signal.filters.convolve(x, h)
+    assert y.dtype == np.complex64
+    np.testing.assert_allclose(y, np.convolve(x.astype(np.complex128), h.astype(np.float64)), atol=1e-4)
+
+@pytest.mark.parametrize("cut", [[5000], [1, 4095, 7, 900]])
+def test_shift_freq_matches_python(cut):
+    rng = np.random.default_rng(5)
+    x = (rng.standard_normal(sum(cut)) + 1j*rng.standard_normal(sum(cut))).astype(np.complex64)
+    make = lambda: rp.signal.filters.ShiftFreq(1234.5)
+    nat, st_n = run(make, x, cut, True, Fs=1e5)
+    py, st_p = run(make, x, cut, False, Fs=1e5)
+    assert nat.dtype == py.dtype == np.complex64
+    np.testing.assert_allclose(nat, py, atol=1e-5)
+    assert st_n.phase == pytest.approx(st_p.phase, abs=1e-9)

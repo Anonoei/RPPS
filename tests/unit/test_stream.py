@@ -197,3 +197,32 @@ def test_acquire_fec_does_not_depend_on_block_size():
         outs.append(np.concatenate(out))
     n = min(len(o) for o in outs)
     assert n > 8000 and all(np.array_equal(o[:n], outs[0][:n]) for o in outs)
+
+@pytest.mark.parametrize("native", [True, False])
+@pytest.mark.parametrize("ratio,taps", [(4, 65), (8, 129), (3, 10)])
+def test_interpolate_is_zeros_then_filter(ratio, taps, native):
+    """The polyphase interpolator gives Zeros + the filter, however the stream is cut"""
+    from rpps import _accel
+    saved = _accel.native
+    _accel.native = saved if native else None
+    try:
+        rng = np.random.default_rng(ratio)
+        syms = (rng.standard_normal(700) + 1j*rng.standard_normal(700)).astype(np.complex64)
+        pulse = rp.signal.filters.ShapingRRC(taps, ratio)
+        def run(stages, cut):
+            out, st, i = [], None, 0
+            for b in cut:
+                d = rp.Data(syms[i:i+b], stream=st, Fs=1e3, sps=1)
+                st = d.stream
+                for s in stages:
+                    d = d + s
+                out.append(d.data)
+                i += b
+            return np.concatenate(out), d
+        ref, dr = run([rp.signal.sample.up.Zeros(ratio), pulse], [700])
+        for cut in ([700], [1, 0, 300, 399]):
+            y, d = run([rp.signal.sample.up.Interpolate(ratio, pulse)], cut)
+            np.testing.assert_allclose(y, ref, atol=1e-5)
+            assert d.Fs == dr.Fs and d.sps == dr.sps and d.delay == pytest.approx(dr.delay)
+    finally:
+        _accel.native = saved
