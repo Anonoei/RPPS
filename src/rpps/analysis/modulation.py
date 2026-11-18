@@ -13,11 +13,14 @@ from ..sync.time.mat import matrix_mf, centres_in, best_tau
 from .quality import measure
 
 class Detection:
-    """Result of `detect`. Stored in meta.stream.det"""
+    """Result of `detect`. Stored in meta.stream.det
+
+    line: strength of the symbol-rate line the rate came from, over its local floor (noise peaks at about 3-4; a rate
+        taken from a weaker line is a guess)"""
     __slots__ = (
         "mod", "baud", "sps", "beta", "tau",
         "cfo", "phase", "M", "gain",
-        "scores", "n", "esn0", "ebn0"
+        "scores", "n", "esn0", "ebn0", "line"
     )
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -102,7 +105,7 @@ def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8):
     Returns a Detection; its tau is relative to x[0].
     """
     cands = candidates(names)
-    baud0, _ = find_baud(x, Fs)
+    baud0, line = find_baud(x, Fs)
     best = None
     for beta in betas:
         sps, tau = refine_timing(x, Fs/baud0, beta, span)
@@ -124,6 +127,6 @@ def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8):
             best = (scores[top], Detection(
                 mod=top, baud=baud, sps=sps, beta=beta, tau=tau,
                 cfo=cfo*baud, phase=phase, M=M, gain=gain,
-                scores=scores, n=len(y), esn0=q.esn0_db, ebn0=q.ebn0_db
+                scores=scores, n=len(y), esn0=q.esn0_db, ebn0=q.ebn0_db, line=line
             ))
     return best[1]

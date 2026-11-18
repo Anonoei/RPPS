@@ -5,6 +5,7 @@ from .. import _config
 
 from .costas import Costas
 from .acquire import Acquire
+from .acquire_fec import AcquireFEC
 from .align import Align
 from .puncture import Puncture
 

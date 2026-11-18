@@ -16,6 +16,7 @@ and its rate from window to window, gates outliers and coasts through gaps; the 
 | frame starts | `FrameSync` (a preamble and the best word of a header code), `Delimiter` (a word among bits) | `frame`, `delimit` |
 | alignment on bits | `Align` (markers, patterns, polarity), `Puncture` (puncture phase) | `align`, `puncture` |
 | modulation, rate, offset | `Acquire`; code phase and Doppler: `acquire_code` | |
+| channel code, bit map, alignment | `AcquireFEC`: configured codes found on the symbols (`analysis.fec.identify`), turned to the decoder's map, carrier and symbol slips tracked; `est["fec"].rx()` decodes | |
 
 ## Second class: per-sample loops
 For signals and conditions block estimation does not suit: `time.MM` (Mueller & Muller, Gardner), `Costas`, `PLL`, `AGC`,

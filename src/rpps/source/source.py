@@ -258,8 +258,47 @@ class File(Source):
             for x in self._f.forward(int(count), partial=True): # A short last block at the end
                 yield self._block(self._writable(x), flush=self._f.cur_samp >= self._f.max_samp)
 
+class Memory(Source):
+    """Samples held in memory, in blocks (a short last block flushes the stream): what was captured from a device, for
+    analysis that runs slower than the device does (`Memory.capture`), or an array made some other way"""
+    def __init__(self, samples, Fs=1.0, cf=0.0, sps=0.0):
+        super().__init__(Fs, cf, sps)
+        self.samples = np.asarray(samples)
+
+    def __str__(self):
+        return f"Memory({len(self.samples)} samples at {self.Fs/1e6:g} MS/s, cf {self.cf/1e6:g} MHz)"
+
+    def peek(self, count, start=0):
+        """`count` samples from sample `start` (fewer near the end), as an array"""
+        return self.samples[int(start):int(start) + int(count)].copy()
+
+    def _samples(self, count):
+        count = int(count)
+        n = len(self.samples)
+        for i in range(0, n, count):
+            yield self._block(self.samples[i:i + count].copy(), flush=i + count >= n)
+
+    @classmethod
+    def capture(cls, source, count, block=2**16, skip=0):
+        """The next `count` samples of a source (a Device), held: blocks as they come, then nothing more is read. The
+        rate and centre are what the source settled on; dropped samples during the capture are in `.dropped`.
+        skip: samples to read and throw away first (a radio just tuned can still deliver the old frequency for a while)"""
+        out, n, thrown = [], 0, 0
+        for blk in source(block):
+            if thrown < skip:
+                thrown += len(blk)
+                continue
+            out.append(np.asarray(blk.data))
+            n += len(out[-1])
+            if n >= count:
+                break
+        mem = cls(np.concatenate(out)[:count] if out else np.zeros(0, np.complex64), source.Fs, source.cf, source.sps)
+        mem.dropped = int(getattr(source.stream, "dropped", 0))
+        return mem
+
 class Device(Source):
-    """Samples from a pysdrlib device (RTL-SDR, HackRF, ..., "sim", or "remote"): blocks until the loop is left
+    """Samples from a pysdrlib device (RTL-SDR, HackRF, ..., "sim", or "remote"): blocks until the loop is left. A device
+    that is open already (pysdrlib.connect gives one) stays open; one this opens is closed when the blocks end
 
         for blk in rp.source.Device("hackrf", cf=100e6, Fs=10e6)(8192) + rx: ...
     """
@@ -279,7 +318,9 @@ class Device(Source):
 
     def _samples(self, count):
         sdr = self.sdr
-        sdr.open(**self._open_args)
+        mine = not sdr.state["open"] # A device opened already (pysdrlib.connect) is the caller's: left open
+        if mine:
+            sdr.open(**self._open_args)
         try:
             sdr.initialize(cf=self.cf, Fs=self.Fs, rx_gain=self.rx_gain)
             self.cf, self.Fs = sdr.get_rx_freq(), sdr.get_rx_sample_rate() # What the hardware settled on
@@ -289,7 +330,7 @@ class Device(Source):
                     self.stream.dropped += m.dropped
                     yield self._block(x)
         finally:
-            if sdr.state["open"]:
+            if mine and sdr.state["open"]:
                 sdr.close()
 
 class Sink:
