@@ -187,7 +187,7 @@ def symbol_instants(x, Fs, baud, beta=0.35, taps=8):
     y = np.fft.ifft(np.fft.fft(x, nfft)*np.fft.fft(h, nfft))[len(h)//2:len(h)//2 + len(x)]
     n = np.arange(len(y))
     c = np.sum(np.abs(y)**2*np.exp(-2j*np.pi*baud*n/Fs))
-    tau = (np.angle(c)/(2*np.pi)*sps) % sps
+    tau = (-np.angle(c)/(2*np.pi)*sps) % sps # c ~ exp(-j 2 pi tau/sps): the line peaks at tau
     k = np.arange(int(np.ceil((REACH - tau)/sps)), int((len(y) - REACH - 1 - tau)//sps))
     from ..math import interp
     return interp.fractional(y, tau + k*sps, taps), tau
