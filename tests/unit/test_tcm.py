@@ -43,3 +43,16 @@ def test_fwht_matches_the_definition():
 def test_window_too_wide():
     with pytest.raises(ValueError):
         tcm.search(np.ones(100, complex), 8, max_nu=8)
+
+def test_correlated_labels_are_not_a_code():
+    """Symbols whose top label bit repeats (ISI, oversampling): a strong check that holds far less than a code's would"""
+    rng = np.random.default_rng(7)
+    k = rng.integers(0, 8, 20000)
+    keep = rng.random(20000) < 0.55
+    for i in range(1, len(k)): # The top bit is the previous symbol's 55% of the time
+        if keep[i]:
+            k[i] = (k[i] & 3) | (k[i - 1] & 4)
+    y = noisy(rng, k, 8, 18.0)
+    assert tcm.search(y, 8, max_nu=2) == []
+    c = tcm.search(y, 8, max_nu=2, correlations=True)
+    assert c and not c[0].code and "not a code" in str(c[0])

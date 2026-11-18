@@ -28,8 +28,11 @@ UNGERBOECK_4 = {4: (0o5, 0o2), 8: (0o13, 0o4), 16: (0o23, 0o6), 32: (0o45, 0o10)
 class Check:
     """A parity check found: h (one polynomial per label bit, z^0 first, as ints whose bit d is the delay-d tap), nu
     (memory), labels ('natural', 'gray' or 'own'), rotation (points the decisions were turned by), conj, z (its bias
-    over chance), holds (fraction of windows it holds on), match (the known code it is, or None)"""
-    __slots__ = ("h", "nu", "labels", "rotation", "conj", "z", "holds", "match")
+    over chance), holds (fraction of windows it holds on), match (the known code it is, or None), expected (how often a
+    code's check of these taps would hold, given the label bit errors the symbols' noise makes), code (holds at least
+    CODE of the way from chance to expected: a code; else the labels are only correlated, by ISI, oversampling or the
+    wrong modulation)"""
+    __slots__ = ("h", "nu", "labels", "rotation", "conj", "z", "holds", "match", "expected", "code")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
@@ -40,6 +43,8 @@ class Check:
 
     def __str__(self):
         m = f": {self.match}" if self.match else ""
+        if not self.code:
+            m += f"; correlated labels, not a code (a code's check would hold {100*self.expected:.1f}%)"
         c = ", conjugated" if self.conj else ""
         return (f"h = ({', '.join(self.octal)}) octal (z^0 first), nu {self.nu}, {self.labels} labels, rotation "
                 f"{self.rotation}{c}, holds {100*self.holds:.1f}%, z {self.z:.1f}{m}")
@@ -119,10 +124,39 @@ def _match(h, m):
             return f"Ungerboeck {states} states"
     return None
 
-def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4):
+CODE = 0.6 # A check's bias over the bias a code would have at this noise: more is a code
+
+def label_errors(y, M, labs, k, seed=0):
+    """Per label bit, the probability a hard decision gets it wrong at the noise of these symbols: {labelling: array(m)}"""
+    from . import quality
+    m = int(round(np.log2(M)))
+    off = np.angle(np.sum(np.asarray(y, dtype=np.complex128)**M))/M if M > 1 else 0.0
+    pts = np.exp(1j*(2*np.pi*np.arange(M)/M + off))
+    sigma = quality.measure(y, pts).sigma
+    rng = np.random.default_rng(seed)
+    n = 20000
+    t = rng.integers(0, M, n)
+    z = pts[t] + sigma*(rng.standard_normal(n) + 1j*rng.standard_normal(n))
+    d = np.round((np.angle(z) - off)/(2*np.pi/M)).astype(np.int64) % M
+    out = {}
+    for name, lab in labs.items():
+        diff = lab[t] ^ lab[d]
+        out[name] = np.array([np.mean(diff >> i & 1) for i in range(m)])
+    return out
+
+def _expected(h, p):
+    """How often a check with taps h holds on labels with bit error rates p (independent errors): (1 + prod(1-2p))/2"""
+    b = 1.0
+    for i, poly in enumerate(h):
+        b *= (1 - 2*p[i])**bin(poly).count("1")
+    return (1 + b)/2
+
+def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4, correlations=False):
     """Parity checks of a trellis code on M-PSK symbols y (locked to within a rotation). max_nu: largest memory tried
     (windows of max_nu + 1 symbols: (max_nu + 1) log2 M bits, 2^that candidates). own: the constellation's labels by
-    angle index, tried as well. Returns Checks, most significant first (empty: no code of that memory on these labels)"""
+    angle index, tried as well. Returns Checks, most significant first (empty: no code of that memory on these labels).
+    A check that holds well short of what a code's would at this noise is a correlation of the labels (ISI, a wrong rate or
+    modulation), not a code: left out unless `correlations`, and marked (Check.code False)"""
     m = int(round(np.log2(M)))
     W = max_nu + 1
     if W*m > 24:
@@ -131,6 +165,7 @@ def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4)
     labs = labellings(M, own)
     if labelling is not None:
         labs = {labelling: labs[labelling]}
+    perr = label_errors(y, M, labs, k)
     variants = [(name, lab, r, c) for name, lab in labs.items() for r in range(M) for c in ((False, True) if conj else (False,))]
     tests = len(variants)*(1 << (W*m))
     zmin = np.sqrt(2*np.log(tests/pfa))
@@ -157,8 +192,10 @@ def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4)
             continue # A shift or sum of checks already taken
         h = _polys(v, m, W)
         nu = max(p.bit_length() for p in h) - 1
-        out.append(Check(h=h, nu=nu, labels=name, rotation=r, conj=c, z=zv, holds=holds if holds >= 0.5 else 1 - holds,
-                         match=_match(h, m)))
+        hv = holds if holds >= 0.5 else 1 - holds
+        exp = _expected(h, perr[name])
+        out.append(Check(h=h, nu=nu, labels=name, rotation=r, conj=c, z=zv, holds=hv, match=_match(h, m), expected=exp,
+                         code=(hv - 0.5) >= CODE*(exp - 0.5)))
         for s in range(W):
             u = _vector(h, m, W, s)
             if u is not None:
@@ -168,7 +205,9 @@ def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4)
     # Equivalent forms of one code turn up under several rotations / labellings with about the same z: put the one a
     # table names first, then the unconjugated, then the smallest rotation
     zb = lambda c: round(np.log(c.z)/0.05) # 5% buckets
-    out.sort(key=lambda c: (-zb(c), c.match is None, c.conj, c.rotation))
+    out.sort(key=lambda c: (not c.code, -zb(c), c.match is None, c.conj, c.rotation))
+    if not correlations:
+        out = [c for c in out if c.code]
     return out[:top]
 
 def encode(bits, h, m):
