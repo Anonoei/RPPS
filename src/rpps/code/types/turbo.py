@@ -2,6 +2,7 @@ import numpy as np
 
 from ._code import _code, register, word_errors, as_llr
 from .trellis import Trellis, bcjr
+from ... import _effort
 
 def qpp(K, f1, f2):
     """Quadratic permutation polynomial interleaver: pi(i) = (f1 i + f2 i^2) mod K"""
@@ -106,16 +107,20 @@ class turbo(_code):
             out.append(d.reshape(-1))
         return np.concatenate(out).astype(bool) if out else np.zeros(0, bool)
 
-    def _constituent(self, Ls, Lp, La, tail_s, tail_p):
+    def _constituent(self, Ls, Lp, La, tail_s, tail_p, maxlog):
         """A-posteriori LLRs of the K message bits from one constituent decoder (trellis from and to state 0)"""
         sys = np.concatenate((Ls + La, tail_s))
         par = np.concatenate((Lp, tail_p))
-        app = bcjr(self.code.trellis, np.stack((sys, par), axis=-1)[None], start=0, end=0, maxlog=self.maxlog)[0]
+        app = bcjr(self.code.trellis, np.stack((sys, par), axis=-1)[None], start=0, end=0, maxlog=maxlog)[0]
         return app[:len(Ls)]
 
     def decode(self, bits, soft=None):
         llr = as_llr(bits, soft, 2.0)
         K, n = self.Kb, self.den
+        # The effort level (rpps._effort): its iterations and max-log or log-MAP. The extrinsic scaling corrects max-log
+        # only; past the definition's iterations a word stops once two iterations agree
+        iters, maxlog = _effort.iters(self.iters), _effort.maxlog(self.maxlog)
+        scale = self.scale if maxlog or maxlog == self.maxlog else 1.0
         words = llr[:len(llr)//n*n].reshape(-1, n)
         out, finals = [], []
         for w in words:
@@ -125,11 +130,18 @@ class turbo(_code):
             t1s, t1p = np.array([t[0, 0], t[2, 0], t[1, 1]]), np.array([t[1, 0], t[0, 1], t[2, 1]])
             t2s, t2p = np.array([t[0, 2], t[2, 2], t[1, 3]]), np.array([t[1, 2], t[0, 3], t[2, 3]])
             La1 = np.zeros(K)
-            for _ in range(self.iters):
-                Le1 = self.scale*(self._constituent(Ls, L1, La1, t1s, t1p) - Ls - La1)
+            last, same = None, 0
+            for it in range(iters):
+                Le1 = scale*(self._constituent(Ls, L1, La1, t1s, t1p, maxlog) - Ls - La1)
                 La2 = Le1[self.pi]
-                Le2 = self.scale*(self._constituent(Ls[self.pi], L2, La2, t2s, t2p) - Ls[self.pi] - La2)
+                Le2 = scale*(self._constituent(Ls[self.pi], L2, La2, t2s, t2p, maxlog) - Ls[self.pi] - La2)
                 La1 = Le2[self.inv]
+                if it >= self.iters: # (beyond the definition's own: only at a higher effort)
+                    now = (Ls + La1 + Le1) < 0
+                    same = same + 1 if last is not None and np.array_equal(now, last) else 0
+                    last = now
+                    if same >= 2:
+                        break
             final = Ls + La1 + Le1
             finals.append(final)
             out.append(final < 0)

@@ -15,7 +15,7 @@ under confident. `maxlog=True` is the cheap approximation (Viterbi-like) and doe
 """
 import numpy as np
 
-from ... import _accel
+from ... import _accel, _effort
 from ._code import _code, register, word_errors, as_llr
 from .viterbi import viterbi
 from .conv import termination_of, generators_of
@@ -141,8 +141,8 @@ class bcjr_conv(viterbi):
         llr = self.depuncture(llr)                                   # (T, n)
         if self.termination == "tailbiting": # Three laps from and to any state, the middle one kept
             T = len(llr)
-            return bcjr(self.trellis, np.tile(llr, (3, 1))[None], start=None, end=None, maxlog=self.maxlog)[0][T:2*T]
-        out = bcjr(self.trellis, llr[None], start=0, end=0 if self.terminated else None, maxlog=self.maxlog)[0]
+            return bcjr(self.trellis, np.tile(llr, (3, 1))[None], start=None, end=None, maxlog=_effort.maxlog(self.maxlog))[0][T:2*T]
+        out = bcjr(self.trellis, llr[None], start=0, end=0 if self.terminated else None, maxlog=_effort.maxlog(self.maxlog))[0]
         return out[:len(out)-(self.con-1)] if self.terminated else out
 
     def decode(self, bits, soft=None):
@@ -173,7 +173,7 @@ class trellis(_code):
         """A-posteriori LLRs of the coded bits, (words, n)"""
         llr = as_llr(bits, soft, self.hard_llr)
         llr = block(llr[:len(llr)//self.den*self.den], self.den)
-        return bcjr(self.trellis, llr[:, :, None], start=0, end=0, maxlog=self.maxlog)
+        return bcjr(self.trellis, llr[:, :, None], start=0, end=0, maxlog=_effort.maxlog(self.maxlog))
 
     def decode(self, bits, soft=None):
         x = np.asarray(bits)

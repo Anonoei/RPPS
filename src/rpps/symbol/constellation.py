@@ -12,6 +12,7 @@ from ..base.types import Category, Rep
 from ..base.rpps import align, FRAME
 from ..errors import ConfigError
 from ..math import demap
+from .. import _effort
 
 from .modulation import Modulation
 from .mapping import Mapping, expand_maps
@@ -83,7 +84,7 @@ class Constellation(Modulation):
         from ..parallel.kernels import Demap
         if params:
             self.control(**params)
-        return Demap(self.points.copy(), self.labels().astype(bool), self.maxlog, self.name)
+        return Demap(self.points.copy(), self.labels().astype(bool), _effort.maxlog(self.maxlog), self.name) # (the level when the region is built)
 
     def pos_rate(self, decode):
         """Bits per symbol decoding, symbols per bit encoding (rpps.profile positions)"""
@@ -172,7 +173,7 @@ class Constellation(Modulation):
 
     def decode(self, data):
         syms = data.data
-        llr = self.llr(syms, maxlog=self.maxlog) if len(syms) else np.zeros(0, dtype=dtype.LLR.dtype)
+        llr = self.llr(syms, maxlog=_effort.maxlog(self.maxlog)) if len(syms) else np.zeros(0, dtype=dtype.LLR.dtype)
         return data.derive(llr, Category.SYMBOL, dtype.LLR, Mod, rep=Rep.CHANNEL)
 
     def estimate_noise(self, syms, iters=8):

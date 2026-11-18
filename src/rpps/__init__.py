@@ -62,6 +62,7 @@ from . import errors
 from . import _config
 from ._config import add_config_path, domains
 from ._config import load_ref as load
+from ._effort import set_effort, effort
 
 # Import helpers/globals
 from .base.types import Category, Rep, dtype

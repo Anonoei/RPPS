@@ -85,6 +85,7 @@ def cmd_rx(args):
     for kv in args.sync:
         kind, method = kv.split("=", 1)
         sync[kind] = {"method": method}
+    rp.set_effort(args.effort)
     p = rp.profile.load(args.profile, sync=sync or None, **params)
     rx = p.rx()
     src = rp.source.File(args.fmt, args.file, Fs=args.fs, cf=args.cf, sps=args.sps or p.params.get("sps", 0.0))
@@ -211,6 +212,8 @@ def main(argv=None):
     p_rx.add_argument("--block", type=int, default=1 << 16, help="samples per block (default: 65536)")
     p_rx.add_argument("--param", action="append", default=[], metavar="NAME=VALUE", help="a profile parameter (repeatable)")
     p_rx.add_argument("--sync", action="append", default=[], metavar="KIND=METHOD", help="a sync method, e.g. timing=known (repeatable)")
+    p_rx.add_argument("--effort", default="balanced", choices=("fast", "balanced", "max"),
+                      help="speed against recovered SNR (default: balanced; see rpps._effort)")
     p_rx.add_argument("--out", help="write the bits out as bytes here")
     p_rx.set_defaults(fn=cmd_rx)
 

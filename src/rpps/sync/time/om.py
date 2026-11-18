@@ -4,13 +4,10 @@ import numpy as np
 
 from ...base import Stage
 from .. import track
+from ... import _effort
+from ...math import interp
 
-def cubic(x, t):
-    """x (complex) at fractional positions t: cubic Lagrange through x[i-1 .. i+2], i = floor(t)"""
-    i = np.floor(t).astype(np.int64)
-    u = t - i
-    c = (-u*(u - 1)*(u - 2)/6, (u + 1)*(u - 1)*(u - 2)/2, -(u + 1)*u*(u - 2)/2, (u + 1)*u*(u - 1)/6)
-    return c[0]*x[i - 1] + c[1]*x[i] + c[2]*x[i + 1] + c[3]*x[i + 2]
+R = interp.REACH # Samples the symbol interpolation reads on each side (any effort level's: one may change mid-stream)
 
 class OerderMeyr(Stage):
     """Symbol timing by square-law block estimation (Oerder & Meyr), tracked across windows: samples at `sps` in (after
@@ -50,27 +47,35 @@ class OerderMeyr(Stage):
         for a0, b, seg in track.windows(st, x, meta, W):
             end = st.base + len(st.buf)
             if len(seg) >= 16*sps:
-                seg = seg.astype(np.complex128) # (held as it came, single precision; the line is summed in double)
-                p = (seg.real**2 + seg.imag**2)*track.line_phasor(2*np.pi*a0/sps, 2*np.pi/sps, len(seg)) # |x|^2 e^{-j 2 pi n / sps}
+                u = 1 if sps >= 4 else 2 # Under 4 samples a symbol |x|^2 reaches past Nyquist and its line at 1/T aliases onto
+                if u == 1:               # its mirror (at 2 they cancel at some phases): the line is taken at twice the rate
+                    seg = seg.astype(np.complex128) # (held as it came, single precision; the line is summed in double)
+                else: # x at half samples, band limited, from what the window holds (so any block cut gives the same)
+                    seg = interp.doubled(st.buf, a0, b, st.base)
+                p = (seg.real**2 + seg.imag**2)*track.line_phasor(2*np.pi*a0/sps, 2*np.pi/(sps*u), len(seg)) # |x|^2 e^{-j 2 pi n / sps}
                 X = np.sum(p)
-                st.snr = float(np.abs(X)/max(np.sum(np.abs(seg)**2), 1e-30)*np.sqrt(len(seg)))
+                st.snr = float(np.abs(X)/max(np.sum(np.abs(seg)**2), 1e-30)*np.sqrt(len(seg)/u))
                 if st.snr >= self.gate:
                     tau = (-np.angle(X)*sps/(2*np.pi)) % sps
                     rate = None
                     if not st.tr.started: # The clock's rate to start from: the two halves of the window
                         h = len(p)//2
-                        d = track.wrap(-np.angle(np.sum(p[h:])/np.sum(p[:h]))*sps/(2*np.pi), sps)
-                        rate = d/h
+                        first, second = np.sum(p[:h]), np.sum(p[h:])
+                        if abs(first) > 0 and abs(second) > 0: # (a half of zeros, as before a stream starts, says nothing)
+                            rate = track.wrap(-np.angle(second/first)*sps/(2*np.pi), sps)/(h/u)
                     bw = self.bw if st.tr.windows >= self.ACQUIRE else max(self.bw, 0.6) # Wide while it pulls in
                     track.update(st.tr, tau, (a0 + b)/2, sps, bw, rate)
                 else:
                     track.miss(st.tr, (a0 + b)/2)
-            if st.tr.started:
-                out.append(self._symbols(st, a0, min(b, end - 3), sps))
-        # Keep the window being gathered, and what the next symbol's interpolation needs
-        keep = st.k*st.W
+            if st.tr.started: # The first time from what is held: the window before, too (a signal that starts part way into a
+                # window gated out has its first symbols there: a frame's preamble)
+                start = a0 if st.m is not None else st.base
+                out.append(self._symbols(st, start, min(b, end - (3 if meta.flush else R + 1)), sps)) # (flushed: zeros after the end)
+        # Keep the window being gathered (until the tracker starts, the one before it too), and what the next symbol's
+        # interpolation needs
+        keep = st.k*st.W if st.tr.started else (st.k - 1)*st.W
         if st.m is not None:
-            keep = min(keep, int(np.floor(self._time(st, st.m, sps))) - 2)
+            keep = min(keep, int(np.floor(self._time(st, st.m, sps))) - R)
         track.keep(st, keep)
         W, tr = st.W, st.tr
         meta.stream.est[self.name] = dict(phase=tr.value % sps if tr.started else None, ppm=-tr.rate*1e6 if tr.started else None,
@@ -95,7 +100,7 @@ class OerderMeyr(Stage):
         if not len(m):
             return np.zeros(0, np.complex128)
         t = self._time(st, m, sps)
-        ok = t - 1 >= st.base # (only before the first window, never after)
+        ok = t - 1 >= st.base # (only before the first window, never after; samples before the stream are zeros)
         m, t = m[ok], t[ok]
         st.m = int(m[-1]) + 1 if len(m) else st.m
-        return cubic(st.buf, t - st.base) if len(t) else np.zeros(0, np.complex128)
+        return interp.fractional_edge(st.buf, t - st.base, _effort.interp_taps(sps)) if len(t) else np.zeros(0, np.complex128)

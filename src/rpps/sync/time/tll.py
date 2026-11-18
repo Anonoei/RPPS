@@ -6,14 +6,15 @@ import numpy as np
 from ...base import Stage
 from ..pll import PILoop
 from .ed.zx import zx_nd
-from .om import cubic
+from ... import _effort
+from ...math import interp
 
 class TLL(Stage):
     """Symbol timing by a timing locked loop: samples at `sps` in (after their matched filter), one symbol each out
 
         symbols = matched + rp.sync.time.TLL(sps=4, bw=0.01)
 
-    Second class (README.dev.md, Sync methods): a loop updated once per symbol. Each symbol is interpolated (cubic) at its
+    Second class (README.dev.md, Sync methods): a loop updated once per symbol. Each symbol is interpolated at its
     instant, and the zero-crossing (Gardner) detector `zx_nd` on the symbol before it, the sample half way and this one
     gives the timing error, which a proportional-integral loop filter (rpps.sync.pll.PILoop, from `bw` as a fraction of the
     symbol rate) turns into the next instant. Needs no decisions and no carrier, so it runs before carrier recovery.
@@ -43,19 +44,20 @@ class TLL(Stage):
             st.t = float(st.base + 1 + sps/2) # (room for the half-symbol sample before it)
         out = []
         # A symbol needs its instant and the half symbol before it, and the cubic its neighbours: up to t + 2
-        while st.t + 2 < end:
+        R, taps = interp.REACH, _effort.interp_taps(sps)
+        while st.t + (2 if meta.flush else R) < end: # (flushed: zeros after the end, as before the start)
             mid_t = st.t - sps/2
             if mid_t - 1 < st.base:
                 st.t += sps
                 continue
-            z, mid = cubic(st.buf, np.array([st.t, mid_t]) - st.base)
+            z, mid = interp.fractional_edge(st.buf, np.array([st.t, mid_t]) - st.base, taps)
             if st.prev is not None:
                 e = float(np.real(zx_nd(st.prev, mid, z))) # early: the symbol before, late: this one
                 st.t += sps*st.loop.run(e)
             st.prev = z
             out.append(z)
             st.t += sps
-        keep = int(np.floor(st.t - sps/2)) - 2 # what the next symbol's half-way sample needs
+        keep = int(np.floor(st.t - sps/2)) - interp.REACH # what the next symbol's half-way sample needs
         keep = min(max(keep, st.base), end)
         st.buf, st.base = st.buf[keep - st.base:], keep
         meta.stream.est[self.name] = dict(phase=st.t % sps, rate=st.loop.integ)
