@@ -273,7 +273,8 @@ def test_dvbs2_transmit_frames(s2_signal):
     heads = [(f["modcod"], f["pilots"], at) for _, f, at in o.stream.control.fields("pls")]
     assert heads == [(4, 1, 0), (12, 1, dfl[0]), (1, 0, dfl[0] + dfl[1])] # each frame's fields, where its data starts
     symbols = [90 + 360*90 + 22*36, 90 + 240*90 + 14*36, 90 + 360*90]
-    assert len(o) == 4*sum(symbols)
+    ntaps = next(s.ntaps for s in o.stream.states.values() if hasattr(s, "ntaps")) # the shaping filter's (its stream state)
+    assert len(o) == 4*sum(symbols) + 4*(-(-(ntaps - 1)//4)) # and the last pulses' tail, whole symbols of it
 
 def test_dvbs2_vcm_loopback(s2_signal):
     p, x, o, data, dfl = s2_signal

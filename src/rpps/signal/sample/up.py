@@ -47,7 +47,8 @@ class Interpolate(Upsample):
         tx = symbols + rp.signal.sample.up.Interpolate(8, rp.signal.filters.load("pulse", "rrc/0_35"))
 
     Output sample n*ratio + p is phase p of the taps (taps[p::ratio]) run over the input, so each phase is an ordinary
-    FIR on the input samples, with one history shared by all of them."""
+    FIR on the input samples, with one history shared by all of them. A flush (the end of the stream) also sends the
+    filter's tail, so the last symbols' pulses are complete."""
     __slots__ = ("filt",)
     def __init__(self, ratio, filt):
         super().__init__(ratio)
@@ -70,6 +71,10 @@ class Interpolate(Upsample):
     def step(self, samples, st, meta: Meta):
         R = self.ratio
         L = st.phases.shape[1]
+        if meta.flush: # The end of the transmission: the last pulses go out whole (their tail, ntaps - 1 samples, rounded
+            # up to whole symbols). Cut off, the last half span of symbols arrives distorted: noiseless 32APSK short frames
+            # failed their LDPC on it
+            samples = np.concatenate((samples, np.zeros(-(-(st.ntaps - 1)//R), samples.dtype)))
         if _accel.native is not None and samples.dtype == np.complex64 and st.phases.dtype.kind == "f":
             if st.hist is None:
                 st.hist = np.zeros(L - 1, np.complex64)

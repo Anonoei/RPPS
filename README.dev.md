@@ -654,13 +654,46 @@ kernels, the parallel runner's internals, how to add things) is in the sections 
 - Sync markers and start-of-frame words as sequences (the DVB-S sync bytes, the 802.11b SFD and the DVB-S2 SOF are written in
   the steps and headers that use them).
 - The parallel runner numbers its output from 0 and a dropped frame leaves no gap (the serial runner keeps positions).
-- Fusing the matched filter with Oerder & Meyr timing (its square-law line needs the filter at every sample), and evaluating
-  the pulse exactly at fractional instants instead of interpolating.
+- Fusing the matched filter with Oerder & Meyr timing (its square-law line needs the filter at every sample). Interpolating
+  its output is at the pulse's own floor (see [Effort](#effort)).
 - Branches inside a profile (`rp.Tee` works on operators and `Blocks`; the profile runner's control and re-run assume one chain).
 - Moving the remaining project DSP up: burst / energy detection gated on the noise floor, symbol level slicers, the FM pilot
   PLL, one allocation table for the scanners (projects/TODO.md section 2).
 - A GPU backend (`xp = cupy`) and an FPGA backend from `BatchPlan.describe()`. The seams are in; what is missing is kernels
   for the front's estimators and device-resident constants in `Kernel`.
+
+### Effort
+
+`rp.set_effort("fast" | "balanced" | "max")`, `with rp.effort("max"):` or `RPPS_EFFORT=max` choose speed or recovered SNR
+(`rpps rx --effort max`). Stages and decoders look the level up when they run, so it can change mid-stream; a definition's
+own settings stay the base that a level scales (`rpps._effort.SETTINGS`). `balanced`, the default, is what the definitions say.
+
+| Setting | fast | balanced | max | Measured (max against balanced) |
+|---|---|---|---|---|
+| Decoder iterations (LDPC, turbo) | x0.5 | the definition's | x4 (LDPC stops per codeword; turbo once two iterations agree) | LDPC 1/2 normal frame (layered) at Eb/N0 0.9 dB: FER 3/16 -> 0/16, 2x the time; LTE turbo at 0.2 dB: 6/12 -> 0/12 |
+| Max-log or exact (demapper, BCJR, turbo) | max-log | the operator's | exact (turbo: log-MAP, no extrinsic scaling) | turbo log-MAP 0.1-0.2 dB, 5-7x the time |
+| Timing interpolation (`math.interp.fractional`) | cubic | cubic from 4 samples a symbol, an 8-tap windowed sinc under | 12-tap windowed sinc | EVM floor at 2 sps: cubic -26 dB, 8 taps -48 dB, 12 taps -55 dB (the pulse's own truncation: -56 dB) |
+
+The sinc taps are a Kaiser-windowed table of 32 fractional delays blended linearly (2 short dot products a symbol, in C++:
+`fractional_read`). A Farrow filter of the same accuracy needs order 3 (4 dot products) and measured 1.9x slower.
+
+LDPC decoding is layered normalized min-sum: the checks in layers that share no variable (a greedy colouring, once per code),
+each layer seeing what the ones before found. It converges in about half the iterations of flooding: at Eb/N0 0.9 dB (DVB-S2
+1/2 normal frame, 50 iterations) FER 15/16 flooding against 3/16 layered, about 0.1 dB.
+
+Soft values go as far down the receive chain as something uses them: additive descrambling flips LLR signs (a soft decoder
+after it loses nothing), a Forney deinterleaver moves LLRs, a BCJR decoder hands on its a-posteriori LLRs (Reed-Solomon
+uses them for erasures; a retry keeps two checks to spare, so it never passes a wrong word as corrected), and differential
+decoding is the product detector y conj(y[n-1]) (dividing gave the same hard decisions but over 2 dB worse soft ones).
+
+What a decoder could not decode is known downstream: a code step sets `data.failed` (a mask over its output, from its
+codewords' status; the last code with a verdict decides, so a BCH that corrects what an LDPC left clears it), steps that keep
+the items carry it, the profile runner slices and joins it with the data, and a link header drops a frame that has any
+(`est[...]["fec_failed"]`), whatever its own CRC says. The parallel region drops such rows (`Batch.code_failed`).
+A transmitter's last pulses go out whole: `Interpolate` sends its filter's tail on a flush.
+
+Under 4 samples a symbol Oerder & Meyr takes its square-law line at twice the rate (the half samples by one fixed 12-tap
+FIR): at 2 the line sat at Nyquist, aliased onto its mirror, and cancelled at some timing phases (never acquired).
 
 ## Core abstractions
 

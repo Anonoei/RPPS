@@ -36,6 +36,7 @@ class Batch:
     n_in: int
     bad: np.ndarray = None
     why: dict = field(default_factory=dict)
+    code_failed: np.ndarray = None # rows the last decoder with a verdict could not decode: dropped when the plan ends
     notes: dict = field(default_factory=dict)
 
     def __post_init__(self):

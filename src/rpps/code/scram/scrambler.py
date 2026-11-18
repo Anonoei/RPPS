@@ -6,13 +6,15 @@ from ...logger import Logger
 
 from . import base
 from . import _config
-from ...base import Digital, dtype
+from ...base import Digital, Mod, dtype
 from ...base.types import Category, Rep
 from ...base.data import expect
 from ...base.rpps import FRAME
 from ...errors import ConfigError
 from ...sequence import lfsr
 
+
+SURE = 50.0 # LLR of a bit that is known (a frame marker): certain, short of overflowing anything
 
 class Scram(base.rpps.Pipe):
     """Scrambler parent class"""
@@ -23,12 +25,19 @@ class Scram(base.rpps.Pipe):
     def __str__(self):
         return f"{type(self).__name__}"
 
+    SOFT = False # Descrambles LLRs as they are (an additive scrambler); otherwise soft input is decided first
+
     def _run(self, data, enc):
-        """Scramble or descramble. The generator state lives in the stream (data.ctx): new data starts at the seed"""
+        """Scramble or descramble. The generator state lives in the stream (data.ctx): new data starts at the seed.
+        LLRs stay LLRs through a scrambler that can (SOFT), so a decoder after it still gets the soft values"""
         self.log.debug(f"{'Scrambling' if enc else 'Descrambling'} {data}")
         ctx = dict(data.ctx)
-        y = self._stream(ctx, (self, enc), data.bits(), enc)
-        return data.derive(y, Category.CODE, dtype.BITS, Digital, ctx, rep=Rep.CHANNEL if enc else Rep.DATA)
+        soft = self.SOFT and not enc and data.DT == dtype.LLR
+        y = self._stream(ctx, (self, enc), np.asarray(data.data, dtype=np.float64) if soft else data.bits(), enc)
+        rep = Rep.CHANNEL if enc else Rep.DATA
+        if soft:
+            return data.derive(y.astype(dtype.LLR.dtype), Category.CODE, dtype.LLR, Mod, ctx, rep=rep)
+        return data.derive(y, Category.CODE, dtype.BITS, Digital, ctx, rep=rep)
 
     def _stream(self, ctx, key, bits, enc):
         """Scramble/descramble bits continuing from ctx[key] (the previous call), and put the new state back"""
@@ -136,6 +145,8 @@ class Additive(Scram):
             `sync` (default marker ^ 0xFF) written on decode. The stream must start on a frame boundary.
         length (a profile's control): every `length` bits from where a frame starts (a DVB-S2 BBFRAME)
     """
+    SOFT = True
+
     def __init__(self, sequence, frame=None, period=None):
         super().__init__()
         self.seq = sequence
@@ -183,6 +194,10 @@ class Additive(Scram):
         llr = np.asarray(llr, dtype=np.float64)
         return llr*(1.0 - 2.0*self._bits(len(llr), start))
 
+    def _apply(self, x, start):
+        """encode for bits, soft for LLRs"""
+        return self.soft(x, start) if np.asarray(x).dtype.kind == "f" else self.encode(x, start)
+
     def kernel(self, params, how):
         """The batch scrambler of a frame restarted every `length` bits (what a profile's control gives); the periodic and
         packet-structured forms have none"""
@@ -200,13 +215,14 @@ class Additive(Scram):
         if self.length:
             return _framed(self, ctx, key, bits)
         start = ctx.get(key, 0)
-        out = self.encode(bits, start)
+        out = self._apply(bits, start)
         if self.marker is not None and len(bits): # The first byte of each frame: the marker as sent, the sync byte as read
             pos = (start + np.arange(len(bits))) % len(self.mask())
             first = pos < 8
             if first.any():
                 byte = self.marker if enc else self.frame.get("sync", self.marker ^ 0xFF)
-                out[first] = ((byte >> (7 - pos[first])) & 1).astype(bool)
+                known = ((byte >> (7 - pos[first])) & 1).astype(bool)
+                out[first] = (1.0 - 2.0*known)*SURE if out.dtype.kind == "f" else known # (known bits: sure LLRs)
         end = start + len(bits)
         ctx[key] = end % len(self.mask()) if (self.frame is not None or self.period) else end
         return out
@@ -228,9 +244,9 @@ def _framed(scr, ctx, key, bits):
     out, i = [], 0
     while i < len(bits):
         n = min(len(bits) - i, scr.length - pos)
-        out.append(scr.encode(bits[i:i + n], pos))
+        out.append(scr._apply(bits[i:i + n], pos))
         i, pos = i + n, pos + n
         if pos >= scr.length:
             pos = 0
     ctx[key] = pos
-    return np.concatenate(out) if out else np.zeros(0, dtype=bool)
+    return np.concatenate(out) if out else np.zeros(0, dtype=bits.dtype if bits.dtype.kind == "f" else bool)

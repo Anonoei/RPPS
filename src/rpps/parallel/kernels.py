@@ -99,6 +99,9 @@ class BlockDecode(Kernel):
         soft = y.dtype.kind == "f"
         b.x = y
         b.form = Form(Mod if soft else Digital, self.category, dtype.LLR if soft else dtype.BITS, self.rep, *b.form[4:])
+        errs = getattr(self.coder, "errors", None) # This decoder's verdict per row (the operator's FAILED mask, per frame)
+        if errs is not None and len(errs) and len(errs) % N == 0:
+            b.code_failed = (np.asarray(errs).reshape(N, -1) < 0).any(axis=1)
         return b
 
 _SYMBOLS = (Category.SYMBOL, dtype.SYMBOLS, Rep.SYMBOLS)
@@ -144,7 +147,8 @@ class Gather(Kernel):
         return b
 
 class XorMask(Kernel):
-    """Bits XOR a fixed mask repeated from the start of each frame (a scrambler restarted every `len(mask)` bits)"""
+    """Bits XOR a fixed mask repeated from the start of each frame (a scrambler restarted every `len(mask)` bits). LLRs
+    stay LLRs, their signs flipped (as the additive scrambler descrambles them)"""
     def __init__(self, mask, category, rep, name="xor"):
         self.mask, self.category, self.rep = np.asarray(mask, dtype=bool), category, rep
         self.name = f"xor:{name}"
@@ -157,9 +161,13 @@ class XorMask(Kernel):
 
     def run(self, xp, b):
         L = b.x.shape[1]
-        x = b.x < 0 if b.form.dt == dtype.LLR else b.x.astype(bool)
-        b.x = x ^ xp.asarray(self.mask[np.arange(L) % len(self.mask)])[None, :]
-        b.form = Form(Digital, self.category, dtype.BITS, self.rep, *b.form[4:])
+        m = xp.asarray(self.mask[np.arange(L) % len(self.mask)])[None, :]
+        if b.form.dt == dtype.LLR and self.rep == Rep.DATA: # Descrambling (encoding decides first, as the operator does)
+            b.x = (b.x*(1.0 - 2.0*m)).astype(b.x.dtype)
+            b.form = Form(Mod, self.category, dtype.LLR, self.rep, *b.form[4:])
+        else:
+            b.x = (b.x < 0 if b.form.dt == dtype.LLR else b.x.astype(bool)) ^ m
+            b.form = Form(Digital, self.category, dtype.BITS, self.rep, *b.form[4:])
         return b
 
 class PilotLine(Kernel):

@@ -22,7 +22,7 @@ from ..errors import StreamError
 class _Data:
     __slots__ = (
         "_data",
-        "CAT", "REP", "DT", "ctx", "meta"
+        "CAT", "REP", "DT", "ctx", "meta", "failed"
     )
 
     def __init__(self, data=None, cat=Category.UNK, dt=None, ctx=None, meta=None, rep=None):
@@ -32,6 +32,9 @@ class _Data:
         self.REP = rep if rep is not None else REP_OF.get(dt) # Inferred from the form unless the maker says
         self.ctx = {} if ctx is None else ctx # State the coding/scrambling pipes carry between calls (see `derive`)
         self.meta: Meta = Meta() if meta is None else meta # Rates and the stream of the signal
+        # Bool mask, True where a decoder could not decode the item (rpps.code.Coding sets it from its codewords' status):
+        # it goes along with the items (a step that keeps their number keeps it), and a link header drops such frames
+        self.failed = None
 
     @property
     def flush(self):
@@ -47,7 +50,10 @@ class _Data:
         """New data of this stream: the stages never modify their input. `ctx` is the stream state they updated.
         rep: the representation of the new data; by default the one its form usually has (REP_OF): bits are data bits,
         LLRs channel bits. A code transform says which side of the decoder its bits are on"""
-        return (cls or type(self))(data, cat, dt, dict(self.ctx) if ctx is None else ctx, self.meta if meta is None else meta, rep)
+        out = (cls or type(self))(data, cat, dt, dict(self.ctx) if ctx is None else ctx, self.meta if meta is None else meta, rep)
+        if self.failed is not None and data is not None and len(data) == len(self):
+            out.failed = self.failed # (the same items, in place: a descrambler, a check)
+        return out
 
     # --- signal information ---
     Fs = forward("meta", "Fs", "Sample rate [Hz]")
@@ -148,7 +154,9 @@ class _Data:
 
     def copy(self):
         """Create a copy of data (the stream state is copied too)"""
-        return type(self)(self._data, self.CAT, self.DT, dict(self.ctx), self.meta, self.REP)
+        out = type(self)(self._data, self.CAT, self.DT, dict(self.ctx), self.meta, self.REP)
+        out.failed = self.failed
+        return out
 
 class Analog(_Data):
     """Analog data"""

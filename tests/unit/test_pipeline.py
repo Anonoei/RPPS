@@ -155,7 +155,8 @@ def test_bcjr_conv_stream_decodes_at_the_end(rng):
     first = rp.Data(coded[:200]) / ecc
     assert len(first) == 0                                 # it waits for the end of the stream
     last = rp.Data(coded[200:], ctx=first.ctx, flush=True) / ecc
-    assert np.array_equal(last.data[:300], bits)
+    assert last.DT == rp.dtype.LLR                         # a soft-output decoder hands its LLRs on
+    assert np.array_equal(last.bits()[:300], bits)
 
 def test_scrambling_changes_the_symbols(rng):
     ecc, scr, m = build(("block", "hamming/7_4"), "v35", "qpsk")

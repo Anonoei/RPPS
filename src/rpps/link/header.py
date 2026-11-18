@@ -29,7 +29,7 @@ import numpy as np
 
 from .. import _config
 from ..base import Digital, dtype
-from ..base.rpps import Pipe, FRAME
+from ..base.rpps import Pipe, FRAME, failed_of
 from ..base.types import Category, Rep
 from ..errors import ConfigError
 
@@ -142,6 +142,8 @@ class Header(Pipe):
         x = np.asarray(x).astype(bool)
         pos0 = data.meta.pos
         est = data.meta.stream.est.setdefault(self.name, {"frames": 0, "crc_failed": 0, "last": None})
+        est.setdefault("fec_failed", 0)
+        failed = failed_of(data) # What the decoders before could not decode: those frames are dropped
         out, n_out, i = [], 0, 0
         if self._start:
             self._start = False
@@ -164,6 +166,10 @@ class Header(Pipe):
                 n = self.payload_bits(fields)
                 if self.framed and self.length:
                     n = min(n if n is not None else self.length, self.length - self.header_bits)
+                if failed is not None and failed[max(0, i - self.header_bits):i + (n or 0)].any():
+                    est["fec_failed"] += 1 # The code under it failed: its header passing its CRC proves nothing about the data
+                    st.mode, st.left = "drop", n or 0
+                    continue
                 est["frames"] += 1
                 est["last"] = fields
                 at = st.start + self.header_bits
@@ -176,6 +182,13 @@ class Header(Pipe):
                 take = min(st.left, len(x) - i)
                 out.append(x[i:i + take])
                 n_out += take
+                i += take
+                st.left -= take
+                self._used(st, take)
+                if st.left <= 0:
+                    st.mode = "skip"
+            elif st.mode == "drop": # A failed frame's payload: used up, not given out
+                take = min(st.left, len(x) - i)
                 i += take
                 st.left -= take
                 self._used(st, take)

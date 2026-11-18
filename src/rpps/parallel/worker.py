@@ -53,8 +53,8 @@ class PlanWorker:
         b = plan.run(self.xp, b)
         out = []
         for i, f in enumerate(frames):
-            if b.bad[i]:
-                r = Result.dropped(f, b.why.get(i, "failed"))
+            if b.bad[i] or (b.code_failed is not None and b.code_failed[i]):
+                r = Result.dropped(f, b.why.get(i, "failed" if b.bad[i] else "decoding failed"))
             else:
                 y = np.asarray(b.x[i])
                 r = Result(f.seq, y, f.pos_out, len(y), reports=list(b.notes.get(i, [])), tags=tuple(b.form[:4]))

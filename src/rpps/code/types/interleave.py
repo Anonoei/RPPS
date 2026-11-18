@@ -8,7 +8,10 @@ class forney(_code):
 
     Works on symbols of `symbol` bits (8: bytes). The first symbol must sit on branch 0 (a packet sync byte).
     The deinterleaver has a start-up of (I-1)*I*M symbols before it carries data.
+    LLRs go through as LLRs (each symbol's bits kept together; the start-up gives 0: unknown), so the Reed-Solomon decoder
+    after it gets the soft values a soft-output inner decoder gives, for its erasures.
     """
+    soft = True
     @classmethod
     def from_config(cls, log, obj):
         return cls(log, obj["I"], obj["M"], obj.get("symbol", 8))
@@ -34,22 +37,27 @@ class forney(_code):
             d = ((self.I-1-j) if rev else j) * self.M
             line = state.get((rev, j)) if state is not None else None
             if line is None:
-                line = np.zeros(d, dtype=sym.dtype)
+                line = np.zeros((d,) + sym.shape[1:], dtype=sym.dtype) # (rows of LLRs: a symbol's bits)
             both = np.concatenate((line, x))
             out[j::self.I] = both[:len(x)]
             if state is not None:
                 state[(rev, j)] = both[len(x):]
         return out
 
-    def encode(self, bits, symbols=False, state=None):
-        sym = np.asarray(bits) if symbols else self._to_symbols(bits)
-        out = self._run(sym, rev=False, state=state)
+    def _apply(self, bits, symbols, state, rev):
+        x = np.asarray(bits)
+        if not symbols and x.dtype.kind == "f": # LLRs: a symbol's bits as one row, moved together
+            rows = x[:len(x)//self.symbol*self.symbol].reshape(-1, self.symbol)
+            return self._run(rows, rev=rev, state=state).reshape(-1)
+        sym = x if symbols else self._to_symbols(x)
+        out = self._run(sym, rev=rev, state=state)
         return out if symbols else self._to_bits(out)
 
+    def encode(self, bits, symbols=False, state=None):
+        return self._apply(bits, symbols, state, False)
+
     def decode(self, bits, symbols=False, state=None):
-        sym = np.asarray(bits) if symbols else self._to_symbols(bits)
-        out = self._run(sym, rev=True, state=state)
-        return out if symbols else self._to_bits(out)
+        return self._apply(bits, symbols, state, True)
 
 
 @register("block")

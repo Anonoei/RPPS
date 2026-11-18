@@ -34,6 +34,10 @@ STREAM, FRAME = "stream", "frame"
 
 DROPPED = "dropped" # ctx entry: items a flushed decoder had to drop, as [count, ...]
 FLUSH = "flush" # ctx entry: this is the end of the stream, so nothing is held back (set by Data)
+def failed_of(data):
+    """The data's `failed` mask (True where a decoder before could not decode it), or None: nothing known to have failed"""
+    m = getattr(data, "failed", None)
+    return m if m is not None and len(m) == len(data) else None
 
 
 class Pipe:

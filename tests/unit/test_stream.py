@@ -287,3 +287,14 @@ def test_source_clock_error_and_what_it_gives():
     p = rp.profile.load("ieee802154/2450")
     names = lambda r: [type(op).__name__ for _, op in r.ops]
     assert names(p.rx(source=Timed(np.zeros(4, np.complex64)))) == names(p.rx(start=rp.Rep.SYMBOLS, applied={"timing"}))
+
+def test_interpolate_sends_the_last_pulse_whole():
+    """A flushed transmission ends with its filter's tail: the last symbol is as clean as any other"""
+    pulse = rp.signal.filters.ShapingRRC(65, 4)
+    syms = np.exp(1j*np.pi/4*(2*np.random.default_rng(3).integers(0, 4, 200) + 1)).astype(np.complex64)
+    tx = np.asarray((rp.Data(syms, Fs=1e3, sps=1, flush=True) + rp.signal.sample.up.Interpolate(4, pulse)).data)
+    assert len(tx) == 4*200 + 4*16
+    h = pulse.pulse
+    rx = np.convolve(tx, h)/np.sum(h*h)
+    got = rx[len(h) - 1::4][:200]
+    assert np.max(np.abs(got - syms)) < 0.05 # the last symbols too

@@ -133,9 +133,13 @@ class rs(_code):
                 order = self.sent[np.argsort(rel[w], kind="stable")] # Least reliable first
                 order = [int(p) for p in order if int(p) not in base]
                 for extra in range(2, self.nroots - len(base) + 1, 2):
-                    fixed = self._correct(cw[w], S[w], base | set(order[:extra]))
-                    if fixed is not None:
+                    erased = base | set(order[:extra])
+                    trial = cw[w].copy()
+                    fixed = self._correct(trial, S[w], erased)
+                    if fixed is not None and self._trusted(cw[w], trial, erased):
+                        cw[w] = trial
                         break
+                    fixed = None
             self.errors[w] = -1 if fixed is None else fixed
         out = cw[:, :self.num].reshape(-1)
         return out if symbols else self.to_bits(out)
@@ -159,12 +163,22 @@ class rs(_code):
                     mask = base.copy()
                     mask[order[:extra]] = True
                     one, err = nat.cyclic_decode(cw[w:w+1], mask[None].astype(np.uint8), *args)
-                    if err[0] >= 0:
+                    if err[0] >= 0 and self._trusted(cw[w], one[0], set(np.nonzero(mask)[0].tolist())):
                         out[w], errors[w] = one[0], err[0]
                         break
         self.errors = errors.astype(int)
         res = out[:, :self.num].reshape(-1)
         return res if symbols else self.to_bits(res)
+
+    RETRY_MARGIN = 2 # Parity symbols a soft retry must leave unused: erasing enough positions decodes any word to *some*
+                     # codeword, so a retry is kept only when the checks it did not spend (each passes a wrong word 1 time
+                     # in the field size) vouch for it
+
+    def _trusted(self, received, decoded, erased):
+        """A soft retry's word, kept when f erasures and e errors outside them leave RETRY_MARGIN checks: 2e + f + margin <= nroots"""
+        changed = np.nonzero(np.asarray(received) != np.asarray(decoded))[0]
+        e = sum(1 for p in changed.tolist() if p not in erased)
+        return 2*e + len(erased) + self.RETRY_MARGIN <= self.nroots
 
     def _correct(self, word, S, erasures=()):
         """Fix one full-length word in place. Returns the number of changed symbols, None if it can't be corrected"""

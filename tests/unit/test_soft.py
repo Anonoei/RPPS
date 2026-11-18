@@ -213,3 +213,39 @@ def test_hard_only_decoder_still_works_behind_soft_demod(rng):
     want = msg.as_bytes().hex
     out = (((msg*ecc*mod) / mod) / ecc).as_bytes().hex
     assert out == want
+
+def test_rs_soft_retry_never_passes_noise():
+    """Erasing enough positions decodes any word to some codeword: a soft retry is kept only with checks to spare, so random
+    words (no codeword near) are reported failed, never 'corrected'"""
+    rs = rp.code.load("block", "rs/204_188").decoder
+    rng = np.random.default_rng(11)
+    llr = rng.standard_normal(204*8*40)*2
+    rs.decode(llr)
+    assert np.all(rs.errors == -1)
+
+def test_rs_soft_retry_still_corrects_with_erasures():
+    """A word with errors past t = 8 symbols, but where the soft values say which bytes are doubtful, is corrected"""
+    code = rp.code.load("block", "rs/204_188")
+    rng = np.random.default_rng(12)
+    msg = rng.integers(0, 2, 188*8).astype(bool)
+    cw = code.encoder.encode(msg)
+    llr = 4.0*(1.0 - 2.0*cw)
+    bad = rng.choice(204, 10, replace=False) # 10 byte errors (t = 8), all with low confidence
+    for b in bad:
+        llr[8*b:8*b + 8] = -0.1*np.sign(llr[8*b:8*b + 8])
+    out = code.decoder.decode(llr)
+    assert code.decoder.errors[0] >= 0 and np.array_equal(np.asarray(out).astype(bool), msg)
+
+def test_forney_and_bcjr_pass_llrs_on():
+    """LLRs through a Forney deinterleaver stay LLRs (the same permutation as on bits), and a BCJR decoder hands its
+    a-posteriori LLRs on in a chain"""
+    il = rp.code.load("interleave", "forney/12_17").decoder
+    rng = np.random.default_rng(13)
+    llr = rng.standard_normal(8*12*17*12)
+    soft = il.decode(llr, state={})
+    hard = il.decode(llr < 0, state={})
+    assert soft.dtype.kind == "f" and np.array_equal((soft < 0)[soft != 0], np.asarray(hard)[soft != 0])
+    cv = rp.code.load("conv", "k7_133_171/1_2", decoder="bcjr")
+    m = rng.integers(0, 2, 400).astype(bool)
+    y = rp.base.Mod(4.0*(1.0 - 2.0*cv.encoder.encode(m)), rep=rp.Rep.CHANNEL, ctx={rp.base.rpps.FLUSH: True}) / cv
+    assert y.DT == rp.dtype.LLR and np.array_equal(np.asarray(y.data)[:400] < 0, m)

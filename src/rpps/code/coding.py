@@ -11,7 +11,7 @@ from . import base
 from .. import _config
 from ..base import Mod, Digital, dtype
 from ..base.types import Category, Rep
-from ..base.rpps import align, FLUSH, FRAME, STREAM
+from ..base.rpps import align, FLUSH, FRAME, STREAM, failed_of
 
 from . import types as types
 
@@ -129,8 +129,28 @@ class Coding(base.rpps.Pipe):
         y = self._process(self.encoder if enc else self.decoder, x, ctx, enc)
         rep = self.ENCODE_GIVES if enc else self.DECODE_GIVES
         if np.asarray(y).dtype.kind == "f": # Soft values that went through (an interleaver): still LLRs
-            return data.derive(y, self.CATEGORY, dtype.LLR, Mod, ctx, rep=rep)
-        return data.derive(y, self.CATEGORY, dtype.BITS, Digital, ctx, rep=rep)
+            out = data.derive(y, self.CATEGORY, dtype.LLR, Mod, ctx, rep=rep)
+        else:
+            out = data.derive(y, self.CATEGORY, dtype.BITS, Digital, ctx, rep=rep)
+        out.failed = None if enc else self._failed(failed_of(data), len(data), len(x), len(y))
+        return out
+
+    def _failed(self, prev, n_data, n_in, n):
+        """The `failed` mask of a decode's output (None: all decoded): its own verdict per codeword when it has one (a later
+        code's success clears an earlier failure: BCH after LDPC), else what came in failed, carried block by block through
+        a permutation (an interleaver); nothing known otherwise. prev: the input's mask over n_data items, of which the
+        decoder took n_in (whole blocks, the same items when nothing was held back)"""
+        if not n:
+            return None
+        errs = getattr(self.decoder, "errors", None)
+        mask = None
+        if errs is not None and len(errs) and n % len(errs) == 0:
+            mask = np.repeat(np.asarray(errs) < 0, n//len(errs))
+        elif prev is not None and n_data == n_in == n:
+            blk = self._block(False)
+            if blk and n % blk == 0:
+                mask = np.repeat(np.asarray(prev).reshape(-1, blk).any(axis=1), blk)
+        return mask if mask is not None and mask.any() else None
 
     @staticmethod
     @abstractmethod
@@ -297,7 +317,11 @@ class Convolutional(Coding):
             return np.zeros(0, dtype=bool)
         if not len(x):
             return np.zeros(0, dtype=bool)
-        return coder.encode(x) if enc else coder.decode(x)
+        if enc:
+            return coder.encode(x)
+        # A soft-output decoder (BCJR) gives its a-posteriori LLRs on: the next code step (an outer Reed-Solomon code's
+        # erasures, an iterative receiver) still has the soft values
+        return coder.app(x) if hasattr(coder, "app") else coder.decode(x)
 
 class Interleaver(Coding):
     SCOPE = FRAME # A block interleaver; a Forney one carries delay lines (STREAM, set when loaded)
