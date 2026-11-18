@@ -11,7 +11,6 @@ from . import base
 from .. import _config
 from ..base import Mod, Digital, dtype
 from ..base.types import Category, Rep
-from ..base.data import expect
 from ..base.rpps import align, FLUSH, FRAME, STREAM
 
 from . import types as types
@@ -144,13 +143,6 @@ class Coding(base.rpps.Pipe):
         decoders without codewords (Viterbi, BCJR of a convolutional code)"""
         return getattr(self._dec, "errors", None)
 
-    def __rmul__(self, data):
-        expect(self, data, self.takes(True), True)
-        return self.encode(data)
-
-    def __rtruediv__(self, data):
-        expect(self, data, self.takes(False), False)
-        return self.decode(data)
 
     @property
     def e_num(self):

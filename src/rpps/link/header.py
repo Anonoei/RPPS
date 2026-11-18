@@ -31,7 +31,6 @@ from .. import _config
 from ..base import Digital, dtype
 from ..base.rpps import Pipe, FRAME
 from ..base.types import Category, Rep
-from ..base.data import expect
 from ..errors import ConfigError
 
 class Header(Pipe):
@@ -244,13 +243,6 @@ class Header(Pipe):
         y = np.concatenate(out) if out else np.zeros(0, bool)
         return data.derive(y, self.CATEGORY, dtype.BITS, Digital, ctx, rep=Rep.DATA)
 
-    def __rmul__(self, data):
-        expect(self, data, self.takes(True), True)
-        return self.encode(data)
-
-    def __rtruediv__(self, data):
-        expect(self, data, self.takes(False), False)
-        return self.decode(data)
 
     @staticmethod
     def load(name, obj):

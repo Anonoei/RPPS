@@ -64,11 +64,15 @@ class Pipe:
         """Decode data"""
         return NotImplemented
     def __rmul__(self, data):
-        """Encode data"""
-        return NotImplemented
+        """data * pipe: encode, after checking the pipe takes what data is"""
+        from .data import expect
+        expect(self, data, self.takes(True), True)
+        return self.encode(data)
     def __rtruediv__(self, data):
-        """Decode data"""
-        return NotImplemented
+        """data / pipe: decode, after checking the pipe takes what data is"""
+        from .data import expect
+        expect(self, data, self.takes(False), False)
+        return self.decode(data)
 
     def __mul__(self, other):
         if isinstance(other, Pipe):
