@@ -140,15 +140,6 @@ def read_table(path, fmt=None, dtype=None, key=None):
         return [a] if a.ndim <= 1 else [row for row in a]
     raise ValueError(f"unknown format {fmt!r}")
 
-def read_array(path, fmt=None, dtype=None, key=None):
-    """The numbers of a file as one array: 1-D for a vector or a single row, 2-D for rows of one length"""
-    rows = read_table(path, fmt, dtype, key)
-    if len(rows) == 1:
-        return np.asarray(rows[0])
-    if len({len(r) for r in rows}) != 1:
-        raise ValueError(f"{Path(path).name}: rows of different lengths {[len(r) for r in rows]}")
-    return np.vstack(rows)
-
 # ---- Definitions from arrays
 
 def _nums(a):

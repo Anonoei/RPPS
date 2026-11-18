@@ -15,7 +15,6 @@ from time import perf_counter
 import numpy as np
 
 from .types import Category, Rep, dtype, REP_OF
-from .buffer import Buffer
 from .meta import Meta
 from .rpps import FLUSH
 from ..errors import StreamError
@@ -334,8 +333,6 @@ def Data(data, ctx=None, flush=False, Fs=None, sps=None, cf=None, stream=None, d
     meta = Meta(1.0 if Fs is None else Fs, 0.0 if sps is None else sps, 0.0 if cf is None else cf, delay, stream)
     if t0 is not None:
         meta.stream.t0 = float(t0)
-    if isinstance(data, Buffer):
-        data = data._stor
     if isinstance(data, np.ndarray):
         if data.dtype == bool:
             d = Digital(data, dt=dtype.BITS, ctx=ctx, meta=meta)

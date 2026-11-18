@@ -45,7 +45,6 @@ def test_mixture_variance(rng):
 
 def test_dsp_exports():
     assert callable(rp.analysis.psd) and callable(rp.analysis.find_baud) and callable(rp.analysis.find_signals)
-    assert callable(rp.analysis.stft.stft) and callable(rp.analysis.stft.psd)
     assert not hasattr(rp.utils, "psd") and hasattr(rp.utils, "arg_freq")
 
 @pytest.mark.parametrize("sps", [6, 8, 10])
@@ -68,15 +67,6 @@ def test_psd_peak_at_tone():
     p = rp.analysis.psd(x, Fs)
     freqs = np.fft.fftshift(np.fft.fftfreq(N, 1/Fs))
     assert freqs[np.argmax(p)] == pytest.approx(f, abs=Fs/N)
-
-def test_stft_shapes_and_tone(rng):
-    Fs, nfft = 1e5, 256
-    x = np.exp(2j*np.pi*10e3/Fs*np.arange(8192)).astype(np.complex64)
-    snips = rp.analysis.stft.stft(x, nfft, 0.5, "hann")
-    assert snips.shape[0] == nfft and snips.shape[1] > 20
-    ps = rp.analysis.stft.psd(snips, Fs)
-    assert ps.shape == snips.shape
-    assert (np.argmax(ps, axis=0) == np.argmax(ps[:, 0])).all() # The tone stays in one bin
 
 def test_find_signals_locates_a_band(rng):
     Fs, N = 1e6, 1 << 18

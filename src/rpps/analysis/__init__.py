@@ -6,7 +6,7 @@
    product, LDPC: length, alignment and checks by rank) and puncture patterns, for what no definition covers
  - modulation: symbol rate, timing, modulation, frequency offset and phase from baseband samples
  - quality: Es/N0, Eb/N0 and EVM of locked symbols
- - psd, stft: spectra; rate: symbol rate; signal: finding the signals in a capture (survey)
+ - psd: spectra; rate: symbol rate; signal: finding the signals in a capture (survey)
 Results feed the configured stages (`Guess.save` writes a config/fec definition, `Detection` fills meta.stream.det,
 `fec.CodeDetection` (from `fec.identify`, which rp.sync.AcquireFEC runs) names the profile that decodes a stream).
 """
@@ -18,7 +18,6 @@ from . import modulation
 from . import quality
 from .modulation import detect, Detection
 
-from . import stft
 from . import rate
 from . import signal
 from .rate import find_rate, find_baud
