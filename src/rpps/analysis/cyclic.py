@@ -147,8 +147,8 @@ def lines(z, Fs, lo, hi, pfa=1e-3, top=4, pad=2, width=None, exclude=None):
     return out
 
 def occupied(x, Fs, nfft=1024):
-    """(Wiener mask over FFT bins of x's length, occupied bandwidth Hz): the signal's band estimated from a Welch PSD over its
-    floor (the quietest tenth of the spectrum)"""
+    """(Wiener mask over FFT bins of x's length, occupied bandwidth Hz, (lowest, highest) frequency over the floor Hz): the
+    signal's band estimated from a Welch PSD over its floor (the quietest tenth of the spectrum)"""
     n = len(x)
     nfft = int(min(nfft, 2**int(np.log2(max(n//8, 16)))))
     seg = n//nfft
@@ -159,14 +159,56 @@ def occupied(x, Fs, nfft=1024):
     bw = Fs*np.count_nonzero(sig >= N0)/nfft # Bins over 0 dB SNR
     # Wiener gain, never under -20 dB and smoothed over a few bins: a mask with hard zeros or steps makes edges a running
     # floor cannot follow (false lines there)
-    G = np.maximum(sig/np.maximum(S, 1e-300), 0.01)
+    band, edges = _edges(sig >= N0, sig, Fs)
+    G = np.maximum(sig/np.maximum(S, 1e-300)*band, 0.01) # only the signal's own band: a spur elsewhere would make lines
     G = np.convolve(np.concatenate((G[-5:], G, G[:5])), np.hanning(11)/np.sum(np.hanning(11)), mode="valid")
     G = np.sqrt(G) # Amplitude gain
     fb = np.fft.fftfreq(nfft)
     fx = np.fft.fftfreq(n)
     o = np.argsort(fb)
     mask = np.interp(fx, fb[o], G[o], period=1.0)
-    return mask, bw
+    return mask, bw, edges
+
+def _edges(on, power, Fs):
+    """The run of `on` bins (FFT order, circular) holding the most power among those wider than a tone: the signal's band,
+    not a spur's bin elsewhere. Returns (1 on the run's bins, (lowest, highest) frequency Hz)"""
+    n = len(on)
+    if not on.any() or on.all():
+        return np.ones(n), (-Fs/2, Fs/2)
+    wide = max(8, n//50) # a tone (and its window and smoothing) is a few bins; a channel is wider than 2% of itself
+    # Close gaps narrower than that: a weak signal's band is ragged at the floor
+    on = on.copy()
+    off = np.flatnonzero(~on)
+    if len(off):
+        gaps = np.split(off, np.flatnonzero(np.diff(off) > 1) + 1)
+        if len(gaps) > 1 and gaps[0][0] == 0 and gaps[-1][-1] == n - 1: # the gap across the wrap is one gap
+            gaps = [np.concatenate((gaps[-1], gaps[0]))] + gaps[1:-1]
+        for g in gaps:
+            if len(g) < wide:
+                on[g] = True
+    if on.all():
+        return np.ones(n), (-Fs/2, Fs/2)
+    start = int(np.flatnonzero(~on)[0]) # a gap: runs never wrap past it
+    best, run, total, wide_power = None, [], 0.0, 0.0
+    for i in range(start, start + n + 1):
+        k = i % n
+        if i < start + n and on[k]:
+            run.append(i)
+            total += power[k]
+        elif run:
+            key = (len(run) >= wide, total) # a tone is a bin or three: a signal's band is wider
+            wide_power += total if len(run) >= wide else 0.0
+            if best is None or key > best[0]:
+                best = (key, run[0], run[-1])
+            run, total = [], 0.0
+    (_, held), a, b = best
+    if held < 0.5*wide_power: # no one band holds most of it: several signals, or one at the floor
+        return np.ones(n), (-Fs/2, Fs/2)
+    f = lambda i: ((i % n) - n if (i % n) >= n/2 else (i % n))*Fs/n
+    lo = f(a)
+    band = np.zeros(n)
+    band[np.arange(a, b + 1) % n] = 1.0
+    return band, (lo, lo + (b - a)*Fs/n)
 
 def _tag(ls, kind):
     for l in ls:
@@ -227,9 +269,9 @@ def features(x, Fs, lo=None, hi=None, pfa=1e-3, orders=(1, 2, 4, 8, 12), mask=Tr
     hi = Fs/1.5 if hi is None else hi
     p2 = np.mean(np.abs(x)**2)
     env = float(np.mean(np.abs(x)**4)/max(p2**2, 1e-300)) if n else 0.0
-    bw = Fs
+    bw, edges = Fs, (-Fs/2, Fs/2)
     if mask and n >= 1024:
-        G, bw = occupied(x, Fs)
+        G, bw, edges = occupied(x, Fs)
         if bw > 0:
             x = np.fft.ifft(np.fft.fft(x)*G)
     out = dict(lines=[], carrier={}, envelope=env, bandwidth=bw, pfa=pfa)
@@ -264,10 +306,22 @@ def features(x, Fs, lo=None, hi=None, pfa=1e-3, orders=(1, 2, 4, 8, 12), mask=Tr
                 out["lines"].append(l)
                 if l.significant:
                     found[M] = l
+    # A line of x^M at f is a carrier at (f + k Fs)/M for some k: the one in the band, nearest its centre. A line whose
+    # carrier would be outside the band is a spur or another signal's, not this one's
+    centre, half = (edges[0] + edges[1])/2, (edges[1] - edges[0])/2 + 0.1*bw
+    cfo = {}
+    for M, l in list(found.items()):
+        cands = [(l.freq + k*Fs)/M for k in range(-M, M + 1)]
+        cands = [c for c in cands if -Fs/2 <= c <= Fs/2]
+        c = min(cands, key=lambda c: abs(c - centre))
+        if abs(c - centre) <= half:
+            cfo[M] = c
+        else:
+            del found[M]
     out["carrier"] = dict(sorted(found.items()))
     if found:
         M = min(found)
-        out.update(order=M, cfo=found[M].freq/M)
+        out.update(order=M, cfo=cfo[M])
     return Features(**out)
 
 def scf(x, Fs, nfft=64, frames=None, hop=None):

@@ -65,3 +65,13 @@ def test_alpha_profile_peaks_at_the_rate():
     x, _ = shaped(np.random.default_rng(3), rp.symbol.PSK(4).points, 4000, 4, esn0_db=15)
     a, p = cyclic.alpha_profile(x, 4.0)
     assert a[np.argmax(p*(a > 0.1))] == pytest.approx(1.0, abs=0.02)
+
+def test_carrier_is_inside_the_band():
+    """A tone outside the signal's band (a spur) is not its carrier; an x^M line's alias is resolved into the band"""
+    rng = np.random.default_rng(6)
+    x, _ = shaped(rng, rp.symbol.PSK(4).points, 20000, 8.0, beta=0.35, esn0_db=15, cfo=-0.1) # centred at -100 kHz
+    n = np.arange(len(x))
+    spur = 0.5*np.exp(2j*np.pi*0.35*n) # at +350 kHz, outside the band
+    f = cyclic.features(x + spur, FS)
+    assert f.order == 4 and f.cfo == pytest.approx(-0.1*FS, abs=5)
+    assert 1 not in f.carrier
