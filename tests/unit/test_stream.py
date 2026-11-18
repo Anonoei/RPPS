@@ -226,3 +226,33 @@ def test_interpolate_is_zeros_then_filter(ratio, taps, native):
             assert d.Fs == dr.Fs and d.sps == dr.sps and d.delay == pytest.approx(dr.delay)
     finally:
         _accel.native = saved
+
+def _tee_run(tee, x, cut, **rates):
+    outs, st, i = {}, None, 0
+    for b in cut:
+        d = rp.Data(x[i:i+b], stream=st, **rates)
+        st = d.stream
+        for k, v in (d + tee).items():
+            outs.setdefault(k, []).append(np.asarray(v.data))
+        i += b
+    return {k: np.concatenate(v) for k, v in outs.items()}, v
+
+def test_tee_branches_share_stages_not_state():
+    """One stage in two branches has a state in each: each branch gives what it gives alone, however the stream is cut"""
+    rng = np.random.default_rng(9)
+    x = (rng.standard_normal(3000) + 1j*rng.standard_normal(3000)).astype(np.complex64)
+    lp = rp.signal.filters.low_pass(63, 0.2)
+    shift = rp.signal.filters.ShiftFreq(0.05)
+    tee = rp.Tee(plain=lp, shifted=shift + lp)
+    alone_plain = np.asarray((rp.Data(x, Fs=1.0) + rp.signal.filters.low_pass(63, 0.2)).data)
+    alone_shift = np.asarray((rp.Data(x, Fs=1.0) + rp.signal.filters.ShiftFreq(0.05) + rp.signal.filters.low_pass(63, 0.2)).data)
+    for cut in ([3000], [1, 0, 999, 2000]):
+        out, last = _tee_run(tee, x, cut, Fs=1.0)
+        np.testing.assert_allclose(out["plain"], alone_plain, atol=1e-5)
+        np.testing.assert_allclose(out["shifted"], alone_shift, atol=1e-5)
+    assert last.state(shift) is not None and last.cf == pytest.approx(0.05)
+
+def test_tee_needs_branches_and_data():
+    with pytest.raises(ValueError):
+        rp.Tee()
+    assert rp.Tee(a=rp.signal.DCBlock()).__radd__(np.zeros(3)) is NotImplemented

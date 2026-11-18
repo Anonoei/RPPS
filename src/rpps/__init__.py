@@ -67,7 +67,7 @@ from ._config import load_ref as load
 from .base.types import Category, Rep, dtype
 from .base import data
 from .base.data import Data
-from .base import Pipeline, Pipe, Stage, BitStage, Stream
+from .base import Pipeline, Pipe, Stage, BitStage, Stream, Tee
 
 from . import base
 from . import math
