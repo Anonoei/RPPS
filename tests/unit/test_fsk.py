@@ -38,3 +38,12 @@ def test_demodulate_needs_fsk():
     assert r.M is None
     with pytest.raises(ValueError):
         fsk.demodulate(np.zeros(100, np.complex64), FS, r)
+
+@pytest.mark.parametrize("M, h", [(2, 0.5), (2, 0.7), (4, 0.25), (2, 1.0)])
+def test_cpm_index_from_the_phase_lattice(M, h):
+    rng = np.random.default_rng(int(10*h) + M)
+    sps = 8.3
+    x, _ = cpfsk(rng, 6000, sps, M, h, None, snr_db=20, cfo=0.004)
+    r = fsk.analyze(x, FS)
+    got, score = fsk.cpm_index(x, FS, FS/sps, r.tau if r.M else None)
+    assert got == pytest.approx(h, abs=0.02) and score > 0.6

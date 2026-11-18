@@ -250,3 +250,30 @@ def demodulate(x, Fs, r, mask=True):
     _, v = _centre_freqs(x, Fs, Fs/r.baud, r.tau)
     v = v + np.median(discriminator(x, Fs)) # _centre_freqs is relative to the median
     return np.argmin(np.abs(v[:, None] - np.asarray(r.levels)[None, :]), axis=1)
+
+def cpm_index(x, Fs, baud, tau=None, h_range=(0.05, 2.0), steps=1951, lags=(1, 2, 3, 4)):
+    """The modulation index h of a full-response CPM (CPFSK, MSK, M-ary), from the phase lattice: between symbol
+    boundaries N apart the phase moves pi h (a sum of N odd levels), whose parity is N's, so exp(j dphi / h) is (-1)^N for
+    every pair at the right h, and averages away at a wrong one. A submultiple of h fits too: the largest h scoring near
+    the best is taken. tau: a symbol centre (samples, as `analyze` gives; default from the discriminator).
+    Returns (h, score 0..1). Partial-response CPM (L > 1, GMSK) leaves pulses straddling the boundaries: lower scores"""
+    x = np.asarray(x, dtype=np.complex128)
+    sps = Fs/baud
+    f = discriminator(x, Fs)
+    if tau is None:
+        tau = _timing(f - np.median(f), sps)
+    ph = np.concatenate(([0.0], np.cumsum(np.angle(x[1:]*np.conj(x[:-1]))))) # unwrapped phase, rad
+    b = (tau - sps/2) % sps + sps*np.arange(int((len(x) - 1 - (tau - sps/2) % sps)//sps))
+    pb = np.interp(b, np.arange(len(ph)), ph)
+    # The carrier offset adds 2 pi f N sps/Fs to every N-symbol step: take it off (the steps' mean, lattice symmetric)
+    hs = np.linspace(h_range[0], h_range[1], steps)
+    score = np.zeros(steps)
+    for N in lags:
+        d = pb[N:] - pb[:-N]
+        d = d - np.mean(d)
+        score += np.abs(np.mean(np.exp(1j*d[None, :]/hs[:, None]), axis=1))
+    score /= len(lags)
+    best = score.max()
+    peaks = np.flatnonzero((score[1:-1] >= score[:-2]) & (score[1:-1] >= score[2:]) & (score[1:-1] >= 0.9*best)) + 1
+    k = peaks[-1] if len(peaks) else int(np.argmax(score)) # the largest h whose peak is about the best
+    return float(hs[k]), float(score[k])
