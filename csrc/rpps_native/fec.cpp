@@ -18,27 +18,22 @@ namespace {
 
 constexpr double INF = std::numeric_limits<double>::infinity();
 
-// ---------------------------------------------------------------- LDPC: normalised min-sum, flooding schedule
-// Edges are grouped by check: var[e] is the variable of edge e, check c owns edges cstart[c] .. cstart[c] + deg[c].
-// order: the edges grouped by variable, variable v owning order[vstart[v] .. vend[v]). The variable update is the
-// difference of one running sum over `order`, as the numpy decoder computes it, so the two agree exactly.
-// Each codeword stops at its own convergence (the numpy decoder stops when the whole batch has).
+// Layered normalized min-sum (rpps/code/types/ldpc.py min_sum): the checks in `rows` order (a colouring's layers one after
+// the other: within a layer no two checks share a variable, so going row by row gives what the numpy decoder's layer at a
+// time does). For each check: q = total - r (the variable's value without this check), the sign product and the two
+// smallest |q|, r = alpha * sign * the smallest of the others, total = q + r. Each codeword stops when every check holds.
 py::tuple ldpc_minsum(carray<double> llr, carray<int64_t> var_a, carray<int64_t> cstart_a, carray<int64_t> deg_a,
-                      carray<int64_t> order_a, carray<int64_t> vstart_a, carray<int64_t> vend_a, int iters, double alpha, int threads) {
+                      carray<int64_t> rows_a, int iters, double alpha, int threads) {
     check_shape(llr, {-1, -1}, "llr");
-    const long long B = llr.shape(0), N = llr.shape(1), E = var_a.size(), M = cstart_a.size();
+    const long long B = llr.shape(0), N = llr.shape(1), E = var_a.size(), M = cstart_a.size(), R = rows_a.size();
     check_shape(deg_a, {M}, "deg");
-    check_shape(order_a, {E}, "order");
-    check_shape(vstart_a, {N}, "vstart");
-    check_shape(vend_a, {N}, "vend");
-    const int64_t *var = var_a.data(), *cstart = cstart_a.data(), *deg = deg_a.data(), *order = order_a.data(),
-                  *vstart = vstart_a.data(), *vend = vend_a.data();
+    const int64_t *var = var_a.data(), *cstart = cstart_a.data(), *deg = deg_a.data(), *rows = rows_a.data();
     for (long long e = 0; e < E; e++)
-        if (var[e] < 0 || var[e] >= N || order[e] < 0 || order[e] >= E) throw std::invalid_argument("ldpc: edge tables out of range");
+        if (var[e] < 0 || var[e] >= N) throw std::invalid_argument("ldpc: edge tables out of range");
     for (long long c = 0; c < M; c++)
         if (deg[c] < 1 || cstart[c] < 0 || cstart[c] + deg[c] > E) throw std::invalid_argument("ldpc: check tables out of range");
-    for (long long v = 0; v < N; v++)
-        if (vstart[v] < 0 || vend[v] > E || vstart[v] > vend[v]) throw std::invalid_argument("ldpc: variable tables out of range");
+    for (long long k = 0; k < R; k++)
+        if (rows[k] < 0 || rows[k] >= M) throw std::invalid_argument("ldpc: row order out of range");
     py::array_t<bool> hard({B, N});
     py::array_t<bool> conv(static_cast<py::ssize_t>(B));
     const double *ch_all = llr.data();
@@ -47,38 +42,36 @@ py::tuple ldpc_minsum(carray<double> llr, carray<int64_t> var_a, carray<int64_t>
         py::gil_scoped_release nogil;
         parallel_for(B, threads, [&](long long b) {
             const double *ch = ch_all + b*N;
-            std::vector<double> v2c(E), c2v(E), total(ch, ch + N), cs(E + 1);
-            for (long long e = 0; e < E; e++) v2c[e] = ch[var[e]];
+            std::vector<double> total(ch, ch + N), r(E, 0.0), q;
             bool done = false;
-            for (int it = 0; it < iters; it++) {
-                for (long long c = 0; c < M; c++) { // check nodes
-                    const long long e0 = cstart[c], d = deg[c];
+            for (int it = 0; it < iters && !done; it++) {
+                for (long long k = 0; k < R; k++) {
+                    const long long c = rows[k], e0 = cstart[c], d = deg[c];
+                    q.resize(static_cast<size_t>(d));
                     int negs = 0; long long i1 = 0; double min1 = INF;
-                    for (long long k = 0; k < d; k++) {
-                        const double v = v2c[e0 + k];
+                    for (long long j = 0; j < d; j++) {
+                        const double v = total[var[e0 + j]] - r[e0 + j];
+                        q[j] = v;
                         if (v < 0) negs++;
                         const double a = std::fabs(v);
-                        if (k == 0 || a < min1) { min1 = a; i1 = k; } // first minimum, as argmin
+                        if (j == 0 || a < min1) { min1 = a; i1 = j; } // first minimum, as argmin
                     }
                     double min2 = INF;
-                    for (long long k = 0; k < d; k++) if (k != i1) min2 = std::min(min2, std::fabs(v2c[e0 + k]));
+                    for (long long j = 0; j < d; j++) if (j != i1) min2 = std::min(min2, std::fabs(q[j]));
                     const double total_sign = (negs % 2 == 1) ? -1.0 : 1.0;
-                    for (long long k = 0; k < d; k++) {
-                        const double s = total_sign * (v2c[e0 + k] < 0 ? -1.0 : 1.0);
-                        c2v[e0 + k] = alpha*s*(k == i1 ? min2 : min1);
+                    for (long long j = 0; j < d; j++) {
+                        const double s = total_sign * (q[j] < 0 ? -1.0 : 1.0);
+                        const double nr = alpha*s*(j == i1 ? min2 : min1);
+                        r[e0 + j] = nr;
+                        total[var[e0 + j]] = q[j] + nr;
                     }
                 }
-                cs[0] = 0.0; // variable nodes
-                for (long long k = 0; k < E; k++) cs[k + 1] = cs[k] + c2v[order[k]];
-                for (long long v = 0; v < N; v++) total[v] = ch[v] + cs[vend[v]] - cs[vstart[v]];
-                for (long long e = 0; e < E; e++) v2c[e] = total[var[e]] - c2v[e];
                 done = true;
                 for (long long c = 0; c < M && done; c++) {
                     int par = 0;
-                    for (long long k = 0; k < deg[c]; k++) par ^= total[var[cstart[c] + k]] < 0 ? 1 : 0;
+                    for (long long j = 0; j < deg[c]; j++) par ^= total[var[cstart[c] + j]] < 0 ? 1 : 0;
                     if (par) done = false;
                 }
-                if (done) break;
             }
             for (long long v = 0; v < N; v++) hd[b*N + v] = total[v] < 0;
             cv[b] = done;
@@ -279,9 +272,9 @@ py::tuple cyclic_decode(carray<int64_t> words, carray<uint8_t> erased, carray<in
 } // namespace
 
 void register_fec(py::module_ &m) {
-    m.def("ldpc_minsum", &ldpc_minsum, "ldpc_minsum(llr (B, N), var, cstart, deg, order, vstart, vend, iters, alpha, threads) -> (hard (B, N), converged (B))",
-          py::arg("llr"), py::arg("var"), py::arg("cstart"), py::arg("deg"), py::arg("order"), py::arg("vstart"), py::arg("vend"),
-          py::arg("iters"), py::arg("alpha"), py::arg("threads") = 0);
+    m.def("ldpc_minsum", &ldpc_minsum, "ldpc_minsum(llr (B, N), var, cstart, deg, rows (check order: the layers), iters, alpha, threads) -> (hard (B, N), converged (B))",
+          py::arg("llr"), py::arg("var"), py::arg("cstart"), py::arg("deg"), py::arg("rows"), py::arg("iters"), py::arg("alpha"),
+          py::arg("threads") = 0);
     m.def("gf_syndromes", &gf_syndromes, "gf_syndromes(words (W, N), exp, log, nroots, fcr, prim) -> S (W, nroots)",
           py::arg("words"), py::arg("exp"), py::arg("log"), py::arg("nroots"), py::arg("fcr"), py::arg("prim"));
     m.def("cyclic_correct", &cyclic_correct, "cyclic_correct(S, exp, log, N, nroots, t, fcr, prim, binary, erasures) -> (positions, values) or None",
