@@ -15,7 +15,7 @@ _CRC24A = rp.link.load("crc", "crc24_lte_a").encoder
 
 def crc24a(bits):
     """gCRC24A (36.212 5.1.1), zero start, MSB first: returns 24 bits"""
-    return [int(b) for b in _CRC24A.to_bits(_CRC24A.compute_bits(bits))]
+    return _CRC24A.field(bits).astype(int).tolist()
 
 def _turbo(K):
     return rp.code.load("block", "turbo/lte", K=K).encoder

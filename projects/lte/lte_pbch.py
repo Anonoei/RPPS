@@ -59,7 +59,7 @@ _CRC16 = rp.link.load("crc", "crc16_xmodem").encoder # 36.212 5.1.1 gCRC16: D^16
 
 def crc16(bits):
     """CRC (36.212 5.1.1) of a bit list, fed MSB first; returns 16 bits"""
-    return [int(b) for b in _CRC16.to_bits(_CRC16.compute_bits(bits))]
+    return _CRC16.field(bits).astype(int).tolist()
 
 CRC_MASKS = {1: [0]*16, 2: [1]*16, 4: [0, 1]*8} # table 5.3.1.1-1: number of antenna ports -> mask
 

@@ -109,7 +109,7 @@ class Header(Pipe):
         """A header's bits for these field values"""
         bits = np.concatenate([self._value_bits(int(values.get(f["name"], 0)), int(f["bits"])) for f in self.fields])
         if self.crc is not None:
-            bits = np.concatenate((bits, self.crc.to_bits(self.crc.compute_bits(bits))))
+            bits = np.concatenate((bits, self.crc.field(bits)))
         return bits
 
     def _tx_values(self, nbits):

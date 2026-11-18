@@ -34,7 +34,7 @@ def crc24(bits, init=0x555555):
     """CRC-24 over `bits` in transmitted order; returns the 24 bits in the order they are sent"""
     if init != _CRC24.init:
         raise ValueError("only the advertising CRC init (0x555555) is set up")
-    return [int(b) for b in _CRC24.to_bits(_CRC24.compute_bits(bits))]
+    return _CRC24.field(bits).astype(int).tolist()
 
 def bursts(x, fs=FS, factor=6.0, win=8, min_us=60, max_us=3000):
     p = np.abs(x)**2

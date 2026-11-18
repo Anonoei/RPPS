@@ -109,10 +109,14 @@ class crc(_code):
             raise ValueError(f"{len(bits)} bits: shorter than the {self.width}-bit CRC")
         return bits[:-self.width], bits[-self.width:]
 
+    def field(self, bits, mask=0):
+        """The CRC field of message bits, as it is sent after them (bools, `width` of them)"""
+        return self.to_bits(self.compute_bits(bits) ^ mask)
+
     def encode(self, bits, mask=0):
         """Message bits followed by their CRC field"""
         bits = np.asarray(bits).astype(bool).reshape(-1)
-        return np.concatenate((bits, self.to_bits(self.compute_bits(bits) ^ mask)))
+        return np.concatenate((bits, self.field(bits, mask)))
 
     def syndrome(self, bits, mask=0):
         """Received CRC field XOR the CRC of the message (and `mask`): 0 when the frame checks out"""

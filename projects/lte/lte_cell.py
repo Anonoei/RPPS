@@ -17,6 +17,8 @@ import sys
 
 import numpy as np
 
+import rpps as rp
+
 SCS = 15e3
 ROOTS = (25, 29, 34) # N_ID2 = 0, 1, 2
 
@@ -65,13 +67,11 @@ def sss_sequence(n_id1, n_id2, half):
 def lowpass_decimate(x, ratio, cutoff=0.8e6, fs=15.36e6, taps=129):
     h = np.sinc(2*cutoff/fs*(np.arange(taps) - (taps - 1)/2))*np.hamming(taps)
     h /= h.sum()
-    return np.convolve(x, h, "same")[::ratio]
+    return rp.signal.filters.convolve(x, h, "same")[::ratio] # (FFT blocks: a capture is long)
 
 def fft_correlate(x, template):
     """c[n] = sum_i x[n+i] conj(template[i])"""
-    L = len(x) + len(template)
-    nfft = 1 << (L - 1).bit_length()
-    return np.fft.ifft(np.fft.fft(x, nfft)*np.conj(np.fft.fft(template, nfft)))[:len(x) - len(template) + 1]
+    return rp.signal.filters.convolve(x, np.conj(np.asarray(template)[::-1]), "valid")
 
 def pss_search(x, fs, offsets, seconds=0.1):
     """For each frequency offset (Hz, where the carrier appears relative to the capture's centre) and each root: the fold of |PSS correlation|^2 on
