@@ -32,6 +32,7 @@ import numpy as np
 
 from ..math.interp import parabolic_offset
 
+HARMONICS = 12 # The highest harmonic of a rate a line is taken to be (lines weaken; any R has a high one near any f)
 CONSTANT_ENVELOPE = 1.2 # E|x|^4/(E|x|^2)^2 under this: FM, FSK, MSK, CPM (filtered PSK is 1.3 and more)
 KINDS = ("|x|^2", "x", "x^2", "x^4", "x^8", "|d|^2")
 ORDER_NAMES = {1: "a residual carrier / pilot", 2: "BPSK / ASK (2-fold)", 4: "QPSK / QAM / APSK (4-fold)",
@@ -215,6 +216,39 @@ def _tag(ls, kind):
         l.kind = kind
     return ls
 
+def comb_rate(lines, Fs, lo=0.0, explain=0.85):
+    """The symbol rate behind a set of significant lines (cyclic.Line) of a nonlinearity of the signal: every line is a
+    harmonic k R, or one folded about the sample rate, Fs - k R. The rate is the largest R whose harmonics explain
+    explaining the most of the lines' strength (dB over the floor, summed), within (1 - `explain`)/3 of the best: a
+    submultiple of R explains them as well but is smaller, a multiple leaves R's own line unexplained. Returns (R, the strongest line on R's comb)"""
+    pool = []
+    for l in sorted(lines, key=lambda l: -l.strength): # one per frequency
+        if all(abs(l.freq - m.freq) > 1e-3*l.freq for m in pool):
+            pool.append(l)
+    total = sum(l.db for l in pool)
+    def on(f, R):
+        tol = 2e-3*f + 1e-6*Fs
+        for g in (f, Fs - f):
+            k = round(g/R)
+            if 1 <= k <= HARMONICS and abs(g - k*R) < tol: # the 61st harmonic of some R lands near anything
+                return True
+        return False
+    cands = []
+    for l in pool:
+        for d in range(1, 7):
+            R = l.freq/d
+            if R < lo:
+                break
+            cands.append((sum(m.db for m in pool if on(m.freq, R))/total, R))
+    top = max(c[0] for c in cands)
+    # The most explained; of those about as good (a submultiple explains as much), the largest
+    R = max(R for share, R in cands if share >= top - (1 - explain)/3)
+    near = [l for l in pool if abs(l.freq - R) < 2e-3*R + 1e-6*Fs]
+    if near: # The rate from its own line where there is one (a better estimate than a harmonic's divided)
+        R = near[0].freq
+    line = max((l for l in pool if on(l.freq, R)), key=lambda l: l.strength)
+    return R, line
+
 def symbol_instants(x, Fs, baud, beta=0.35, taps=8):
     """Matched-filtered samples at the symbol instants: an RRC at the baud (roll-off `beta`, a guess: a mismatch only
     leaves a little ISI), timing from the phase of the |y|^2 line (its cyclic component peaks at the instants).
@@ -282,8 +316,20 @@ def features(x, Fs, lo=None, hi=None, pfa=1e-3, orders=(1, 2, 4, 8, 12), mask=Tr
     d = np.angle(d)
     dd = _tag(lines(d**2, Fs, lo, hi, pfa), "|d|^2")
     out["lines"] += sq + dd
-    base = next((l for l in sq if l.significant), None)
-    disc = next((l for l in dd if l.significant), None)
+    sig_sq = [l for l in sq if l.significant]
+    base = None
+    if sig_sq: # The rate behind the lines (the strongest can be a harmonic: rectangular pulses, a burst structure)
+        R, _ = comb_rate(sig_sq, Fs, lo)
+        base = min(sig_sq, key=lambda l: abs(l.freq - R)) if any(abs(l.freq - R) < 2e-3*R for l in sig_sq) else None
+        if base is None:
+            base = Line("|x|^2", R, max(l.strength for l in sig_sq), min(l.pfa for l in sig_sq), True)
+    sig_dd = [l for l in dd if l.significant]
+    disc = None
+    if sig_dd:
+        R, _ = comb_rate(sig_dd, Fs, lo)
+        disc = min(sig_dd, key=lambda l: abs(l.freq - R))
+        if abs(disc.freq - R) >= 2e-3*R:
+            disc = Line("|d|^2", R, max(l.strength for l in sig_dd), min(l.pfa for l in sig_dd), True)
     if disc is not None and env < CONSTANT_ENVELOPE:
         # FSK / MSK / CPM: |x|^2 is flat on air, and the band filter's ripple puts lines (at twice the rate) in it
         out.update(baud=disc.freq, baud_line=disc, baud_from="|d|^2")

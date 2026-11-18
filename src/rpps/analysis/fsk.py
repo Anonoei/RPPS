@@ -17,6 +17,7 @@ pulse-amplitude signal whose levels are the tones. So:
 import numpy as np
 
 from . import cyclic
+from .cyclic import comb_rate
 
 ENVELOPE = 1.25 # E|x|^4/(E|x|^2)^2 in band over this: not constant envelope (8PSK RRC 0.35 is ~1.3-1.6)
 REPEAT = 0.2 # A tone the same as the one before this much more often than 1/M: sampled at twice the rate
@@ -98,40 +99,6 @@ def _band(x, Fs, margin=0.5, nfft=1024):
     k = max(3, n//nfft) | 1 # soften the edges over a PSD bin
     G = np.convolve(np.concatenate((G[-(k//2):], G, G[:k//2])), np.ones(k)/k, mode="valid")
     return np.fft.ifft(np.fft.fft(x)*G)
-
-def comb_rate(lines, Fs, lo=0.0, explain=0.85):
-    """The symbol rate behind a set of significant lines (cyclic.Line) of a nonlinearity of the signal: every line is a
-    harmonic k R, or one folded about the sample rate, Fs - k R. The rate is the largest R whose harmonics explain
-    `explain` of the lines' strength (dB over the floor, summed): a submultiple of R explains them as well but is smaller,
-    a multiple leaves R's own line unexplained. Returns (R, the strongest line on R's comb)"""
-    pool = []
-    for l in sorted(lines, key=lambda l: -l.strength): # one per frequency
-        if all(abs(l.freq - m.freq) > 1e-3*l.freq for m in pool):
-            pool.append(l)
-    total = sum(l.db for l in pool)
-    def on(f, R):
-        tol = 2e-3*f + 1e-6*Fs
-        for g in (f, Fs - f):
-            k = round(g/R)
-            if k >= 1 and abs(g - k*R) < tol:
-                return True
-        return False
-    best = None
-    for l in pool:
-        for d in range(1, 7):
-            R = l.freq/d
-            if R < lo:
-                break
-            got = sum(m.db for m in pool if on(m.freq, R))
-            key = (got >= explain*total, R if got >= explain*total else got)
-            if best is None or key > best[0]:
-                best = (key, R)
-    R = best[1]
-    near = [l for l in pool if abs(l.freq - R) < 2e-3*R + 1e-6*Fs]
-    if near: # The rate from its own line where there is one (a better estimate than a harmonic's divided)
-        R = near[0].freq
-    line = max((l for l in pool if on(l.freq, R)), key=lambda l: l.strength)
-    return R, line
 
 def _repeats(v, lev):
     """How often a symbol's tone is the one before's (1/M for independent data)"""
