@@ -273,7 +273,7 @@ method. When a signal needs a loop, the profile says so in `defaults`:
 
 What there is (`rpps.sync`): `track` (the block-rate loop: a critically damped second-order loop over window estimates,
 wrapped to the parameter's period, wide for the first windows while it pulls in, coasting through gated-out windows);
-`time.OerderMeyr` (square-law timing, the symbol instants from the tracked line, cubic interpolation; follows a clock
+`CPSync` (OFDM symbol timing and fractional frequency from the cyclic prefix, van de Beek, tracked the same way; `{"sync": "ofdm"}` in a profile); `time.OerderMeyr` (square-law timing, the symbol instants from the tracked line, cubic interpolation; follows a clock
 200 ppm off); `phase.MPower` (M-th power of the phase alone: FFT acquisition of the frequency, then the residual phase
 per window; the acquisition gate allows for the FFT's search, so noise is never acquired); `equalize.BlockLS` (least
 squares per window against decisions, the taps carried from window to window). Profiles get them by default

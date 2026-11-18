@@ -304,6 +304,12 @@ def _squelch(m, ctx):
     from .. import sync
     return sync.Squelch(**_given(m, ("threshold_db", "hysteresis_db", "alpha")))
 
+@_sync_one("ofdm")
+def _ofdm(m, ctx):
+    """OFDM symbol timing and fractional frequency from the cyclic prefix (sync.CPSync): before a wave ofdm step"""
+    from .. import sync
+    return sync.CPSync(m.get("n_fft", 64), m.get("n_cp", 16), **_given(m, ("window", "min_symbols", "snr", "bw", "gate", "name")))
+
 @_sync_one("frame")
 def _frame(m, ctx):
     """Frames by a known preamble among symbols: the one a physical header definition starts with"""

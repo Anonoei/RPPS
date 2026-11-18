@@ -21,6 +21,7 @@ from .squelch import Squelch
 from .code_acquire import acquire_code
 from .pilots import PilotEqualizer, PilotPhase
 from .frame import FrameSync, Delimiter
+from .ofdm import CPSync
 
 from ..base.rpps import tag_stages as _tag_stages
 from ..base.types import Category as _Category
