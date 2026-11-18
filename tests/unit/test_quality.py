@@ -38,3 +38,33 @@ def test_track_waits_then_follows(rng):
 def test_too_few_symbols():
     with pytest.raises(ValueError):
         rp.analysis.quality.measure(QPSK[:2], QPSK)
+
+def test_gate_passes_clean_symbols(rng):
+    g = rp.analysis.quality.gate(noisy(rng, PSK8, 14, 20000), PSK8)
+    assert g.ok and abs(g.rotation) < 1 and g.near < 2*g.near_expected
+
+def test_gate_catches_a_turned_payload(rng):
+    """Frames turned ~30 deg by a bad phase reference read as noise to a rank test"""
+    y = noisy(rng, QPSK, 15, 20000)*np.exp(1j*np.radians(30))
+    g = rp.analysis.quality.gate(y, QPSK)
+    assert not g.ok and g.rotation == pytest.approx(30, abs=3) or "near a boundary" in g.why
+
+def test_gate_catches_a_small_turn_for_8psk(rng):
+    g = rp.analysis.quality.gate(noisy(rng, PSK8, 16, 20000)*np.exp(1j*np.radians(6)), PSK8)
+    assert not g.ok and "turned" in g.why
+
+def test_gate_catches_drift(rng):
+    y = noisy(rng, QPSK, 15, 20000)*np.exp(1j*np.linspace(-0.3, 0.3, 20000)) # a residual frequency: +-17 deg
+    g = rp.analysis.quality.gate(y, QPSK)
+    assert not g.ok and "drifting" in g.why
+
+@pytest.mark.parametrize("k, ok", [(0.15, True), (0.6, False)])
+def test_gate_measures_compression(rng, k, ok):
+    """16QAM through a compressing amplifier: the clusters leave their points; mild compression is reported, strong
+    compression (outer points pulled most of the way to the next ring) fails the gate"""
+    pts = rp.symbol.QAM(16).points
+    pts = np.asarray(pts)/np.sqrt(np.mean(np.abs(pts)**2))
+    y = noisy(rng, pts, 22, 20000, gain=1.0)
+    y = y/(1 + k*np.abs(y)**2)
+    g = rp.analysis.quality.gate(y, pts)
+    assert g.displaced > 0.05 and g.ok == ok
