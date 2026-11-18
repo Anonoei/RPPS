@@ -256,3 +256,22 @@ def test_tee_needs_branches_and_data():
     with pytest.raises(ValueError):
         rp.Tee()
     assert rp.Tee(a=rp.signal.DCBlock()).__radd__(np.zeros(3)) is NotImplemented
+
+def test_wav_out(tmp_path):
+    import wave
+    t = np.arange(4800)/48000
+    x = 0.5*np.sin(2*np.pi*440*t)
+    n = rp.source.write_wav(tmp_path/"a.wav", x, 48000, peak=0.8)
+    with wave.open(str(tmp_path/"a.wav")) as w:
+        y = np.frombuffer(w.readframes(n), np.int16)
+        assert w.getframerate() == 48000 and w.getnchannels() == 1
+    assert abs(np.abs(y).max() - 0.8*32767) <= 1
+    with rp.source.WavSink(tmp_path/"b.wav") as s:
+        st = None
+        for i in range(0, len(x), 1000):
+            d = rp.Data(x[i:i+1000].astype(np.float32), stream=st, Fs=48000)
+            st = d.stream
+            d >> s
+    with wave.open(str(tmp_path/"b.wav")) as w:
+        z = np.frombuffer(w.readframes(len(x)), np.int16)
+    assert np.array_equal(z, np.round(x*32767).astype(np.int16))
