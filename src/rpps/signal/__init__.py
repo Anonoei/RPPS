@@ -8,5 +8,5 @@
 from . import filters
 from . import sample
 from . import channel
-from .channelize import channelize
+from .channelize import channelize, baseband
 from .condition import DCBlock, Deemphasis

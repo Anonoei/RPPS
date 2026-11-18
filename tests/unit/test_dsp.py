@@ -227,3 +227,13 @@ def test_signal_esn0_from_the_in_band_snr():
     s = rp.analysis.Signal(0.0, 3.0e6, -100.0, 20.0, 9.6)
     assert s.esn0_db(2.5e6) == pytest.approx(9.6 + 10*np.log10(3.0/2.5))
     assert s.esn0_db() is None # No baud known
+
+def test_baseband_one_call():
+    Fs, n = 1e6, 200000
+    t = np.arange(n)/Fs
+    x = (np.exp(2j*np.pi*201e3*t) + np.exp(2j*np.pi*-300e3*t)).astype(np.complex64) # the channel at 200 kHz, a tone 1 kHz up; another far off
+    y, Fs_out = rp.signal.baseband(x, Fs, 200e3, 20e3)
+    assert Fs_out < 100e3 and abs(len(y) - n*Fs_out/Fs) < 200
+    mid = y[len(y)//4:3*len(y)//4]
+    f = np.angle(np.mean(mid[1:]*np.conj(mid[:-1])))*Fs_out/(2*np.pi)
+    assert f == pytest.approx(1e3, abs=5) and np.mean(np.abs(mid)) == pytest.approx(1.0, rel=0.05)

@@ -46,3 +46,13 @@ def channelize(mid, width, Fs, oversample=3.0, max_taps=401, largest=16):
         fs = out
     from ..base import Pipeline
     return Pipeline(*stages), fs, D
+
+def baseband(x, Fs, freq, width, oversample=3.0):
+    """A channel of a whole capture at baseband, in one call: (samples, Fs_out). freq: the channel's centre relative to the
+    capture's centre [Hz]; width: its bandwidth [Hz]. The stages of `channelize` run once over x, flushed, and their group
+    delay is taken off, so output sample k is the channel at input time k/Fs_out"""
+    from ..base import Data
+    pipe, Fs_out, D = channelize(freq, width, Fs, oversample)
+    out = Data(np.asarray(x), Fs=Fs, flush=True) + pipe
+    lag = int(round(out.delay*Fs_out))
+    return np.asarray(out.data)[lag:], Fs_out
