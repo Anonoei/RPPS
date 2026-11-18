@@ -61,3 +61,30 @@ def miss(tr, t):
     if tr.started:
         tr.value, tr.at = at(tr, t), float(t)
         tr.missed += 1
+
+# ---- Windows at absolute stream positions (README.dev.md, streaming rule 5)
+
+def windows(st, x, meta, W):
+    """Hold x and give each window ready: (a0, b, seg) for stream positions [a0, b) of [k*W, (k+1)*W). On a flush the
+    last, partial window comes too. `st` carries `buf` (the items held from position `base`), `base`, `k` and `W`:
+    None until the first block sets them. Afterwards call `keep(st, pos)` to let go of what lies before pos"""
+    if st.base is None:
+        st.base, st.W, st.k = meta.pos, W, meta.pos//W
+    st.buf = np.concatenate((st.buf, np.asarray(x, dtype=st.buf.dtype)))
+    end = st.base + len(st.buf)
+    while True:
+        a, b = st.k*st.W, (st.k + 1)*st.W
+        if b > end:
+            if not (meta.flush and a < end):
+                return
+            b = end
+        a0 = max(a, st.base)
+        yield a0, b, st.buf[a0 - st.base:b - st.base]
+        st.k += 1
+        if b >= end:
+            return
+
+def keep(st, pos):
+    """Let go of the items held before stream position pos (at most all of them)"""
+    pos = min(max(pos, st.base), st.base + len(st.buf))
+    st.buf, st.base = st.buf[pos - st.base:], pos

@@ -45,21 +45,10 @@ class OerderMeyr(Stage):
         sps = float(self.sps or meta.sps)
         if sps < 2:
             raise ValueError(f"OerderMeyr needs at least 2 samples per symbol, got {sps}")
-        if st.base is None:
-            st.base = meta.pos
-            st.W = max(int(round(self.window*meta.Fs)), int(np.ceil(self.min_symbols*sps)))
-            st.k = meta.pos//st.W
-        st.buf = np.concatenate((st.buf, np.asarray(x, dtype=np.complex128)))
-        end = st.base + len(st.buf)
-        W, out = st.W, []
-        while True:
-            a, b = st.k*W, (st.k + 1)*W
-            if b > end:
-                if not (meta.flush and a < end):
-                    break
-                b = end
-            a0 = max(a, st.base)
-            seg = st.buf[a0 - st.base:b - st.base]
+        out = []
+        W = max(int(round(self.window*meta.Fs)), int(np.ceil(self.min_symbols*sps)))
+        for a0, b, seg in track.windows(st, x, meta, W):
+            end = st.base + len(st.buf)
             if len(seg) >= 16*sps:
                 p = np.abs(seg)**2*np.exp(-2j*np.pi*np.arange(a0, b)/sps)
                 X = np.sum(p)
@@ -77,16 +66,12 @@ class OerderMeyr(Stage):
                     track.miss(st.tr, (a0 + b)/2)
             if st.tr.started:
                 out.append(self._symbols(st, a0, min(b, end - 3), sps))
-            st.k += 1
-            if b >= end:
-                break
         # Keep the window being gathered, and what the next symbol's interpolation needs
-        keep = st.k*W
+        keep = st.k*st.W
         if st.m is not None:
             keep = min(keep, int(np.floor(self._time(st, st.m, sps))) - 2)
-        keep = min(max(keep, st.base), end)
-        st.buf, st.base = st.buf[keep - st.base:], keep
-        tr = st.tr
+        track.keep(st, keep)
+        W, tr = st.W, st.tr
         meta.stream.est[self.name] = dict(phase=tr.value % sps if tr.started else None, ppm=-tr.rate*1e6 if tr.started else None,
                                           snr=st.snr, windows=tr.windows, missed=tr.missed, latency=W/meta.Fs)
         meta.op.Fs = meta.Fs/sps
