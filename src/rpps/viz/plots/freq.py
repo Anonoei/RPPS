@@ -1,89 +1,47 @@
 """Frequency domain visualizations"""
 import numpy as np
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 from ... import analysis
+from ..base import line
 from ..utils import fft, freq_axis, bins
 
 def psd(ax, samps, Fs=1.0, cf=0.0, vbw_hz=None):
-    if ax is None:
-        fig, ax = plt.subplots()
-    N = len(samps)
-    x = freq_axis(N, Fs, cf)
-    y = analysis.psd(samps, Fs, vbw_hz)
-
-    if isinstance(ax, mpl.lines.Line2D):
-        ax.set_data(x, y)
-        line = ax
-        ax = line.axes
-    else:
-        ax.locator_params(axis="x", nbins=5)
-        ax.locator_params(axis="y", nbins=10)
-        ax.grid(True, alpha=0.2)
-        ax.set_title("PSD")
-        ax.set_title("Freq", loc="left")
-        ax.set_title(f"{len(samps)} N", loc="right")
-        ax.set_xlabel("Frequency [Hz]")
-        ax.set_ylabel("Magnitude [dB]")
-        line, = ax.plot(x, y, c="y")
-    ax.set_xlim(x[0], x[-1])
-    ymin = np.min(y)
-    ymax = np.max(y)
-    if ymin < np.min(line.get_ydata()) or ymax > np.max(line.get_ydata()):
-        ax.set_ylim(np.min(y), np.max(y))
-        ax.relim()
-    return line
-
-def psd_signals(ax, samps, signals, Fs=1.0, cf=0.0, vbw_hz = None):
-    if ax is None:
-        fig, ax = plt.subplots()
+    """Power spectral density [dB] against frequency; pass the returned line back to update it"""
+    from matplotlib.lines import Line2D
     x = freq_axis(len(samps), Fs, cf)
     y = analysis.psd(samps, Fs, vbw_hz)
-    ax.locator_params(axis="x", nbins=5)
-    ax.locator_params(axis="y", nbins=10)
-    ax.grid(True, alpha=0.2)
-    ax.set_title("PSD")
-    ax.set_title("Freq", loc="left")
-    ax.set_title(f"{len(samps)} N", loc="right")
-    ax.set_xlabel("Frequency [Hz]")
-    ax.set_ylabel("Magnitude [dB]")
-    ax.set_xlim(x[0], x[-1])
-    line, = ax.plot(x, y, c="y", zorder=1)
+    new = not isinstance(ax, Line2D)
+    ln = line(ax, x, y, "PSD", "Freq", f"{len(samps)} N", "Frequency [Hz]", "Magnitude [dB]", grid=0.2, c="y", zorder=1)
+    if new:
+        ln.axes.locator_params(axis="x", nbins=5)
+        ln.axes.locator_params(axis="y", nbins=10)
+    lo, hi = ln.axes.get_ylim()
+    if np.min(y) < lo or np.max(y) > hi:
+        ln.axes.set_ylim(np.min(y), np.max(y))
+    return ln
+
+def psd_signals(ax, samps, signals, Fs=1.0, cf=0.0, vbw_hz=None):
+    """The PSD with a box over each signal found (rpps.analysis.find_signals)"""
+    ln = psd(ax, samps, Fs, cf, vbw_hz)
     for signal in signals:
         left = cf + (signal.mid - signal.baud/2)
-        # print(f"Drawing signal ({x[il]:0.3f}, {bottom:0.3f}),({x[il]+width:0.3f}, {bottom+height:0.3f})")
-        ax.add_patch(patches.Rectangle((left, signal.bottom), signal.baud, signal.height, facecolor='blue', alpha=0.5, zorder=2))
+        ln.axes.add_patch(patches.Rectangle((left, signal.bottom), signal.baud, signal.height, facecolor="blue", alpha=0.5, zorder=2))
+    return ln
 
 def psdreal(ax, samps, Fs=1, cf=0, vbw_hz=None):
-    if ax is None:
-        fig, ax = plt.subplots()
+    """PSD of the real part: the positive frequencies"""
     y = analysis.psd(samps.real, Fs, vbw_hz)
     y = y[len(y)//2:]
-    x = freq_axis(len(y), Fs, cf)
-    # x = np.arange(0, Fs, Fs/len(y)) + cf
-
-    if isinstance(ax, mpl.lines.Line2D):
-        ax.set_data(x, y)
-        line = ax
-    else:
-        line, = ax.plot(x, y, c="y")
-        ax.grid(True)
-        ax.set_title("PSD")
-        ax.set_title(f"Freq [{Fs} Hz]", loc="left")
-        ax.set_title(f"{len(samps)} N", loc="right")
-        ax.set_xlabel("Frequency [Hz]")
-        ax.set_ylabel("Magnitude [dB]")
-        ax.set_xlim(x[0], x[-1])
-    return line
+    return line(ax, freq_axis(len(y), Fs, cf), y, "PSD", f"Freq [{Fs} Hz]", f"{len(samps)} N", "Frequency [Hz]",
+                "Magnitude [dB]", grid=1.0, c="y")
 
 def psd_minmax(ax, samps, sr=1, vbw_hz=None, cache={}):
     if isinstance(ax, tuple):
         line, line_min, line_max = ax
-        line = psd(line, samps, sr, vbw_hz)
+        line = psd(line, samps, sr, vbw_hz=vbw_hz)
     else:
-        line = psd(ax, samps, sr, vbw_hz)
+        line = psd(ax, samps, sr, vbw_hz=vbw_hz)
     x = line.get_xdata()
     y = line.get_ydata()
     if cache.get("min", None) is None:
@@ -104,42 +62,14 @@ def psd_minmax(ax, samps, sr=1, vbw_hz=None, cache={}):
     return line, line_min, line_max
 
 def mag(ax, samps):
-    """Plot FFT Magnitude"""
-    if ax is None:
-        fig, ax = plt.subplots()
-    x = bins(len(samps))
-    y = np.abs(fft(samps))
-    if isinstance(ax, mpl.lines.Line2D):
-        ax.set_data(x, y)
-        line = ax
-    else:
-        line, = ax.plot(x, y, label="Magnitude")
-        ax.title("Magnitude")
-        plt.title("Freq", loc="left")
-        plt.title(f"{len(samps)} N", loc="right")
-        plt.xlabel("Index")
-        plt.ylabel("Magnitude")
-    return line
+    """FFT magnitude"""
+    return line(ax, bins(len(samps)), np.abs(fft(samps)), "Magnitude", "Freq", f"{len(samps)} N", "Bin", "Magnitude",
+                label="Magnitude")
 
 def pha(ax, samps):
-    """Plot FFT phase"""
-    if ax is None:
-        fig, ax = plt.subplots()
-    x = bins(len(samps))
-    y = np.angle(fft(samps))
-
-    if isinstance(ax, mpl.lines.Line2D):
-        ax.set_data(x, y)
-        line = ax
-    else:
-        line, = ax.plot(x, y, label="Phase")
-
-        ax.title("Phase")
-        ax.title("Freq", loc="left")
-        ax.title(f"{len(samps)} N", loc="right")
-        ax.xlabel("Bin")
-        ax.ylabel("Phase")
-    return line
+    """FFT phase"""
+    return line(ax, bins(len(samps)), np.angle(fft(samps)), "Phase", "Freq", f"{len(samps)} N", "Bin", "Phase",
+                label="Phase")
 
 def mag_phase(ax_mag, ax_pha, samps):
     """Magnitude and phase of samps on two axes"""

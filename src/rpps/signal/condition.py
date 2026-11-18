@@ -6,8 +6,6 @@ import numpy as np
 from .. import _accel
 from ..base import Stage
 
-_NATIVE_DTYPES = (np.float32, np.float64, np.complex64, np.complex128) # What the rpps._native loops take
-
 class DCBlock(Stage):
     """Removes the DC offset (a one pole high pass: y[n] = x[n] - x[n-1] + r*y[n-1])"""
     __slots__ = ("r",)
@@ -19,7 +17,7 @@ class DCBlock(Stage):
 
     def step(self, samples, st, meta):
         x = np.ascontiguousarray(samples)
-        if _accel.native is not None and x.dtype in _NATIVE_DTYPES:
+        if _accel.native is not None and x.dtype in _accel.NATIVE_DTYPES:
             cplx = x.dtype.kind == "c"
             out, st.x, st.y = _accel.native.dc_block(x, complex(st.x) if cplx else float(np.real(st.x)),
                                                      complex(st.y) if cplx else float(np.real(st.y)), float(self.r))
@@ -46,7 +44,7 @@ class Deemphasis(Stage):
     def step(self, samples, st, meta):
         a = 1 - np.exp(-1/(self.tau*meta.Fs))
         x = np.ascontiguousarray(samples)
-        if _accel.native is not None and x.dtype in _NATIVE_DTYPES:
+        if _accel.native is not None and x.dtype in _accel.NATIVE_DTYPES:
             out, st.y = _accel.native.one_pole(x, complex(st.y) if x.dtype.kind == "c" else float(np.real(st.y)), float(a))
             return out
         out = np.empty_like(samples)

@@ -13,12 +13,14 @@ sits from 50% (a deviance z-score), then corrected for how many hypotheses were 
 The tests are about structure, not about being right: a noisy channel weakens them, and the verdict
 is None when nothing stands out.
 """
+import functools
 import itertools
 
 import numpy as np
 
 from ..math.gf2 import nullspace, systematic
 from ..math.prob import deviance_z, z_critical
+from ..code.coding import puncture_period, mismatch, cached
 
 class Hypothesis:
     __slots__ = ("kind", "name", "z", "params", "coding", "guess")
@@ -341,14 +343,6 @@ def find_sync(bits, markers=(0x47, 0xB8), period=204):
             best = (float(hit[p]), off, p)
     return best
 
-def _mismatch(code, seg):
-    """Re-encode the Viterbi decision and compare with what was received"""
-    enc, dec = code._enc, code._dec
-    u = dec.decode(seg)
-    e = enc.encode(u.astype(bool))
-    n = min(len(e), len(seg))
-    return int(np.sum(e[:n] != seg[:n].astype(bool))), n
-
 def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 0.45, 0.8)):
     """Try every convolutional definition in config/fec/conv on every bit mapping and puncture alignment
 
@@ -369,7 +363,7 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
         nb = int(pat.sum())
         per = max(steps//L, 1)
         rand = rng.integers(0, 2, per*nb).astype(np.uint8)
-        k0, n0 = _mismatch(code, rand)
+        k0, n0 = mismatch(code, rand)
         base = max(k0/n0, 1e-4) # What a wrong hypothesis gets
         for tag, bits in streams.items():
             starts = sorted({int(len(bits)*f) for f in segments if int(len(bits)*f) + nb + per*nb <= len(bits)})
@@ -380,7 +374,7 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
                     seg = np.asarray(bits[start+off:start+off+per*nb], dtype=np.uint8)
                     if len(seg) < per*nb:
                         continue
-                    k, n = _mismatch(code, seg)
+                    k, n = mismatch(code, seg)
                     trials += 1
                     z = float(-deviance_z(k, n, base)) # Fewer mismatches than a wrong code gives
                     if z > 3.0 and k/n < 0.5*base: # And clearly fewer, not a marginal difference on a short code
@@ -394,7 +388,7 @@ def decode_conv(bits, hyp):
     from .. import code as coding
     code = coding.load(*hyp.coding)
     seg = np.asarray(bits[hyp.params["offset"]:], dtype=np.uint8)
-    nb = int(code._enc.puncture.sum()) if code._enc.puncture is not None else code._enc.den
+    nb = puncture_period(code)
     seg = seg[:len(seg)//nb*nb]
     return code._dec.decode(seg)
 
@@ -417,11 +411,10 @@ def decode_tail(bits, code, fraction=0.5, probe=4000):
     Inner layers are looked for in the later part of a window, where the sync before it has settled; a symbol the timing
     slipped on the way moves the puncture phase, so it is found again at the start of that part."""
     bits = np.asarray(bits, dtype=np.uint8)
-    p = code._enc.puncture
-    nb = int(p.sum()) if p is not None else code._enc.den
+    nb = puncture_period(code)
     start = int(len(bits)*(1 - fraction))
     seg = bits[start:start + probe//nb*nb + nb]
-    best = min(range(nb), key=lambda o: (lambda k, n: k/max(n, 1))(*_mismatch(code, seg[o:o + probe//nb*nb])))
+    best = min(range(nb), key=lambda o: (lambda k, n: k/max(n, 1))(*mismatch(code, seg[o:o + probe//nb*nb])))
     tail = bits[start + best:]
     return code._dec.decode(tail[:len(tail)//nb*nb]).astype(np.uint8)
 
@@ -881,28 +874,23 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
         same = [h for h in rep.hyps if h.coding == conv.coding and h.params["stream"] != key and h.z > rep.z_crit
                 and h.params["mismatch"] < 0.5*(conv.params["mismatch"] + conv.params["baseline"])]
         same = list({str(h.params["stream"]): h for h in same}.values())
-        enc = cached_code(*conv.coding)._enc
         out = CodeDetection(found=True, mod=c.name, kind="conv", name=conv.coding[1], stream=key, offset=conv.params["offset"],
-                            period=int(enc.puncture.sum()) if enc.puncture is not None else enc.den,
+                            period=puncture_period(cached(*conv.coding)),
                             equivalent=[h.params["stream"] for h in same], z=conv.z, mismatch=conv.params["mismatch"],
                             baseline=conv.params["baseline"], report=rep, n=len(y))
         steps = pre + symbol_steps(key) + [{"sync": "puncture", "fec": out.name},
                                            {"code": "fec", "type": "conv", "name": out.name}]
-        info = decode_tail(bit_streams(y, c, differential, keys=[key])[key], cached_code(*conv.coding))
+        info = decode_tail(bit_streams(y, c, differential, keys=[key])[key], cached(*conv.coding))
         h, t, short = scan_rs(info)
         rs_rep = Report(h, t, None)
         rs = rs_rep.verdict
         out.complete = rs is not None or not short # More symbols could still show a Reed-Solomon code inside
         if rs is None and blind:
-            for h, g in solve(info):
-                h.guess = g
-                out.inner.append(h)
-                if g is not None:
-                    out.guesses.append(g)
+            _attach(out, solve(info))
         if rs is not None:
             out.inner.append(rs)
             p = rs.params
-            n = cached_code("block", rs.name)._enc.den
+            n = cached("block", rs.name)._enc.den
             pat, _ = frame_markers(info ^ p["polarity"], n, p["bit_offset"], p["byte_phase"])
             if pat is not None:
                 p["pattern"] = pat
@@ -949,9 +937,7 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
                 rows = recover_dual(bits, n1, out.offset, trials=20)
                 found = blind_block._product(bits, n1, rows["k"], rows["H"], p[0], out.offset + p[1]*n1)
             if found is not None:
-                found[0].guess = found[1]
-                out.inner.append(found[0])
-                out.guesses.append(found[1])
+                _attach(out, [found])
         return _finish(out, c, profiles)
 
     tried.append(rep)
@@ -960,10 +946,7 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
     if blind:
         found = _blind(head, c, y[:CONV_SYMBOLS])
         if found:
-            for h, g in found:
-                h.guess = g
-            out.inner = [h for h, g in found]
-            out.guesses = [g for h, g in found if g is not None]
+            _attach(out, found)
             return out
         sub = {k: v for k, v in head.items() if k[0] == "abs"}
         brep = detect_fec(sub, max_offsets=32)
@@ -977,6 +960,14 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
                 g = guess_block(sub[v.params["stream"]], hints=[int(round(2*v.params["period_pairs"]))])
             out.guesses = [g] if g is not None else []
     return out
+
+def _attach(out, found):
+    """Add [(hypothesis, Guess or None)] to a detection: each hypothesis as an inner layer, carrying its guess"""
+    for h, g in found:
+        h.guess = g
+        out.inner.append(h)
+        if g is not None:
+            out.guesses.append(g)
 
 def solve(bits, rs_lengths=None, max_taps=2, exhaustive=False, block=True):
     """Peel unknown layers off bits (a decoder's output): [(hypothesis, Guess or None)], outermost first
@@ -1042,10 +1033,9 @@ def _blind(head, c, y=None):
     hyps, trials = puncture.search(head)
     v, g = puncture.best(hyps, trials)
     if v is not None:
-        from types import SimpleNamespace
         code = puncture._code(v.params["K"], v.params["generator"], np.asarray(v.params["puncture"], dtype=bool))
         bits = np.asarray(head[v.params["stream"]][v.params["offset"]:], dtype=np.uint8)
-        m = int(np.asarray(v.params["puncture"]).sum())
+        m = puncture_period(code)
         info = code._dec.decode(bits[:len(bits)//m*m]).astype(np.uint8)
         return [(v, g)] + solve(info)
     for key, bits in _distinct(head, c).items():
@@ -1062,21 +1052,11 @@ def _blind(head, c, y=None):
             return found
     return []
 
-def cached_code(folder, ref):
-    """A definition from config, loaded once: `cached_code("conv", "k7_171_133/3_4")`"""
-    from .. import code as coding_mod
-    if (folder, ref) not in _LOADED:
-        _LOADED[(folder, ref)] = coding_mod.load(folder, ref)
-    return _LOADED[(folder, ref)]
-
-_LOADED = {}
-
+@functools.lru_cache(maxsize=None)
 def cached_scrambler(ref):
     """A scrambler definition's JSON (its "poly": the taps), read once"""
     from .. import _config
-    if ("scramble", ref) not in _LOADED:
-        _LOADED[("scramble", ref)] = _config.read(_config.find("scramble", ref))
-    return _LOADED[("scramble", ref)]
+    return _config.read(_config.find("scramble", ref))
 
 def _finish(out, c, profiles):
     """The shipped profile with the same steps, if any, and the correction that turns the symbols to the map it decodes with"""

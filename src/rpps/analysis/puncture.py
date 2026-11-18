@@ -14,6 +14,7 @@ import numpy as np
 
 from .fec import Hypothesis, Guess, Report, _pick
 from ..math.prob import deviance_z
+from ..code.coding import mismatch
 
 def patterns(P):
     """Rate P/(P+1) puncture patterns (2, P), one per turn"""
@@ -44,19 +45,9 @@ def mothers():
     return out
 
 def _code(K, gen, pat):
-    from types import SimpleNamespace
-    from ..logger import Logger
-    from ..code.types.conv import conv
-    from ..code.types.viterbi import viterbi
-    log = Logger().Child("blind-puncture", 0)
-    gen = np.asarray(gen, dtype=np.uint8)
-    return SimpleNamespace(_enc=conv(log, 1, 2, gen, K, pat), _dec=viterbi(log, 1, 2, K, gen, pat))
-
-def _mismatch(code, seg):
-    u = code._dec.decode(seg)
-    e = code._enc.encode(u.astype(bool))
-    n = min(len(e), len(seg))
-    return int(np.sum(e[:n] != seg[:n].astype(bool))), n
+    """The rate 1/2 mother code (K, generators) under puncture pattern pat"""
+    from ..code import Conv
+    return Conv(np.asarray(gen, dtype=np.uint8).reshape(2, K), puncture=pat)
 
 def search(streams, periods=range(2, 8), steps=400, confirm=4, codes=None):
     """Find a rate 1/2 mother code with a puncture pattern in hard bit streams ({tag: bits}). Returns (hypotheses, trials)
@@ -76,7 +67,7 @@ def search(streams, periods=range(2, 8), steps=400, confirm=4, codes=None):
                 base = {}
                 def baseline(per):
                     if per not in base:
-                        k0, n0 = _mismatch(code, rng.integers(0, 2, per*m).astype(np.uint8))
+                        k0, n0 = mismatch(code, rng.integers(0, 2, per*m).astype(np.uint8))
                         base[per] = max(k0/n0, 1e-4)
                     return base[per]
                 for tag, bits in streams.items():
@@ -86,7 +77,7 @@ def search(streams, periods=range(2, 8), steps=400, confirm=4, codes=None):
                         seg = np.asarray(bits[start + off:start + off + per*m], dtype=np.uint8)
                         if len(seg) < per*m:
                             continue
-                        k, n = _mismatch(code, seg)
+                        k, n = mismatch(code, seg)
                         trials += 1
                         if k/n >= 0.5*baseline(per):
                             continue
@@ -94,7 +85,7 @@ def search(streams, periods=range(2, 8), steps=400, confirm=4, codes=None):
                         seg = np.asarray(bits[start + off:start + off + per*m], dtype=np.uint8)
                         if len(seg) < per*m:
                             continue
-                        k, n = _mismatch(code, seg)
+                        k, n = mismatch(code, seg)
                         b = baseline(per)
                         z = float(-deviance_z(k, n, b))
                         if z > 3.0 and k/n < 0.3*b:

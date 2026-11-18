@@ -126,3 +126,10 @@ def systematic(h):
     G = np.zeros((K, N), dtype=bool)
     G[:, perm] = Gp
     return G, perm[rank:]
+
+def pmod(a, b):
+    """a(x) mod b(x) over GF(2), polynomials as Python ints (bit i: the coefficient of x^i)"""
+    db = b.bit_length()
+    while a.bit_length() >= db:
+        a ^= b << (a.bit_length() - db)
+    return a

@@ -12,7 +12,7 @@ from . import types
 from . import matrix
 from .serial import ls, names, load, init, find, generate
 
-from .coding import Coding, Block, Convolutional, Interleaver
+from .coding import Coding, Block, Convolutional, Interleaver, puncture_period, mismatch, cached
 from .uncoded import Uncoded
 
 from .factory import Hamming, Repetition, RS, Conv, Cyclic, Golay

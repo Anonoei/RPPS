@@ -4,7 +4,8 @@ from types import SimpleNamespace
 import numpy as np
 
 from ..base import Stage
-from ..analysis.fec import identify, cached_code, CodeDetection, _hard, _mismatch
+from ..analysis.fec import identify, CodeDetection, _hard
+from ..code.coding import mismatch, cached
 
 class AcquireFEC(Stage):
     """Identify the code the symbols carry, then turn them to the map its decoder uses
@@ -89,7 +90,7 @@ class AcquireFEC(Stage):
             e = next((fec.offset + k*fec.period for k in range(bps) if (fec.offset + k*fec.period) % bps == 0), None)
             st.drop += 0 if e is None else e//bps
         if fec.kind == "conv" and not fec.differential:
-            st.code = cached_code("conv", fec.name)
+            st.code = cached("conv", fec.name)
         st.out = st.drop
         return self._emit(x[st.drop:], st)
 
@@ -103,7 +104,7 @@ class AcquireFEC(Stage):
         a = (fec.offset - (start - self.skip)*st.c.bits_per_symbol + st.shift + shift) % fec.period
         seg = bits[a:]
         seg = seg[:len(seg)//fec.period*fec.period]
-        k, n = _mismatch(st.code, seg)
+        k, n = mismatch(st.code, seg)
         return k/max(n, 1)
 
     def _emit(self, y, st):

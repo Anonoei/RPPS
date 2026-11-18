@@ -3,18 +3,18 @@
 Users don't build these: give `rp.Data` an Fs / sps / cf and the stages take care of the rest.
 """
 
+def forward(to, name, doc=None):
+    """A read-only property that reads `name` of the object in attribute `to`: self.Fs is self.state.Fs"""
+    return property(lambda self: getattr(getattr(self, to), name), doc=doc)
+
 class Rate:
     """Sample rate (Fs), samples per symbol (sps) and centre frequency (cf)"""
     __slots__ = ("Fs", "sps", "cf")
     def __init__(self, Fs, sps, cf):
-        self.Fs = Fs
-        self.sps = sps
-        self.cf = cf
+        self.set(Fs, sps, cf)
 
     def set(self, Fs, sps, cf):
-        self.Fs = Fs
-        self.sps = sps
-        self.cf = cf
+        self.Fs, self.sps, self.cf = Fs, sps, cf
 
     def copy(self):
         return Rate(self.Fs, self.sps, self.cf)
@@ -75,20 +75,10 @@ class Stream:
         return {st: t/self.air for st, t in self.busy.items()} if self.air > 0 else {}
 
     def restart(self):
-        """Forget everything: the next block starts a new stream"""
-        self.states.clear()
-        self.det = None
-        self.blocks = 0
-        self.src_sps = None
-        self.gen += 1
-        self.busy = {}
-        self.air = 0.0
-        self.dropped = 0
-        self.pos = 0
-        self.t0 = None
-        self.out_pos = {}
-        self.est = {}
-        self.control = None
+        """Forget everything but the source's rate: the next block starts a new stream"""
+        gen = self.gen + 1
+        self.__init__(self.src_Fs)
+        self.gen = gen
 
 class Meta:
     """The rate information of one block of data, as a stage sees it
@@ -121,24 +111,8 @@ class Meta:
         t0 = self.stream.t0
         return None if t0 is None else t0 + (self.pos + k)/self.state.Fs - self.delay
 
-    @property
-    def Fs(self):
-        return self.state.Fs
-    @property
-    def sps(self):
-        return self.state.sps
-    @property
-    def cf(self):
-        return self.state.cf
-    @property
-    def isps(self):
-        return self.state.isps
-    @property
-    def Ts(self):
-        return self.state.Ts
-    @property
-    def sr(self):
-        return self.state.sr
+    Fs, sps, cf = forward("state", "Fs"), forward("state", "sps"), forward("state", "cf")
+    isps, Ts, sr = forward("state", "isps"), forward("state", "Ts"), forward("state", "sr")
 
     def fork(self):
         """Meta for the data a stage produces: the output rates become the input rates. Stream is shared"""

@@ -1,49 +1,25 @@
 """Time domain viz helpers"""
 import numpy as np
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-def I(ax, samps):
-    if ax is None:
-        fig, ax = plt.subplots()
+from ..base import axes, line
 
-    if isinstance(ax, mpl.lines.Line2D):
-        line = ax
-        line.set_data(np.arange(0, len(samps)), samps.real)
-    else:
-        line, = ax.plot(samps.real, ".-", c="r", label="I")
-        ax.set_xlim(0, len(samps)-1)
-    return line
+DOTS = dict(marker=".", linestyle="-") # Samples as dots on a line
+
+def I(ax, samps):
+    return line(ax, np.arange(len(samps)), samps.real, c="r", label="I", **DOTS)
 
 def Q(ax, samps):
-    if ax is None:
-        fig, ax = plt.subplots()
-
-    if isinstance(ax, mpl.lines.Line2D):
-        line = ax
-        line.set_data(np.arange(0, len(samps)), samps.imag)
-    else:
-        line, = ax.plot(samps.imag, ".-", c="b", label="Q")
-        ax.set_xlim(0, len(samps)-1)
-    return line
+    return line(ax, np.arange(len(samps)), samps.imag, c="b", label="Q", **DOTS)
 
 def mag(ax, samps):
-    if ax is None:
-        fig, ax = plt.subplots()
-
-    line_mag, = ax.plot(np.abs(samps), ".-", c="b", label="Mag")
-    return line_mag
+    return line(ax, np.arange(len(samps)), np.abs(samps), c="b", label="Mag", **DOTS)
 
 def pha(ax, samps):
-    if ax is None:
-        fig, ax = plt.subplots()
-
-    line_pha, = ax.plot(np.angle(samps), ".-", c="b", label="Phase")
-    return line_pha
+    return line(ax, np.arange(len(samps)), np.angle(samps), c="b", label="Phase", **DOTS)
 
 def IQ(ax, samps):
-    if ax is None:
-        fig, ax = plt.subplots()
+    ax = axes(ax)
 
     if isinstance(ax, tuple):
         line_i, line_q = ax

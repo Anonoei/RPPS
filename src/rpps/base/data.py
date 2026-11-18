@@ -15,7 +15,7 @@ from time import perf_counter
 import numpy as np
 
 from .types import Category, Rep, dtype, REP_OF
-from .meta import Meta
+from .meta import Meta, forward
 from .rpps import FLUSH
 from ..errors import StreamError
 
@@ -50,32 +50,17 @@ class _Data:
         return (cls or type(self))(data, cat, dt, dict(self.ctx) if ctx is None else ctx, self.meta if meta is None else meta, rep)
 
     # --- signal information ---
-    @property
-    def Fs(self):
-        """Sample rate [Hz]"""
-        return self.meta.Fs
-    @property
-    def sps(self):
-        """Samples per symbol"""
-        return self.meta.sps
-    @property
-    def cf(self):
-        """Centre frequency [Hz]"""
-        return self.meta.cf
-    @property
-    def Ts(self):
-        return self.meta.Ts
-    @property
-    def delay(self):
-        """Group delay of the stages so far [s]"""
-        return self.meta.delay
+    Fs = forward("meta", "Fs", "Sample rate [Hz]")
+    sps = forward("meta", "sps", "Samples per symbol")
+    cf = forward("meta", "cf", "Centre frequency [Hz]")
+    Ts = forward("meta", "Ts", "Sample period [s]")
+    delay = forward("meta", "delay", "Group delay of the stages so far [s]")
+    stream = forward("meta", "stream", "The Stream the data belongs to (stage states, estimates)")
+
     @property
     def det(self):
         """What `rp.sync.Acquire` detected (baud, modulation, cfo...), None before"""
         return self.meta.stream.det
-    @property
-    def stream(self):
-        return self.meta.stream
 
     def state(self, stage):
         """The carried state of a stage in this stream (loop estimates, filter history...), None before it ran"""

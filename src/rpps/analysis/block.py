@@ -20,7 +20,7 @@ from collections import Counter
 
 import numpy as np
 
-from ..math.gf2 import rank, nullspace
+from ..math.gf2 import rank, nullspace, pmod
 from ..math.prob import z_critical
 from .fec import Hypothesis, Guess, recover_dual
 
@@ -85,12 +85,6 @@ def _longer(b, n, off, max_len, extra):
 
 # --- Polynomials over GF(2) as Python ints (bit i: the coefficient of x^i) -----------------------------------------------
 
-def pmod(a, b):
-    db = b.bit_length()
-    while a.bit_length() >= db:
-        a ^= b << (a.bit_length() - db)
-    return a
-
 def pgcd(a, b):
     while b:
         a, b = b, pmod(a, b)
@@ -151,7 +145,7 @@ def bch_of(g, n_sent):
         if pmod(g, p):
             continue
         try:
-            gen = bchgf(Logger().Child("blind-bch", 0), n_sent, n_sent - r, m, p, r//m)._generator()
+            gen = bchgf(Logger().Child("blind-bch", 0), n_sent, n_sent - r, m, p, r//m).gen
         except ValueError:
             continue
         if to_poly(gen) == g:

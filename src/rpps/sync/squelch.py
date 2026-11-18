@@ -6,8 +6,6 @@ import numpy as np
 from .. import _accel
 from ..base import Stage
 
-_NATIVE_DTYPES = (np.float32, np.float64, np.complex64, np.complex128) # What the rpps._native loops take
-
 class Squelch(Stage):
     """Silence the signal while it is quieter than `threshold_db` (power, dB re 1.0), with hysteresis
 
@@ -25,7 +23,7 @@ class Squelch(Stage):
     def step(self, samples, st, meta):
         lo, hi = 10**(self.close_db/10), 10**(self.open_db/10)
         x = np.ascontiguousarray(samples)
-        if _accel.native is not None and x.dtype in _NATIVE_DTYPES:
+        if _accel.native is not None and x.dtype in _accel.NATIVE_DTYPES:
             out, lvl, have, op = _accel.native.squelch(x, 0.0 if st.level is None else float(st.level), st.level is not None,
                                                        bool(st.is_open), lo, hi, float(self.alpha))
             st.level, st.is_open = (lvl if have else None), op

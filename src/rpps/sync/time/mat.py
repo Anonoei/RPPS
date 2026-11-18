@@ -4,6 +4,7 @@ import numpy as np
 
 from ...base import Meta, Stage
 from ...signal.filters.shaping import rrc_pulse
+from ...math.interp import peak
 
 def matrix_mf(x, centres, sps, beta=0.2, span=8):
     """Matched filter + symbol sampling as a (banded) matrix: y = W @ x
@@ -41,11 +42,8 @@ def best_tau(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
         k0 = int(np.ceil((lo + S + 5 - tau)/sps))
         c = centres_in(hi, tau + k0*sps, sps, span)
         energy[g] = np.mean(np.abs(matrix_mf(seg, c, sps, beta, span))**2) if len(c) else 0.0
-    g = int(np.argmax(energy))
-    a, b, c_ = energy[(g-1) % grid], energy[g], energy[(g+1) % grid]
-    den = a - 2*b + c_
-    d = 0.0 if den == 0 else 0.5*(a - c_)/den
-    return ((g + d)*sps/grid) % sps, float(b)
+    g, d = peak(energy, circular=True, log=False)
+    return ((g + d)*sps/grid) % sps, float(energy[g])
 
 class Mat(Stage):
     """Matrix matched filter and symbol timing

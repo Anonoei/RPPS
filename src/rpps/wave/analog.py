@@ -8,8 +8,6 @@ from ..base import Stage
 from ..signal.filters.filter import FIR
 from ..signal.filters.impl.designer import designer
 
-_NATIVE_DTYPES = (np.float32, np.float64, np.complex64, np.complex128) # What the rpps._native loops take
-
 class AMDemod(Stage):
     """Envelope detector: |x| with the carrier (DC) removed by a slow running mean"""
     __slots__ = ("alpha",)

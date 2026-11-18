@@ -82,7 +82,7 @@ class Coding(base.rpps.Pipe):
         if name is None:
             self._enc = self._dec = None
         else:
-            new = _cached(self.folder or type(self).__name__.lower(), name)
+            new = cached(self.folder or type(self).__name__.lower(), name)
             self._enc, self._dec = new._enc, new._dec
         self.name = name or "none"
         self._restart = True # A frame starts here: a codeword never spans two
@@ -175,9 +175,24 @@ class Coding(base.rpps.Pipe):
 
 
 
+def puncture_period(code):
+    """Channel bits in one period of a convolutional code's puncture pattern (n, the outputs per step, when unpunctured):
+    the alignments a decoder can start at. `code`: anything with an encoder `_enc` (a loaded Coding)"""
+    p = getattr(code._enc, "puncture", None)
+    return int(p.sum()) if p is not None else int(code._enc.den)
+
+def mismatch(code, hard):
+    """Decode hard channel bits, encode the decision again and compare: (bits that differ, bits compared). At the right
+    code and alignment only channel errors differ; a wrong one differs about as often as random bits"""
+    hard = np.asarray(hard)
+    e = code._enc.encode(code._dec.decode(hard.astype(np.uint8)).astype(bool))
+    n = min(len(e), len(hard))
+    return int(np.count_nonzero(e[:n] != hard[:n].astype(bool))), n
+
 @functools.lru_cache(maxsize=None)
-def _cached(folder, name):
-    """A definition loaded once per process (a DVB-S2 LDPC code takes a moment to build): what `control` swaps in"""
+def cached(folder, name):
+    """A definition loaded once per process and shared (a DVB-S2 LDPC code takes a moment to build): what `control`
+    swaps in, and what the blind tools try: `rp.code.cached("conv", "k7_171_133/3_4")`"""
     from .serial import load
     return load(folder, name)
 

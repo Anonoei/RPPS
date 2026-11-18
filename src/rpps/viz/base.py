@@ -34,3 +34,28 @@ def cla():
 def pause(interval: float):
     """Pause"""
     plt.pause(interval)
+
+def axes(ax=None, **kw) -> Axes:
+    """ax, or the axes of a new figure when it is None (kw: for plt.subplots)"""
+    return plt.subplots(**kw)[1] if ax is None else ax
+
+def line(ax, x, y, title=None, left=None, right=None, xlabel=None, ylabel=None, grid=None, **style):
+    """Plot y against x and return the line. ax: axes (None: a new figure), or the line an earlier call returned, which is
+    updated in place (an animation). title/left/right: the centre, left and right titles; grid: its alpha"""
+    from matplotlib.lines import Line2D
+    if isinstance(ax, Line2D):
+        ax.set_data(x, y)
+        return ax
+    ax = axes(ax)
+    ln, = ax.plot(x, y, **style)
+    for loc, text in (("center", title), ("left", left), ("right", right)):
+        if text is not None:
+            ax.set_title(text, loc=loc)
+    if xlabel is not None:
+        ax.set_xlabel(xlabel)
+    if ylabel is not None:
+        ax.set_ylabel(ylabel)
+    if grid is not None:
+        ax.grid(True, alpha=grid)
+    ax.set_xlim(x[0], x[-1])
+    return ln

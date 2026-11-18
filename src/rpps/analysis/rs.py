@@ -20,6 +20,7 @@ import numpy as np
 
 from .fec import Hypothesis, Guess, frame_length
 from ..math.prob import deviance_z
+from ..math.gf import GF
 
 PRIMITIVE = (0x11D, 0x12B, 0x12D, 0x14D, 0x15F, 0x163, 0x165, 0x169, 0x171, 0x187, 0x18D, 0x1A9, 0x1C3, 0x1CF, 0x1E7, 0x1F5)
 COMMON = (255, 204, 208, 207, 219, 225, 146, 126, 194, 160, 120) # DVB, ATSC, IESS-308/309/310, DSS, CCSDS (255), ...
@@ -27,18 +28,8 @@ _REV = np.array([int(f"{i:08b}"[::-1], 2) for i in range(256)], dtype=np.uint8)
 
 def _tables(polys):
     """EXP (P, 510) and LOG (P, 256) of each field"""
-    EXP = np.zeros((len(polys), 510), dtype=np.int64)
-    LOG = np.zeros((len(polys), 256), dtype=np.int64)
-    for p, poly in enumerate(polys):
-        x = 1
-        for i in range(255):
-            EXP[p, i] = x
-            LOG[p, x] = i
-            x <<= 1
-            if x & 0x100:
-                x ^= poly
-        EXP[p, 255:] = EXP[p, :255]
-    return EXP, LOG
+    fields = [GF(8, poly) for poly in polys]
+    return np.stack([g.exp[:510] for g in fields]), np.stack([g.log for g in fields])
 
 def _variants(bits, depths):
     """Byte streams for every bit offset, bit order and interleaving depth: (labels, (V, L) bytes)"""
