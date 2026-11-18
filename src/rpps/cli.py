@@ -15,23 +15,22 @@ import textwrap
 from pathlib import Path
 
 
-def _categories(rp):
-    """name -> (title, callable returning {group: [names]})"""
-    return {
-        "constellation": ('Constellations  (rp.symbol.load("<name>"[, "<mapping>"]))', rp.symbol.ls),
-        "pulse": ('Pulses  (rp.signal.filters.load("pulse", "<family>/<name>"))', lambda: rp._config.ls("pulse")),
-        "filter": ('Filters  (rp.signal.filters.load(<kind>, "<family>/<name>"))', lambda: rp._config.ls("filter")),
-        "sequence": ('Sequences  (rp.sequence.load("<name>"))', rp.sequence.ls),
-        "scramble": ('Scramblers  (rp.code.scram.load("<name>"))', rp.code.scram.ls),
-        "fec": ('FEC  (rp.code.load(<kind>, "<family>/<name>"))', lambda: rp._config.ls("fec")),
-        "interleave": ('Interleavers  (rp.code.load("interleave", "<type>/<name>"))', lambda: rp._config.ls("interleave")),
-        "crc": ('CRCs  (rp.link.load("crc", "<name>"))', lambda: rp._config.ls("crc")),
-        "frame": ('Frames  (rp.link.load("frame", "<name>"))', lambda: rp._config.ls("frame")),
-        "header": ('Headers  (rp.symbol.load_header("<name>"), rp.link.load("header", "<name>"))', lambda: rp._config.ls("header")),
-        "table": ('Tables  (rp.profile.table("<family>/<name>"))', lambda: rp._config.ls("table")),
-        "profile": ('Profiles  (rp.profile.load("<family>/<mode>"))', rp.profile.ls),
-        "windows": ("Built-in Windows  (rp.signal.filters.Window.get(<name>))", lambda: {"windows": rp.signal.filters.Window.s()}),
-    }
+# name -> (title, function of the rpps module giving {group: [names]}). Static, so --help needs no import of rpps
+CATEGORIES = {
+    "constellation": ('Constellations  (rp.symbol.load("<name>"[, "<mapping>"]))', lambda rp: rp.symbol.ls()),
+    "pulse": ('Pulses  (rp.signal.filters.load("pulse", "<family>/<name>"))', lambda rp: rp._config.ls("pulse")),
+    "filter": ('Filters  (rp.signal.filters.load(<kind>, "<family>/<name>"))', lambda rp: rp._config.ls("filter")),
+    "sequence": ('Sequences  (rp.sequence.load("<name>"))', lambda rp: rp.sequence.ls()),
+    "scramble": ('Scramblers  (rp.code.scram.load("<name>"))', lambda rp: rp.code.scram.ls()),
+    "fec": ('FEC  (rp.code.load(<kind>, "<family>/<name>"))', lambda rp: rp._config.ls("fec")),
+    "interleave": ('Interleavers  (rp.code.load("interleave", "<type>/<name>"))', lambda rp: rp._config.ls("interleave")),
+    "crc": ('CRCs  (rp.link.load("crc", "<name>"))', lambda rp: rp._config.ls("crc")),
+    "frame": ('Frames  (rp.link.load("frame", "<name>"))', lambda rp: rp._config.ls("frame")),
+    "header": ('Headers  (rp.symbol.load_header("<name>"), rp.link.load("header", "<name>"))', lambda rp: rp._config.ls("header")),
+    "table": ('Tables  (rp.profile.table("<family>/<name>"))', lambda rp: rp._config.ls("table")),
+    "profile": ('Profiles  (rp.profile.load("<family>/<mode>"))', lambda rp: rp.profile.ls()),
+    "windows": ("Built-in Windows  (rp.signal.filters.Window.get(<name>))", lambda rp: {"windows": rp.signal.filters.Window.s()}),
+}
 
 
 def _show(title, groups, width):
@@ -48,11 +47,57 @@ def _show(title, groups, width):
 
 def cmd_ls(args):
     import rpps as rp
-    cats = _categories(rp)
     width = min(shutil.get_terminal_size((100, 20)).columns, 120)
-    for name in args.category or cats:
-        title, fn = cats[name]
-        _show(title, fn(), width)
+    for name in args.category or CATEGORIES:
+        title, fn = CATEGORIES[name]
+        _show(title, fn(rp), width)
+    return 0
+
+
+def cmd_show(args):
+    """Print a definition: its file and its JSON (any resource, by path: fec/block/rs/204_188)"""
+    from rpps import _config
+    domain, _, rest = args.ref.strip("/").partition("/")
+    if domain not in _config.domains() or not rest:
+        print(f"{args.ref}: give <resource>/<name>, resource one of {_config.domains()}", file=sys.stderr)
+        return 1
+    file = _config.find(domain, rest)
+    if file is None:
+        print(f"{args.ref}: not found", file=sys.stderr)
+        return 1
+    print(f"# {file}")
+    print(_config.format_json(_config.read(file)))
+    return 0
+
+
+def cmd_rx(args):
+    """Receive a capture with a profile: the data bits out, as bytes (most significant bit first) to --out"""
+    import numpy as np
+    import rpps as rp
+    params = {}
+    for kv in args.param:
+        k, v = kv.split("=", 1)
+        try:
+            params[k] = json.loads(v) # numbers, lists, true / false
+        except ValueError:
+            params[k] = v # a name
+    sync = {}
+    for kv in args.sync:
+        kind, method = kv.split("=", 1)
+        sync[kind] = {"method": method}
+    p = rp.profile.load(args.profile, sync=sync or None, **params)
+    rx = p.rx()
+    src = rp.source.File(args.fmt, args.file, Fs=args.fs, cf=args.cf, sps=args.sps or p.params.get("sps", 0.0))
+    bits = []
+    for block in src(args.block):
+        out = rx(block)
+        x = np.asarray(out.data)
+        bits.append(x < 0 if x.dtype.kind == "f" else x.astype(bool))
+    bits = np.concatenate(bits) if bits else np.zeros(0, bool)
+    print(f"{args.file}: {len(bits)} bits out of {args.profile}")
+    if args.out:
+        Path(args.out).write_bytes(np.packbits(bits).tobytes())
+        print(f"wrote {args.out}")
     return 0
 
 
@@ -146,14 +191,28 @@ def cmd_gen_ldpc(args):
 
 
 def main(argv=None):
-    # Category names are static so --help doesn't need to import rpps
-    names = ["constellation", "pulse", "filter", "sequence", "scramble", "fec", "interleave", "crc", "frame", "header", "table",
-             "profile", "windows"]
     parser = argparse.ArgumentParser(prog="rpps", description="RF Parameter Processor Suite")
     sub = parser.add_subparsers(dest="cmd", required=True)
     p_ls = sub.add_parser("ls", help="list the definitions there are, by resource")
-    p_ls.add_argument("category", nargs="*", choices=names, help="limit output to these categories (default: all)")
+    p_ls.add_argument("category", nargs="*", choices=list(CATEGORIES), help="limit output to these categories (default: all)")
     p_ls.set_defaults(fn=cmd_ls)
+
+    p_show = sub.add_parser("show", help="print a definition, e.g. fec/block/rs/204_188")
+    p_show.add_argument("ref", help="<resource>/<name>")
+    p_show.set_defaults(fn=cmd_show)
+
+    p_rx = sub.add_parser("rx", help="receive a capture file with a profile")
+    p_rx.add_argument("profile", help="profile, e.g. dvbs2/normal")
+    p_rx.add_argument("file", help="capture file")
+    p_rx.add_argument("--fs", type=float, required=True, help="sample rate [Hz]")
+    p_rx.add_argument("--fmt", default="cf64", help="sample format (default: cf64)")
+    p_rx.add_argument("--cf", type=float, default=0.0, help="centre frequency [Hz]")
+    p_rx.add_argument("--sps", type=float, default=0.0, help="samples per symbol (default: the profile's sps parameter)")
+    p_rx.add_argument("--block", type=int, default=1 << 16, help="samples per block (default: 65536)")
+    p_rx.add_argument("--param", action="append", default=[], metavar="NAME=VALUE", help="a profile parameter (repeatable)")
+    p_rx.add_argument("--sync", action="append", default=[], metavar="KIND=METHOD", help="a sync method, e.g. timing=known (repeatable)")
+    p_rx.add_argument("--out", help="write the bits out as bytes here")
+    p_rx.set_defaults(fn=cmd_rx)
 
     p_sv = sub.add_parser("survey", help="find and list the signals in a capture file")
     p_sv.add_argument("file", help="capture file")
