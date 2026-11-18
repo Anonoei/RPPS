@@ -22,7 +22,9 @@ class linear(_code):
         else: # Parity block only
             n, k = obj["code"]
             g, h = matrix.linear(n, k, np.array(obj["p"], dtype=bool))
-        return cls(log, g, h)
+        code = cls(log, g, h)
+        code.t = obj.get("t") # errors a syndrome decoder corrects: needed where the minimum distance is too costly to find
+        return code
 
     def encode(self, bits: np.ndarray):
         blocks = block(bits, self.num)
