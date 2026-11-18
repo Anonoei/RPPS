@@ -60,19 +60,19 @@ def _bits_int(b):
 
 def golay_encode(u):
     """23-bit codeword of 12 data bits: the data followed by 11 parity bits"""
-    return _bits_int(_GOLAY._enc.encode(_int_bits(u, 12)))
+    return _bits_int(_GOLAY.encoder.encode(_int_bits(u, 12)))
 
 
 def golay_decode(c):
     """(12 data bits, errors corrected) of a 23-bit word; errors = 4 when the word is not within 3 of a codeword"""
-    u = _bits_int(_GOLAY._dec.decode(_int_bits(c, 23)))
+    u = _bits_int(_GOLAY.decoder.decode(_int_bits(c, 23)))
     e = int(_GOLAY.errors[0])
     return u, (4 if e < 0 else e)
 
 
 def hamming_decode(c):
     """(11 data bits, errors corrected) of a 15-bit word (data in bits 14..4, parity in bits 3..0)"""
-    u = _bits_int(_HAMMING._dec.decode(_int_bits(c, 15)))
+    u = _bits_int(_HAMMING.decoder.decode(_int_bits(c, 15)))
     return u, int(_HAMMING.errors[0])
 
 

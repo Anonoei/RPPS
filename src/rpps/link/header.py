@@ -253,4 +253,4 @@ class Header(Pipe):
 
 def _crc(name):
     from .serial import load
-    return load("crc", name)._enc
+    return load("crc", name).encoder

@@ -42,14 +42,14 @@ LS_BITS = np.array([
     1386, 1387, 1388, 1389, 1390, 1391, 1392, 1393, 1394, 1395, 1396, 1397,
 ])
 _HAMMING = rp.code.load("block", "hamming/p25_10_6", decoder="syndrome") # Hamming (10,6,3): 6 data bits, 4 parity
-_RS = {0x5: rp.code.load("block", "rs/p25_24_12")._dec, 0xA: rp.code.load("block", "rs/p25_24_16")._dec} # LDU1 link control, LDU2 encryption sync
+_RS = {0x5: rp.code.load("block", "rs/p25_24_12").decoder, 0xA: rp.code.load("block", "rs/p25_24_16").decoder} # LDU1 link control, LDU2 encryption sync
 ALGO = {0x80: "unencrypted", 0x81: "DES-OFB", 0x84: "AES-256", 0xAA: "ADP (RC4)", 0x9F: "DES-XL", 0x83: "3DES", 0x85: "AES-128"}
 
 
 def hexbits(bits):
     """24 Hamming(10,6,3)-corrected hexbits of an LDU's link-control / encryption-sync words, from the frame's 1728 bits"""
     words = np.asarray(bits)[LS_BITS].astype(np.uint8)
-    data = _HAMMING._dec.decode(words).reshape(24, 6)
+    data = _HAMMING.decoder.decode(words).reshape(24, 6)
     return [int(v) for v in data @ (1 << np.arange(5, -1, -1))]
 
 

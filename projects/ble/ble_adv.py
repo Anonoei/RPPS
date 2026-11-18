@@ -28,7 +28,7 @@ def whiten_bits(bits, channel):
     """De/whiten a bit array (the same operation): rpps sequence/recurrence/ble_whiten (LFSR x^7 + x^4 + 1 seeded with the channel index)"""
     return rp.code.scram.load("ble_whiten", channel=int(channel)).encode(bits).astype(np.uint8)
 
-_CRC24 = rp.link.load("crc", "crc24_ble")._enc
+_CRC24 = rp.link.load("crc", "crc24_ble").encoder
 
 def crc24(bits, init=0x555555):
     """CRC-24 over `bits` in transmitted order; returns the 24 bits in the order they are sent"""

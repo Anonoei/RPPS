@@ -27,5 +27,5 @@ class EL_ND(TED_ND):
         samples[2] = early, (mTm)       : near-peak sample (symbol)
         """
         r_term = (self.samples[0].real - self.samples[2].real) * self.samples[1].real
-        i_term = (self.samples[0].real - self.samples[2].real) * self.samples[1].iamg
+        i_term = (self.samples[0].imag - self.samples[2].imag) * self.samples[1].imag
         return r_term + i_term

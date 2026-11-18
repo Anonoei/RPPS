@@ -74,7 +74,7 @@ def brute_app(codewords, llr, maxlog):
 @pytest.mark.parametrize("maxlog", [False, True])
 def test_trellis_matches_enumeration(name, maxlog, rng):
     code = rp.code.load("block", name)
-    enc, dec = code._enc, code._dec
+    enc, dec = code.encoder, code.decoder
     assert type(dec).__name__ == "trellis"
     dec.maxlog = maxlog
     msgs = np.array(list(itertools.product([0, 1], repeat=enc.num)), dtype=bool)
@@ -87,25 +87,25 @@ def test_trellis_matches_enumeration(name, maxlog, rng):
 def test_hamming_corrects_any_single_error():
     code = rp.code.load("block", "hamming/7_4")
     msg = np.array([1, 0, 1, 1, 0, 0, 1, 0], dtype=bool)
-    coded = code._enc.encode(msg)
+    coded = code.encoder.encode(msg)
     for i in range(7):
         bad = coded.copy()
         bad[i] ^= True
-        assert np.array_equal(code._dec.decode(bad), msg)
+        assert np.array_equal(code.decoder.decode(bad), msg)
 
 def test_soft_trellis_beats_hard_on_hamming(rng):
     code = rp.code.load("block", "hamming/7_4")
     msg = bits(rng, 4*4000)
-    coded = code._enc.encode(msg)
+    coded = code.encoder.encode(msg)
     rx = (1.0 - 2.0*coded) + rng.normal(0, 0.8, len(coded))
-    hard = code._dec.decode((rx < 0))
-    soft = code._dec.decode(2*rx/0.8**2)
+    hard = code.decoder.decode((rx < 0))
+    soft = code.decoder.decode(2*rx/0.8**2)
     assert (soft != msg).sum() < (hard != msg).sum()
     assert (soft != msg).mean() < 0.06 # Uncoded BPSK at this noise level makes about 10.6% errors
 
 def test_linear_decoder_override():
     code = rp.code.load("block", "hamming/7_4", decoder="linear")
-    assert type(code._dec).__name__ == "linear" and code.decision.name == "HARD"
+    assert type(code.decoder).__name__ == "linear" and code.decision.name == "HARD"
 
 def test_big_linear_code_falls_back():
     """A syndrome trellis of 2^(n-k) states is refused for long codes: the plain decoder takes over"""
@@ -121,10 +121,10 @@ TERMINATED = {
 @pytest.mark.parametrize("maxlog", [False, True])
 def test_conv_bcjr_matches_enumeration(maxlog, rng):
     code = rp.code.init("t", TERMINATED, decoder="bcjr")
-    dec, K = code._dec, 6
+    dec, K = code.decoder, 6
     dec.maxlog = maxlog
     msgs = np.array(list(itertools.product([0, 1], repeat=K)), dtype=bool)
-    cws = np.array([code._enc.encode(m) for m in msgs]).astype(np.uint8)  # (64, 2*(K+2))
+    cws = np.array([code.encoder.encode(m) for m in msgs]).astype(np.uint8)  # (64, 2*(K+2))
     llr = rng.normal(0, 1.5, cws.shape[1])
     score = ((1 - 2*cws.astype(np.int64))*llr/2).sum(axis=1)
     reduce = (lambda v: v.max()) if maxlog else np.logaddexp.reduce
@@ -135,7 +135,7 @@ def test_conv_bcjr_clean_and_hard(rng):
     for name in ("k3_5_7/1_2", "k7_133_171/1_2", "k7_171_133/3_4"):
         code = rp.code.load("conv", name, decoder="bcjr")
         msg = bits(rng, 600)
-        out = code._dec.decode(code._enc.encode(msg))
+        out = code.decoder.decode(code.encoder.encode(msg))
         n = min(len(out), len(msg)) - 20
         assert np.array_equal(out[:n], msg[:n])
 
@@ -143,16 +143,16 @@ def test_bcjr_close_to_viterbi_and_better_calibrated(rng):
     msg = bits(rng, 4000)
     code_v = rp.code.load("conv", "k7_133_171/1_2")
     code_b = rp.code.load("conv", "k7_133_171/1_2", decoder="bcjr")
-    coded = code_v._enc.encode(msg)
+    coded = code_v.encoder.encode(msg)
     sigma = 0.9
     rx = (1.0 - 2.0*coded) + rng.normal(0, sigma, len(coded))
     llr = 2*rx/sigma**2
-    v = code_v._dec.decode(llr)
-    b = code_b._dec.decode(llr)
+    v = code_v.decoder.decode(llr)
+    b = code_b.decoder.decode(llr)
     n = min(len(v), len(b), len(msg)) - 20
     ev, eb = (v[:n] != msg[:n]).sum(), (b[:n] != msg[:n]).sum()
     assert eb <= ev*1.3 + 5 # BCJR minimises bit errors, Viterbi sequence errors: close
-    app = code_b._dec.app(llr)[:n]
+    app = code_b.decoder.app(llr)[:n]
     wrong = (app < 0) != msg[:n]
     conf = np.abs(app) > 8
     assert wrong[conf].mean() < 1e-2 # Confident bits are right
@@ -160,9 +160,9 @@ def test_bcjr_close_to_viterbi_and_better_calibrated(rng):
 def test_bcjr_handles_puncturing(rng):
     code = rp.code.load("conv", "k7_171_133/3_4", decoder="bcjr")
     msg = bits(rng, 1200)
-    coded = code._enc.encode(msg)
+    coded = code.encoder.encode(msg)
     rx = (1.0 - 2.0*coded) + rng.normal(0, 0.5, len(coded))
-    out = code._dec.decode(2*rx/0.25)
+    out = code.decoder.decode(2*rx/0.25)
     n = min(len(out), len(msg)) - 30
     assert (out[:n] != msg[:n]).mean() < 0.01
 
@@ -176,7 +176,7 @@ def test_decisions_default_by_decoder():
     assert rp.code.load("block", "rs/204_188").decision.name == "SOFT" # LLRs pick the symbols to erase on a retry
 
 def test_repeat_adds_llrs():
-    rep = rp.code.load("block", "repeat/3")._dec
+    rep = rp.code.load("block", "repeat/3").decoder
     llr = np.array([+3.0, -1.0, -1.0,  +1.0, +1.0, -1.5], dtype=np.float32)
     assert rep.decode(llr).tolist() == [False, False]
     assert rep.decode(np.array([1, 1, 0, 0, 1, 0], dtype=bool)).tolist() == [True, False]

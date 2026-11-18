@@ -146,9 +146,9 @@ def test_thread_safe_ldpc_state_stays_per_call():
     from concurrent.futures import ThreadPoolExecutor
     code = rp.code.load("block", "ldpc/gallager_96_48")
     A, B = coded_frames(code, 8, 1, 1, noise=0.7)[0], coded_frames(code, 8, 1, 2, noise=0.7)[0]
-    want = [code._dec.decode(A).copy(), code._dec.decode(B).copy()]
+    want = [code.decoder.decode(A).copy(), code.decoder.decode(B).copy()]
     with ThreadPoolExecutor(4) as pool:
-        got = list(pool.map(lambda x: code._dec.decode(x).copy(), [A, B]*8))
+        got = list(pool.map(lambda x: code.decoder.decode(x).copy(), [A, B]*8))
     assert all(np.array_equal(g, want[i % 2]) for i, g in enumerate(got))
 
 def test_demap_exact_where_the_sums_underflow():

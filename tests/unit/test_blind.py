@@ -25,7 +25,7 @@ def hdlc():
     rng = np.random.default_rng(1)
     fr = rp.link.load("frame", "hdlc")
     frames = [bytes(rng.integers(0, 256, int(rng.integers(20, 200))).astype(np.uint8)) for _ in range(120)]
-    return np.asarray(fr._enc.encode(frames)).astype(np.uint8)[:100000]
+    return np.asarray(fr.encoder.encode(frames)).astype(np.uint8)[:100000]
 
 def rs_bits(n, k, poly, fcr, prim, words=24, payload=None, seed=0, phase=37, offset=5):
     rng = np.random.default_rng(seed)
@@ -85,7 +85,7 @@ def test_guesses_save_as_definitions_that_load(tmp_path, monkeypatch, hdlc):
     bits = rs_bits(219, 201, 0x187, 120, 1, phase=0, offset=0)
     g = B.search(bits, lengths=(219,))[2]
     g.save("found", tmp_path/"fec")
-    code = rp.code.load("block", "guess/found")._enc
+    code = rp.code.load("block", "guess/found").encoder
     words = np.packbits(bits[:len(bits)//(8*219)*8*219]).reshape(-1, 219).astype(np.int64)
     assert not code.syndromes(words).any()
 
@@ -139,13 +139,13 @@ def test_bch_found_with_its_field_and_t_shortened_too():
 
 def test_cyclic_code_found_by_its_generator():
     rng = np.random.default_rng(2)
-    b = np.asarray(rp.code.load("block", "golay/23_12")._enc.encode(rng.integers(0, 2, 12*600).astype(bool))).astype(np.uint8)
+    b = np.asarray(rp.code.load("block", "golay/23_12").encoder.encode(rng.integers(0, 2, 12*600).astype(bool))).astype(np.uint8)
     (h, g), = BK.solve_block(b[5:])
     assert g.definition["type"] == "cyclic" and int(g.definition["poly"], 16) == 0xC75
 
 def test_an_ldpc_code_from_its_sparse_checks():
     rng = np.random.default_rng(6)
-    H = np.asarray(rp.code.load("block", "ldpc/gallager_96_48")._enc.H, dtype=np.uint8)[:, rng.permutation(96)]
+    H = np.asarray(rp.code.load("block", "ldpc/gallager_96_48").encoder.H, dtype=np.uint8)[:, rng.permutation(96)]
     cw = (rng.integers(0, 2, (1500, len(nullspace(H)))) @ nullspace(H) % 2).astype(np.uint8).reshape(-1)[13:]
     (h, g), = BK.solve_block(cw[:32768])
     assert h.params["kind"] == "ldpc" and (h.params["n"], h.params["k"]) == (96, 50)
@@ -153,7 +153,7 @@ def test_an_ldpc_code_from_its_sparse_checks():
 
 def test_soft_values_find_sparse_checks_at_a_bit_error_rate_hard_bits_cannot():
     rng = np.random.default_rng(6)
-    H = np.asarray(rp.code.load("block", "ldpc/gallager_96_48")._enc.H, dtype=np.uint8)[:, rng.permutation(96)]
+    H = np.asarray(rp.code.load("block", "ldpc/gallager_96_48").encoder.H, dtype=np.uint8)[:, rng.permutation(96)]
     G = nullspace(H)
     cw = (rng.integers(0, 2, (3000, len(G))) @ G % 2).astype(np.uint8)
     y = (1 - 2.0*cw) + 0.4*rng.standard_normal(cw.shape) # BER about 0.6%
@@ -162,7 +162,7 @@ def test_soft_values_find_sparse_checks_at_a_bit_error_rate_hard_bits_cannot():
 
 def test_product_code_rows_and_columns():
     rng = np.random.default_rng(3)
-    r, c = rp.code.load("block", "hamming/15_11")._enc, rp.code.load("block", "hamming/7_4")._enc
+    r, c = rp.code.load("block", "hamming/15_11").encoder, rp.code.load("block", "hamming/7_4").encoder
     blocks = []
     for _ in range(500):
         rows = np.array([r.encode(x) for x in rng.integers(0, 2, (4, 11)).astype(bool)])

@@ -60,7 +60,8 @@ __author__ = "Anonoei <to+dev@an0.us>"
 from . import logger
 from . import errors
 from . import _config
-from ._config import add_config_path
+from ._config import add_config_path, domains
+from ._config import load_ref as load
 
 # Import helpers/globals
 from .base.types import Category, Rep, dtype

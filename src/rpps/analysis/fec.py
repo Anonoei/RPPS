@@ -241,7 +241,7 @@ def _load_blocks():
     for folder in ("block",):
         for name in coding.names(folder):
             try:
-                enc = coding.load(folder, name)._enc
+                enc = coding.load(folder, name).encoder
             except Exception: # A config that doesn't load can't be a hypothesis
                 continue
             if hasattr(enc, "syndrome"):
@@ -316,7 +316,7 @@ def _label_configs(hyps):
     known = {}
     for name in coding.names("conv"):
         c = coding.load("conv", name)
-        g = np.asarray(c._enc.generator, dtype=np.uint8)
+        g = np.asarray(c.encoder.generator, dtype=np.uint8)
         known[name] = {tuple(map(tuple, g)), tuple(map(tuple, g[::-1]))}
     for h in hyps:
         if h.kind.startswith("conv") and "g" in h.params and len(h.params["g"]) == 2:
@@ -357,7 +357,7 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
     rng = np.random.default_rng(0)
     for name in names:
         code = coding.load("conv", name)
-        enc = code._enc
+        enc = code.encoder
         pat = enc.puncture if enc.puncture is not None else np.ones((enc.den, 1), dtype=bool)
         L = pat.shape[1]
         nb = int(pat.sum())
@@ -390,7 +390,7 @@ def decode_conv(bits, hyp):
     seg = np.asarray(bits[hyp.params["offset"]:], dtype=np.uint8)
     nb = puncture_period(code)
     seg = seg[:len(seg)//nb*nb]
-    return code._dec.decode(seg)
+    return code.decoder.decode(seg)
 
 RS_WORDS = 12 # Words a Reed-Solomon hypothesis is scored on (each passes by chance 256^-nroots of the time)
 _RS_PROBE = 8 # Words tried first at every phase: a random word has zero syndromes 256^-nroots of the time
@@ -416,7 +416,7 @@ def decode_tail(bits, code, fraction=0.5, probe=4000):
     seg = bits[start:start + probe//nb*nb + nb]
     best = min(range(nb), key=lambda o: (lambda k, n: k/max(n, 1))(*mismatch(code, seg[o:o + probe//nb*nb])))
     tail = bits[start + best:]
-    return code._dec.decode(tail[:len(tail)//nb*nb]).astype(np.uint8)
+    return code.decoder.decode(tail[:len(tail)//nb*nb]).astype(np.uint8)
 
 def scan_rs(bits, names=None, interleavers=True):
     """Find a Reed-Solomon code (config/fec/block type rs), optionally behind a Forney interleaver (config/interleave/forney)
@@ -433,13 +433,13 @@ def scan_rs(bits, names=None, interleavers=True):
     inters = [(None, None)]
     if interleavers:
         for nm in coding.names("interleave"):
-            enc = coding.load("interleave", nm)._enc
+            enc = coding.load("interleave", nm).encoder
             if hasattr(enc, "I") and hasattr(enc, "M") and getattr(enc, "symbol", 8) == 8:
                 inters.append((nm, enc))
     hyps, trials, short = [], 0, False
     bits = np.asarray(bits, dtype=np.uint8)
     for name in names:
-        code = coding.load("block", name)._enc
+        code = coding.load("block", name).encoder
         if getattr(code, "m", 8) != 8: # The search runs on bytes: codes over other fields (P25's GF(64)) don't apply
             continue
         n = code.den
@@ -646,7 +646,7 @@ def scan_hdlc(streams, names=None, min_frames=3):
     names = names or encap.ls().get("frame", [])
     hyps, trials = [], 0
     for name in names:
-        h = encap.load("frame", name)._enc
+        h = encap.load("frame", name).encoder
         f = h.flag_bits
         for tag, bits in streams.items():
             for pol in (0, 1):
@@ -890,7 +890,7 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
         if rs is not None:
             out.inner.append(rs)
             p = rs.params
-            n = cached("block", rs.name)._enc.den
+            n = cached("block", rs.name).encoder.den
             pat, _ = frame_markers(info ^ p["polarity"], n, p["bit_offset"], p["byte_phase"])
             if pat is not None:
                 p["pattern"] = pat
@@ -1036,7 +1036,7 @@ def _blind(head, c, y=None):
         code = puncture._code(v.params["K"], v.params["generator"], np.asarray(v.params["puncture"], dtype=bool))
         bits = np.asarray(head[v.params["stream"]][v.params["offset"]:], dtype=np.uint8)
         m = puncture_period(code)
-        info = code._dec.decode(bits[:len(bits)//m*m]).astype(np.uint8)
+        info = code.decoder.decode(bits[:len(bits)//m*m]).astype(np.uint8)
         return [(v, g)] + solve(info)
     for key, bits in _distinct(head, c).items():
         llr = None

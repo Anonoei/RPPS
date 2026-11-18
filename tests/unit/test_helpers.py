@@ -60,7 +60,7 @@ def test_find_sync_and_decode_conv():
     code = rp.code.load("conv", "k7_133_171/1_2")
     msg = rng.integers(0, 2, 400).astype(bool)
     hyp = SimpleNamespace(coding=("conv", "k7_133_171/1_2"), params={"offset": 0})
-    out = rp.analysis.fec.decode_conv(code._enc.encode(msg).astype(np.uint8), hyp)
+    out = rp.analysis.fec.decode_conv(code.encoder.encode(msg).astype(np.uint8), hyp)
     assert (np.asarray(out[:300]).astype(bool) == msg[:300]).all()
 
 def test_shaping_mat_rrc_shapes_a_block():

@@ -23,7 +23,7 @@ class Decision(Enum):
 
 class Coding(base.rpps.Pipe):
     """Coding parent class"""
-    __slots__ = ("log", "_enc", "_dec")
+    __slots__ = ("log", "encoder", "decoder")
     name = "Coding"
     _decision = None
     CATEGORY = Category.CODE
@@ -36,20 +36,20 @@ class Coding(base.rpps.Pipe):
         return self.ENCODE_TAKES if encode else self.DECODE_TAKES
     def __init__(self, e_impl, d_impl):
         self.log = Logger().Child("Coding", _config.LOG_CODING).Child(type(self).__name__, _config.LOG_CODING)
-        self._enc = e_impl
-        self._dec = d_impl
+        self.encoder = e_impl
+        self.decoder = d_impl
 
     def __str__(self) -> str:
-        if self._enc is None:
+        if self.encoder is None:
             return f"{self.name}:none"
-        return f"{self.name}:{self.decision.name}:{type(self._enc).__name__}_{self.e_num}/{self.e_den}:{type(self._dec).__name__}_{self.d_num}/{self.d_den}"
+        return f"{self.name}:{self.decision.name}:{type(self.encoder).__name__}_{self.e_num}/{self.e_den}:{type(self.decoder).__name__}_{self.d_num}/{self.d_den}"
 
     @property
     def decision(self):
         """SOFT when the decoder can use LLRs (the default for those that can), HARD otherwise. Assign to override"""
         if self._decision is not None:
             return self._decision
-        return Decision.SOFT if getattr(self._dec, "soft", False) else Decision.HARD
+        return Decision.SOFT if getattr(self.decoder, "soft", False) else Decision.HARD
 
     @decision.setter
     def decision(self, value):
@@ -68,7 +68,7 @@ class Coding(base.rpps.Pipe):
 
     def _block(self, enc):
         """Items taken at a time on the way in: message bits to encode, or received bits to decode"""
-        return self._enc.num if enc else self._dec.den
+        return self.encoder.num if enc else self.decoder.den
 
     # ---- header-driven control (rpps.profile.control): which definition this is, changed at a frame boundary
 
@@ -80,10 +80,10 @@ class Coding(base.rpps.Pipe):
         bits pass as they are, an interleaver a modulation does not use). Applied between codewords, it keeps nothing
         of the old code; a profile applies it where a header says the new code starts"""
         if name is None:
-            self._enc = self._dec = None
+            self.encoder = self.decoder = None
         else:
             new = cached(self.folder or type(self).__name__.lower(), name)
-            self._enc, self._dec = new._enc, new._dec
+            self.encoder, self.decoder = new.encoder, new.decoder
         self.name = name or "none"
         self._restart = True # A frame starts here: a codeword never spans two
 
@@ -103,9 +103,9 @@ class Coding(base.rpps.Pipe):
 
     def pos_rate(self, decode):
         """Output bits per input bit (rpps.profile positions)"""
-        if self._enc is None:
+        if self.encoder is None:
             return 1.0
-        coder = self._dec if decode else self._enc
+        coder = self.decoder if decode else self.encoder
         return coder.num/coder.den if decode else coder.den/coder.num
 
     def _process(self, coder, x, ctx, enc):
@@ -116,7 +116,7 @@ class Coding(base.rpps.Pipe):
 
     def _run(self, data, enc):
         self.log.debug(f"{'Coding' if enc else 'Decoding'} {data}")
-        if self._enc is None: # control(name=None): nothing to do
+        if self.encoder is None: # control(name=None): nothing to do
             return data.derive(data.data, self.CATEGORY, data.DT, type(data), dict(data.ctx), rep=data.REP)
         x = None
         if not enc and self.decision == Decision.SOFT and isinstance(data, Mod):
@@ -126,7 +126,7 @@ class Coding(base.rpps.Pipe):
         ctx = dict(data.ctx)
         self._frame_start(data, ctx, enc)
         x = align(ctx, (self, enc), x, self._block(enc), pad=enc, log=self.log)
-        y = self._process(self._enc if enc else self._dec, x, ctx, enc)
+        y = self._process(self.encoder if enc else self.decoder, x, ctx, enc)
         rep = self.ENCODE_GIVES if enc else self.DECODE_GIVES
         if np.asarray(y).dtype.kind == "f": # Soft values that went through (an interleaver): still LLRs
             return data.derive(y, self.CATEGORY, dtype.LLR, Mod, ctx, rep=rep)
@@ -141,27 +141,27 @@ class Coding(base.rpps.Pipe):
     def errors(self):
         """Per codeword of the last decode: bits (Reed-Solomon: symbols) corrected, -1 where it failed. None for
         decoders without codewords (Viterbi, BCJR of a convolutional code)"""
-        return getattr(self._dec, "errors", None)
+        return getattr(self.decoder, "errors", None)
 
 
     @property
     def e_num(self):
         """Return number of encoding data bits"""
-        return self._enc.num
+        return self.encoder.num
     @property
     def e_den(self):
         """Return number of total encoded bits"""
-        return self._enc.den
+        return self.encoder.den
 
     @property
     def d_num(self):
         """Return number of decoding data bits"""
-        return self._dec.num
+        return self.decoder.num
 
     @property
     def d_den(self):
         """Return number of total decoded bits"""
-        return self._dec.den
+        return self.decoder.den
 
     @property
     def e_rate(self):
@@ -177,15 +177,15 @@ class Coding(base.rpps.Pipe):
 
 def puncture_period(code):
     """Channel bits in one period of a convolutional code's puncture pattern (n, the outputs per step, when unpunctured):
-    the alignments a decoder can start at. `code`: anything with an encoder `_enc` (a loaded Coding)"""
-    p = getattr(code._enc, "puncture", None)
-    return int(p.sum()) if p is not None else int(code._enc.den)
+    the alignments a decoder can start at. `code`: anything with an `encoder` (a loaded Coding)"""
+    p = getattr(code.encoder, "puncture", None)
+    return int(p.sum()) if p is not None else int(code.encoder.den)
 
 def mismatch(code, hard):
     """Decode hard channel bits, encode the decision again and compare: (bits that differ, bits compared). At the right
     code and alignment only channel errors differ; a wrong one differs about as often as random bits"""
     hard = np.asarray(hard)
-    e = code._enc.encode(code._dec.decode(hard.astype(np.uint8)).astype(bool))
+    e = code.encoder.encode(code.decoder.decode(hard.astype(np.uint8)).astype(bool))
     n = min(len(e), len(hard))
     return int(np.count_nonzero(e[:n] != hard[:n].astype(bool))), n
 
@@ -218,10 +218,10 @@ def _block_kernel(self, params, how):
         return None
     if params:
         self.control(**params)
-    if self._dec is None or (self.folder == "interleave" and not hasattr(self._dec, "block_bits")):
+    if self.decoder is None or (self.folder == "interleave" and not hasattr(self.decoder, "block_bits")):
         return None
     from ..parallel.kernels import BlockDecode
-    return BlockDecode(self._dec, self._block(False), self.decision == Decision.SOFT, self.CATEGORY, self.DECODE_GIVES, str(self.name))
+    return BlockDecode(self.decoder, self._block(False), self.decision == Decision.SOFT, self.CATEGORY, self.DECODE_GIVES, str(self.name))
 
 class Block(Coding):
     SCOPE = FRAME # Whole codewords
@@ -270,7 +270,7 @@ class Convolutional(Coding):
 
     def _block(self, enc):
         # A punctured code works on whole puncture periods
-        coder = self._enc if enc else self._dec
+        coder = self.encoder if enc else self.decoder
         p = getattr(coder, "puncture", None)
         if p is None:
             return coder.num if enc else coder.den
@@ -320,9 +320,9 @@ class Interleaver(Coding):
         return 1.0
 
     def _block(self, enc):
-        if hasattr(self._enc, "block_bits"):
-            return self._enc.block_bits
-        return self._enc.I*self._enc.symbol # Whole rows of I symbols: the first one is on branch 0
+        if hasattr(self.encoder, "block_bits"):
+            return self.encoder.block_bits
+        return self.encoder.I*self.encoder.symbol # Whole rows of I symbols: the first one is on branch 0
 
     def _process(self, coder, x, ctx, enc):
         if not len(x):

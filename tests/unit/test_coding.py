@@ -24,7 +24,7 @@ def test_unknown_definition():
 
 @pytest.mark.parametrize("name", configs("block"))
 def test_block_round_trip(name, rng):
-    code = load("block", name)._enc
+    code = load("block", name).encoder
     if name.startswith("rs/"):
         msg = bits(rng, code.num*code.m*5)
         per = code.m # Lengths count symbols of m bits
@@ -48,14 +48,14 @@ def test_block_rate_matches_properties(name):
     assert 0 < c.e_rate <= 1
 
 def test_linear_syndrome_decoder_corrects_one_error_per_block():
-    c = rp.code.load("block", "hamming/7_4", decoder="linear")._dec
+    c = rp.code.load("block", "hamming/7_4", decoder="linear").decoder
     msg = np.array([1, 0, 1, 1], dtype=bool)
     coded = c.encode(msg).copy()
     coded[2] ^= True
     assert np.array_equal(c.decode(coded), msg)
 
 def test_rs_corrects_errors(rng):
-    rs = rp.code.load("block", "rs/204_188")._enc
+    rs = rp.code.load("block", "rs/204_188").encoder
     msg = rng.integers(0, 256, 188*4).astype(np.uint8)
     coded = rs.encode(msg, symbols=True).reshape(-1, 204)
     bad = coded.copy()
@@ -70,7 +70,7 @@ def test_rs_corrects_errors(rng):
 def test_conv_clean_round_trip(name, rng):
     code = rp.code.load("conv", name)
     msg = bits(rng, 2400)
-    out = np.asarray(code._dec.decode(code._enc.encode(msg))).astype(bool)
+    out = np.asarray(code.decoder.decode(code.encoder.encode(msg))).astype(bool)
     n = min(len(out), len(msg)) - 40 # The tail of a non-terminated stream is not guaranteed
     assert n > 2000
     assert np.array_equal(out[:n], msg[:n])
@@ -78,23 +78,23 @@ def test_conv_clean_round_trip(name, rng):
 def test_viterbi_soft_beats_hard(rng):
     code = rp.code.load("conv", "k7_133_171/1_2")
     msg = bits(rng, 4000)
-    coded = code._enc.encode(msg)
+    coded = code.encoder.encode(msg)
     sigma = 0.75
     rx = (1.0 - 2.0*coded.astype(float)) + rng.normal(0, sigma, len(coded))
-    hard = np.asarray(code._dec.decode((rx < 0).astype(np.uint8))).astype(bool)
-    soft = np.asarray(code._dec.decode(rx, soft=True)).astype(bool)
+    hard = np.asarray(code.decoder.decode((rx < 0).astype(np.uint8))).astype(bool)
+    soft = np.asarray(code.decoder.decode(rx, soft=True)).astype(bool)
     n = min(len(hard), len(soft), len(msg)) - 40
     assert (soft[:n] != msg[:n]).sum() < (hard[:n] != msg[:n]).sum()
 
 def test_interleaver_round_trip(rng):
-    il = rp.code.load("interleave", "forney/12_17")._enc
+    il = rp.code.load("interleave", "forney/12_17").encoder
     x = rng.integers(0, 256, 204*30).astype(np.uint8)
     y = il.decode(il.encode(x, symbols=True), symbols=True)
     delay = (il.I - 1)*il.M*il.I # Total latency of interleaver + deinterleaver
     assert np.array_equal(np.asarray(y)[delay:delay+1000], x[:1000])
 
 def test_ldpc_corrects_noise(rng):
-    code = rp.code.load("block", "ldpc/gallager_96_48")._enc
+    code = rp.code.load("block", "ldpc/gallager_96_48").encoder
     msg = bits(rng, code.num*40)
     coded = code.encode(msg)
     rx = (1.0 - 2.0*coded.astype(float)) + rng.normal(0, 0.6, len(coded))
@@ -131,7 +131,7 @@ def test_import_alist(tmp_path):
     path = rp.code.import_alist(f, "alist_ham", dest=tmp_path / "cfg", comment="test")
     rp.add_config_path(tmp_path / "cfg")
     try:
-        code = rp.code.load("block", "ldpc/alist_ham")._enc
+        code = rp.code.load("block", "ldpc/alist_ham").encoder
         assert (code.num, code.den) == (4, 7)
         word = code.encode(np.array([1, 0, 1, 1], dtype=bool))
         assert not np.any(code.syndrome(word[None, :]))

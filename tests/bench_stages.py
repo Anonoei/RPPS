@@ -30,27 +30,27 @@ def decoders(rng):
     """(name, decode(), information bits per call) for each decoder, set up on a noisy codeword stream"""
     out = []
     c = rp.code.load("conv", "k7_133_171/1_2")
-    x = llr_of(c._enc.encode(rng.integers(0, 2, 20000).astype(bool)), rng, 3.0)
-    out.append(("Viterbi K7 1/2", lambda: c._dec.decode(x), 20000))
-    t = rp.code.load("block", "trellis/p25_1_2")._dec
+    x = llr_of(c.encoder.encode(rng.integers(0, 2, 20000).astype(bool)), rng, 3.0)
+    out.append(("Viterbi K7 1/2", lambda: c.decoder.decode(x), 20000))
+    t = rp.code.load("block", "trellis/p25_1_2").decoder
     tx = np.array([llr_of(t.encode(m), rng, 3.0) for m in rng.integers(0, 2, (64, 192)).astype(bool)])
     out.append(("fsm P25 1/2 (64 frames)", lambda: t.decode_batch(tx), 64*192))
     tb = rp.code.load("block", "turbo/lte", K=6144)
-    tbx = llr_of(tb._enc.encode(rng.integers(0, 2, 6144).astype(bool)), rng, 0.8)
-    out.append(("turbo LTE K=6144", lambda: tb._dec.decode(tbx), 6144))
+    tbx = llr_of(tb.encoder.encode(rng.integers(0, 2, 6144).astype(bool)), rng, 0.8)
+    out.append(("turbo LTE K=6144", lambda: tb.decoder.decode(tbx), 6144))
     ld = rp.code.load("block", "ldpc/dvbs2_64800_1_2")
-    ldx = llr_of(np.zeros(ld._dec.den, dtype=bool), rng, 1.5) # the all-zero codeword (encoding needs dense GF(2) elimination)
-    out.append(("LDPC DVB-S2 64800 1/2", lambda: ld._dec.decode(ldx), ld._dec.num))
+    ldx = llr_of(np.zeros(ld.decoder.den, dtype=bool), rng, 1.5) # the all-zero codeword (encoding needs dense GF(2) elimination)
+    out.append(("LDPC DVB-S2 64800 1/2", lambda: ld.decoder.decode(ldx), ld.decoder.num))
     r = rp.code.load("block", "rs/204_188")
-    cw = r._enc.encode(rng.integers(0, 256, 188*200), symbols=True).reshape(200, 204).copy()
+    cw = r.encoder.encode(rng.integers(0, 256, 188*200), symbols=True).reshape(200, 204).copy()
     for w in cw:
         w[rng.choice(204, 6, replace=False)] ^= rng.integers(1, 256, 6)
-    out.append(("RS(204,188) 200 words", lambda: r._dec.decode(cw.reshape(-1), symbols=True), 200*188*8))
+    out.append(("RS(204,188) 200 words", lambda: r.decoder.decode(cw.reshape(-1), symbols=True), 200*188*8))
     b = rp.code.load("block", "bch/dvbs2_1_2")
-    bw = b._enc.encode(rng.integers(0, 2, b._dec.num*4).astype(bool)).reshape(4, -1).copy()
+    bw = b.encoder.encode(rng.integers(0, 2, b.decoder.num*4).astype(bool)).reshape(4, -1).copy()
     for w in bw:
         w[rng.choice(len(w), 10, replace=False)] ^= True
-    out.append(("BCH DVB-S2 1/2, 4 words", lambda: b._dec.decode(bw.reshape(-1)), 4*b._dec.num))
+    out.append(("BCH DVB-S2 1/2, 4 words", lambda: b.decoder.decode(bw.reshape(-1)), 4*b.decoder.num))
     return out
 
 def timed(fn, native):

@@ -18,7 +18,7 @@ RNG = np.random.default_rng(7)
 
 def codewords(n):
     """n valid ATSC RS(207, 187) codewords from rp.code.RS's encoder"""
-    enc = rp.code.RS(207, 187)._dec
+    enc = rp.code.RS(207, 187).decoder
     msg = RNG.integers(0, 256, (n, 187), dtype=np.uint8)
     return np.array([np.asarray(enc.encode(m.astype(np.int64), symbols=True)).astype(np.uint8) for m in msg]).reshape(n, 207), msg
 
@@ -59,7 +59,7 @@ def test_rs_matches_rp_on_mixed_damage():
         pos = RNG.choice(207, k, replace=False)
         bad[i, pos] ^= RNG.integers(1, 256, k, dtype=np.uint8)
     d0, e0 = atsc_decode.rs_decode(bad)
-    ref = rp.code.RS(207, 187)._dec
+    ref = rp.code.RS(207, 187).decoder
     saved = _accel.native
     _accel.native = None # the Python reference loop
     try:
@@ -109,7 +109,7 @@ def make_ts(packets):
 
 def section(table_id, body):
     sec = bytes([table_id]) + (0xB000 | (len(body) + 4)).to_bytes(2, "big") + body
-    crc = rp.link.load("crc", "crc32_mpeg2")._enc
+    crc = rp.link.load("crc", "crc32_mpeg2").encoder
     c = int(crc.compute(sec)) if not hasattr(crc.compute(sec), "tobytes") else int(crc.compute(sec))
     return sec + c.to_bytes(4, "big")
 

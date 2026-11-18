@@ -36,7 +36,7 @@ def mothers():
     from .. import code
     out = {}
     for name in code.names("conv"):
-        e = code.load("conv", name)._enc
+        e = code.load("conv", name).encoder
         if e.den != 2 or e.num != 1:
             continue
         g = np.asarray(e.generator, dtype=np.uint8)

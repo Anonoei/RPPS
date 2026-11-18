@@ -30,7 +30,7 @@ class Profile:
 
     def _build(self):
         """The steps, built (each runner builds its own: header-driven control changes their operators)"""
-        ctx = {"params": self.params, "defaults": self.obj.get("defaults", {}), "overrides": self._sync, "objects": {}}
+        ctx = _steps.context(self.params, self.obj.get("defaults", {}), self._sync)
         specs = list(self.obj["steps"])
         # A step can refer to one after it (a pilot equalizer to its carriers): build those first
         early = {i: _steps.build(s, None, ctx) for i, s in enumerate(specs) if s.get("symbol") == "carriers"}
@@ -97,10 +97,8 @@ def load(name, sync=None, **params):
     file = _config.find("profile", name)
     if file is None:
         raise FileNotFoundError(f"profile/{name}: not found, have {_config.ls('profile')}")
-    obj = _config.read(file)
-    values = {**_config.declared(obj), **params}
-    resolved = _config.resolve(obj, params, f"profile/{name}")
-    return Profile(name, resolved, sync=sync, params=values)
+    resolved = _config.resolve(_config.read(file), params, f"profile/{name}")
+    return Profile(name, resolved, sync=sync, params=_config.declared(resolved))
 
 def ls():
     """The profiles there are: {family: [modes]}"""

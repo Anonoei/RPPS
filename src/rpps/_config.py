@@ -149,6 +149,17 @@ def load(domain, name, category=None, path=None, params=None, example=False):
         params = {**examples(obj), **(params or {})}
     return load_obj(domain, name, obj, params)
 
+def load_ref(ref, **params):
+    """Any definition by its path below config/: `rp.load("fec/block/rs/204_188")`, `rp.load("crc/crc32_mpeg2")`,
+    `rp.load("profile/ieee802154/2450", sps=8)`. The first part is the resource (`rp.domains()` lists them), the rest the
+    reference within it (a bare name works when it is unique). params: values for the definition's "params" """
+    domain, _, rest = str(ref).strip("/").partition("/")
+    if domain not in _DOMAINS:
+        raise ConfigError(f"{ref}: no resource {domain!r}, have {domains()}")
+    if not rest:
+        raise ConfigError(f"{ref}: name a definition below {domain}/, have {ls(domain)}")
+    return load(domain, rest, params=params)
+
 def load_obj(domain, name, obj, params=None):
     """Build a definition already read from JSON (or made in code) with the loader of its "base" """
     obj = resolve(obj, params, f"{domain}/{name}")
@@ -193,7 +204,13 @@ def resolve(obj, params=None, name="definition", strict=True):
     missing = [k for k, v in values.items() if v is None]
     if missing and _uses_params(obj):
         raise ConfigError(f"{name}: parameter(s) {missing} needed, e.g. load(..., {missing[0]}=...)")
-    return _subst(obj, values, name) if decl or _uses_params(obj) else obj
+    if not (decl or _uses_params(obj)):
+        return obj
+    out = _subst(obj, values, name)
+    if decl: # The filled-in definition says what it was given: `declared` of it gives the values used, not the defaults
+        out = dict(out)
+        out["params"] = {k: ({**v, "default": values[k]} if isinstance(v, dict) else values[k]) for k, v in obj["params"].items()}
+    return out
 
 def _uses_params(v):
     if isinstance(v, dict):

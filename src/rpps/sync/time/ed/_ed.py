@@ -13,7 +13,7 @@ class _TED:
         self.err = 0.0
         self.prev_err = 0.0
         self.clock = 0
-        self.samples = np.zeros(self.Inputs)
+        self.samples = np.zeros(self.Inputs, dtype=complex)
 
     def run(self):
         ...

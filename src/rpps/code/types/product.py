@@ -20,8 +20,8 @@ class product(_code):
 
     def __init__(self, log, rows, cols, reserved=0, lead=0, iters=4):
         self.rows, self.cols = rows, cols # Coding objects (encoder + hard decoder)
-        self.k1, self.n1 = rows._enc.num, rows._enc.den
-        self.k2, self.n2 = cols._enc.num, cols._enc.den
+        self.k1, self.n1 = rows.encoder.num, rows.encoder.den
+        self.k2, self.n2 = cols.encoder.num, cols.encoder.den
         self.reserved, self.lead, self.iters = int(reserved), int(lead), int(iters)
         super().__init__(log, None, self.k1*self.k2 - self.reserved, self.lead + self.n1*self.n2)
 
@@ -30,17 +30,17 @@ class product(_code):
         out = []
         for m in b[:len(b)//self.num*self.num].reshape(-1, self.num):
             area = np.concatenate((np.zeros(self.reserved, np.uint8), m)).reshape(self.k2, self.k1)
-            rows = self.rows._enc.encode(area.reshape(-1)).reshape(self.k2, self.n1).astype(np.uint8)
-            full = self.cols._enc.encode(rows.T.reshape(-1)).reshape(self.n1, self.n2).T # Columns encoded, back to rows
+            rows = self.rows.encoder.encode(area.reshape(-1)).reshape(self.k2, self.n1).astype(np.uint8)
+            full = self.cols.encoder.encode(rows.T.reshape(-1)).reshape(self.n1, self.n2).T # Columns encoded, back to rows
             out.append(np.concatenate((np.zeros(self.lead, np.uint8), full.reshape(-1))))
         return np.concatenate(out).astype(bool) if out else np.zeros(0, bool)
 
     def _fix(self, coder, words, n, k):
         """Decode each word (rows of `words`, n bits) with the code's hard decoder; returns words corrected and statuses"""
-        dec = coder._dec
+        dec = coder.decoder
         msg = dec.decode(words.reshape(-1)).reshape(len(words), k).astype(np.uint8)
         st = np.asarray(coder.errors)
-        fixed = coder._enc.encode(msg.reshape(-1)).reshape(len(words), n).astype(np.uint8)
+        fixed = coder.encoder.encode(msg.reshape(-1)).reshape(len(words), n).astype(np.uint8)
         ok = st >= 0
         words = words.copy()
         words[ok] = fixed[ok] # A failed word is left as received
@@ -69,8 +69,8 @@ class product(_code):
 
     def _clean(self, M):
         """Every row and column is a codeword"""
-        r = self.rows._enc.encode(M[:, :self.k1].reshape(-1)).reshape(self.n2, self.n1)
-        c = self.cols._enc.encode(M[:self.k2].T.reshape(-1)).reshape(self.n1, self.n2).T
+        r = self.rows.encoder.encode(M[:, :self.k1].reshape(-1)).reshape(self.n2, self.n1)
+        c = self.cols.encoder.encode(M[:self.k2].T.reshape(-1)).reshape(self.n1, self.n2).T
         return np.array_equal(r.astype(np.uint8), M) and np.array_equal(c.astype(np.uint8), M)
 
 def _code_obj(ref):

@@ -55,7 +55,7 @@ def sc_bin(k, nfft, n_rb):
 # ---------------------------------------------------------------------------------------------------------------- channel coding (36.212 5.1, 5.3.1)
 CONV_GENS = (0o133, 0o171, 0o165)
 
-_CRC16 = rp.link.load("crc", "crc16_xmodem")._enc # 36.212 5.1.1 gCRC16: D^16 + D^12 + D^5 + 1, zero start
+_CRC16 = rp.link.load("crc", "crc16_xmodem").encoder # 36.212 5.1.1 gCRC16: D^16 + D^12 + D^5 + 1, zero start
 
 def crc16(bits):
     """CRC (36.212 5.1.1) of a bit list, fed MSB first; returns 16 bits"""
@@ -67,14 +67,14 @@ _CONV = rp.code.Conv(CONV_GENS, 7, termination="tailbiting") # 36.212 5.1.3.1
 
 def conv_encode(c):
     """Tail-biting rate-1/3 encoder (5.1.3.1): returns the three (K,) output streams"""
-    return _CONV._enc.encode(np.asarray(c, np.uint8)).reshape(-1, 3).T.astype(np.uint8)
+    return _CONV.encoder.encode(np.asarray(c, np.uint8)).reshape(-1, 3).T.astype(np.uint8)
 
 def subblock_perm(D):
     """For each output position of the sub-block interleaver (5.1.4.2.1) the input index, the <NULL> dummies left out (rpps interleave/block/lte_subblock)"""
-    return rp.code.load("interleave", "lte_subblock", length=D)._enc.src
+    return rp.code.load("interleave", "lte_subblock", length=D).encoder.src
 
 def _rm(D, E):
-    return rp.code.load("block", "ratematch/lte_conv", D=D, E=E)._enc # 5.1.4.2
+    return rp.code.load("block", "ratematch/lte_conv", D=D, E=E).encoder # 5.1.4.2
 
 
 def rate_match(d, E):
@@ -88,7 +88,7 @@ def rate_dematch(llr, D=40):
 
 def viterbi_tailbiting(llr3):
     """Soft decode of the tail-biting code (llr3: (3, K), positive = bit 0) with the rpps Viterbi (three laps round the circle, the middle kept). Returns (bits, None)"""
-    return _CONV._dec.decode(np.asarray(llr3, float).T.reshape(-1)).astype(np.uint8), None
+    return _CONV.decoder.decode(np.asarray(llr3, float).T.reshape(-1)).astype(np.uint8), None
 
 def decode_bch(llr):
     """1920 descrambled soft bits -> (MIB bits, ports or None, crc bits). The port count is read from which mask makes the CRC zero."""

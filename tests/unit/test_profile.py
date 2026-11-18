@@ -191,3 +191,10 @@ def test_profile_parameters_reach_the_steps(tmp_path):
         assert np.array_equal(s.encode(z), rp.code.scram.load("ble_whiten", channel=38).encode(z))
     finally:
         rp._config._EXTRA.remove(tmp_path)
+
+def test_domain_loader_keeps_the_given_parameters():
+    """Loaded through the generic config loader, a profile gets the values given, not its defaults"""
+    from rpps import _config
+    assert _config.load("profile", "ieee802154/2450", params={"sps": 8}).params == {"sps": 8}
+    assert rp.profile.load("ieee802154/2450", sps=8).params == {"sps": 8}
+    assert rp.profile.load("ieee802154/2450").params == {"sps": 4}

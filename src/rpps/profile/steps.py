@@ -51,16 +51,118 @@ def _need(spec, key, where):
         raise ConfigError(f"{where}: needs '{key}'")
     return spec[key]
 
+# ---- the registry: what each category's kinds build, and the methods of the sync kinds that have them
+
+REGISTRY = {c: {} for c in ("signal", "sync", "wave", "symbol", "code", "link")}
+METHODS = {} # sync kind -> {method: builder(m, rep, ctx) -> operator}
+
+def register_step(category, kind):
+    """Register a builder for `{"<category>": "<kind>", ...}`: builder(kind, spec, rep, ctx) -> (rx, tx, gives), where rx and
+    tx are [(how, operator)] (how: STAGE, DECODE or ENCODE) and gives the representation it gives on receive
+
+        @rp.profile.steps.register_step("signal", "gain")
+        def gain(kind, spec, rep, ctx):
+            return [(STAGE, MyGain(spec["k"]))], [], rep
+    """
+    if category not in REGISTRY:
+        raise ValueError(f"no step category {category!r} (have {sorted(REGISTRY)})")
+    def deco(builder):
+        if kind in REGISTRY[category]:
+            raise ValueError(f"{category} step {kind!r} is registered already")
+        REGISTRY[category][kind] = builder
+        return builder
+    return deco
+
+def register_sync_method(kind, method):
+    """Register a method of a sync kind ("timing", "carrier", "equalize"): builder(m, rep, ctx) -> the stage, where m is the
+    step merged with the profile's defaults and the load-time overrides (README.dev.md, Sync methods)"""
+    def deco(builder):
+        table = METHODS.setdefault(kind, {})
+        if method in table:
+            raise ValueError(f"{kind} method {method!r} is registered already")
+        table[method] = builder
+        return builder
+    return deco
+
+def kinds():
+    """{category: [kinds]} that can be built"""
+    return {c: sorted(k) for c, k in REGISTRY.items()}
+
+def methods(kind):
+    """The registered methods of a sync kind"""
+    return sorted(METHODS.get(kind, {}))
+
+def context(params=None, defaults=None, overrides=None):
+    """What building a step reads: the profile's parameters, its sync defaults, the load-time overrides, and the objects
+    steps built so far (a pilot equalizer finds its carriers there)"""
+    return {"params": params or {}, "defaults": defaults or {}, "overrides": overrides or {}, "objects": {}}
+
+def _by_method(kind):
+    """A sync kind built by its method (rx only, one stage, same representation unless the method says)"""
+    def builder(_, spec, rep, ctx):
+        m = _sync_method(kind, spec, ctx)
+        method = m.get("method")
+        table = METHODS.get(kind, {})
+        if method not in table:
+            raise ConfigError(f"{kind}: no method {method!r} (have {', '.join(sorted(table))})")
+        st = table[method](m, rep, ctx)
+        if st is None: # (the method needs nothing here: "none")
+            return [], [], rep
+        return [(STAGE, st)], [], getattr(st, "GIVES", None) or (Rep.SYMBOLS if kind == "timing" else rep)
+    return builder
+
+def _one(make):
+    """A receive-only step of one stage made by make(spec, ctx)"""
+    return lambda kind, spec, rep, ctx: ([(STAGE, make(spec, ctx))], [], rep)
+
+def _stage_class(path):
+    """The class a "stage" step names by module path ("rpps.signal.DCBlock", "mypkg.dsp.Gain")"""
+    import importlib
+    from ..base import Stage
+    mod, _, name = str(path).rpartition(".")
+    try:
+        cls = getattr(importlib.import_module(mod), name) if mod else None
+    except (ImportError, AttributeError):
+        cls = None
+    if not (isinstance(cls, type) and issubclass(cls, Stage)):
+        raise ConfigError(f"stage step: {path!r} is not a Stage class (a module path, e.g. rpps.signal.DCBlock)")
+    return cls
+
 # ---- signal (receive only)
 
-def _signal(kind, spec, rep, ctx):
+@register_step("signal", "filter")
+def _signal_filter(kind, spec, rep, ctx):
     from .. import signal
-    if kind == "filter":
-        st = signal.filters.load(_need(spec, "type", "signal filter"), _need(spec, "name", "signal filter"))
-        return [(STAGE, st)], [], rep
-    if kind == "decimate":
-        return [(STAGE, signal.sample.down.Decimate(spec["ratio"], spec.get("offset", 0)))], [], rep
-    raise ConfigError(f"signal step: no kind {kind!r} (have filter, decimate)")
+    return [(STAGE, signal.filters.load(_need(spec, "type", "signal filter"), _need(spec, "name", "signal filter")))], [], rep
+
+@register_step("signal", "decimate")
+@_one
+def _decimate(spec, ctx):
+    from .. import signal
+    return signal.sample.down.Decimate(_need(spec, "ratio", "signal decimate"), spec.get("offset", 0))
+
+@register_step("signal", "dc_block")
+@_one
+def _dc_block(spec, ctx):
+    from .. import signal
+    return signal.DCBlock(**_given(spec, ("r",)))
+
+@register_step("signal", "deemphasis")
+@_one
+def _deemphasis(spec, ctx):
+    from .. import signal
+    return signal.Deemphasis(**_given(spec, ("tau",)))
+
+@register_step("signal", "shift")
+@_one
+def _shift(spec, ctx):
+    from .. import signal
+    return signal.filters.ShiftFreq(_need(spec, "freq", "signal shift"))
+
+@register_step("signal", "stage")
+def _signal_stage(kind, spec, rep, ctx):
+    """Any Stage, by its class's module path: {"signal": "stage", "class": "mypkg.Gain", "args": {"k": 2}}"""
+    return [(STAGE, _stage_class(_need(spec, "class", "stage step"))(**spec.get("args", {})))], [], rep
 
 # ---- sync (receive only)
 
@@ -82,96 +184,154 @@ _SYNC_DEFAULTS = {
     "delimit": {"method": "word"},
 }
 
-def _sync(kind, spec, rep, ctx):
-    from .. import sync, signal
-    m = _sync_method(kind, spec, ctx)
-    method = m.get("method")
-    sps = ctx["params"].get("sps")
-    if kind == "timing":
-        if method == "oerder_meyr":
-            st = sync.time.OerderMeyr(m.get("sps"), m.get("window", 1e-3), m.get("min_symbols", 2048), m.get("bw", 0.25),
-                                      m.get("gate", 2.0), m.get("name", "timing"))
-        elif method in ("mm", "gardner"):
-            st = sync.time.MM(m.get("alpha", 0.3), ted="mm" if method == "mm" else "gardner")
-        elif method == "known":
-            st = _KnownTiming(m.get("sps", sps))
-        elif method == "fixed":
-            st = signal.sample.down.Decimate(_need(m, "sps", "fixed timing") if sps is None else m.get("sps", sps), m["offset"])
-        else:
-            raise ConfigError(f"timing: no method {method!r} (have oerder_meyr, mm, gardner, known, fixed)")
-        return [(STAGE, st)], [], Rep.SYMBOLS
-    if kind == "carrier":
-        if method == "pilots": # Data-aided, per frame, from pilot blocks (DVB-S2): their layout comes from a header
-            st = sync.PilotPhase(m.get("slot", 90), m.get("every", 16), m.get("length", 36), _complex(m.get("value", [0.7071067811865476, 0.7071067811865476])),
-                                 m.get("slots"), m.get("pilots", True), m.get("lead"), m.get("name", "pilots"))
-            return [(STAGE, st)], [], rep
-        if method == "mpower":
-            order = int(m.get("order", 4))
-            offset = m.get("offset")
-            if offset is None:
-                from .. import symbol
-                offset = sync.phase.offset_of(symbol.load(m["constellation"]), order) if "constellation" in m else 0.0
-            st = sync.phase.MPower(order, offset, m.get("window", 1e-3), m.get("min_symbols", 1024), m.get("bw", 0.25),
-                                   m.get("gate", 3.0), m.get("relock", 4), m.get("name", "carrier"))
-        elif method == "costas":
-            st = sync.Costas.from_bandwidth(m.get("bw", 0.01), order=m.get("order", 4))
-        elif method == "ff":
-            st = sync.phase.FFCarrier(m.get("window", 64))
-        elif method == "none":
-            return [], [], rep # The carrier is already off (an upstream source), or there is no estimator for this signal yet
-        else:
-            raise ConfigError(f"carrier: no method {method!r} (have mpower, costas, ff, pilots, none)")
-        return [(STAGE, st)], [], rep
-    if kind == "align":
-        st = sync.Align(_need(m, "period", "align"), markers=m.get("markers"), pattern=m.get("pattern"),
-                        unit=m.get("unit", 8), polarity=m.get("polarity", True), name=m.get("name", "align"),
-                        start=m.get("start", "any"))
-        return [(STAGE, st)], [], rep
-    if kind == "puncture":
-        from .. import code
-        c = code.load(m.get("type", "conv"), _need(m, "fec", "puncture"))
-        return [(STAGE, sync.Puncture(c, m.get("window", 4000)))], [], rep
-    if kind == "pilots":
-        carriers = ctx["objects"].get("carriers")
-        if carriers is None:
-            raise ConfigError("pilots: needs a symbol carriers step after it")
-        return [(STAGE, sync.PilotEqualizer(carriers, m.get("taps")))], [], rep
-    if kind == "agc":
-        return [(STAGE, sync.AGC(m.get("target", 1.0), m.get("mu", 0.01)))], [], rep
-    if kind == "equalize":
-        if method == "ls":
-            from .. import symbol
-            st = sync.equalize.BlockLS(symbol.load(_need(m, "constellation", "equalize ls")), m.get("taps", 7), m.get("window", 1e-3),
-                                       m.get("min_symbols", 1024), m.get("iters", 3), m.get("blend", 0.5), m.get("gate", 0.5),
-                                       m.get("name", "equalizer"))
-        elif method == "lms":
-            from .. import symbol
-            pts = symbol.load(m["constellation"]).points if "constellation" in m else None
-            st = sync.equalize.LMS(m.get("taps", 11), m.get("mu", 0.01), points=pts)
-        elif method == "cma":
-            st = sync.equalize.CMA(m.get("taps", 11), m.get("mu", 0.01))
-        else:
-            raise ConfigError(f"equalize: no method {method!r} (have ls, lms, cma)")
-        return [(STAGE, st)], [], rep
-    if kind == "frame": # Frames by a known preamble among symbols: the one a physical header definition starts with
+for _kind in ("timing", "carrier", "equalize"):
+    register_step("sync", _kind)(_by_method(_kind))
+
+def _sps(m, ctx, where):
+    sps = m.get("sps", ctx["params"].get("sps"))
+    return _need({"sps": sps}, "sps", where) if sps is None else sps
+
+@register_sync_method("timing", "oerder_meyr")
+def _om(m, rep, ctx):
+    from .. import sync
+    return sync.time.OerderMeyr(m.get("sps"), m.get("window", 1e-3), m.get("min_symbols", 2048), m.get("bw", 0.25),
+                                m.get("gate", 2.0), m.get("name", "timing"))
+
+@register_sync_method("timing", "mm")
+def _mm(m, rep, ctx):
+    from .. import sync
+    return sync.time.MM(m.get("alpha", 0.3), ted="mm")
+
+@register_sync_method("timing", "gardner")
+def _gardner(m, rep, ctx):
+    from .. import sync
+    return sync.time.MM(m.get("alpha", 0.3), ted="gardner")
+
+@register_sync_method("timing", "tll")
+def _tll(m, rep, ctx):
+    from .. import sync
+    return sync.time.TLL(m.get("sps", ctx["params"].get("sps")), m.get("bw", 0.01), m.get("damping", 0.7071), m.get("name", "timing"))
+
+@register_sync_method("timing", "known")
+def _known(m, rep, ctx):
+    return _KnownTiming(m.get("sps", ctx["params"].get("sps")))
+
+@register_sync_method("timing", "fixed")
+def _fixed(m, rep, ctx):
+    from .. import signal
+    return signal.sample.down.Decimate(_sps(m, ctx, "fixed timing"), m["offset"])
+
+@register_sync_method("carrier", "pilots")
+def _pilot_phase(m, rep, ctx):
+    """Data-aided, per frame, from pilot blocks: their layout ("slot", "every", "length", "value"), else PilotPhase's own"""
+    from .. import sync
+    return sync.PilotPhase(**_given(m, ("slot", "every", "length", "slots", "pilots", "lead", "name"), value=_complex))
+
+@register_sync_method("carrier", "mpower")
+def _mpower(m, rep, ctx):
+    from .. import sync
+    order = int(m.get("order", 4))
+    offset = m.get("offset")
+    if offset is None:
         from .. import symbol
-        h = symbol.load_header(_need(m, "header", "sync frame"))
-        st = sync.FrameSync(h.preamble, h.words() if m.get("words", True) else None, m.get("threshold"),
-                            m.get("max_length"), m.get("name", "frame"))
-        return [(STAGE, st)], [], rep
-    if kind == "delimit": # Frames by the word before them among bits: a link header's preamble word, or one given
-        if "header" in m:
-            from .. import link
-            pre = _config.read(_config.find("header", m["header"], "link")).get("preamble") or {}
-            h = link.load("header", m["header"])
-            word, bits, order = pre.get("word"), pre.get("bits"), h.order
-        else:
-            word, bits, order = _need(m, "word", "sync delimit"), _need(m, "bits", "sync delimit"), m.get("order", "msb")
-        if word is None:
-            raise ConfigError(f"sync delimit: {m.get('header')} has no preamble word")
-        st = sync.Delimiter(word, bits, order, m.get("errors", 0), m.get("name", "delimiter"))
-        return [(STAGE, st)], [], rep
-    raise ConfigError(f"sync step: no kind {kind!r} (have timing, carrier, equalize, align, puncture, pilots, agc, frame, delimit)")
+        offset = sync.phase.offset_of(symbol.load(m["constellation"]), order) if "constellation" in m else 0.0
+    return sync.phase.MPower(order, offset, m.get("window", 1e-3), m.get("min_symbols", 1024), m.get("bw", 0.25),
+                             m.get("gate", 3.0), m.get("relock", 4), m.get("name", "carrier"))
+
+@register_sync_method("carrier", "costas")
+def _costas(m, rep, ctx):
+    from .. import sync
+    return sync.Costas.from_bandwidth(m.get("bw", 0.01), order=m.get("order", 4))
+
+@register_sync_method("carrier", "ff")
+def _ff(m, rep, ctx):
+    from .. import sync
+    return sync.phase.FFCarrier(m.get("window", 64))
+
+register_sync_method("carrier", "none")(lambda m, rep, ctx: None) # The carrier is already off, or no estimator fits yet
+
+@register_sync_method("equalize", "ls")
+def _ls(m, rep, ctx):
+    from .. import sync, symbol
+    return sync.equalize.BlockLS(symbol.load(_need(m, "constellation", "equalize ls")), m.get("taps", 7), m.get("window", 1e-3),
+                                 m.get("min_symbols", 1024), m.get("iters", 3), m.get("blend", 0.5), m.get("gate", 0.5),
+                                 m.get("name", "equalizer"))
+
+@register_sync_method("equalize", "lms")
+def _lms(m, rep, ctx):
+    from .. import sync, symbol
+    pts = symbol.load(m["constellation"]).points if "constellation" in m else None
+    return sync.equalize.LMS(m.get("taps", 11), m.get("mu", 0.01), points=pts)
+
+@register_sync_method("equalize", "cma")
+def _cma(m, rep, ctx):
+    from .. import sync
+    return sync.equalize.CMA(m.get("taps", 11), m.get("mu", 0.01))
+
+def _sync_one(kind):
+    """A sync kind with a single way to do it: make(m, ctx) -> the stage"""
+    def deco(make):
+        register_step("sync", kind)(lambda _, spec, rep, ctx: ([(STAGE, make(_sync_method(kind, spec, ctx), ctx))], [], rep))
+        return make
+    return deco
+
+@_sync_one("align")
+def _align(m, ctx):
+    from .. import sync
+    return sync.Align(_need(m, "period", "align"), markers=m.get("markers"), pattern=m.get("pattern"), unit=m.get("unit", 8),
+                      polarity=m.get("polarity", True), name=m.get("name", "align"), start=m.get("start", "any"))
+
+@_sync_one("puncture")
+def _puncture(m, ctx):
+    from .. import sync, code
+    return sync.Puncture(code.load(m.get("type", "conv"), _need(m, "fec", "puncture")), m.get("window", 4000))
+
+@_sync_one("pilots")
+def _pilot_eq(m, ctx):
+    from .. import sync
+    carriers = ctx["objects"].get("carriers")
+    if carriers is None:
+        raise ConfigError("pilots: needs a symbol carriers step after it")
+    return sync.PilotEqualizer(carriers, m.get("taps"))
+
+@_sync_one("agc")
+def _agc(m, ctx):
+    from .. import sync
+    return sync.AGC(m.get("target", 1.0), m.get("mu", 0.01))
+
+@_sync_one("squelch")
+def _squelch(m, ctx):
+    from .. import sync
+    return sync.Squelch(**_given(m, ("threshold_db", "hysteresis_db", "alpha")))
+
+@_sync_one("frame")
+def _frame(m, ctx):
+    """Frames by a known preamble among symbols: the one a physical header definition starts with"""
+    from .. import sync, symbol
+    h = symbol.load_header(_need(m, "header", "sync frame"))
+    return sync.FrameSync(h.preamble, h.words() if m.get("words", True) else None, m.get("threshold"), m.get("max_length"),
+                          m.get("name", "frame"))
+
+@_sync_one("delimit")
+def _delimit(m, ctx):
+    """Frames by the word before them among bits: a link header's preamble word, or one given"""
+    from .. import sync
+    if "header" in m:
+        from .. import link
+        pre = _config.read(_config.find("header", m["header"], "link")).get("preamble") or {}
+        h = link.load("header", m["header"])
+        word, bits, order = pre.get("word"), pre.get("bits"), h.order
+    else:
+        word, bits, order = _need(m, "word", "sync delimit"), _need(m, "bits", "sync delimit"), m.get("order", "msb")
+    if word is None:
+        raise ConfigError(f"sync delimit: {m.get('header')} has no preamble word")
+    return sync.Delimiter(word, bits, order, m.get("errors", 0), m.get("name", "delimiter"))
+
+def _given(spec, keys, **convert):
+    """The operator's arguments the step gives (the operator's defaults stand for the rest); convert: {key: function}"""
+    out = {k: spec[k] for k in keys if k in spec}
+    out.update({k: f(spec[k]) for k, f in convert.items() if k in spec})
+    return out
 
 def _complex(v):
     return complex(v[0], v[1]) if isinstance(v, (list, tuple)) else complex(v)
@@ -271,7 +431,6 @@ def _wave(kind, spec, rep, ctx):
     if kind == "ofdm":
         n, cp = spec.get("n_fft", 64), spec.get("n_cp", 16)
         return [(STAGE, wave.OFDMRx(n, cp))], [(STAGE, wave.OFDMTx(n, cp))], Rep.SYMBOLS
-    raise ConfigError(f"wave step: no kind {kind!r} (have shape, stagger, fm, ofdm)")
 
 # ---- symbol, code, link (operators that encode and decode)
 
@@ -292,16 +451,15 @@ def _symbol(kind, spec, rep, ctx):
         make = lambda: symbol.Spread(code, spec.get("pair", False))
         return _pair(make(), make(), Rep.CHANNEL if code.count > 1 else Rep.SYMBOLS)
     if kind == "carriers":
-        c = symbol.Carriers(spec.get("n_fft", 64), spec.get("used"), tuple(spec.get("pilots", (-21, -7, 7, 21))))
+        c = symbol.Carriers(**_given(spec, ("n_fft", "used"), pilots=tuple))
         ctx["objects"]["carriers"] = c
         return [(DECODE, c)], [(ENCODE, c)], Rep.SYMBOLS
     if kind == "header":
         name = _need(spec, "name", "symbol header")
         return _pair(symbol.load_header(name), symbol.load_header(name), Rep.SYMBOLS)
     if kind == "pilots":
-        make = lambda: symbol.Pilots(spec.get("slot", 90), spec.get("every", 16), spec.get("length", 36),
-                                     _complex(spec.get("value", [0.7071067811865476, 0.7071067811865476])), spec.get("slots"),
-                                     spec.get("pilots", True), spec.get("id", "pilots"))
+        make = lambda: symbol.Pilots(**_given(spec, ("slot", "every", "length", "slots", "pilots"), value=_complex),
+                                     name=spec.get("id", "pilots"))
         return _pair(make(), make(), Rep.SYMBOLS)
     if kind == "scramble":
         from .. import sequence
@@ -309,7 +467,6 @@ def _symbol(kind, spec, rep, ctx):
         make = lambda: symbol.PhaseScramble(sequence.load(ref, **spec.get("args", {})), spec.get("offsets", [0]), spec.get("step", 90),
                                             spec.get("length"), spec.get("id", "scramble"))
         return _pair(make(), make(), Rep.SYMBOLS)
-    raise ConfigError(f"symbol step: no kind {kind!r} (have constellation, differential, spread, carriers, header, pilots, scramble)")
 
 def _code(kind, spec, rep, ctx):
     from .. import code
@@ -328,7 +485,6 @@ def _code(kind, spec, rep, ctx):
         return _pair(make(), make(), Rep.DATA)
     if kind == "uncoded":
         return _pair(code.Uncoded(), code.Uncoded(), Rep.DATA)
-    raise ConfigError(f"code step: no kind {kind!r} (have fec, scramble, uncoded)")
 
 def _link(kind, spec, rep, ctx):
     from .. import link
@@ -336,18 +492,24 @@ def _link(kind, spec, rep, ctx):
         name = _need(spec, "name", f"link {kind}")
         make = lambda: link.load(kind, name)
         return _pair(make(), make(), Rep.PACKETS)
-    raise ConfigError(f"link step: no kind {kind!r} (have crc, frame, header)")
 
-BUILDERS = {"signal": _signal, "sync": _sync, "wave": _wave, "symbol": _symbol, "code": _code, "link": _link}
+for _cat, _fn, _kinds in (("wave", _wave, ("shape", "stagger", "fm", "ofdm")),
+                          ("symbol", _symbol, ("constellation", "differential", "spread", "carriers", "header", "pilots", "scramble")),
+                          ("code", _code, ("fec", "scramble", "uncoded")),
+                          ("link", _link, ("crc", "frame", "header"))):
+    for _k in _kinds:
+        register_step(_cat, _k)(_fn)
 
 def build(spec, rep, ctx):
-    """Build one step that receives `rep`. ctx: params, defaults, overrides and objects built so far"""
-    cats = [k for k in spec if k in BUILDERS]
+    """Build one step that receives `rep`. ctx: params, defaults, overrides and objects built so far (see `context`)"""
+    cats = [k for k in spec if k in REGISTRY]
     if len(cats) != 1:
-        raise ConfigError(f"a profile step names one category of {sorted(BUILDERS)}, got {spec}")
+        raise ConfigError(f"a profile step names one category of {sorted(REGISTRY)}, got {spec}")
     cat = cats[0]
     kind = spec[cat]
-    rx, tx, gives = BUILDERS[cat](kind, spec, rep, ctx)
+    if kind not in REGISTRY[cat]:
+        raise ConfigError(f"{cat} step: no kind {kind!r} (have {', '.join(sorted(REGISTRY[cat]))})")
+    rx, tx, gives = REGISTRY[cat][kind](kind, spec, rep, ctx)
     obj = next((op for _, op in rx), None)
     controls = {}
     for _, op in rx + tx:

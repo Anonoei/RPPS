@@ -41,7 +41,7 @@ _GOLAY24 = rp.code.load("block", "golay/24_12") # extended Golay, overall parity
 
 def golay24_decode(c0):
     """(12 data bits, errors) of the 24-bit extended Golay word (LSB = overall parity); errors = 4 when uncorrectable (4 errors are detected)"""
-    u = imbe._bits_int(_GOLAY24._dec.decode(imbe._int_bits(c0, 24)))
+    u = imbe._bits_int(_GOLAY24.decoder.decode(imbe._int_bits(c0, 24)))
     e = int(_GOLAY24.errors[0])
     return u, (4 if e < 0 else e)
 
@@ -68,7 +68,7 @@ def code_vectors(b):
     u1 = (((b[3] >> 1) & 0xFF) << 4) | ((b[4] >> 3) & 0xF)
     u2 = (((b[5] >> 1) & 0xF) << 7) | (((b[6] >> 1) & 7) << 4) | (((b[7] >> 1) & 7) << 1) | ((b[8] >> 2) & 1)
     u3 = ((b[1] & 1) << 13) | ((b[2] & 1) << 12) | ((b[0] & 7) << 9) | ((b[3] & 1) << 8) | ((b[4] & 7) << 5) | ((b[5] & 1) << 4) | ((b[6] & 1) << 3) | ((b[7] & 1) << 2) | (b[8] & 3)
-    c0 = imbe._bits_int(_GOLAY24._enc.encode(imbe._int_bits(u0, 12)))
+    c0 = imbe._bits_int(_GOLAY24.encoder.encode(imbe._int_bits(u0, 12)))
     c1 = imbe.golay_encode(u1) ^ pn_modulation(u0)
     f = lambda v, n: [(v >> (n - 1 - i)) & 1 for i in range(n)]
     return [f(c0, 24), f(c1, 23), f(u2, 11), f(u3, 14)]
