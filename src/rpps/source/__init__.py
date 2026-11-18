@@ -3,4 +3,4 @@ from .. import _config
 from . import err
 from . import formats
 
-from .source import Source, Blocks, File, Device, Sink
+from .source import Source, Blocks, File, Memory, Device, Sink

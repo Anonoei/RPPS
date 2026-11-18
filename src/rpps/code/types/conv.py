@@ -77,14 +77,16 @@ class conv(_code):
         blocks = block(bits[:len(bits)//self.num*self.num], self.num)
         self.log.trace(f"encoding {len(bits)}, {blocks.shape}")
 
-        encoded = np.empty((len(blocks), self.den), dtype=int)
-
-        for i, blk in enumerate(blocks):
-            reg[0] = blk[0]
-            for j, g in enumerate(self.generator):
-                encoded[i, j] = np.bitwise_xor.reduce(reg[g])
-            reg = np.roll(reg, 1)
-            reg[0] = 0
+        # reg[k] at input i is u[i-k]: past bits (reg[1:], newest first) then the input, one window of K per output
+        K = self.con
+        ext = np.concatenate((reg[1:][::-1], blocks[:, 0] if len(blocks) else np.zeros(0, dtype=bool))).astype(np.uint8)
+        if len(blocks):
+            win = np.lib.stride_tricks.sliding_window_view(ext, K)[:, ::-1] # win[i, k] = u[i-k]
+            encoded = (win.astype(np.int64) @ self.generator.T.astype(np.int64)) & 1
+        else:
+            encoded = np.zeros((0, self.den), dtype=np.int64)
+        reg = np.zeros(K, dtype=bool)
+        reg[1:] = ext[::-1][:K - 1].astype(bool) # Newest first, the next input's slot empty
 
         if state is not None:
             if final:

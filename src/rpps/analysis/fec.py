@@ -21,13 +21,14 @@ from ..math.gf2 import nullspace, systematic
 from ..math.prob import deviance_z, z_critical
 
 class Hypothesis:
-    __slots__ = ("kind", "name", "z", "params", "coding")
-    def __init__(self, kind, name, z, params=None, coding=None):
+    __slots__ = ("kind", "name", "z", "params", "coding", "guess")
+    def __init__(self, kind, name, z, params=None, coding=None, guess=None):
         self.kind = kind
         self.name = name
         self.z = z
         self.params = params or {}
         self.coding = coding # (folder, config name) when it is in config/fec
+        self.guess = guess # The Guess (definition to save) a blind find comes with
 
     def __repr__(self):
         c = f" [{self.coding[0]}/{self.coding[1]}]" if self.coding else ""
@@ -59,30 +60,55 @@ class Report:
 
 # --- Bit streams from symbols -------------------------------------------------------------------------
 
-def psk_bit_streams(symbols, points, differential=True):
-    """Hard bits of PSK symbols for every rotation / reflection / labelling / differential coding
+def _constellation(c):
+    from .. import symbol
+    return symbol.load(c) if isinstance(c, str) else c
 
-    Which one is right is unknown: the carrier phase has an M-fold ambiguity, and the mapping isn't known.
-    Returns {tag: bits}.
-    """
-    pts = np.asarray(points)
-    M = len(pts)
-    bps = int(np.log2(M))
-    step = 2*np.pi/M
-    phi0 = np.angle(pts[0]) % step
+def _hard(y, pts, labels):
+    """Hard bits of symbols y: the labels (values) of the nearest points"""
+    idx = np.argmin(np.abs(np.asarray(y)[:, None] - np.asarray(pts)[None, :]), axis=1)
+    bps = int(np.log2(len(pts)))
+    return ((np.asarray(labels, dtype=np.int64)[idx][:, None] >> np.arange(bps-1, -1, -1)) & 1).astype(np.uint8).reshape(-1)
+
+def diff_alphabets(constellation):
+    """Phase-change alphabets a differential receiver of `constellation` would demap against: {name: Constellation}
+
+    The dpsk definitions (config/constellation/dpsk) with as many points, and the constellation itself when 1 is one of
+    its points (DBPSK is BPSK)."""
+    from .. import symbol
+    c = _constellation(constellation)
     out = {}
-    gray = lambda i: i ^ (i >> 1)
-    for conj in (0, 1):
-        y = np.conj(symbols) if conj else symbols
-        for rot in range(M):
-            idx = np.round((np.angle(y) - phi0)/step).astype(int) + rot
-            for diff in ((0, 1) if differential else (0,)):
-                k = idx % M
-                if diff:
-                    k = (k[1:] - k[:-1]) % M
-                for lab, code in (("bin", k), ("gray", gray(k))):
-                    bits = ((code[:, None] >> np.arange(bps-1, -1, -1)) & 1).astype(np.uint8).reshape(-1)
-                    out[(f"conj{conj}", f"rot{rot}", "diff" if diff else "abs", lab)] = bits
+    for stem in symbol.ls().get("dpsk", []):
+        d = symbol.load(stem)
+        if d.order == c.order:
+            out[stem] = d
+    if np.min(np.abs(c.points - 1)) < 1e-6:
+        out[c.name] = c
+    return out
+
+def bit_streams(symbols, constellation, differential=True, keys=None):
+    """Hard bits of symbols under every map a receiver that doesn't know the carrier phase or the IQ sense has to try
+
+    ("abs", i): the constellation's map i (its `maps`: every rotation, with and without spectral inversion)
+    ("diff", name, i): phase changes y[n]/y[n-1] demapped with map i of a differential alphabet (`diff_alphabets`), only its
+        unrotated maps (a phase change doesn't see the carrier phase, only the IQ sense)
+    keys: only these. Returns {key: bits}
+    """
+    c = _constellation(constellation)
+    y = np.asarray(symbols, dtype=np.complex128)
+    out = {}
+    for i, m in enumerate(c.maps):
+        if keys is None or ("abs", i) in keys:
+            out[("abs", i)] = _hard(y, c.points, m.arr)
+    if differential and len(y) > 1:
+        r = y[1:]/np.where(np.abs(y[:-1]) < 1e-12, 1.0, y[:-1])
+        r = r/np.maximum(np.abs(r), 1e-12)
+        for name, d in diff_alphabets(c).items():
+            for i, m in enumerate(d.maps):
+                if abs(np.angle(np.exp(1j*m.rotation))) > 1e-6:
+                    continue
+                if keys is None or ("diff", name, i) in keys:
+                    out[("diff", name, i)] = _hard(r, d.points, m.arr)
     return out
 
 # --- Convolutional ---------------------------------------------------------------------------------
@@ -198,8 +224,16 @@ def scan_block(bits, syndrome, n, name, tag=None, max_offsets=None):
             hyps.append(Hypothesis("block", name, z, {"n": n, "k": n-r, "offset": off, "words_ok": zero/w, "stream": tag}))
     return hyps, trials
 
+_BLOCKS = None
+
 def config_blocks():
-    """(name, folder, config name, n, syndrome function) for the block codes in config/fec"""
+    """(name, folder, config name, n, syndrome function) for the block codes in config/fec (loaded once)"""
+    global _BLOCKS
+    if _BLOCKS is None:
+        _BLOCKS = _load_blocks()
+    return _BLOCKS
+
+def _load_blocks():
     from .. import code as coding
     out = []
     for folder in ("block",):
@@ -242,7 +276,7 @@ def descramblers():
 def detect_fec(streams, ks=range(3, 8), rates=(2, 3), periods=(), blocks=True, descramble=False, max_offsets=256):
     """Identify the FEC of unknown bit streams
 
-    streams: bits, or {tag: bits} when the bit mapping is ambiguous (see `psk_bit_streams`)
+    streams: bits, or {tag: bits} when the bit mapping is ambiguous (see `bit_streams`)
     Returns a Report
     """
     if not isinstance(streams, dict):
@@ -315,11 +349,13 @@ def _mismatch(code, seg):
     n = min(len(e), len(seg))
     return int(np.sum(e[:n] != seg[:n].astype(bool))), n
 
-def scan_defined_conv(streams, names=None, steps=2500, skip=0.1):
+def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 0.45, 0.8)):
     """Try every convolutional definition in config/fec/conv on every bit mapping and puncture alignment
 
     A correct hypothesis lets the decoder reproduce the received bits (the channel error rate, well below
-    what a wrong one gets). Returns (hypotheses, trials).
+    what a wrong one gets). Each of `segments` (fractions into the stream) is tried on its own: a symbol the timing slipped
+    moves the puncture phase, so a segment across it fits two phases half well, and the others still fit one. A
+    hypothesis says which segment (its offset holds there). Returns (hypotheses, trials).
     """
     from .. import code as coding
     names = names or coding.names("conv")
@@ -336,17 +372,21 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1):
         k0, n0 = _mismatch(code, rand)
         base = max(k0/n0, 1e-4) # What a wrong hypothesis gets
         for tag, bits in streams.items():
-            start = int(len(bits)*skip)
-            for off in range(nb):
-                seg = np.asarray(bits[start+off:start+off+per*nb], dtype=np.uint8)
-                if len(seg) < per*nb:
-                    continue
-                k, n = _mismatch(code, seg)
-                trials += 1
-                z = float(-deviance_z(k, n, base)) # Fewer mismatches than a wrong code gives
-                if z > 3.0 and k/n < 0.5*base: # And clearly fewer, not a marginal difference on a short code
-                    hyps.append(Hypothesis("conv-config", name, z,
-                        {"offset": off, "mismatch": k/n, "baseline": base, "stream": tag}, ("conv", name)))
+            starts = sorted({int(len(bits)*f) for f in segments if int(len(bits)*f) + nb + per*nb <= len(bits)})
+            if not starts and len(bits) >= int(len(bits)*skip) + nb + per*nb:
+                starts = [int(len(bits)*skip)]
+            for si, start in enumerate(starts):
+                for off in range(nb):
+                    seg = np.asarray(bits[start+off:start+off+per*nb], dtype=np.uint8)
+                    if len(seg) < per*nb:
+                        continue
+                    k, n = _mismatch(code, seg)
+                    trials += 1
+                    z = float(-deviance_z(k, n, base)) # Fewer mismatches than a wrong code gives
+                    if z > 3.0 and k/n < 0.5*base: # And clearly fewer, not a marginal difference on a short code
+                        hyps.append(Hypothesis("conv-config", name, z, # offset: from the start of the stream, not of the segment
+                            {"offset": (start + off) % nb, "mismatch": k/n, "baseline": base, "stream": tag, "segment": si},
+                            ("conv", name)))
     return hyps, trials
 
 def decode_conv(bits, hyp):
@@ -358,44 +398,84 @@ def decode_conv(bits, hyp):
     seg = seg[:len(seg)//nb*nb]
     return code._dec.decode(seg)
 
-def scan_rs(bits, names=None, interleavers=True, packets=200):
-    """Find a Reed-Solomon code (config/fec/block type rs), optionally behind an interleaver (config/interleave)
+RS_WORDS = 12 # Words a Reed-Solomon hypothesis is scored on (each passes by chance 256^-nroots of the time)
+_RS_PROBE = 8 # Words tried first at every phase: a random word has zero syndromes 256^-nroots of the time
 
-    Returns (hypotheses, trials). The score is how many words have all-zero syndromes.
+def _rs_zero(code, seg, n, phases, words):
+    """Zero-syndrome words among the last `words` whole codewords at each phase of seg: (len(phases),) counts
+
+    The last ones: the start of a window is where the sync before it was still settling"""
+    first = (len(seg) - max(phases) - 1)//n - words # Codewords from each phase that fit, less those used
+    rows = np.stack([seg[p + first*n:p + (first + words)*n].reshape(words, n) for p in phases])
+    S = code.syndromes(rows.reshape(-1, n)).reshape(len(phases), words, -1)
+    flat = (rows == rows[:, :, :1]).all(axis=2) # One value repeated (idle, a dead carrier) is a codeword of any RS code
+    return (~S.any(axis=2) & ~flat).sum(axis=1)
+
+def decode_tail(bits, code, fraction=0.5, probe=4000):
+    """Viterbi output of the later part of a stream, at the puncture phase that holds there
+
+    Inner layers are looked for in the later part of a window, where the sync before it has settled; a symbol the timing
+    slipped on the way moves the puncture phase, so it is found again at the start of that part."""
+    bits = np.asarray(bits, dtype=np.uint8)
+    p = code._enc.puncture
+    nb = int(p.sum()) if p is not None else code._enc.den
+    start = int(len(bits)*(1 - fraction))
+    seg = bits[start:start + probe//nb*nb + nb]
+    best = min(range(nb), key=lambda o: (lambda k, n: k/max(n, 1))(*_mismatch(code, seg[o:o + probe//nb*nb])))
+    tail = bits[start + best:]
+    return code._dec.decode(tail[:len(tail)//nb*nb]).astype(np.uint8)
+
+def scan_rs(bits, names=None, interleavers=True):
+    """Find a Reed-Solomon code (config/fec/block type rs), optionally behind a Forney interleaver (config/interleave/forney)
+
+    Every polarity, bit offset and codeword phase is probed on a few words; the phases where any word has zero syndromes
+    are scored on RS_WORDS words. Both are the last words of the stream (its start is where the sync was settling). Behind an interleaver the deinterleaver runs once per commutator phase, and codewords start
+    on its branch 0 (as the interleaver's definition has them).
+    Returns (hypotheses, trials, short): short is True when some combination had too few bits to be tried.
+    params: polarity, bit_offset, byte_phase (where a codeword starts in the bytes as given, before deinterleaving),
+        interleaver (its config name or None), words_ok
     """
     from .. import code as coding
     names = names or coding.names("block", "rs")
-    inters = [None] + [c for c in (coding.load("interleave", n)._enc for n in coding.names("interleave"))
-                       if hasattr(c, "I") and hasattr(c, "M")] if interleavers else [None] # Forney: the ones RS sits behind
-    hyps, trials = [], 0
+    inters = [(None, None)]
+    if interleavers:
+        for nm in coding.names("interleave"):
+            enc = coding.load("interleave", nm)._enc
+            if hasattr(enc, "I") and hasattr(enc, "M") and getattr(enc, "symbol", 8) == 8:
+                inters.append((nm, enc))
+    hyps, trials, short = [], 0, False
     bits = np.asarray(bits, dtype=np.uint8)
     for name in names:
         code = coding.load("block", name)._enc
         if getattr(code, "m", 8) != 8: # The search runs on bytes: codes over other fields (P25's GF(64)) don't apply
             continue
         n = code.den
-        # Interleavers eat (I-1)*I*M symbols of start-up; use what is left, at least 60 words
-        packets = int(min(packets, max(len(bits)//8//n - 60, 0))) or packets
+        p0 = 256.0**-code.nroots
         for pol in (0, 1):
             b = bits ^ pol
             for off in range(8):
                 B = np.packbits(b[off:][:(len(b)-off)//8*8]).astype(np.int64)
-                for inter in inters:
-                    for ph in range(n):
-                        seg = B[ph:ph+(packets + 20)*n]
-                        if len(seg) < 80*n:
+                for iname, inter in inters:
+                    if inter is None:
+                        groups = [(0, B, range(n))]
+                    else: # Output byte t of a deinterleaver started at B[c] was sent (branch 0, no delay) at B[c + t - delay]
+                        start = inter.delay
+                        step = inter.I if n % inter.I == 0 else 1
+                        groups = [(c, inter.decode(B[c:], symbols=True)[start:], range(0, n, step)) for c in range(inter.I)]
+                    for c, seg, phases in groups:
+                        phases = list(phases)
+                        if len(seg) < (RS_WORDS + 1)*n:
+                            short = True
                             continue
-                        if inter is not None:
-                            seg = inter.decode(seg, symbols=True)[(inter.I-1)*inter.M*inter.I:]
-                        words = seg[:len(seg)//n*n].reshape(-1, n)
-                        zero = int((~code.syndromes(words[:60]).any(axis=1)).sum())
-                        trials += 1
-                        if zero >= 3:
-                            z = float(deviance_z(zero, 60, 256.0**-code.nroots))
-                            hyps.append(Hypothesis("rs", name, z, {"polarity": pol, "bit_offset": off, "byte_phase": ph,
-                                "interleaver": None if inter is None else (inter.I, inter.M), "words_ok": zero/60},
-                                ("block", name)))
-    return hyps, trials
+                        trials += len(phases)
+                        probe = _rs_zero(code, seg, n, phases, _RS_PROBE)
+                        for ph in [p for p, k in zip(phases, probe) if k >= 2]:
+                            zero = int(_rs_zero(code, seg, n, [ph], RS_WORDS)[0])
+                            z = float(deviance_z(zero, RS_WORDS, p0))
+                            # seg[ph] was sent at B[c + ph]
+                            hyps.append(Hypothesis("rs", name, z, {"polarity": pol, "bit_offset": off,
+                                "byte_phase": (c + ph) % n, "interleaver": iname, "words_ok": zero/RS_WORDS}, ("block", name)))
+    return hyps, trials, short
 
 # --- Guessing an unknown code --------------------------------------------------------------------------
 
@@ -473,9 +553,11 @@ def recover_dual(bits, n, offset=0, trials=40, seed=0, z_min=8.0):
     return out
 
 class Guess:
-    """A guessed FEC definition. Decoding only happens from a saved config: `save` it, then rp.code.load it"""
+    """A guessed definition (a code, a scrambler). Decoding only happens from a saved config: `save` it, then load it
+    (rp.code.load("block", "guess/<name>"), rp.code.scram.load("feedthrough/guess/<name>"))"""
     __slots__ = ("kind", "definition", "evidence")
-    FOLDER = {"block": "block", "conv": "conv"}
+    FOLDER = {"block": ("fec", "block"), "rs": ("fec", "block"), "conv": ("fec", "conv"),
+              "scramble": ("scramble", "feedthrough")} # kind: (config domain, folder in it)
 
     def __init__(self, kind, definition, evidence=None):
         self.kind = kind
@@ -485,16 +567,32 @@ class Guess:
     def __repr__(self):
         d = self.definition
         if self.kind == "block":
-            return f"<Guess block n={d['n']} k={d['k']} {len(d['checks'])} checks {self.evidence}>"
-        return f"<Guess conv K={d['encode']['constraint']} rate {d['encode']['num']}/{d['encode']['den']} {self.evidence}>"
+            if d.get("type") == "product":
+                return f"<Guess product ({d['rows']['n']},{d['rows']['k']}) x ({d['cols']['n']},{d['cols']['k']}) {self.evidence}>"
+            if "checks" in d:
+                return f"<Guess {d.get('type', 'block')} n={d['n']} k={d['k']} {len(d['checks'])} checks {self.evidence}>"
+            extra = {k: v for k, v in d.items() if k not in ("base", "type", "n", "k", "comment")}
+            return f"<Guess {d['type']} ({d['n']},{d['k']}) {extra} {self.evidence}>"
+        if self.kind == "rs":
+            return f"<Guess RS({d['n']},{d['k']}) poly {d['poly']:#x} fcr {d['fcr']} prim {d['prim']} {self.evidence}>"
+        if self.kind == "scramble":
+            return f"<Guess feedthrough scrambler taps {d['poly']} {self.evidence}>"
+        e = d["encode"]
+        if e.get("puncture") is not None:
+            pat = np.asarray(e["puncture"])
+            rate = f"{e['num']*pat.shape[1]}/{int(pat.sum())} (punctured {pat.tolist()})"
+        else:
+            rate = f"{e['num']}/{e['den']}"
+        return f"<Guess conv K={e['constraint']} rate {rate} {self.evidence}>"
 
     def save(self, name, path=None):
-        """Write config/fec/<kind>/guess/<name>.json (or <path>/<kind>/guess/<name>.json). Returns the file"""
+        """Write config/<domain>/<folder>/guess/<name>.json (or <path>/<folder>/guess/<name>.json). Returns the file"""
         import json
         from pathlib import Path
-        from ..code import serial
-        base = Path(path) if path else serial.root()
-        folder = base / self.FOLDER[self.kind] / "guess"
+        from .. import _config
+        domain, sub = self.FOLDER[self.kind]
+        base = Path(path) if path else _config.find_config(domain)
+        folder = base / sub / "guess"
         folder.mkdir(parents=True, exist_ok=True)
         f = folder / f"{name.lower()}.json"
         f.write_text(json.dumps({**self.definition, "guess": self.evidence}, indent=1, default=lambda o: o.item() if hasattr(o, "item") else list(o)))
@@ -575,3 +673,430 @@ def scan_hdlc(streams, names=None, min_frames=3):
                     hyps.append(Hypothesis("hdlc", name, z, {"frames": len(good), "bad": len(frames)-len(good), "polarity": pol,
                         "stream": tag}, ("frame", name)))
     return hyps, trials
+
+# --- One answer: which code a symbol stream carries ------------------------------------------------------
+
+CONV_SYMBOLS = 2**15 # Symbols the convolutional and block scans look at (the inner layers use all there are)
+
+def frame_markers(bits, period, offset, column, unit=8, threshold=0.9, lengths=(1, 2, 4, 8, 16)):
+    """The values that start every `period` units at `column` (units after bit `offset`): a pattern for `sync.Align`
+
+    The shortest repeating pattern each of whose positions holds one value at least `threshold` of the time (DVB-S:
+    0xB8 then 0x47 seven times), over the later half of the periods. Returns (pattern, worst fraction), or (None, 0.0)."""
+    b = np.asarray(bits, dtype=np.uint8)[offset:]
+    span = period*unit
+    P = len(b)//span
+    if P < 8:
+        return None, 0.0
+    vals = b[:P*span].reshape(P, period, unit)[:, column].astype(np.int64) @ (1 << np.arange(unit-1, -1, -1))
+    if P >= 32:
+        vals = vals[P//2:] # The later half: the start of a window is where the sync before it was settling
+    P = len(vals)
+    for L in lengths:
+        if P < 3*L: # At least three periods at every position of the pattern
+            break
+        pat, frac = [], 1.0
+        for r in range(L):
+            cnt = np.bincount(vals[r::L], minlength=1 << unit)
+            pat.append(int(np.argmax(cnt)))
+            frac = min(frac, cnt.max()/len(vals[r::L]))
+        if frac >= threshold:
+            return pat, float(frac)
+    return None, 0.0
+
+def _transform(points, src, dst, rotate=True):
+    """(angle, conj) that moves symbols decoded right by labels `src` to where labels `dst` decode them right, or None
+
+    A received symbol near point p carries src[p]; after y -> conj?(y)*e^(j angle) it is near q[p], which dst labels
+    dst[q[p]]: the transform where those agree for every point. rotate False: inversion only (phase changes)."""
+    from ..symbol.mapping import symmetries
+    src, dst = np.asarray(src), np.asarray(dst)
+    for th, flip, q in symmetries(points):
+        if not rotate and abs(np.angle(np.exp(1j*th))) > 1e-6:
+            continue
+        if np.array_equal(dst[q], src):
+            return float(th), bool(flip)
+    return None
+
+def _fec_steps(steps):
+    return [(s["type"], s["name"]) for s in steps if s.get("code") == "fec"]
+
+def _symbol_steps(steps):
+    """(differential?, constellation name) of a profile's symbol steps"""
+    from .. import symbol
+    diff = any(s.get("symbol") == "differential" for s in steps)
+    cons = [s for s in steps if s.get("symbol") == "constellation"]
+    return diff, [symbol.load(s["name"]).name for s in cons], cons
+
+def match_profile(steps):
+    """A shipped profile (config/profile) with the same code and symbol steps as `steps`: (name, its steps) or (None, None)"""
+    from .. import _config
+    want = (_fec_steps(steps), _symbol_steps(steps)[:2])
+    for fam, modes in _config.ls("profile").items():
+        for mode in modes:
+            name = f"{fam}/{mode}"
+            try:
+                obj = _config.resolve(_config.read(_config.find("profile", name)), {}, f"profile/{name}")
+                got = (_fec_steps(obj["steps"]), _symbol_steps(obj["steps"])[:2])
+            except Exception: # A profile whose steps a header names (no fixed code) can't match
+                continue
+            if got == want:
+                return name, obj["steps"]
+    return None, None
+
+class CodeDetection:
+    """Result of `identify`: the code a symbol stream carries, and how to decode it. Stored in stream.est["fec"]
+
+    found: a code was identified (complete: and nothing more would come of more symbols)
+    kind, name: the outer code ("conv", "block", "hdlc") and its config name; inner: hypotheses found inside it (RS: in
+        `steps` when the bytes that start its codewords were found too, which Align needs)
+    stream: the bit stream that decodes (`bit_streams` key); equivalent: others that decode as well (a code that can't
+        tell inverted bits apart leaves that to what's inside it: Align's polarity)
+    offset, period: where in the window the code's structure starts (bits) and how often it repeats
+    steps: profile steps from the timed symbols on; profile_name: the shipped profile that has the same ones
+    target: the map the decoder uses; correction: (angle, conj) that turns the symbols to it (rp.sync.AcquireFEC applies it)
+    mismatch, baseline: re-encoding mismatch of a convolutional code, and what a wrong hypothesis gets
+    slips: carrier turns and symbol slips rp.sync.AcquireFEC caught and put right; latency: seconds it held the symbols for
+    report: the ranked hypotheses of the tier that decided (none did: of every tier)
+    guesses: with blind, the `Guess`es for what no definition covers (a code, an RS code or a scrambler inside a convolutional
+        code, see `solve`), outermost first; they are in `inner` but never in `steps`: save one to decode with it
+    """
+    __slots__ = ("found", "complete", "mod", "kind", "name", "stream", "equivalent", "offset", "period", "inner",
+                 "steps", "profile_name", "target", "correction", "z", "mismatch", "baseline", "report", "guesses", "n",
+                 "slips", "latency")
+
+    def __init__(self, **kw):
+        for k in self.__slots__:
+            setattr(self, k, kw.get(k))
+        self.found = bool(self.found)
+        self.complete = bool(self.complete)
+        self.inner = self.inner or []
+        self.equivalent = self.equivalent or []
+        self.slips = self.slips or 0
+        self.guesses = self.guesses or []
+
+    @property
+    def differential(self):
+        return self.stream is not None and self.stream[0] == "diff"
+
+    def correct(self, y):
+        """Symbols turned to the decoder's map"""
+        if self.correction is None:
+            return y
+        th, flip = self.correction
+        y = np.conj(y) if flip else y
+        return y if th == 0 else (y*np.exp(1j*th)).astype(np.asarray(y).dtype, copy=False)
+
+    def profile(self):
+        """The profile that decodes it: the shipped one with the same steps, else one built from `steps`"""
+        from .. import profile
+        if not self.found:
+            raise ValueError(f"no code found: {self}")
+        if self.profile_name:
+            return profile.load(self.profile_name)
+        return profile.Profile("detected", self.definition())
+
+    def rx(self):
+        """Receive runner from the timed, carrier-corrected symbols rp.sync.AcquireFEC gives"""
+        from ..base.types import Rep
+        return self.profile().rx(start=Rep.SYMBOLS, applied=("timing", "carrier"))
+
+    def definition(self):
+        return {"base": "profile", "comment": f"detected by rp.analysis.fec.identify: {self}", "steps": self.steps}
+
+    def save(self, name, path=None):
+        """Write config/profile/guess/<name>.json (or <path>/guess/<name>.json). Returns the file"""
+        import json
+        from pathlib import Path
+        from .. import _config
+        base = Path(path) if path else _config.find_config("profile")
+        folder = base / "guess"
+        folder.mkdir(parents=True, exist_ok=True)
+        f = folder / f"{name.lower()}.json"
+        f.write_text(json.dumps(self.definition(), indent=1))
+        return f
+
+    def __str__(self):
+        if not self.found:
+            g = f", blind guesses {self.guesses}" if self.guesses else ""
+            return f"no known code ({self.n} symbols{g})"
+        inner = "".join(f" + {h.params['interleaver'] + ' + ' if h.params.get('interleaver') else ''}{h.name}" for h in self.inner)
+        prof = f" = profile {self.profile_name}" if self.profile_name else ""
+        mm = f", mismatch {self.mismatch:.4f}" if self.mismatch is not None else ""
+        return f"{self.kind} {self.name}{inner} on {self.mod} {self.stream}{prof} (z={self.z:.1f}{mm})"
+
+    __repr__ = __str__
+
+def _pick(hyps, z_crit, key, fits):
+    """The best hypothesis that stands out, if the code fits these bits at its alignment only
+
+    A code fits its own bits at one alignment (puncture phase, codeword start). Bits that fit at several did not come
+    from it: constant bits (an unmodulated carrier) are a codeword of every linear code at every alignment, and bits
+    repeated by a symbol rate locked too high fit a repetition code at all but a few. fits(h, other): other is as good"""
+    good = [h for h in hyps if h.z > z_crit]
+    if not good:
+        return None
+    best = min(good, key=lambda h: (key(h), -h.z))
+    same = [h for h in good if h.coding == best.coding and h.params["stream"] == best.params["stream"]
+            and h.params.get("segment") == best.params.get("segment") # (a slip between segments moves the offset)
+            and h.params["offset"] != best.params["offset"] and fits(best, h)]
+    return None if same else best
+
+def identify(symbols, constellation, names=None, blind=False, differential=True, profiles=True):
+    """Which code from config/fec timed, carrier-corrected symbols carry, under which map, and how to decode it
+
+    In turn, stopping at the first that stands out: configured convolutional codes (any puncture phase), with a Reed-Solomon
+    code behind them (scan_rs; then the markers that start its codewords, for Align); HDLC framing; configured block codes.
+    blind: look for what no definition covers, as `Guess`es only (nothing decodes from a guess). With no configured code: a
+        known mother code with an unknown puncture pattern (rpps.analysis.puncture) and what is inside it, a binary block code
+        on the channel bits (rpps.analysis.block), then unknown rate 1/n convolutional codes (detect_fec). Inside a
+        convolutional code with no configured RS behind it: `solve` (RS, block codes, scramblers). Tens of seconds.
+    symbols: the symbols (any gain); constellation: a Constellation or its name (the detected modulation)
+    names: only these convolutional definitions. Returns a CodeDetection
+    """
+    c = _constellation(constellation)
+    y = np.asarray(symbols, dtype=np.complex128)
+    if len(y):
+        y = y/np.sqrt(np.mean(np.abs(y)**2))
+    out = CodeDetection(mod=c.name, n=len(y))
+    if len(y) < 1024:
+        return out
+    head = bit_streams(y[:CONV_SYMBOLS], c, differential)
+    pre = [{"sync": "timing"}]
+
+    def symbol_steps(key):
+        if key[0] == "diff":
+            d = diff_alphabets(c)[key[1]]
+            return [{"symbol": "differential"}, {"symbol": "constellation", "name": key[1], "mapping": d.maps[key[2]].comment}]
+        return [{"symbol": "constellation", "name": c.name}]
+
+    tried = [] # Every tier's hypotheses: the report when nothing stands out
+    hyps, trials = scan_defined_conv(head, names)
+    rep = Report(hyps, trials, None)
+    tried.append(rep)
+    conv = _pick(rep.hyps, rep.z_crit, lambda h: h.params["mismatch"]/h.params["baseline"],
+                 lambda b, h: h.params["mismatch"] < 0.5*(b.params["mismatch"] + b.params["baseline"]))
+    if conv is not None:
+        key = conv.params["stream"]
+        same = [h for h in rep.hyps if h.coding == conv.coding and h.params["stream"] != key and h.z > rep.z_crit
+                and h.params["mismatch"] < 0.5*(conv.params["mismatch"] + conv.params["baseline"])]
+        same = list({str(h.params["stream"]): h for h in same}.values())
+        enc = cached_code(*conv.coding)._enc
+        out = CodeDetection(found=True, mod=c.name, kind="conv", name=conv.coding[1], stream=key, offset=conv.params["offset"],
+                            period=int(enc.puncture.sum()) if enc.puncture is not None else enc.den,
+                            equivalent=[h.params["stream"] for h in same], z=conv.z, mismatch=conv.params["mismatch"],
+                            baseline=conv.params["baseline"], report=rep, n=len(y))
+        steps = pre + symbol_steps(key) + [{"sync": "puncture", "fec": out.name},
+                                           {"code": "fec", "type": "conv", "name": out.name}]
+        info = decode_tail(bit_streams(y, c, differential, keys=[key])[key], cached_code(*conv.coding))
+        h, t, short = scan_rs(info)
+        rs_rep = Report(h, t, None)
+        rs = rs_rep.verdict
+        out.complete = rs is not None or not short # More symbols could still show a Reed-Solomon code inside
+        if rs is None and blind:
+            for h, g in solve(info):
+                h.guess = g
+                out.inner.append(h)
+                if g is not None:
+                    out.guesses.append(g)
+        if rs is not None:
+            out.inner.append(rs)
+            p = rs.params
+            n = cached_code("block", rs.name)._enc.den
+            pat, _ = frame_markers(info ^ p["polarity"], n, p["bit_offset"], p["byte_phase"])
+            if pat is not None:
+                p["pattern"] = pat
+                steps += [{"sync": "align", "period": n, "pattern": pat, "name": "packets"}]
+                if p["interleaver"]:
+                    steps += [{"code": "fec", "type": "interleave", "name": p["interleaver"]}]
+                steps += [{"code": "fec", "type": "block", "name": rs.name}]
+        out.steps = steps
+        return _finish(out, c, profiles)
+
+    hyps, trials = scan_hdlc(head)
+    hyps = [h for h in hyps if h.params["polarity"] == 0] # Another map gives the other polarity: the profile has none
+    rep = Report(hyps, trials, None)
+    tried.append(rep)
+    if rep.verdict is not None:
+        v = rep.verdict
+        out = CodeDetection(found=True, complete=True, mod=c.name, kind="hdlc", name=v.coding[1], stream=v.params["stream"],
+                            offset=0, period=None, z=v.z, report=rep, n=len(y))
+        out.steps = pre + symbol_steps(out.stream) + [{"code": "uncoded"}, {"link": "frame", "name": out.name}]
+        return _finish(out, c, profiles)
+
+    hyps, trials = [], 0
+    blocks = config_blocks()
+    for key, bits in head.items():
+        for name, folder, cfg, bn, syn in blocks:
+            h, t = scan_block(bits, syn, bn, name, key, max_offsets=bn)
+            for hh in h:
+                hh.coding = (folder, cfg)
+            hyps += h
+            trials += t
+    rep = Report(hyps, trials, None)
+    v = _pick(rep.hyps, rep.z_crit, lambda h: (-h.params["words_ok"], -h.params["n"]),
+              lambda b, h: h.params["words_ok"] >= 0.5*b.params["words_ok"])
+    if v is not None:
+        out = CodeDetection(found=True, complete=True, mod=c.name, kind="block", name=v.coding[1], stream=v.params["stream"],
+                            offset=v.params["offset"], period=v.params["n"], z=v.z, report=rep, n=len(y))
+        out.steps = pre + symbol_steps(out.stream) + [{"code": "fec", "type": "block", "name": out.name}]
+        if blind: # Its words may be the rows of a product code (a turbo product code): columns of them that are codewords too
+            from . import block as blind_block
+            bits, n1 = head[out.stream], out.period
+            p = blind_block.product(bits, n1, out.offset)
+            found = None
+            if p is not None:
+                rows = recover_dual(bits, n1, out.offset, trials=20)
+                found = blind_block._product(bits, n1, rows["k"], rows["H"], p[0], out.offset + p[1]*n1)
+            if found is not None:
+                found[0].guess = found[1]
+                out.inner.append(found[0])
+                out.guesses.append(found[1])
+        return _finish(out, c, profiles)
+
+    tried.append(rep)
+    out.report = Report([h for r in tried for h in r.hyps], sum(r.trials for r in tried), None)
+    out.complete = len(y) >= CONV_SYMBOLS # The scans above look no further: more symbols would not change this
+    if blind:
+        found = _blind(head, c, y[:CONV_SYMBOLS])
+        if found:
+            for h, g in found:
+                h.guess = g
+            out.inner = [h for h, g in found]
+            out.guesses = [g for h, g in found if g is not None]
+            return out
+        sub = {k: v for k, v in head.items() if k[0] == "abs"}
+        brep = detect_fec(sub, max_offsets=32)
+        out.report = brep
+        v = brep.verdict
+        if v is not None:
+            g = None
+            if v.kind.startswith("conv"):
+                g = guess_conv(v)
+            elif v.kind == "linear-block":
+                g = guess_block(sub[v.params["stream"]], hints=[int(round(2*v.params["period_pairs"]))])
+            out.guesses = [g] if g is not None else []
+    return out
+
+def solve(bits, rs_lengths=None, max_taps=2, exhaustive=False, block=True):
+    """Peel unknown layers off bits (a decoder's output): [(hypothesis, Guess or None)], outermost first
+
+    1. Reed-Solomon on the bits as they are: a configured one (scan_rs, a Forney interleaver too), else a blind one
+       (rpps.analysis.rs.search over `rs_lengths`, or every length with `exhaustive`)
+    2. a binary block code (rpps.analysis.block.solve_block: BCH / cyclic, product, LDPC or any linear code, by rank)
+    3. a feedthrough scrambler (rpps.analysis.scrambler.search, up to `max_taps` taps); if one is found, the same codes on
+       what it gives, then HDLC framing. A scrambler hypothesis with no taps means the bits already had structure.
+    4. none found (descrambled data that is random itself, compressed or encrypted, stays white): Reed-Solomon behind each
+       configured feedthrough scrambler (its structure is algebraic: a scrambler search can't see it)
+    Nothing here decodes: a Guess is a definition once it is saved. Empty: nothing found (the bits stay white: another
+    layer, or random payload such as encrypted data)."""
+    from . import rs as blind_rs, scrambler, block as blind_block
+
+    def code_layer(b, with_block=block):
+        h, t, _ = scan_rs(b)
+        v = Report(h, t, None).verdict
+        if v is not None:
+            return [(v, None)]
+        h, t, g = blind_rs.search(b, lengths=rs_lengths, exhaustive=exhaustive)
+        if h:
+            return [(h[0], g)]
+        return blind_block.solve_block(b) if with_block else []
+
+    bits = np.asarray(bits, dtype=np.uint8)
+    found = code_layer(bits)
+    if found:
+        return found
+    h, t, g = scrambler.search(bits, max_taps=max_taps)
+    if not h: # Bits that stay white: maybe RS-coded random payload behind a known scrambler (RS structure is algebraic)
+        from .. import code
+        for name in code.scram.ls().get("feedthrough", []):
+            obj = cached_scrambler(f"feedthrough/{name}")
+            found = code_layer(scrambler.descramble(bits, obj["poly"]), with_block=False)
+            if found:
+                return [(Hypothesis("scrambler", f"feedthrough/{name}", found[0][0].z, {"taps": list(obj["poly"]), "config": name}),
+                         None)] + found
+        return []
+    out = [(h[0], g)]
+    taps = h[0].params["taps"]
+    d = scrambler.descramble(bits, taps) if taps else bits
+    if taps:
+        found = code_layer(d)
+        if found:
+            return out + found
+    hd = Report(*scan_hdlc({"bits": d}), None).verdict
+    if hd is not None:
+        out.append((hd, None))
+    return out
+
+def _distinct(head, c):
+    """The coherent bit streams that differ by more than inverted bits: maps whose turn is below 180 degrees"""
+    keys = [k for k in head if k[0] == "abs" and np.angle(np.exp(1j*c.maps[k[1]].rotation)) >= -1e-9
+            and np.angle(np.exp(1j*c.maps[k[1]].rotation)) < np.pi - 1e-9]
+    return {k: head[k] for k in keys} or {k: v for k, v in head.items() if k[0] == "abs"}
+
+def _blind(head, c, y=None):
+    """With no configured code: a known mother code with a puncture pattern none of them has (then what is inside it), or
+    a binary block code, on the channel bits (y: the symbols, for soft values). [(hypothesis, Guess or None)], outermost
+    first, or []"""
+    from . import puncture, block as blind_block
+    hyps, trials = puncture.search(head)
+    v, g = puncture.best(hyps, trials)
+    if v is not None:
+        from types import SimpleNamespace
+        code = puncture._code(v.params["K"], v.params["generator"], np.asarray(v.params["puncture"], dtype=bool))
+        bits = np.asarray(head[v.params["stream"]][v.params["offset"]:], dtype=np.uint8)
+        m = int(np.asarray(v.params["puncture"]).sum())
+        info = code._dec.decode(bits[:len(bits)//m*m]).astype(np.uint8)
+        return [(v, g)] + solve(info)
+    for key, bits in _distinct(head, c).items():
+        llr = None
+        if y is not None: # Soft values on this map: the cleanest words are the ones a sparse check search uses
+            from .. import symbol
+            cc = symbol.load(c.name)
+            cc.set_mapping(key[1])
+            llr = cc.llr(y)[:len(bits)]
+        found = blind_block.solve_block(bits, llr=llr)
+        if found:
+            for h, _ in found:
+                h.params["stream"] = key
+            return found
+    return []
+
+def cached_code(folder, ref):
+    """A definition from config, loaded once: `cached_code("conv", "k7_171_133/3_4")`"""
+    from .. import code as coding_mod
+    if (folder, ref) not in _LOADED:
+        _LOADED[(folder, ref)] = coding_mod.load(folder, ref)
+    return _LOADED[(folder, ref)]
+
+_LOADED = {}
+
+def cached_scrambler(ref):
+    """A scrambler definition's JSON (its "poly": the taps), read once"""
+    from .. import _config
+    if ("scramble", ref) not in _LOADED:
+        _LOADED[("scramble", ref)] = _config.read(_config.find("scramble", ref))
+    return _LOADED[("scramble", ref)]
+
+def _finish(out, c, profiles):
+    """The shipped profile with the same steps, if any, and the correction that turns the symbols to the map it decodes with"""
+    own = out.steps
+    name, steps = match_profile(own) if profiles else (None, None)
+    for out.profile_name, out.steps in ((name, steps), (None, own)):
+        if out.steps is None:
+            continue
+        out.target, out.correction = _target(out, c)
+        if out.correction is not None:
+            return out
+    out.found = False # (no turn of these symbols gives the map their own steps name: can't happen)
+    return out
+
+def _target(out, c):
+    """(the map the steps decode with, the correction that turns the symbols to it, or None)"""
+    from .. import symbol
+    spec = _symbol_steps(out.steps)[2][0]
+    target = symbol.load(spec["name"], spec.get("mapping")).mapping
+    if out.differential: # A phase change sees no turn of the carrier, only the IQ sense
+        alph = diff_alphabets(c)[out.stream[1]]
+        return target, _transform(alph.points, alph.maps[out.stream[2]].arr, target.arr, rotate=False)
+    return target, _transform(c.points, c.maps[out.stream[1]].arr, target.arr)
