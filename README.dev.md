@@ -278,6 +278,29 @@ squares per window against decisions, the taps carried from window to window). P
 (`timing: oerder_meyr`, `carrier: mpower`, `equalize: ls`); the loops are methods by name (`mm`, `gardner`, `costas`,
 `lms`, `cma`).
 
+`AcquireFEC` does for the channel code what `Acquire` does for the modulation: on timed, carrier-corrected symbols it
+finds which configured code they carry, under which bit map and alignment (`analysis.fec.identify`: convolutional codes,
+Reed-Solomon and a Forney interleaver behind them, HDLC, block codes), turns the symbols to the map the decoder uses, and
+names the profile that decodes them (a shipped one with the same steps, or one built from what was found). After that the
+code itself is the tracker: once per window the symbols are re-encoded, and a carrier turn or a symbol slip is put right.
+
+For what no definition covers there are blind tools in `analysis`, which find structure but never decode: what they find is
+a `Guess`, a definition that decodes once it is saved (`Guess.save`, then loaded like any other).
+
+| Finds | Tool | How |
+|---|---|---|
+| self-synchronising scrambler | `scrambler.search` | descramble with every polynomial; keep the one whose output stops looking random (idle ones, flags, headers, frames) |
+| Reed-Solomon code over GF(256) | `rs.search` | the roots every codeword shares, by a Galois-field Fourier transform at every byte phase: length, field, generator, alignment |
+| binary block code | `block.solve_block` | length and alignment from rank deficiency, checks from the null space; then its kind: cyclic / BCH (generator = gcd of codewords), product (rows and columns are codewords), LDPC (low-weight checks, soft values pick the cleanest words) |
+| puncture pattern of a known mother code | `puncture.search` | every rate P/(P+1) pattern, re-encoded through the Viterbi decoder |
+
+`fec.solve` peels such layers off a decoder's output in turn; `identify(..., blind=True)` (or `AcquireFEC(blind=True)`) runs
+the puncture and block searches on channel bits when no definition fits, and `solve` inside a convolutional code with
+nothing configured behind it. Structure that holds at every alignment (constant bits, idle words of one value) is not taken
+for a code. The rank methods need about n + 48 words of n bits with few errors: lengths up to about the square root of the
+bits there are, and a bit error rate well under 1/n^2 for the length; the sparse check search works on known lengths up to
+about 1% bit errors with soft values. Strong codes at low SNR (LDPC, turbo) are beyond them on channel bits.
+
 ### Profiles
 
 A profile is a config file that defines one signal: which operators, in what order, with what parameters. It replaces

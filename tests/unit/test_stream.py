@@ -174,3 +174,26 @@ def test_more_stages_do_not_depend_on_block_size(name, x):
         y = run(make, x, sp, **rates)
         assert len(y) == len(ref), f"{len(y)} != {len(ref)}"
         assert np.allclose(y, ref, atol=1e-4)
+
+def test_acquire_fec_does_not_depend_on_block_size():
+    """Coded symbols (K=7 rate 1/2 on QPSK, a quarter turn off) with the modulation already detected"""
+    from rpps.analysis.modulation import Detection
+    rng = np.random.default_rng(5)
+    cw = rp.code.load("conv", "k7_133_171/1_2")._enc.encode(rng.integers(0, 2, 12000).astype(bool))
+    s = rp.symbol.load("qpsk").modulate(cw)*1j
+    x = (s + 0.1*(rng.standard_normal(len(s)) + 1j*rng.standard_normal(len(s)))).astype(np.complex64)
+    stage = rp.sync.AcquireFEC(window=4096, skip=256, max_wait=8192)
+    outs = []
+    for sp in cuts(len(x)):
+        stream, out, i = None, [], 0
+        for b in sp:
+            d = rp.Data(x[i:i+b], Fs=1e4, sps=1, stream=stream)
+            stream = d.stream
+            if stream.det is None:
+                stream.det = Detection(mod="qpsk", baud=1e4, sps=1.0)
+            out.append((d + stage).data)
+            i += b
+        assert stream.est["fec"].name == "k7_133_171/1_2"
+        outs.append(np.concatenate(out))
+    n = min(len(o) for o in outs)
+    assert n > 8000 and all(np.array_equal(o[:n], outs[0][:n]) for o in outs)
