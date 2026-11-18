@@ -19,8 +19,8 @@ class ShiftFreq(Filter):
     def new_state(self, meta):
         return SimpleNamespace(phase=0.0)
 
-    def run(self, samples, Fs):
-        """One-shot (stateless) shift"""
+    def run(self, samples, Fs=1.0):
+        """One-shot (stateless) shift; Fs 1: fo is in cycles per sample"""
         t = np.arange(len(samples))/Fs
         return (samples * np.exp(2j*np.pi*self.fo*t)).astype(_cdtype(samples), copy=False)
 
@@ -37,11 +37,6 @@ class ShiftFreq(Filter):
 
 class ShiftFreqIdx(ShiftFreq):
     """Shift by `fo` cycles per sample (fo is normalised to the sample rate)"""
-    def run(self, samples, idx=None):
-        """One-shot shift. idx: sample indices of `samples` (default: 0..N-1)"""
-        t = np.arange(len(samples)) if idx is None else np.asarray(idx)
-        return (samples * np.exp(2j*np.pi*self.fo*t)).astype(_cdtype(samples), copy=False)
-
     def step(self, samples, st, meta):
         inc = 2*np.pi*self.fo
         out = samples * np.exp(1j*(st.phase + inc*np.arange(len(samples))))
