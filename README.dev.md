@@ -904,3 +904,56 @@ To release:
 - **Read the standard** when a decode does not work, instead of guessing from memory.
 - **Examples live in `projects/`**, analysis in `scripts/` or `tests/dev`. Reuse RPPS components there so the useful parts
   can move into the package.
+
+## Blind analysis (rpps.analysis)
+
+Tools for a signal no definition covers, beyond the code searches under [Design](#design). Each states its statistic and
+its chance level, so "nothing found" is an answer; each module's docstring has the method, its reference and its limits.
+They are numpy only and sit outside the data path. Most take baseband samples at a few times the signal's width (a
+channel with some noise floor visible beside the signal: the floors are estimated there), or locked symbols, or bits.
+
+**What is it, and at what rate**
+
+| Question | Tool | How (and limits) |
+|---|---|---|
+| symbol rate, carrier order and offset | `cyclic.features` | lines of `\|x\|^2`, `x^M` (also at the symbol instants) and the discriminator, each against a median floor with a calibrated false-alarm probability; the rate by a harmonic comb (`cyclic.comb_rate`) |
+| every cycle frequency in the band (signals sharing it) | `scf.cycle_frequencies`, `scf.coherence` | FFT-accumulation spectral coherence, conjugate too; equal-power overlap is told apart only by these features |
+| which constellation | `cumulants.classify` | C40 ... C84 against each constellation's own; families blind, orders within QAM / ASK need the SNR |
+| FSK / MSK / GMSK, CPM index | `fsk.analyze`, `fsk.cpm_index` | instantaneous frequency: rate by comb, tones by clusters that split like tones; h from the phase lattice (full response) |
+| PM with a residual carrier, subcarriers | `pm.analyze`, `pm.subcarrier`, `pm.nrz` | the carrier tracked, the phase around it: a `\|x\|^2` "rate" at twice a subcarrier is a subcarrier |
+| spread (DSSS) | `spread.period`, `chip_rate`, `code`, `despread` | variance of windowed autocorrelations peaks at the code period; the code from eigenvectors; detection goes ~2 dB further under the noise than recovery |
+| frequency hopping | `hopping.track`, `hopping.dehop` | short-time spectrum, frames clustered into channels, dwells; de-hopped to one channel |
+| tones in a short record | `pencil.lines` | matrix pencil: lines a fraction of a bin apart |
+| neighbours, overlap | `impairments.neighbours` | bands over the floor, split at valleys, level steps and carriers on another's plateau |
+
+**Is the lock good, and what is left**
+
+| Question | Tool | How |
+|---|---|---|
+| can hard decisions be trusted for rank / LFSR tests | `quality.gate` | rotation, drift, decisions near boundaries against what the measured Es/N0 explains, displaced clusters |
+| how much of the signal we are locked to; what is underneath | `cancel.cancel`, `cancel.align` | regenerate from the symbols (block least squares through band-limited kernels), subtract, the residual's density against the floor; survey the residual |
+| amplifier, IQ, phase noise | `impairments.amplifier`, `iq`, `phase_noise` | ring gains and turns; image ratio from E[y^2]; white phase error from neighbours' differences |
+| separate an interferer with other cycle frequencies | `scf.fresh` | least-squares FRESH filter over frequency-shifted copies of x and conj(x), trained on a reference (a preamble, or `cancel`'s regenerated signal); not blind |
+
+**Which code, scrambler, interleaver**
+
+| Question | Tool | How |
+|---|---|---|
+| trellis code on PSK labels (Ungerboeck, pragmatic) | `tcm.search` | Walsh-Hadamard of label windows scores every parity check at once, per rotation and labelling; `soft=True` rescores a shortlist by LLRs |
+| scrambler taps, feedthrough or additive | `recurrence.search` (degree <= 24), `recurrence.lfsr` (any degree, Berlekamp-Massey), `recurrence.keystream` | the same transform over bit windows (`llr=` for soft); an additive keystream by fast correlation once its polynomial is known |
+| turbo / RSC constituent, turbo interleaver | `rsc.constituent`, `rsc.turbo_interleaver` | `p g_b + s g_f = 0` as a 2-bit-label check; the permutation by matching columns over frames (clean frames) |
+| LDPC: IRA (staircase), QC, large | `ldpc.staircase`, `ldpc.qc_staircase`, `ldpc.qc_dual`, `ldpc.qc_size`, `ldpc.progressive` | one GF(2) solve per structure: a DVB-S2 table from k/360 + 12 clean frames; progressive search cleans frames with the checks found so far |
+| binary cyclic / BCH roots | `ldpc.roots` | zero counts of the words at every beta^j against each subfield's chance |
+| polar frozen bits | `polar.frozen` | tanh-product of each u_i's column over frames |
+| interleaver | `interleaver.block_search`, `forney_search`, `column_delays` | rank deficiency for the size, then rows x columns; Forney candidates scored by the code structure coming back; columns sent rows late |
+
+**What the bits are**
+
+| Question | Tool | How |
+|---|---|---|
+| framing in decoded bits | `payload.signatures` | E1/T1 G.704, ATM HEC, GFP cHEC, HDLC, IPv4, CCSDS ASM, MPEG-TS, fixed bits at a period: each against its chance rate (and the stream's own structure) |
+| structured, scrambled or random | `payload.verdict` | signatures, bias, bytes, windowed linear complexity, zlib; `frame=` sets repeated (idle) frames aside first |
+
+Synthetic signals for their tests: `tests/unit/conftest.py` (`shaped` for RRC-shaped symbols at any samples per symbol,
+`cpfsk`). The tools were checked on recorded signals too;
+fixes from that are in the history of `ident`.
