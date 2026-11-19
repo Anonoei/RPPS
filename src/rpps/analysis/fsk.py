@@ -16,6 +16,8 @@ pulse-amplitude signal whose levels are the tones. So:
 """
 import numpy as np
 
+from .cyclic import noise_floor
+
 from . import cyclic
 from .cyclic import comb_rate
 
@@ -84,7 +86,7 @@ def _band(x, Fs, margin=0.5, nfft=1024):
     nfft = int(min(nfft, 2**int(np.log2(max(n//8, 16)))))
     seg = n//nfft
     S = np.fft.fftshift(np.mean(np.abs(np.fft.fft(x[:seg*nfft].reshape(seg, nfft)*np.hanning(nfft), axis=1))**2, axis=0))
-    N0 = np.percentile(S, 10)
+    N0 = noise_floor(S)
     on = np.flatnonzero(S > 2*N0)
     if len(on) == 0:
         return x

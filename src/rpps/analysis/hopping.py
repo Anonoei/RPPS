@@ -12,6 +12,8 @@ the smallest differences, then refined over all of them).
 """
 import numpy as np
 
+from .cyclic import noise_floor
+
 class Dwell:
     __slots__ = ("start", "end", "freq", "power")
     def __init__(self, start, end, freq, power):
@@ -23,7 +25,8 @@ class Dwell:
 class Hops:
     """Result of `track`: dwells (Dwell: start, end s, freq Hz), dwell (s, median of whole dwells), rate (hops/s),
     channels (Hz, the hop set's frequencies), spacing (Hz), active (share of frames with a signal), hopping (more than
-    one channel visited, dwells shorter than a quarter of the capture)"""
+    one channel visited, dwells shorter than a quarter of the capture, the signal at an instant under half as wide as over
+    the capture)"""
     __slots__ = ("dwells", "dwell", "rate", "channels", "spacing", "active", "hopping")
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -107,7 +110,13 @@ def track(x, Fs, nfft=256, hop=None, snr_db=6.0, merge=None, width=None):
         i = j + 1
     whole = [d.end - d.start for d in dwells[1:-1]] or [d.end - d.start for d in dwells]
     dwell = float(np.median(whole)) if whole else 0.0
-    hopping = len(channels) > 1 and dwell < T/4
+    # a hopper is narrow at any instant and wide over time: a wide signal's peak bin wanders too, without hopping
+    long = S.mean(axis=0)
+    wide_bins = np.count_nonzero(long > noise_floor(long)*10**(snr_db/10))
+    frame_bins = np.median([np.count_nonzero(S[i] > floor[i]*10**(snr_db/10)) for i in np.flatnonzero(on)[:400]]) \
+        if on.any() else wide_bins
+    narrow = frame_bins < 0.5*wide_bins
+    hopping = len(channels) > 1 and dwell < T/4 and narrow
     return Hops(dwells=dwells, dwell=dwell, rate=1/dwell if dwell else 0.0, channels=channels, spacing=spacing,
                 active=float(np.mean(on)), hopping=hopping)
 

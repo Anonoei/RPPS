@@ -92,9 +92,13 @@ def _periodic_word(bits, word, wlen, periods, name, z_min):
                          detail=f"{100*h/n:.0f}% of {n} frames")
     return best
 
-def e1(bits, z_min=8.0):
-    """G.704 frame alignment: x0011011 every 512 bits (the first bit, Si, is free)"""
-    return _periodic_word(bits, 0b0011011, 7, (512,), "E1 G.704 (FAS)", z_min)
+def e1(bits, z_min=8.0, share=0.6):
+    """G.704 frame alignment: x0011011 every 512 bits (the first bit, Si, is free), in most frames (a framed stream's own
+    fixed fields can hold the word at a period by chance, in some of them)"""
+    f = _periodic_word(bits, 0b0011011, 7, (512,), "E1 G.704 (FAS)", z_min)
+    if f is None or f.hits < share*(len(bits)//512):
+        return None
+    return f
 
 def t1(bits, z_min=8.0):
     """A column of the 193-bit grid far from random: its bits repeat with the superframe (12 for SF, 4-bit steps in ESF)"""
@@ -105,17 +109,18 @@ def t1(bits, z_min=8.0):
         return None
     G = b[:n*P].reshape(n, P).astype(np.int8)
     best = None
-    for col in range(P):
-        c = G[:, col]
-        for L in (12, 24):
-            m = n//L*L
-            pat = c[:m].reshape(-1, L)
-            agree = np.mean(pat == pat[0][None, :])
-            z = (agree - 0.5)*2*np.sqrt(m)
-            if z > z_min and (best is None or z > best.z):
-                best = Found(name=f"T1 G.704 ({'SF' if L == 12 else 'ESF'} framing bit)", period=P, offset=col,
-                             hits=int(agree*m), expected=m/2, z=float(z),
-                             detail=f"pattern {''.join(map(str, pat[0]))}")
+    for L in (12, 24):
+        m = n//L*L
+        pats = G[:m].reshape(-1, L, P) # (superframes, L, columns)
+        agree = np.mean(pats == pats[:1], axis=(0, 1)) # per column: how often a superframe repeats the first's pattern
+        # biased or framed data repeats patterns too: a column stands out against the other columns, not against 1/2
+        med, mad = np.median(agree), np.median(np.abs(agree - np.median(agree))) + 1e-9
+        col = int(np.argmax(agree))
+        z = (agree[col] - med)/(1.4826*mad)
+        if z > z_min and agree[col] > 0.9 and (best is None or z > best.z):
+            best = Found(name=f"T1 G.704 ({'SF' if L == 12 else 'ESF'} framing bit)", period=P, offset=col,
+                         hits=int(agree[col]*m), expected=float(med*m), z=float(z),
+                         detail=f"pattern {''.join(map(str, pats[0, :, col]))}")
     return best
 
 def atm(bits, z_min=8.0):
@@ -254,8 +259,9 @@ def fixed_word(bits, max_period=16384, z_min=8.0, min_bits=8):
 
 TESTS = (e1, t1, atm, gfp, hdlc, ipv4, ccsds, mpeg_ts, fixed_word)
 
-def signatures(bits, z_min=8.0, tests=TESTS):
-    """Every signature that holds on the bits (see the module), strongest first"""
+def signatures(bits, z_min=8.0, tests=TESTS, max_bits=2_000_000):
+    """Every signature that holds on the bits (see the module), strongest first (on the first `max_bits`)"""
+    bits = np.asarray(bits, dtype=np.uint8)[:max_bits]
     out = [f for t in tests if (f := t(bits, z_min=z_min)) is not None]
     return sorted(out, key=lambda f: -f.z)
 
@@ -281,21 +287,31 @@ class Verdict:
     """Result of `verdict`: kind ("structured", "scrambled", "random-looking"), why, signatures, bias (|mean - 1/2|*2),
     byte_chi (z of the byte distribution, the worst of 8 offsets), lc (linear complexity over windows / their length),
     compress (zlib size / size)"""
-    __slots__ = ("kind", "why", "signatures", "bias", "byte_chi", "lc", "compress")
+    __slots__ = ("kind", "why", "signatures", "bias", "byte_chi", "lc", "compress", "repeats")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
 
     def __str__(self):
+        rep = f"; {self.repeats} repeated frames set aside" if self.repeats else ""
         return (f"{self.kind}: {self.why} (bias {self.bias:.3f}, bytes z {self.byte_chi:.1f}, linear complexity "
-                f"{self.lc:.2f} of a window, zlib {self.compress:.2f})")
+                f"{self.lc:.2f} of a window, zlib {self.compress:.2f}{rep})")
 
     __repr__ = __str__
 
-def verdict(bits, window=512, z_min=8.0):
+def verdict(bits, window=512, z_min=8.0, frame=None, max_bits=2_000_000):
     """structured (a signature, bias, uneven bytes, or zlib compresses it), scrambled (an LFSR: windows' linear
-    complexity well under half their length), or random-looking (encrypted, compressed, or under something not linear)"""
+    complexity well under half their length), or random-looking (encrypted, compressed, or under something not linear).
+    frame: bits a frame (or frames (F, n) given): whole frames that repeat (idle fill) are set aside first, as they would
+    make random data compress. On the first `max_bits`"""
     b = np.asarray(bits, dtype=np.uint8)
+    repeats = 0
+    if b.ndim == 2 or frame:
+        F = b if b.ndim == 2 else b[:len(b)//frame*frame].reshape(-1, frame)
+        _, first = np.unique(np.packbits(F, axis=1), axis=0, return_index=True)
+        repeats = len(F) - len(first)
+        b = F[np.sort(first)].reshape(-1)
+    b = b[:max_bits]
     sig = signatures(b, z_min)
     bias = float(abs(2*b.mean() - 1))
     chi = 0.0
@@ -319,4 +335,4 @@ def verdict(bits, window=512, z_min=8.0):
     else:
         kind, why = "random-looking", "no framing, even bits and bytes, full linear complexity, incompressible: " \
                                       "encrypted, compressed, or under a layer not found"
-    return Verdict(kind=kind, why=why, signatures=sig, bias=bias, byte_chi=chi, lc=lc, compress=comp)
+    return Verdict(kind=kind, why=why, signatures=sig, bias=bias, byte_chi=chi, lc=lc, compress=comp, repeats=repeats)

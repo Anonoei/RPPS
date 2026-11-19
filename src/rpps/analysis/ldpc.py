@@ -244,3 +244,204 @@ def roots(words, m=None, z_min=8.0, reverse=False):
     clean = float(np.median(zero[rts] - base[rts])) if rts else 0.0
     return Roots(n=n, m=m, roots=rts, zero=zero, generator=g if rts else 0, k=n - (g.bit_length() - 1) if rts else n,
                  designed=best + 1, clean=clean)
+
+# ---- Quasi-cyclic codes: structure exploited, so frames needed scale with k / Z, not k ----
+
+def _packed(B):
+    """Rows of bits (r, c) uint8 -> (r, words) uint64, column i at word i // 64, bit 63 - i % 64"""
+    B = np.asarray(B, dtype=np.uint8)
+    r, c = B.shape
+    pad = (-c) % 64
+    if pad:
+        B = np.concatenate((B, np.zeros((r, pad), np.uint8)), axis=1)
+    return np.ascontiguousarray(np.packbits(B, axis=1)).view(">u8").astype(np.uint64).reshape(r, -1)
+
+def _unpacked(A, c):
+    return np.unpackbits(A.astype(">u8").view(np.uint8), axis=1)[:, :c]
+
+def _eliminate(A, ncols):
+    """Reduced row echelon form in place over GF(2) of packed rows A, the first ncols columns as pivots: pivot columns"""
+    r = 0
+    piv = []
+    R = A.shape[0]
+    for col in range(ncols):
+        if r == R:
+            break
+        w, b = col >> 6, np.uint64(63 - (col & 63))
+        bits = (A[r:, w] >> b) & np.uint64(1)
+        nz = np.flatnonzero(bits)
+        if not len(nz):
+            continue
+        p = r + int(nz[0])
+        if p != r:
+            A[[r, p]] = A[[p, r]]
+        hit = np.flatnonzero((A[:, w] >> b) & np.uint64(1))
+        hit = hit[hit != r]
+        if len(hit):
+            A[hit, w:] ^= A[r, w:]
+        piv.append(col)
+        r += 1
+    return piv
+
+def _qc_rows(x, Z, G):
+    """For one frame's bits x (G Z of them): the (Z, G Z) block of the circulant system: row j, column (g, t) is
+    x[Z g + (j - t) mod Z]"""
+    idx = (np.arange(Z)[:, None] - np.arange(Z)[None, :]) % Z # (j, t)
+    X = np.asarray(x[:G*Z], dtype=np.uint8).reshape(G, Z)
+    return X[:, idx].transpose(1, 0, 2).reshape(Z, G*Z) # (j, g, t)
+
+class QCStaircase:
+    """Result of `qc_staircase`: table (per information group, the parity addresses x: DVB-S2's address table), checks
+    (positions per check, as rpps.code.types.ira.ira_checks gives), holds (per row class, on held-out frames), Z"""
+    __slots__ = ("table", "checks", "holds", "Z", "n", "k")
+    def __init__(self, **kw):
+        for k in self.__slots__:
+            setattr(self, k, kw.get(k))
+
+    def __str__(self):
+        return (f"QC-IRA ({self.n}, {self.k}), circulants of {self.Z}: {sum(len(t) for t in self.table)} addresses over "
+                f"{len(self.table)} groups; rows hold {100*float(np.min(self.holds)):.1f}% at worst")
+
+    __repr__ = __str__
+
+def qc_staircase(words, k, Z=360, rel=None, extra=12, trials=3, seed=0):
+    """A DVB-S2-style IRA code (information bits in groups of Z, each adding to parity rows x + m q, parity accumulated)
+    from aligned codewords (W, n), information first: its address table, from about k/Z + `extra` clean words (the most
+    reliable ones, by `rel` |LLR|; `trials` subsets, each row class keeping the solution that holds best)"""
+    words = np.asarray(words, dtype=np.uint8)
+    W, n = words.shape
+    m = n - k
+    if m % Z or k % Z:
+        raise ValueError(f"n - k = {m} and k = {k} are not multiples of Z = {Z}")
+    q, G = m//Z, k//Z
+    use = G + extra
+    if W < use + 8:
+        raise ValueError(f"need about {use + 8} words, have {W}")
+    P = words[:, k:]
+    D = P.copy()
+    D[:, 1:] ^= P[:, :-1] # d_r = p_r + p_{r-1}
+    order = np.argsort(_expected_errors(rel), kind="stable") if rel is not None else np.arange(W)
+    held_out = order[use + max(0, (trials - 1)*4):][:256]
+    rng = np.random.default_rng(seed)
+    best_A, best_h = None, np.full(q, -1.0)
+    rows_r = (np.arange(q)[:, None] + q*np.arange(Z)[None, :]) # row r of class c, offset j
+    for t in range(trials):
+        pool = order[:use + (trials - 1)*4]
+        sub = pool[:use] if t == 0 else rng.choice(pool, use, replace=False)
+        M = np.concatenate([_qc_rows(words[w, :k], Z, G) for w in sub]) # (use Z, k)
+        R = np.concatenate([D[w][rows_r].T for w in sub]) # (use Z, q): class c's right side at (frame, j)
+        A = _packed(np.concatenate((M, R), axis=1))
+        piv = _eliminate(A, k)
+        if len(piv) < k:
+            continue # the frames do not span: more frames, or not this k / Z
+        X = _unpacked(A[:k], k + q)[:, k:] # (k, q): row of pivot column = that unknown
+        sol = np.zeros((k, q), np.uint8)
+        sol[piv] = X
+        # each class's rows on held-out frames
+        h = np.zeros(q)
+        for c in range(q):
+            nz = np.flatnonzero(sol[:, c])
+            g, t0 = nz//Z, nz % Z
+            ok = []
+            for w in held_out[:64]:
+                u = words[w, :k].reshape(G, Z)
+                lhs = np.zeros(Z, np.uint8)
+                for gg, tt in zip(g, t0):
+                    lhs ^= np.roll(u[gg], tt) # u[g, (j - t) mod Z] over j
+                ok.append(np.mean(lhs == D[w][rows_r[c]]))
+            h[c] = np.mean(ok) if ok else 0.0
+        better = h > best_h
+        if best_A is None:
+            best_A = sol.copy()
+        best_A[:, better] = sol[:, better]
+        best_h[better] = h[better]
+    if best_A is None:
+        raise ValueError("no subset of frames spans the information bits: not an IRA code with this k and Z")
+    table = [[] for _ in range(G)]
+    for c in range(q):
+        for v in np.flatnonzero(best_A[:, c]):
+            g, j0 = divmod(int(v), Z)
+            table[g].append(c + q*j0)
+    table = [sorted(t) for t in table]
+    from ..code.types.ira import ira_checks
+    return QCStaircase(table=table, checks=ira_checks(n, k, table, Z), holds=best_h, Z=Z, n=n, k=k)
+
+def _shifts(v, Z, G):
+    """Every cyclic shift (within each block of Z) of a base row v, (Z, n)"""
+    V = v.reshape(G, Z)
+    return np.stack([np.roll(V, j, axis=1).reshape(-1) for j in range(Z)])
+
+def qc_dual(words, Z, extra=8, trials=200, seed=0):
+    """The circulant check blocks of a quasi-cyclic code (every column block of Z, rows and columns cycled alike: 802.11n,
+    802.16e, 5G NR's lifted base graphs) from aligned clean codewords (W, n), about n/Z + `extra` of them. The circulant
+    system's null space holds every check row (a base row's shifts are base rows too); its sparse vectors, found by
+    information sets over it, are the blocks' rows. Returns base rows (b, n) uint8, one per circulant block, lightest
+    first: row j of a block is its base row with every block of Z cycled by j"""
+    from ..math.gf2 import rank
+    words = np.asarray(words, dtype=np.uint8)
+    W, n = words.shape
+    if n % Z:
+        raise ValueError(f"n = {n} is not a multiple of Z = {Z}")
+    G = n//Z
+    use = min(W, G + extra)
+    M = np.concatenate([_qc_rows(words[w], Z, G) for w in range(use)])
+    A = _packed(M)
+    piv = _eliminate(A, n)
+    pset = set(piv)
+    free = [c for c in range(n) if c not in pset]
+    if not free:
+        return np.zeros((0, n), np.uint8)
+    R = _unpacked(A[:len(piv)], n)
+    B = np.zeros((len(free), n), np.uint8)
+    for i, f in enumerate(free): # null vector: x_f = 1, the pivots from their rows
+        B[i, f] = 1
+        B[i, piv] = R[:, f]
+    # (column (g, t) of the system is the check's position Z g + (j - t) mod Z at row j: row 0 has it at (g, -t))
+    g, t = np.divmod(np.arange(n), Z)
+    B0 = np.zeros_like(B)
+    B0[:, Z*g + (-t) % Z] = B
+    # sparse vectors of the null space: information sets (random column orders, reduced: rows one free column each)
+    rng = np.random.default_rng(seed)
+    found = {}
+    for _ in range(trials):
+        perm = rng.permutation(n)
+        Ap = _packed(B0[:, perm])
+        p2 = _eliminate(Ap, n)
+        rows = _unpacked(Ap[:len(p2)], n)
+        rows_full = np.zeros_like(rows)
+        rows_full[:, perm] = rows
+        for r_ in rows_full:
+            wgt = int(r_.sum())
+            if wgt and wgt <= 2*G:
+                key = min(tuple(np.flatnonzero(sh)) for sh in _shifts(r_, Z, G)) # one per shift class
+                found.setdefault(key, r_)
+    cand = sorted(found.values(), key=lambda v: int(v.sum()))
+    out, span = [], np.zeros((0, n), np.uint8)
+    target = rank(B0)
+    for v in cand:
+        S = np.concatenate((span, _shifts(v, Z, G)))
+        if rank(S) > rank(span) if len(span) else True:
+            out.append(v)
+            span = S
+            if rank(span) >= target:
+                break
+    return np.array(out, dtype=np.uint8) if out else np.zeros((0, n), np.uint8)
+
+def qc_size(words, candidates=None, extra=8):
+    """Circulant sizes Z (dividing n) at which aligned clean codewords (W, n) have checks that stay checks cycled within
+    every block of Z: {Z: how many independent ones}. The code's own Z has them all (n - k); its divisors and multiples
+    some, other sizes none: the largest is the code's"""
+    words = np.asarray(words, dtype=np.uint8)
+    W, n = words.shape
+    cands = candidates or [z for z in range(8, n//4 + 1) if n % z == 0]
+    out = {}
+    for Z in cands:
+        G = n//Z
+        if W < G + extra:
+            continue
+        M = np.concatenate([_qc_rows(words[w], Z, G) for w in range(G + extra)])
+        A = _packed(M)
+        nul = n - len(_eliminate(A, n))
+        if nul:
+            out[Z] = nul
+    return out

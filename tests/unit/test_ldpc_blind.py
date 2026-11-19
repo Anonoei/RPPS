@@ -69,3 +69,59 @@ def test_bch_roots():
 def test_random_words_have_no_roots():
     r = L.roots(np.random.default_rng(4).integers(0, 2, (2000, 31)))
     assert r.roots == [] and "no roots" in str(r)
+
+def dvbs2_words(rng, table, n, k, W, Z=360):
+    """Codewords of a DVB-S2 style IRA code from its address table"""
+    m = n - k
+    q = m//Z
+    u = rng.integers(0, 2, (W, k)).astype(np.uint8)
+    p = np.zeros((W, m), np.uint8)
+    for g, row in enumerate(table):
+        for x in row:
+            rows = (x + np.arange(Z)*q) % m
+            p[:, rows] ^= u[:, g*Z:(g + 1)*Z]
+    p = np.cumsum(p, axis=1) % 2
+    return np.concatenate((u, p.astype(np.uint8)), axis=1)
+
+def test_qc_staircase_small_table():
+    """A QC-IRA code with Z = 36: the address table back from k/Z + 12 words"""
+    rng = np.random.default_rng(5)
+    Z, G, q = 36, 8, 6
+    n, k = (G + q)*Z, G*Z
+    table = [sorted(rng.choice(q*Z, 3, replace=False).tolist()) for _ in range(G)]
+    words = dvbs2_words(rng, table, n, k, 60, Z)
+    r = L.qc_staircase(words, k, Z)
+    assert r.table == table and np.all(r.holds == 1.0)
+
+@pytest.mark.slow
+def test_qc_staircase_dvbs2_normal_half():
+    """DVB-S2 normal frame, rate 1/2 (64800, 32400): its address table from about 100 clean frames (k / 360 + 12)"""
+    import json, os
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "fec", "block", "ldpc", "dvbs2_64800_1_2.json")
+    obj = json.load(open(path))
+    rng = np.random.default_rng(6)
+    words = dvbs2_words(rng, obj["table"], 64800, 32400, 110)
+    r = L.qc_staircase(words, 32400, trials=1)
+    assert r.table == [sorted(t) for t in obj["table"]]
+
+def test_qc_dual_lifted_code():
+    """A QC code lifted from a small base matrix (Z = 24): its check blocks back from n/Z + 8 words, and Z found"""
+    rng = np.random.default_rng(7)
+    Z, bc, br = 24, 8, 3 # 8 column blocks, 3 check blocks
+    shifts = rng.integers(-1, Z, (br, bc)) # -1: no circulant
+    shifts[:, -br:] = np.where(np.eye(br, dtype=bool), 0, -1) # an identity parity part keeps it full rank
+    H = np.zeros((br*Z, bc*Z), np.uint8)
+    for i in range(br):
+        for j in range(bc):
+            if shifts[i, j] >= 0:
+                H[i*Z:(i + 1)*Z, j*Z:(j + 1)*Z] = np.roll(np.eye(Z, dtype=np.uint8), shifts[i, j], axis=1)
+    from rpps.math.gf2 import nullspace, rank
+    Gm = nullspace(H)
+    words = ((rng.integers(0, 2, (30, len(Gm))).astype(np.int32) @ Gm.astype(np.int32)) % 2).astype(np.uint8)
+    sizes = L.qc_size(words, [12, 16, 24, 48])
+    assert max(sizes, key=sizes.get) == 24 and sizes[24] == br*Z
+    B = L.qc_dual(words, Z)
+    assert len(B) == br and all(b.sum() <= bc for b in B) # one sparse base row per block
+    rows = np.concatenate([np.stack([np.roll(b.reshape(bc, Z), j, axis=1).reshape(-1) for j in range(Z)]) for b in B])
+    assert not np.any((Gm.astype(np.int32) @ rows.T.astype(np.int32)) % 2) # every row is a check
+    assert rank(rows) == rank(H)
