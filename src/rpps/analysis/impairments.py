@@ -212,7 +212,24 @@ def neighbours(x, Fs, nfft=1024, margin_db=3.0):
                     runs.append((a_, b_, float(np.sum(S[a_:b_ + 1] - N0))))
             else:
                 pieces += [(a_, best[0] - 1), (best[0], b_)]
-    runs = [r for r in runs if r[1] - r[0] + 1 >= wide] # pieces of a skirt the splits leave are no band
+    # ... and a narrower carrier on top of a wider one: a stretch 6 dB over the run's own plateau (its median)
+    tops = []
+    for a, b, p in runs:
+        plateau = np.median(L[a:b + 1])
+        up = L[a:b + 1] > plateau + 6
+        i = 0
+        while i < len(up):
+            if up[i]:
+                j = i
+                while j + 1 < len(up) and up[j + 1]:
+                    j += 1
+                if j - i + 1 >= wide//2 and (j - i + 1) < 0.8*(b - a + 1):
+                    tops.append((a + i, a + j, float(np.sum(S[a + i:a + j + 1] - N0))))
+                i = j + 1
+            else:
+                i += 1
+    runs = runs + tops
+    runs = [r for r in runs if r[1] - r[0] + 1 >= wide//2] # pieces of a skirt the splits leave are no band
     if not runs:
         return []
     main = max(runs, key=lambda r: r[2])

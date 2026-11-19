@@ -116,7 +116,7 @@ def track(x, Fs, nfft=256, hop=None, snr_db=6.0, merge=None, width=None):
     frame_bins = np.median([np.count_nonzero(S[i] > floor[i]*10**(snr_db/10)) for i in np.flatnonzero(on)[:400]]) \
         if on.any() else wide_bins
     narrow = frame_bins < 0.5*wide_bins
-    hopping = len(channels) > 1 and dwell < T/4 and narrow
+    hopping = len(channels) > 1 and len(dwells) >= 4 and dwell < T/4 and narrow
     return Hops(dwells=dwells, dwell=dwell, rate=1/dwell if dwell else 0.0, channels=channels, spacing=spacing,
                 active=float(np.mean(on)), hopping=hopping)
 
