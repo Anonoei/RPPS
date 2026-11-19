@@ -1,0 +1,98 @@
+{
+  "base": "profile",
+  "comment": "Mode S replies and ADS-B extended squitters at 1090 MHz: pulse position modulation at 1 Mb/s, a bit a pulse in the first (1) or the second (0) half of its microsecond, after a preamble of four pulses. The capture is the channel at 2 MS/s, one sample per half-microsecond chip: the envelope, scaled by the pulses' peak (so each burst sets its own level), is sliced into on/off chips; the preamble delimits a frame (matched exactly: with an error allowed, the tail of a frame passes for one), the chip pairs decode as Manchester (Thomas sense; a pair of two equal chips is no bit and fails its frame, so silence never passes the parity), the downlink format gives the length and the 24-bit parity accepts the frame. Out come the bits between DF and parity of every clean reply. Transmitting: `fields={\"df\": 17}` per frame (default 17), the preamble chips before each",
+  "ref": "ICAO Annex 10 Vol IV 3.1.2.2, 3.1.2.3",
+  "params": {
+    "sps": {
+      "default": 1,
+      "comment": "samples per chip (half-microsecond): 1 at 2 MS/s"
+    }
+  },
+  "defaults": {
+    "timing": {
+      "method": "known"
+    },
+    "agc": {
+      "method": "peak",
+      "target": 1.4142,
+      "decay": 0.9995
+    }
+  },
+  "steps": [
+    {
+      "wave": "am",
+      "alpha": null
+    },
+    {
+      "sync": "agc"
+    },
+    {
+      "wave": "shape",
+      "pulse": "rect/symbol",
+      "sps": {
+        "param": "sps"
+      }
+    },
+    {
+      "sync": "timing"
+    },
+    {
+      "symbol": "constellation",
+      "name": "ook"
+    },
+    {
+      "sync": "delimit",
+      "id": "preamble",
+      "sequence": "mode_s_preamble",
+      "errors": 0,
+      "keep": true
+    },
+    {
+      "code": "marker",
+      "id": "marker",
+      "sequence": "mode_s_preamble"
+    },
+    {
+      "code": "line",
+      "id": "ppm",
+      "name": "thomas"
+    },
+    {
+      "link": "header",
+      "id": "frame",
+      "name": "mode_s"
+    }
+  ],
+  "controls": {
+    "preamble": {
+      "drive": {
+        "marker": {
+          "frame": "frame"
+        },
+        "ppm": {
+          "frame": "frame"
+        },
+        "frame": {
+          "frame": "frame"
+        }
+      }
+    },
+    "frame": {
+      "on": "tx",
+      "default": {
+        "df": 17
+      },
+      "drive": {
+        "frame": {
+          "df": "df"
+        },
+        "marker": {
+          "frame": "frame_bits"
+        },
+        "ppm": {
+          "frame": "frame_bits"
+        }
+      }
+    }
+  }
+}

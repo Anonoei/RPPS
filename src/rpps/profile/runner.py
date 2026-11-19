@@ -94,7 +94,7 @@ class Runner:
         self._step_slots = {}
         for s in self.slots:
             self._step_slots.setdefault(s.step.id, []).append(s.index)
-        self.entries = {h: e for h, e in self.entries.items() if h in self._step_slots}
+        self.entries = {h: e for h, e in self.entries.items() if h in self._step_slots and e.on in ("both", direction)}
         self.changes, self._keys, self._logent, self._seq, self._call = [], set(), {}, 0, 0
         self._fresh = []
         self.emitted = None

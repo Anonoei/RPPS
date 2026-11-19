@@ -712,7 +712,10 @@ def _transform(points, src, dst, rotate=True):
     return None
 
 def _fec_steps(steps):
-    return [(s["type"], s["name"]) for s in steps if s.get("code") == "fec"]
+    """The code steps that are codes: fec (type, name), and a line code or a sync marker, which a find never has (ax25/afsk1200
+    is HDLC behind NRZI, not the HDLC a find names). Scramblers and alignment are not compared: a find leaves those to the profile"""
+    return [(s["type"], s["name"]) if s["code"] == "fec" else (s["code"], s.get("name"))
+            for s in steps if s.get("code") in ("fec", "line", "marker")]
 
 def _symbol_steps(steps):
     """(differential?, constellation name) of a profile's symbol steps"""

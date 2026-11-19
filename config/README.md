@@ -7,11 +7,11 @@ the resource and its `type` the implementation; the keys each accepts are in the
 | Resource | Holds | Example | Load | Keys |
 |---|---|---|---|---|
 | `constellation` | point sets and their bit maps | `psk/qpsk` | `rp.symbol.load("QPSK")` | [symbol/constellation.py](../src/rpps/symbol/constellation.py) |
-| `pulse` | symbol and frequency pulses (`"kind"`) | `rrc/0p35` | `rp.signal.filters.load("pulse", "rrc/0p35")` | [signal/filters/serial.py](../src/rpps/signal/filters/serial.py) |
+| `pulse` | symbol and frequency pulses (`"kind"`): `rrc`, `rc`, `halfsine`, `gaussian`, `rect/symbol`, `rect/frequency` | `rrc/0p35` | `rp.signal.filters.load("pulse", "rrc/0p35")` | [signal/filters/serial.py](../src/rpps/signal/filters/serial.py) |
 | `filter` | FIR, IIR, windows | `fir/windowed/lowpass_0p1_60db` | `rp.signal.filters.load("fir", "windowed/lowpass_0p1_60db")` | [signal/filters/serial.py](../src/rpps/signal/filters/serial.py) |
-| `sequence` | bit sequences (recurrences, Gold) and chip codes (Barker, PN sets, GPS C/A) | `recurrence/lte_gold` | `rp.sequence.load("lte_gold", c_init=77)` | [sequence/\_\_init\_\_.py](../src/rpps/sequence/__init__.py) |
+| `sequence` | bit sequences (recurrences, Gold), chip codes (Barker, PN sets, GPS C/A) and fixed words (sync markers, access addresses: `word/ccsds_asm`) | `recurrence/lte_gold` | `rp.sequence.load("lte_gold", c_init=77)` | [sequence/\_\_init\_\_.py](../src/rpps/sequence/__init__.py) |
 | `scramble` | how a sequence is applied: `additive` (names a sequence), `feedthrough` (self-synchronizing) | `additive/dvb_energy` | `rp.code.scram.load("dvb_energy")` | [code/scram/serial.py](../src/rpps/code/scram/serial.py) |
-| `fec` | block and convolutional codes | `block/rs/204_188` | `rp.code.load("block", "rs/204_188")` | [code/serial.py](../src/rpps/code/serial.py) |
+| `fec` | block and convolutional codes (LDPC from DVB-S2 tables, dense or sparse checks, or a quasi-cyclic matrix of shifts: `ldpc/ieee80211n_648_1_2`) | `block/rs/204_188` | `rp.code.load("block", "rs/204_188")` | [code/serial.py](../src/rpps/code/serial.py) |
 | `interleave` | block and Forney interleavers | `forney/12_17` | `rp.code.load("interleave", "forney/12_17")` | [code/serial.py](../src/rpps/code/serial.py) |
 | `crc` | CRCs (reveng's fields) | `crc32_mpeg2` | `rp.link.load("crc", "crc32_mpeg2")` | [link/serial.py](../src/rpps/link/serial.py) |
 | `frame` | frame formats (HDLC) | `hdlc` | `rp.link.load("frame", "hdlc")` | [link/serial.py](../src/rpps/link/serial.py) |
@@ -69,5 +69,16 @@ Without `name` they return the dict. Arrays in memory go through `fir_def`, `sos
 | `iir_filter_ffd(fftaps, fbtaps)` | `ba_def(fftaps, fbtaps, convention="gnuradio")`. Default `oldstyle=True` adds the feedback terms, so `a = [1, -fbtaps[1:]]`; `oldstyle=False` is scipy's |
 | `single_pole_iir_filter_ff` | `iir` `single_pole` |
 
+| `differential_encoder_bb`, NRZI, Manchester | profile step `{"code": "line", "name": "nrzm" | "nrzi" | "manchester" | "thomas" | "invert"}` (`rp.code.Line`) |
+| `correlate_access_code`, sync words | `sequence/word` plus `{"sync": "delimit", "sequence": ...}` to find it and `{"code": "marker", "sequence": ...}` to attach / strip it |
+| `conjugate_cc` (spectral inversion) | `{"signal": "conjugate"}`; or a constellation map "inverted" at the symbol level |
+| `freq_xlating_fir_filter` + decimation | `{"signal": "channelize", "freq": ..., "width": ...}` (designed from the stream's rate) |
+| `rational_resampler` | `{"signal": "resample", "up": ..., "down": ...}` |
+| `quadrature_demod` / `frequency_modulator` | `{"wave": "fm", "h": ..., "sps": ...}` (FSK, GFSK, GMSK) or `{"wave": "fm", "deviation": ...}` (analog) |
+| `am_demod`, `ssb` | `{"wave": "am"}`, `{"wave": "ssb", "bw": ..., "sideband": ...}` |
+| `hdlc_framer` / `hdlc_deframer` | `frame/hdlc` and `{"link": "frame", "name": "hdlc"}` (streaming, any block cut) |
+| `packet_headergenerator` + CRC trailer | `header/link` with `fields`, `payload` and `fcs` (a CRC over header and payload after the payload) |
+
 Anything GNU Radio builds from parameters can be built without a file: `rp.code.Hamming/RS/Repetition/Conv`, or `rp.code.init(name, dict)`.
-Not expressible yet: convolutional tail-biting and per-generator inversion (CCSDS G2), Reed-Solomon dual basis (CCSDS), QC-LDPC lifting, differential constellations, FSK/GMSK/OQPSK definitions, sync-word and line-code domains.
+Not expressible yet: Reed-Solomon dual basis (CCSDS: the conventional basis is here, the conversion is not), polar codes, 5G NR
+base graphs (the quasi-cyclic loader takes them once written out), a frequency-hopping schedule.

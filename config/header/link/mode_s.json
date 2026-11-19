@@ -1,0 +1,12 @@
+{
+  "base": "header",
+  "type": "link",
+  "comment": "Mode S reply (ADS-B extended squitter): the 5-bit downlink format decides the length, 56 bits (DF 0-15) or 112 (DF 16-31), the last 24 of which are the parity over everything before them. Out comes what is between the DF and the parity (the 27 or 83 bits of fields: for DF 17 capability, ICAO address and the 56-bit message). DF 11 and the surveillance replies overlay an address on the parity, so only replies whose parity is clean pass (DF 17 / 18)",
+  "ref": "ICAO Annex 10 Vol IV 3.1.2.3.2, 3.1.2.3.3",
+  "order": "msb",
+  "fields": [
+    {"name": "df", "bits": 5, "default": 17}
+  ],
+  "fcs": "crc24_mode_s",
+  "payload": "(112 if df >= 16 else 56) - 29"
+}

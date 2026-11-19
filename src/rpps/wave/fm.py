@@ -14,20 +14,26 @@ class FM(Stage):
     step: the distance between neighbouring levels of the signal (2 for levels -1 +1 or -3 -1 +1 +3). The signal must be at
     meta.sps >= 1 samples per symbol, and real; its pulse should leave a held level at unit gain (rp.signal.filters shaping `rect`,
     `gaussian`).
+    deviation: analog FM instead (broadcast, voice): a level of 1.0 is this many Hz off the carrier, whatever the symbol rate
+    (`FM(deviation=75e3)`; the matching `FMDemod(deviation=75e3)` gives the levels back).
     """
-    def __init__(self, h=0.5, step=2.0):
+    def __init__(self, h=0.5, step=2.0, deviation=None):
         self.h, self.level_step = float(h), float(step) # not `step`: that is the Stage method
+        self.deviation = None if deviation is None else float(deviation)
 
     def new_state(self, meta):
         return SimpleNamespace(phase=0.0)
 
     def step(self, samples, st, meta):
-        if meta.sps < 1:
-            raise ValueError(f"FM needs samples per symbol >= 1, got {meta.sps}: set sps on the stream or upsample first")
         x = np.asarray(samples)
         if x.dtype.kind == "c":
             x = x.real
-        inc = 2*np.pi*self.h/(self.level_step*meta.sps)*x.astype(np.float64)
+        if self.deviation is not None:
+            inc = 2*np.pi*self.deviation/meta.Fs*x.astype(np.float64)
+        else:
+            if meta.sps < 1:
+                raise ValueError(f"FM needs samples per symbol >= 1, got {meta.sps}: set sps on the stream or upsample first")
+            inc = 2*np.pi*self.h/(self.level_step*meta.sps)*x.astype(np.float64)
         ph = st.phase + np.cumsum(inc)
         if len(ph):
             st.phase = float(ph[-1] % (2*np.pi))
@@ -38,10 +44,14 @@ def fm_gain(h, sps, step=2.0):
     return -step*sps/(2*np.pi*h)
 
 class FMDemod(Stage):
-    """Quadrature FM demodulator as a stream stage: the last sample carries across blocks"""
-    __slots__ = ("gain",)
-    def __init__(self, gain=0.5):
+    """Quadrature FM demodulator as a stream stage: the last sample carries across blocks
+
+    gain: what one radian per sample becomes (`fm_gain` gives the one that returns FM's levels); or deviation: Hz that become
+    a level of 1.0 (analog FM: `FMDemod(deviation=75e3)`), worked out from the sample rate when it runs"""
+    __slots__ = ("gain", "deviation")
+    def __init__(self, gain=0.5, deviation=None):
         self.gain = gain
+        self.deviation = None if deviation is None else float(deviation)
 
     def new_state(self, meta):
         return SimpleNamespace(last=None)
@@ -52,4 +62,5 @@ class FMDemod(Stage):
         last = samples[0] if st.last is None else st.last
         st.last = samples[-1]
         z = np.concatenate(([last], samples))
-        return self.gain * np.angle(z[:-1] * np.conj(z[1:]))
+        gain = self.gain if self.deviation is None else -meta.Fs/(2*np.pi*self.deviation)
+        return gain * np.angle(z[:-1] * np.conj(z[1:]))

@@ -82,6 +82,37 @@ class hdlc(_code):
 
     def decode(self, bits):
         frames, aborts = self.deframe(bits)
+        return self._good(frames, aborts)
+
+    def _good(self, frames, aborts):
         good = [p for p, ok in frames if ok]
         self.last = (good, len(frames) - len(good), aborts)
         return np.concatenate([np.unpackbits(np.frombuffer(p, np.uint8)) for p in good]).astype(bool) if good else np.zeros(0, bool)
+
+    MAX_FRAME_BITS = 1 << 16 # Bits after a flag before the wait for a closing flag is given up
+
+    def consumed(self, bits):
+        """How many of these bits are done with: up to the last flag (a frame may be open there), or all but a flag's
+        worth when nothing can start one. The rest waits for the next block, so a frame cut by a block boundary is whole"""
+        b = np.asarray(bits, dtype=np.uint8)
+        if self.nrzi:
+            b = np.concatenate(([0], (b[1:] == b[:-1]).astype(np.uint8)))
+        n = len(self.flag_bits)
+        if len(b) < n:
+            return 0
+        win = np.lib.stride_tricks.sliding_window_view(b, n)
+        starts = np.nonzero((win == self.flag_bits).all(axis=1))[0]
+        if not len(starts):
+            return max(0, len(b) - (n - 1) - (1 if self.nrzi else 0))
+        last = int(starts[-1])
+        if len(b) - last > self.MAX_FRAME_BITS:
+            return max(0, len(b) - (n - 1) - (1 if self.nrzi else 0))
+        return max(0, last - (1 if self.nrzi else 0)) # (NRZI: the bit before the flag is its reference)
+
+    def decode_stream(self, bits, held):
+        """Decode `held` (what the last call kept) and `bits` together: (data bits of the good frames, what to hold)"""
+        buf = np.concatenate((np.asarray(held, dtype=np.uint8), np.asarray(bits, dtype=np.uint8)))
+        used = self.consumed(buf)
+        out = self.decode(buf[:used + len(self.flag_bits) + (1 if self.nrzi else 0)]) if used else np.zeros(0, bool)
+        # Frames between the flags before `used` are out; the flag at `used` opens the next one (decode found no frame after it)
+        return out, buf[used:]

@@ -1,0 +1,76 @@
+{
+  "base": "profile",
+  "comment": "CCSDS telemetry, Reed-Solomon only: BPSK, each transfer frame of `depth` interleaved RS(255,223) codewords behind the 32-bit attached sync marker, the frame randomized (restarting at each marker). Timing and carrier from block estimators (the carrier by the 2nd power: the delimiter puts the 180 degree ambiguity right by the marker's sense). The RS code works in the conventional basis: a spacecraft's dual-basis symbols need the conversion before and after. Out come the 223 x depth bytes of each frame",
+  "ref": "CCSDS 131.0-B-4 4, 8, 10",
+  "params": {
+    "sps": {
+      "default": 4,
+      "comment": "samples per symbol"
+    },
+    "depth": {
+      "default": 5,
+      "comment": "Reed-Solomon interleaving depth I (1 to 8)"
+    }
+  },
+  "steps": [
+    {
+      "wave": "shape",
+      "pulse": "rrc/0p35",
+      "sps": {
+        "param": "sps"
+      }
+    },
+    {
+      "sync": "timing"
+    },
+    {
+      "sync": "carrier",
+      "order": 2,
+      "constellation": "bpsk"
+    },
+    {
+      "symbol": "constellation",
+      "name": "bpsk"
+    },
+    {
+      "sync": "delimit",
+      "id": "asm",
+      "sequence": "ccsds_asm",
+      "length": {
+        "expr": "8*255*depth"
+      },
+      "keep": true,
+      "polarity": true,
+      "errors": 2
+    },
+    {
+      "code": "marker",
+      "sequence": "ccsds_asm",
+      "length": {
+        "expr": "8*255*depth"
+      }
+    },
+    {
+      "code": "scramble",
+      "name": "additive/ccsds",
+      "length": {
+        "expr": "8*255*depth"
+      }
+    },
+    {
+      "code": "fec",
+      "type": "interleave",
+      "name": "block/ccsds_rs",
+      "args": {
+        "depth": {
+          "param": "depth"
+        }
+      }
+    },
+    {
+      "code": "fec",
+      "type": "block",
+      "name": "rs/ccsds_255_223"
+    }
+  ]
+}

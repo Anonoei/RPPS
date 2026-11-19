@@ -5,7 +5,7 @@ the steps before it (the serial front) find the frames and decide their paramete
 could not give the same result as the serial runner:
 
   * every step in it has frame scope (`SCOPE`): nothing carried from one frame to the next. An operator that is frame
-    scoped only when a control restarts it (`SCOPE_NEEDS`, a scrambler's `length`) needs the profile's controls to drive that;
+    scoped only when a control restarts it (`SCOPE_NEEDS`, a scrambler's `length` or `frame`) needs the profile's controls to drive one of those;
   * no header in it publishes: a publisher in the region would set parameters of frames already being processed, so a
     header sits in the front and the region takes its resolved fields;
   * no change reaches back across the boundary: a late change (a step driven by a header after it) needs a re-run, which
@@ -35,9 +35,9 @@ def scope_of(step, driven=()):
         if getattr(op, "SCOPE", None) != FRAME:
             why.append(f"{type(op).__name__} keeps state across frames")
         else:
-            miss = [p for p in getattr(op, "SCOPE_NEEDS", ()) if p not in driven]
-            if miss:
-                why.append(f"{type(op).__name__} restarts at a frame start only when a control drives {miss}")
+            needs = list(getattr(op, "SCOPE_NEEDS", ()))
+            if needs and not any(p in driven for p in needs):
+                why.append(f"{type(op).__name__} restarts at a frame start only when a control drives one of {needs}")
     return ("stream", why) if why else ("frame", [])
 
 def plan(marker, steps, controls, where):
