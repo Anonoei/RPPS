@@ -1,4 +1,4 @@
-// Trellis decoders: Viterbi (rpps/coding/types/viterbi.py, fsm.py) and BCJR forward-backward (trellis.py: turbo,
+// Trellis decoders: Viterbi (rpps/code/types/viterbi.py, fsm.py) and BCJR forward-backward (trellis.py: turbo,
 // bcjr_conv, syndrome trellises). Generic over the code: the Python classes hand over their tables.
 #include "common.hpp"
 #include "parallel.hpp"

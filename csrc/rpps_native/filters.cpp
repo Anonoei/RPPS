@@ -1,4 +1,4 @@
-// Recursive filters: the IIR section cascade (rpps/filters/iir.py) and the one-pole loops of rpps/demod.py
+// Recursive filters: the IIR section cascade (rpps/signal/filters/iir.py) and the one-pole loops of rpps/wave/analog.py, sync/squelch.py and signal/condition.py
 #include "common.hpp"
 
 #include <cmath>
