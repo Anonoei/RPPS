@@ -22,9 +22,10 @@ over 2^-m at a few percent of clean words. Consecutive roots give a BCH code's d
 """
 import numpy as np
 
-from .... import _accel
 from ....math.gf import GF
-from ....math.gf2 import rref, rank
+from ....math.gf2 import rref, rank, to_checks
+from ....code.types.ldpc import ldpc as _ldpc
+from ....logger import Logger
 from .linear import sparse_checks
 
 # Primitive polynomials (x^m term included) for GF(2^m)
@@ -88,38 +89,11 @@ def staircase(words, k, rel=None, trials=16, verify=256, seed=0, extra=()):
     return H, holds
 
 def posterior(H, llr, iters=20, alpha=0.8):
-    """A-posteriori LLRs of words (B, n) through the checks H (c, n) by normalized min-sum (flooding, all checks at once):
-    what the checks known so far say about each bit. The C++ kernel ldpc_flood runs the same loop (this is its reference)"""
+    """A-posteriori LLRs of words (B, n) through the checks H (c, n) by normalized min-sum, flooding (all checks at once):
+    what the checks known so far say about each bit (rpps.code.types.ldpc.flood)"""
     H = np.asarray(H, dtype=bool)
-    llr = np.asarray(llr, dtype=np.float64)
-    deg = H.sum(axis=1)
-    dmax = int(deg.max())
-    idx = np.zeros((len(H), dmax), dtype=np.int64)
-    valid = np.arange(dmax)[None, :] < deg[:, None]
-    for i, h in enumerate(H):
-        idx[i, :deg[i]] = np.flatnonzero(h)
-    B, n = llr.shape
-    nat = _accel.native
-    if nat is not None and hasattr(nat, "ldpc_flood"):
-        return nat.ldpc_flood(np.ascontiguousarray(llr), idx, deg.astype(np.int64), int(iters), float(alpha))
-    msg = np.zeros((B, len(H), dmax))
-    total = llr.copy()
-    flat = idx[valid]
-    for _ in range(iters):
-        q = total[:, idx] - msg # (B, c, dmax): variable to check, without the check's own message
-        a = np.where(valid[None], np.abs(q), np.inf)
-        neg = (q < 0) & valid[None]
-        sgn = np.where(neg.sum(axis=2, keepdims=True) % 2 == 1, -1.0, 1.0)*np.where(neg, -1.0, 1.0)
-        i1 = np.argmin(a, axis=2)[..., None]
-        m1 = np.take_along_axis(a, i1, axis=2)
-        a2 = a.copy()
-        np.put_along_axis(a2, i1, np.inf, axis=2)
-        m2 = a2.min(axis=2, keepdims=True)
-        m2 = np.where(np.isinf(m2), m1, m2)
-        msg = np.where(valid[None], alpha*sgn*np.where(np.arange(dmax)[None, None, :] == i1, m2, m1), 0.0)
-        total = llr.copy()
-        np.add.at(total.T, flat, msg[:, valid].T)
-    return total
+    code = _ldpc(Logger(), H.shape[1], to_checks(H), k=0, systematic_pos=[], iters=int(iters), alpha=float(alpha))
+    return code.flood(llr)
 
 def _keep(H, limit):
     """The lightest checks of H that span what it spans, then lighter others up to `limit`"""

@@ -24,7 +24,7 @@ The kinds (`python -m rpps steps` lists them with the sync methods):
              dc_block, deemphasis, stage (any Stage class by module path)
     sync     timing, carrier, equalize, agc (methods), frame (a physical header's preamble), delimit (a word among bits:
              word + bits, a word sequence, or a link header's preamble; length, keep, polarity, errors), align (a repeating
-             marker), puncture, pilots, squelch, ofdm
+             marker), puncture, pilots, squelch, quality (Es/N0 and EVM to est), ofdm
     wave     shape (a pulse definition; symbol pulses get a matched filter), stagger, fm (h + sps: FSK; deviation: analog),
              am (the envelope; alpha null keeps its mean), ssb (bw, sideband), ofdm (n_fft, n_cp)
     symbol   constellation (name, mapping), differential, spread (a chip sequence), carriers, header, pilots, scramble
@@ -260,11 +260,13 @@ def _gardner(m, rep, ctx):
 @register_sync_method("timing", "tll")
 def _tll(m, rep, ctx):
     from .. import sync
-    return sync.time.TLL(m.get("sps", ctx["params"].get("sps")), m.get("bw", 0.01), m.get("damping", 0.7071), m.get("name", "timing"))
+    return sync.time.TLL(m.get("sps", ctx["params"].get("sps")), m.get("bw", 0.01), m.get("damping", 0.7071), m.get("name", "timing"),
+                         m.get("ted", "zx"))
 
 @register_sync_method("timing", "known")
 def _known(m, rep, ctx):
-    return _KnownTiming(m.get("sps", ctx["params"].get("sps")))
+    from .. import sync
+    return sync.time.Known(m.get("sps", ctx["params"].get("sps")))
 
 @register_sync_method("timing", "fixed")
 def _fixed(m, rep, ctx):
@@ -360,6 +362,15 @@ def _squelch(m, ctx):
     from .. import sync
     return sync.Squelch(**_given(m, ("threshold_db", "hysteresis_db", "alpha")))
 
+@_sync_one("quality")
+def _quality(m, ctx):
+    """Es/N0, Eb/N0 and EVM of locked symbols, published to est[name] (sync.quality.Monitor); the symbols pass unchanged.
+    constellation: the definition they sit on (default: the one Acquire detected)"""
+    from .. import sync, symbol
+    pts = m.get("constellation")
+    pts = None if pts is None else symbol.load(pts).points
+    return sync.quality.Monitor(pts, **_given(m, ("bits", "rate", "history", "minimum", "name")))
+
 @_sync_one("ofdm")
 def _ofdm(m, ctx):
     """OFDM symbol timing and fractional frequency from the cyclic prefix (sync.CPSync): before a wave ofdm step"""
@@ -411,67 +422,6 @@ def _given(spec, keys, **convert):
 def _complex(v):
     return complex(v[0], v[1]) if isinstance(v, (list, tuple)) else complex(v)
 
-from ..base import Stage as _Stage
-
-class _KnownTiming(_Stage):
-    """Timing that is known, not estimated (a loopback, a source whose timing is given): one sample per symbol at the pulse
-    peaks, which the group delay so far (meta.delay) places. Tracks the absolute input index of the next peak, so any block
-    cut gives the same output.
-
-    With a matched filter fused in (`fuse`, which a profile does for the filter just before it) the filter is evaluated only at
-    those instants, a dot product of its taps with the signal per symbol: `sps` times less work than filtering every sample and
-    keeping every `sps`-th, the same symbols. The estimators that need the filter's output at every sample (Oerder & Meyr) have
-    nothing to fuse"""
-    def __init__(self, sps):
-        self.sps = sps
-        self.matched = None
-
-    def fuse(self, matched):
-        """Take over a matched filter (a FIR stage): this stage then also filters, at the instants it samples"""
-        self.matched = matched
-
-    def __str__(self):
-        return "KnownTiming" if self.matched is None else "KnownTiming(matched)"
-
-    def new_state(self, meta):
-        from types import SimpleNamespace
-        taps = None if self.matched is None else self.matched.new_state(meta).taps
-        return SimpleNamespace(next=None, taps=taps, hist=None)
-
-    def step(self, samples, st, meta):
-        import numpy as np
-        sps = int(self.sps or meta.isps)
-        delay = meta.delay + (0.0 if st.taps is None else (len(st.taps) - 1)/2/meta.Fs) # (the filter's group delay)
-        if st.next is None:
-            first = int(round(delay*meta.Fs)) # absolute index of the first symbol's peak
-            st.next = first if first >= meta.pos else first + -(-(meta.pos - first)//sps)*sps
-        first_idx = st.next - meta.pos
-        count = max(0, -(-(len(samples) - first_idx)//sps))
-        st.next += count*sps
-        meta.op.Fs = meta.Fs/sps
-        meta.op.sps = 1
-        if st.taps is None:
-            return samples[np.arange(first_idx, len(samples), sps)]
-        meta.delay = delay
-        return self._matched(samples, st, first_idx, sps, count)
-
-    @staticmethod
-    def _matched(samples, st, first_idx, sps, count):
-        import numpy as np
-        from .. import _accel
-        nh = len(st.taps)
-        keep = nh - 1
-        x = np.asarray(samples)
-        hist = st.hist if st.hist is not None else np.zeros(keep, dtype=x.dtype)
-        buf = np.concatenate((hist, x))
-        st.hist = buf[len(buf) - keep:]
-        if not count:
-            return np.zeros(0, np.complex64)
-        if _accel.native is not None:
-            return _accel.native.fir_decimate(np.ascontiguousarray(buf, dtype=np.complex64), st.taps, first_idx + keep, sps, count)
-        from ..signal.filters.convolve import convolve
-        return convolve(buf, st.taps, "valid")[first_idx + sps*np.arange(count)].astype(np.complex64)
-
 # ---- wave (pairs)
 
 def _pulse(name):
@@ -488,12 +438,8 @@ def _wave(kind, spec, rep, ctx):
     sps = spec.get("sps", ctx["params"].get("sps"))
     if kind == "shape":
         make, pulse_kind = _pulse(_need(spec, "pulse", "wave shape"))
-        tx = [(STAGE, signal.sample.up.Interpolate(int(_need({"sps": sps}, "sps", "wave shape")), make()))] # Zeros + pulse, polyphase
-        rx = []
-        if pulse_kind == "symbol": # (a frequency pulse has no matched filter)
-            f = make()
-            f.matched = True # unit gain at the sampling instants, so the symbols come back at the amplitude they were sent
-            rx = [(STAGE, f)]
+        tx = [(STAGE, wave.Shape(int(_need({"sps": sps}, "sps", "wave shape")), make()))]
+        rx = [(STAGE, wave.Matched(make()))] if pulse_kind == "symbol" else [] # (a frequency pulse has no matched filter)
         return rx, tx, Rep.SAMPLES
     if kind == "stagger":
         d = spec.get("delay", 0.5)
@@ -505,7 +451,7 @@ def _wave(kind, spec, rep, ctx):
         h, step = _need(spec, "h", "wave fm"), spec.get("step", 2.0)
         sps = _need({"sps": sps}, "sps", "wave fm")
         rx = [(STAGE, wave.FMDemod(wave.fm_gain(h, sps, step))),
-              (STAGE, signal.filters.ShapingRect(int(sps), int(sps), 1/int(sps)))]
+              (STAGE, wave.Matched(signal.filters.ShapingRect(int(sps), int(sps), 1/int(sps)), unit=False))] # (integrate over the symbol)
         return rx, [(STAGE, wave.FM(h, step))], Rep.SAMPLES
     if kind == "am": # The envelope: on transmit the levels through their pulse are the envelope already
         return [(STAGE, wave.AMDemod(spec.get("alpha", 1e-3)))], [], Rep.SAMPLES

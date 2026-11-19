@@ -111,9 +111,10 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
  - [ ] [Source](https://github.com/Anonoei/RPPS/tree/main/src/rpps/source)
    - [X] File, memory, radios (pysdrlib), WAV out
    - [ ] (Linux only) tun/tap
-   - [ ] Socket (UDP, TCP)
-   - [ ] SigMF (capture metadata in and out), WAV in
-   - [ ] Transmit: to a radio, and `rpps tx` from the shell
+   - [X] Socket (UDP, TCP)
+   - [X] SigMF (capture metadata in and out), WAV in
+   - [X] `rpps tx`: a profile's transmission to a file
+   - [ ] Transmit to a radio
  - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/filters)
    - [X] Pulse Shaping (rrc, rc, halfsine, gaussian, rect)
    - [X] Window functions
@@ -139,26 +140,29 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
      - [X] Hamming (decoded on its syndrome trellis)
      - [X] BCH
      - [X] Reed-Solomon
-     - [X] LDPC (layered min-sum; DVB-S2 tables, quasi-cyclic matrices: IEEE 802.11n)
+     - [X] LDPC (layered or flooding min-sum; DVB-S2 tables, quasi-cyclic matrices: IEEE 802.11n)
      - [X] Golay, cyclic codes by generator polynomial, product codes (DMR BPTC), turbo (LTE), rate matching (LTE)
-     - [ ] Polar (successive cancellation, list, CRC-aided; 5G NR sequence)
-     - [ ] Turbo product codes (Chase-Pyndiah)
-     - [ ] Reed-Muller
-     - [ ] Reed-Solomon dual basis (CCSDS)
+     - [X] Polar (successive cancellation, list, CRC-aided)
+     - [ ] Polar: the 5G NR sequence and rate matching
+     - [X] Turbo product codes (Chase-Pyndiah)
+     - [X] Reed-Muller
+     - [X] Reed-Solomon dual basis (CCSDS)
      - [ ] LDPC: 5G NR base graphs, CCSDS AR4JA, DVB-S2X
-     - [ ] Turbo interleavers as definitions (CCSDS, UMTS)
+     - [X] Turbo: CCSDS (rates 1/2 to 1/6), its permutation a definition
+     - [ ] Turbo: UMTS, DVB-RCS duo-binary
    - [X] Convolutional
      - [X] Viterbi (hard and soft)
      - [X] BCJR / trellis (log-MAP, max-log-MAP)
      - [X] Trellis codes on levels (ATSC, P25)
-     - [ ] Trellis-coded modulation on constellation points
+     - [X] Trellis-coded modulation on constellation points
    - [X] Soft decisions (demodulator LLRs into the decoders)
  - [ ] [Scramblers](https://github.com/Anonoei/RPPS/tree/main/src/rpps/code/scram)
    - [X] fibonacci
    - [X] galois
    - [X] V.35
    - [X] Line codes: NRZI, NRZ-M, Manchester, inversion; sync markers (CCSDS ASM, preambles) attached and stripped
-   - [ ] Line codes: Bi-phi-M/S and delay modulation (IRIG-106), 4B5B, 8b/10b
+   - [X] Line codes: Bi-phi-M/S and delay modulation (IRIG-106)
+   - [ ] Line codes: 4B5B, 8b/10b
  - [ ] [Link](https://github.com/Anonoei/RPPS/tree/main/src/rpps/link)
    - [X] CRC
    - [X] HDLC (streaming, any block cut)
@@ -167,7 +171,8 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
    - [ ] MPEG-TS packets, CCSDS transfer frames and space packets, FX.25
  - [ ] [Profiles](https://github.com/Anonoei/RPPS/tree/main/config/profile)
    - [X] DVB-S, DVB-S2 (normal and short frames, APSK), IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
-   - [ ] From definitions already shipped: CCSDS concatenated and turbo, P25, DMR, LTE, IEEE 802.11a/g, 802.11n, ATSC 8VSB, GPS C/A, DAB
+   - [X] CCSDS concatenated (convolutional + Reed-Solomon)
+   - [ ] From definitions already shipped: CCSDS turbo, P25, DMR, LTE, IEEE 802.11a/g, 802.11n, ATSC 8VSB, GPS C/A, DAB
  - [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey
 
 ## Contributing

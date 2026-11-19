@@ -11,17 +11,24 @@ Folders are kind (`base`), then the structure of the code; the standard goes in 
                   message bits dropped, "t": errors to correct (default from d_min); decoded by "syndrome" table
       repeat      "count": 3
       fsm         trellis code as a state machine: "k", "n", "next", "output" tables, "start", "end", "tail",
-                  "symbols": {"bits", "levels"} to decode amplitudes (P25 trellis, ATSC 8VSB)
-      turbo       LTE turbo code: "length", "g0", "g1", "constraint", "qpp" or "qpp_table", "iters", "scale"
+                  "symbols": {"bits", "levels"} to decode amplitudes (P25 trellis, ATSC 8VSB) or {"bits", "points"}: [re, im]
+                  pairs to decode constellation symbols (trellis-coded modulation)
+      turbo       LTE turbo code: "length", "g0", "g1", "constraint", "qpp" or "qpp_table", "iters", "scale"; or multiplexed
+                  bit time by bit time (CCSDS): "g0", "forward": {"1": g1, ...}, "interleave" (a definition), "outputs"
+      polar       "n", "k", "frozen": [...] or "order": "pw" | "bhattacharyya" (+ "design_db"), "list": paths (1: SC),
+                  "crc": a CRC definition for CRC-aided list decoding
+      rm          Reed-Muller RM("r", "m")
       ratematch   LTE rate matching: "mode": "conv" | "turbo", "length" (bits per stream), "out" (E), "rv", "ncb"
-      product     block product code: "rows", "cols" (block definitions), "reserved", "lead", "iters" (DMR BPTC)
+      product     block product code: "rows", "cols" (block definitions), "reserved", "lead", "iters" (DMR BPTC);
+                  "chase": p decodes it soft as a turbo product code (Chase-Pyndiah)
       rs          "n", "k", "m": 8, "poly": field polynomial, "fcr": 0, "prim": 1, "puncture": codeword positions not
-                  sent (negative from the end; decoded as erasures)
+                  sent (negative from the end; decoded as erasures), "basis": "dual" + "beta" (CCSDS: 117)
     Every block decoder leaves `errors` per codeword after a decode: bits (RS: symbols) corrected, -1 for a failure.
       bch         "n", "k", "t", "m": 16, "poly": "0x1002D"
       ldpc        "n" and the checks as "checks" (positions per check), "h" (dense rows), "table" + "k" + "group" (DVB-S2 address
                   table), "shifts" + "z" (quasi-cyclic: a matrix of shifts of the z x z identity, -1 a zero block: 802.11n, 802.16e)
-                  or "gallager": {...}; optional "k" + "systematic": "head" | "tail" | [positions], "iters": 50, "alpha": 0.8
+                  or "gallager": {...}; optional "k" + "systematic": "head" | "tail" | [positions], "iters": 50, "alpha": 0.8,
+                  "schedule": "layered" | "flooding"
     conv        {"base": "conv", "constraint": K, "generator": den rows of K bits, "puncture": den rows, "decoder": "viterbi"}
                   one set of keys for the encoder and its decoder ("viterbi", or "bcjr": soft output; also "maxlog",
                   "hard_llr", "termination", "invert"). A mother code is a file (fec/conv/k7_171_133.json); its punctured

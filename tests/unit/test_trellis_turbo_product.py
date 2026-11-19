@@ -145,3 +145,21 @@ def test_dmr_crc_mask(rng):
     crc = rp.link.load("crc/crc16_ccitt_false").encoder
     sent = crc.encode(bits(rng, 80), mask=0xA5A5) # CSBK
     assert crc.syndrome(sent) == 0xA5A5
+
+@pytest.mark.parametrize("rate, n", [("1_2", 2), ("1_3", 3), ("1_4", 4), ("1_6", 6)])
+def test_ccsds_turbo_lengths_and_decoding(rate, n, rng):
+    """CCSDS 131.0-B-5 6: (k + 4)/r symbols a word; decodes at Eb/N0 1.5 dB"""
+    c = rp.code.load(f"block/turbo/ccsds_{rate}", k=1784)
+    assert c.encoder.den == n*(1784 + 4) and c.encoder.num == 1784
+    msg = rng.integers(0, 2, 1784).astype(bool)
+    x = c.encoder.encode(msg)
+    assert np.array_equal(x[:2*n:n], msg[:2]) # the systematic bit leads every bit time
+    ebn0 = 10**(1.5/10)
+    sigma = np.sqrt(n/(2*ebn0))
+    llr = 2*((1 - 2.0*x) + rng.normal(0, sigma, len(x)))/sigma**2
+    assert np.array_equal(c.decoder.decode(llr), msg)
+
+def test_ccsds_turbo_terminates_both_encoders(rng):
+    c = rp.code.load("block/turbo/ccsds_1_3", k=1784).encoder
+    sa, _ = c._run(rng.integers(0, 2, 1784).astype(np.uint8))
+    assert len(sa) == 1788

@@ -150,10 +150,12 @@ def code(x, Fs, chip_rate, chips, beta=0.35):
     return Code(code=code_, offset=int(offset), chips_rx=s2, gain=float(w2[0]/max(w2[1], 1e-30)))
 
 def despread(chips_rx, code_):
-    """Symbols: each period of chip samples correlated with the code (the processing gain back)"""
+    """Symbols: each period of chip samples correlated with the code (the processing gain back; rpps.symbol.despread.correlate)"""
+    from ...sequence.code import Code as Chips
+    from ...symbol.despread import correlate
     P = len(code_)
     n = len(chips_rx)//P
-    return (np.asarray(chips_rx)[:n*P].reshape(n, P) @ np.asarray(code_, dtype=float))/P
+    return correlate(np.asarray(chips_rx)[:n*P], Chips("blind", code_), 1)[:, 0]
 
 def chip_rate(x, Fs, lag, min_sps=2.0, pfa=1e-3, fluct=None, fine=None):
     """The chip rate given the code period (lag, samples, maybe a sample off): |x|^2 of a code repeating every period has

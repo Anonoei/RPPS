@@ -198,61 +198,6 @@ std::vector<long long> gf2_eliminate(py::array_t<uint64_t, py::array::c_style> A
 }
 
 
-// rpps.analysis.ldpc.posterior: normalized min-sum, flooding (every check from the same totals), frames in parallel.
-// llr (B, n); idx (c, dmax) with deg (c) valid entries a row. Returns the totals (B, n). Ties in the minimum go to the
-// first entry, as numpy's argmin.
-py::array_t<double> ldpc_flood(carray<double> llr, carray<int64_t> idx, carray<int64_t> deg, int iters, double alpha, int threads) {
-    check_shape(llr, {-1, -1}, "llr");
-    check_shape(idx, {-1, -1}, "idx");
-    const long long B = llr.shape(0), n = llr.shape(1), C = idx.shape(0), D = idx.shape(1);
-    check_shape(deg, {C}, "deg");
-    const int64_t *ix = idx.data(), *dg = deg.data();
-    for (long long i = 0; i < C; i++) {
-        if (dg[i] < 0 || dg[i] > D) throw std::invalid_argument("ldpc_flood: deg");
-        for (long long j = 0; j < dg[i]; j++)
-            if (ix[i*D + j] < 0 || ix[i*D + j] >= n) throw std::invalid_argument("ldpc_flood: idx outside the word");
-    }
-    py::array_t<double> out({B, n});
-    const double *L = llr.data();
-    double *T = out.mutable_data();
-    {
-        py::gil_scoped_release nogil;
-        parallel_for(B, threads, [&](long long b) {
-            const double *l = L + b*n;
-            double *t = T + b*n;
-            std::vector<double> msg(static_cast<std::size_t>(C*D), 0.0), nt(n), q(D);
-            std::copy(l, l + n, t);
-            for (int it = 0; it < iters; it++) {
-                std::copy(l, l + n, nt.begin());
-                for (long long i = 0; i < C; i++) {
-                    const long long d = dg[i];
-                    if (!d) continue;
-                    double *m = msg.data() + i*D;
-                    const int64_t *ii = ix + i*D;
-                    double m1 = INFINITY, m2 = INFINITY;
-                    long long i1 = 0;
-                    int neg = 0;
-                    for (long long j = 0; j < d; j++) {
-                        q[j] = t[ii[j]] - m[j];
-                        const double a = std::fabs(q[j]);
-                        if (q[j] < 0) neg ^= 1;
-                        if (a < m1) { m2 = m1; m1 = a; i1 = j; }
-                        else if (a < m2) m2 = a;
-                    }
-                    if (std::isinf(m2)) m2 = m1;
-                    for (long long j = 0; j < d; j++) {
-                        const double sg = ((neg ^ (q[j] < 0 ? 1 : 0)) ? -1.0 : 1.0);
-                        m[j] = alpha*sg*(j == i1 ? m2 : m1);
-                        nt[ii[j]] += m[j];
-                    }
-                }
-                std::copy(nt.begin(), nt.end(), t);
-            }
-        });
-    }
-    return out;
-}
-
 } // namespace
 
 void register_analysis(py::module_ &m) {
@@ -260,8 +205,6 @@ void register_analysis(py::module_ &m) {
           py::arg("r"), py::arg("Q"), py::arg("atab"), py::arg("S"), py::arg("parity"), py::arg("k1"), py::arg("k2"));
     m.def("gf2_eliminate", &gf2_eliminate, "gf2_eliminate(A (R, words) uint64 in place, ncols, threads) -> pivot columns",
           py::arg("A"), py::arg("ncols"), py::arg("threads") = 0);
-    m.def("ldpc_flood", &ldpc_flood, "ldpc_flood(llr (B, n), idx (c, dmax), deg (c), iters, alpha, threads) -> totals (B, n)",
-          py::arg("llr"), py::arg("idx"), py::arg("deg"), py::arg("iters"), py::arg("alpha"), py::arg("threads") = 0);
 }
 
 } // namespace rpps

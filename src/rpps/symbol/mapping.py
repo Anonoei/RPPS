@@ -112,3 +112,9 @@ def expand_maps(points, maps):
         seen[key] = m
         out.append(m)
     return out
+
+def hard_bits(y, pts, labels):
+    """Hard bits of symbols y: the labels (values, first bit most significant) of the nearest points, as uint8 bits"""
+    idx = np.argmin(np.abs(np.asarray(y)[:, None] - np.asarray(pts)[None, :]), axis=1)
+    bps = int(np.log2(len(pts)))
+    return ((np.asarray(labels, dtype=np.int64)[idx][:, None] >> np.arange(bps-1, -1, -1)) & 1).astype(np.uint8).reshape(-1)

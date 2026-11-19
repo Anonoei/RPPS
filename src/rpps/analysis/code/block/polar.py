@@ -5,7 +5,7 @@
     r = rp.analysis.code.block.polar.search(llr)       # and the construction (polarization weight, Bhattacharyya) and K it is
     r.frozen, r.k
 
-A polar codeword is x = u G with G = F^(x n), F = [[1, 0], [1, 1]]; G is its own inverse, so u = x G and u_i is the parity
+The code itself (encoding, SC and list decoding) is rpps.code.types.polar. A polar codeword is x = u G with G = F^(x n), F = [[1, 0], [1, 1]]; G is its own inverse, so u = x G and u_i is the parity
 of the x bits in column i of G. The frozen positions of u are 0 in every frame; the information positions are 0 half the
 time.
 
@@ -33,16 +33,7 @@ Es/N0 -2 dB by `recognize`; `search` exact at -3 dB and within a few positions a
 """
 import numpy as np
 
-def transform(N):
-    """G = F^(x n) for N = 2^n, uint8"""
-    n = int(np.log2(N))
-    if 2**n != N:
-        raise ValueError("N is a power of 2")
-    G = np.array([[1]], np.uint8)
-    F = np.array([[1, 0], [1, 1]], np.uint8)
-    for _ in range(n):
-        G = np.kron(G, F)
-    return G
+from ....code.types.polar import transform, sc, pw_order, bhattacharyya_order
 
 class Frozen:
     """Result of `frozen`: frozen (positions), k (information bits), score (each position's mean tanh(L/2) of u_i: 1 for
@@ -78,62 +69,12 @@ def frozen(llr, threshold=None):
     fz = np.flatnonzero(score > threshold)
     return Frozen(frozen=fz, k=N - len(fz), score=score, threshold=float(threshold))
 
-# --- At low SNR: successive cancellation over all frames at once -----------------------------------------------------
-
-def _f(a, b):
-    """LLR of the parity of two bits (exact box-plus)"""
-    return 2*np.arctanh(np.clip(np.tanh(np.clip(a, -30, 30)/2)*np.tanh(np.clip(b, -30, 30)/2), -1 + 1e-15, 1 - 1e-15))
-
-def sc(llr, decide):
-    """Successive-cancellation decoding of frames (W, N) of LLRs, every frame at once. decide(i, L) -> (W,) bits: u_i of
-    every frame from its SC LLR L (W,) (a frozen position returns zeros; this is where a blind test looks at it).
-    Returns (u (W, N) uint8, Lu (W, N): each u_i's LLR given the u before it as decided)"""
-    L = np.asarray(llr, dtype=np.float64)
-    W, N = L.shape
-    transform(N) # checks N
-    u = np.zeros((W, N), np.uint8)
-    Lu = np.zeros((W, N))
-
-    def node(Ln, i0):
-        m = Ln.shape[1]
-        if m == 1:
-            Lu[:, i0] = Ln[:, 0]
-            b = np.asarray(decide(i0, Ln[:, 0]), dtype=np.uint8)
-            u[:, i0] = b
-            return b[:, None]
-        h = m//2
-        a, c = Ln[:, :h], Ln[:, h:]
-        v = node(_f(a, c), i0) # u_a G' = x_first + x_second
-        w = node(c + (1 - 2.0*v)*a, i0 + h) # u_b G' = x_second
-        return np.concatenate((v ^ w, w), axis=1)
-
-    node(L, 0)
-    return u, Lu
-
 def evidence(L):
     """Per frame, log2 of how much likelier an SC LLR L is with u = 0 than with u uniform: log2(2 / (1 + e^-L)). Its sum
     over frames is positive (W times the synthetic channel's capacity) at a frozen position, at most 0 at an information
     one: the generalised likelihood ratio of the two"""
     L = np.asarray(L, dtype=np.float64)
     return 1.0 - np.logaddexp(0.0, -L)/np.log(2)
-
-def pw_order(N):
-    """Positions from least to most reliable by polarization weight (sum of 2^(j/4) over the index's set bits j: the
-    beta-expansion 3GPP's NR sequence follows; SNR-independent)"""
-    n = int(np.log2(N))
-    i = np.arange(N)
-    pw = sum(((i >> j) & 1)*2**(j/4) for j in range(n))
-    return np.argsort(pw, kind="stable")
-
-def bhattacharyya_order(N, design_db=0.0):
-    """Positions from least to most reliable by the Bhattacharyya parameter on a BI-AWGN channel at Es/N0 design_db
-    (Z = exp(-Es/N0) a channel, then 2Z - Z^2 / Z^2 down the tree, the index's top bit first)"""
-    n = int(np.log2(N))
-    z = np.full(N, np.exp(-10**(design_db/10)))
-    for lev in range(n - 1, -1, -1):
-        bit = (np.arange(N) >> lev) & 1
-        z = np.where(bit == 1, z**2, 2*z - z**2)
-    return np.argsort(-z, kind="stable")
 
 class Recognition:
     """Result of `recognize`: frozen (positions), k, evidence (N,): each position's summed evidence (bits; > 0 frozen),

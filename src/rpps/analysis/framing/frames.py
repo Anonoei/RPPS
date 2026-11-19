@@ -212,7 +212,7 @@ def find_word(x, Fs, word, bauds, beta=0.35, segments=8, threshold=0.5, top=16):
 # --- Bursts: gate, acquire each on its own, and the preamble they share --------------------------------------------------
 
 class Burst:
-    """`bursts`: start, stop (samples), det (rpps.analysis.Detection of this burst alone, None if too short), symbols
+    """`bursts`: start, stop (samples), det (rpps.sync.Detection of this burst alone, None if too short), symbols
     (matched-filtered at det's rate and timing, carrier offset and phase taken off)"""
     __slots__ = ("start", "stop", "det", "symbols")
     def __init__(self, start, stop, det=None, symbols=None):
@@ -245,7 +245,7 @@ def gate(x, Fs, smooth=4e-6, contrast=10.0, min_len=64e-6, hang=8e-6):
 def bursts(x, Fs, names=None, baud=None, min_symbols=128, **kw):
     """The bursts of x (`gate`), each acquired on its own: rate (or `baud` for all), modulation, offset, timing (as a
     TDMA receiver must: every burst comes from another transmitter, with its own clock and carrier). [Burst]"""
-    from ..modulation.detect import detect, correct, candidates, symmetry
+    from ...sync.acquire import detect, correct, candidates, symmetry
     from ...sync.time.mat import matrix_mf, centres_in, best_tau
     x = np.asarray(x, dtype=np.complex128)
     out = []

@@ -53,14 +53,14 @@ def Golay(n=23, decoder=None):
         raise ValueError(f"Golay({n}): 23 or 24")
     return _make(f"golay{n}_12", {"type": "cyclic", "n": 23, "k": 12, "poly": 0xC75, "extend": n == 24}, decoder)
 
-def Conv(generators, constraint=None, puncture=None, terminated=False, decoder="viterbi", termination=None):
+def Conv(generators, constraint=None, puncture=None, decoder="viterbi", termination="truncated"):
     """Rate 1/n convolutional code. generators: n taps lists (or octal/decimal ints) over the constraint length
 
         Conv([0o133, 0o171], 7)                          K=7 rate 1/2 (the IESS-308 generators)
         Conv([[1,0,1],[1,1,1]], puncture=[[1,1,0],[1,0,1]])
     puncture: pattern with one row per output and 1 where a bit is sent
     decoder: "viterbi" or "bcjr"
-    termination: "zero" (terminated=True), "tailbiting" or "truncated"
+    termination: "truncated" (default), "zero" (flushed with K-1 zeros) or "tailbiting"
     """
     if all(isinstance(g, (int, np.integer)) for g in generators):
         if constraint is None:
@@ -69,7 +69,7 @@ def Conv(generators, constraint=None, puncture=None, terminated=False, decoder="
     generators = [list(map(int, g)) for g in generators]
     constraint = len(generators[0])
     obj = {"base": "conv", "constraint": constraint, "generator": generators,
-           "termination": termination or ("zero" if terminated else "truncated"), "decoder": decoder}
+           "termination": termination, "decoder": decoder}
     if puncture is not None:
         obj["puncture"] = [list(map(int, row)) for row in puncture]
     return serial.init(f"conv{len(generators)}_{constraint}", obj)

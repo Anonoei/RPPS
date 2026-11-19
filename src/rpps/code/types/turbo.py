@@ -74,6 +74,8 @@ class turbo(_code):
 
     @classmethod
     def from_config(cls, log, obj):
+        if "outputs" in obj:
+            return turbo_mux.from_config(log, obj)
         K = int(obj["length"])
         f = obj.get("qpp") or (obj.get("qpp_table") or {}).get(str(K))
         if f is None:
@@ -148,4 +150,115 @@ class turbo(_code):
         self.llr = np.concatenate(finals) if finals else np.zeros(0)
         dec = np.array(out).reshape(len(words), K)
         self.errors = word_errors(words[:, :K] < 0, dec)
+        return dec.reshape(-1)
+
+
+class turbo_mux(_code):
+    """Parallel concatenated code with its outputs multiplexed bit time by bit time (CCSDS 131.0-B 6): the layout `turbo`
+    takes when a definition gives "outputs"
+
+        length: block size k
+        g0: the feedback (backward connection) polynomial, D^0 first ("0b10011", or octal as LTE writes it)
+        forward: {"1": g1, "2": g2, ...}: the forward polynomials the outputs name
+        constraint: taps of each polynomial
+        interleave: an interleave definition giving the second encoder's input order ("block/ccsds_turbo"), with `args`
+        outputs: what is sent at each bit time, a list of periods: [["0a", "1a"], ["0a", "1b"]] sends the systematic bit
+            and encoder a's parity 1 at even times, the systematic bit and encoder b's parity 1 at odd ones. "0a" is the
+            systematic stream (with encoder a's tail), "<p>a" / "<p>b" encoder a's / b's output of forward polynomial p
+    Both encoders start at zero and are terminated (constraint - 1 steps with the input from the feedback), so a word is
+    (k + constraint - 1) bit times. Decoded by iterative BCJR (max-log by default, extrinsic scaling `scale`).
+    """
+    soft = True
+
+    @classmethod
+    def from_config(cls, log, obj):
+        from ..serial import load
+        K = int(obj["length"])
+        il = obj["interleave"]
+        name, args = (il, {}) if isinstance(il, str) else (il["name"], il.get("args", {}))
+        perm = load(f"interleave/{name}", **args).encoder.src
+        return cls(log, K, obj["g0"], obj["forward"], obj.get("constraint", 5), perm, obj["outputs"],
+                   obj.get("iters", 10), obj.get("scale", 0.75), obj.get("maxlog", True))
+
+    def __init__(self, log, length, g0, forward, constraint, perm, outputs, iters=10, scale=0.75, maxlog=True):
+        self.Kb, self.K = int(length), int(constraint)
+        self.perm = np.asarray(perm, dtype=np.int64)
+        if len(self.perm) != self.Kb or not np.array_equal(np.sort(self.perm), np.arange(self.Kb)):
+            raise ValueError(f"turbo: the interleaver is not a permutation of {self.Kb}")
+        self.inv = np.argsort(self.perm)
+        self.polys = {str(p): g for p, g in forward.items()}
+        self.outputs = [list(o) for o in outputs]
+        for o in (x for period in self.outputs for x in period):
+            if o != "0a" and (o[-1] not in "ab" or o[:-1] not in self.polys):
+                raise ValueError(f"turbo: output {o!r} names no forward polynomial")
+        self.codes = {p: rsc(g0, g, self.K) for p, g in self.polys.items()}
+        first = next(iter(self.codes.values()))
+        self.m = first.m
+        self.T = self.Kb + self.m
+        # One trellis per encoder: label = (systematic, parity of each forward polynomial in `order`)
+        self.order = sorted(self.polys)
+        label = np.stack([np.broadcast_to(np.arange(2), (first.S, 2))] + [self.codes[p].par for p in self.order], axis=-1)
+        self.trellis = Trellis(first.next[None], label[None])
+        self.slots = [] # (time, stream) of each sent bit, in order
+        for t in range(self.T):
+            for o in self.outputs[t % len(self.outputs)]:
+                self.slots.append((t, o))
+        self.iters, self.scale, self.maxlog = iters, scale, maxlog
+        self.llr = None
+        super().__init__(log, None, self.Kb, len(self.slots))
+
+    def _run(self, u):
+        """Systematic stream (with the tail) and {poly: parity stream} of one encoder, terminated"""
+        out = {}
+        for p in self.order:
+            z, tx, tz = self.codes[p].encode(u)
+            out[p] = np.concatenate((z, tz))
+        return np.concatenate((u, tx)).astype(np.uint8), out
+
+    def encode(self, bits):
+        c = np.asarray(bits).astype(np.uint8)
+        words = []
+        for blk in c[:len(c)//self.Kb*self.Kb].reshape(-1, self.Kb):
+            sa, pa = self._run(blk)
+            _, pb = self._run(blk[self.perm])
+            streams = {"0a": sa, **{p + "a": v for p, v in pa.items()}, **{p + "b": v for p, v in pb.items()}}
+            words.append(np.array([streams[o][t] for t, o in self.slots], dtype=np.uint8))
+        return np.concatenate(words).astype(bool) if words else np.zeros(0, bool)
+
+    def _streams(self, w):
+        """Channel LLRs of each stream (T,), 0 where a stream was not sent at that time"""
+        s = {o: np.zeros(self.T) for o in ["0a"] + [p + e for p in self.order for e in "ab"]}
+        for (t, o), v in zip(self.slots, w):
+            s[o][t] += v
+        return s
+
+    def decode(self, bits, soft=None):
+        llr = as_llr(bits, soft, 2.0)
+        n, K, m = self.den, self.Kb, self.m
+        iters, maxlog = _effort.iters(self.iters), _effort.maxlog(self.maxlog)
+        scale = self.scale if maxlog or maxlog == self.maxlog else 1.0
+        words = llr[:len(llr)//n*n].reshape(-1, n)
+        out, finals, hard = [], [], []
+        for w in words:
+            s = self._streams(w)
+            Ls = s["0a"][:K]
+            pa = np.stack([s[p + "a"] for p in self.order], axis=-1)
+            pb = np.stack([s[p + "b"] for p in self.order], axis=-1)
+            La1 = np.zeros(K)
+            for _ in range(iters):
+                sys_a = np.concatenate((Ls + La1, s["0a"][K:]))
+                app = bcjr(self.trellis, np.concatenate((sys_a[:, None], pa), axis=1)[None], start=0, end=0, maxlog=maxlog)[0][:K]
+                Le1 = scale*(app - Ls - La1)
+                La2 = Le1[self.perm]
+                sys_b = np.concatenate((Ls[self.perm] + La2, np.zeros(m))) # (encoder b's tail systematic bits are not sent)
+                app = bcjr(self.trellis, np.concatenate((sys_b[:, None], pb), axis=1)[None], start=0, end=0, maxlog=maxlog)[0][:K]
+                Le2 = scale*(app - Ls[self.perm] - La2)
+                La1 = Le2[self.inv]
+            final = Ls + La1 + Le1
+            finals.append(final)
+            out.append(final < 0)
+            hard.append(Ls < 0)
+        self.llr = np.concatenate(finals) if finals else np.zeros(0)
+        dec = np.array(out).reshape(len(words), K)
+        self.errors = word_errors(np.array(hard).reshape(len(words), K), dec)
         return dec.reshape(-1)

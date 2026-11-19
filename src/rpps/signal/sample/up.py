@@ -25,21 +25,6 @@ class Upsample(Sample):
         meta.op.sps *= self.ratio
         return self.run(samples)
 
-class FFT(Upsample):
-    """Upsample each block through the FFT (the block is treated as one period, so edges wrap)"""
-    def run(self, samples):
-        frq = np.fft.fft(samples)
-        up = self.ratio*np.hstack([
-            frq[:len(frq)//2],
-            frq[len(frq)//2]/self.ratio,
-            np.zeros((len(frq)*self.ratio)-len(frq)-1),
-            frq[len(frq)//2]/self.ratio,
-            frq[-(len(frq)//2-1):]
-        ])
-
-        up = np.fft.ifft(up)
-        return up
-
 class Interpolate(Upsample):
     """Zero stuff by `ratio` and filter with `filt` (an FIR stage, a pulse shape) in one step: the same output as
     `Zeros(ratio) + filt`, in polyphase form, so the zeros are never multiplied (ratio times less work)

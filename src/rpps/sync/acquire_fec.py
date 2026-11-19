@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from ..base import Stage
-from ..analysis.identify import identify, CodeDetection, _hard
+from ..symbol.mapping import hard_bits
 from ..code.coding import mismatch, cached
 
 class AcquireFEC(Stage):
@@ -59,6 +59,7 @@ class AcquireFEC(Stage):
         st.count += len(y)
         if st.count < self.skip + st.length:
             if self.name not in meta.stream.est: # Still acquiring: say so (found and complete False), and how far it got
+                from ..analysis.identify import CodeDetection # The scans are blind analysis: loaded when first needed
                 meta.stream.est[self.name] = CodeDetection(mod=det.mod)
             if meta.stream.est[self.name].report is None: # (an answer so far keeps the symbols it was found on)
                 meta.stream.est[self.name].n = st.count
@@ -66,6 +67,7 @@ class AcquireFEC(Stage):
         x = np.concatenate(st.held)
         st.held = [x]
         win = x[self.skip:self.skip + st.length]
+        from ..analysis.identify import identify # (blind analysis, loaded when first needed)
         fec = identify(win, det.mod, self.names, blind=False)
         last = 2*st.length > self.max_wait - self.skip
         if not last and not fec.complete:
@@ -100,7 +102,7 @@ class AcquireFEC(Stage):
         """Re-encoding mismatch of symbols w (input symbol `start` on) on the decoder's map, the code's period starting
         where it did at acquisition, moved by the symbol slips seen since (st.shift) and `shift` more bits"""
         fec = st.fec
-        bits = _hard(w, st.c.points, fec.target.arr)
+        bits = hard_bits(w, st.c.points, fec.target.arr)
         a = (fec.offset - (start - self.skip)*st.c.bits_per_symbol + st.shift + shift) % fec.period
         seg = bits[a:]
         seg = seg[:len(seg)//fec.period*fec.period]

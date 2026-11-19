@@ -39,6 +39,13 @@ class FM(Stage):
             st.phase = float(ph[-1] % (2*np.pi))
         return np.exp(1j*ph).astype(np.complex64)
 
+def discriminate(x, Fs=None):
+    """Instantaneous frequency between samples, arg(x[n] conj(x[n-1])): radians a sample, or Hz given the sample rate Fs.
+    len(x) - 1 values (`FMDemod` carries the last sample across blocks)"""
+    x = np.asarray(x)
+    w = np.angle(x[1:]*np.conj(x[:-1]))
+    return w if Fs is None else w*Fs/(2*np.pi)
+
 def fm_gain(h, sps, step=2.0):
     """The `FMDemod` gain that gives back the levels `FM(h, step)` was fed at `sps` samples per symbol"""
     return -step*sps/(2*np.pi*h)
@@ -63,4 +70,4 @@ class FMDemod(Stage):
         st.last = samples[-1]
         z = np.concatenate(([last], samples))
         gain = self.gain if self.deviation is None else -meta.Fs/(2*np.pi*self.deviation)
-        return gain * np.angle(z[:-1] * np.conj(z[1:]))
+        return -gain*discriminate(z)

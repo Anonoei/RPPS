@@ -117,5 +117,4 @@ Without `name` they return the dict. Arrays in memory go through `fir_def`, `sos
 | `packet_headergenerator` + CRC trailer | `header/link` with `fields`, `payload` and `fcs` (a CRC over header and payload after the payload) |
 
 Anything GNU Radio builds from parameters can be built without a file: `rp.code.Hamming/RS/Repetition/Conv`, or `rp.code.init(name, dict)`.
-Not expressible yet: Reed-Solomon dual basis (CCSDS: the conventional basis is here, the conversion is not), polar codes, 5G NR
-base graphs (the quasi-cyclic loader takes them once written out), a frequency-hopping schedule.
+Not expressible yet: 5G NR base graphs (the quasi-cyclic loader takes them once written out), a frequency-hopping schedule.

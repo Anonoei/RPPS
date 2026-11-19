@@ -24,6 +24,8 @@ The forward search keeps a small beam, so one wrong pick doesn't take every late
 The check's weight w = |g_f| + |g_b| bits sets the noise it takes: its soft value falls as (1 - 2 BER)^w, so the frames
 needed grow as (1 - 2 BER)^(-2w) log K (3GPP's w = 6: about 100 frames of 1000 bits at 4% bit errors).
 """
+import functools
+
 import numpy as np
 
 from ....math.gf2 import fwht
@@ -86,24 +88,19 @@ def constituent(s, p, max_memory=6, pfa=1e-6):
     mem, (gf, gb), zv, holds = best
     return Constituent(g_f=gf, g_b=gb, memory=mem, holds=max(holds, 1 - holds), z=zv)
 
+@functools.lru_cache(maxsize=64)
+def _encoder(g_f, g_b):
+    """The RSC encoder (rpps.code.types.turbo.rsc) for polynomials written here bit d = D^d; it writes D^0 first"""
+    from ....code.types.turbo import rsc
+    from ....math.bits import reflect
+    K = max(g_f.bit_length(), g_b.bit_length(), 1)
+    return rsc(reflect(g_b, K), reflect(g_f, K), K)
+
 def encode(u, g_f, g_b):
-    """Parity of an RSC encoder from the all-zero state: p = u g_f / g_b"""
-    u = np.asarray(u, dtype=np.int64) & 1
-    m = max(g_f.bit_length(), g_b.bit_length()) - 1
-    state = [0]*m # w[t-1] .. w[t-m]
-    out = np.zeros(len(u), np.uint8)
-    for t, x in enumerate(u):
-        w = x # w = u / g_b: w[t] = u[t] + sum_{d>=1} g_b_d w[t-d]
-        for d in range(1, m + 1):
-            if g_b >> d & 1:
-                w ^= state[d - 1]
-        y = w if g_f & 1 else 0 # p = w g_f
-        for d in range(1, m + 1):
-            if g_f >> d & 1:
-                y ^= state[d - 1]
-        out[t] = y
-        state = [w] + state[:-1]
-    return out
+    """Parity of an RSC encoder from the all-zero state: p = u g_f / g_b (g_b needs a D^0 term)"""
+    if not g_b & 1:
+        raise ValueError("g_b has no D^0 term: not a recursive encoder")
+    return _encoder(int(g_f), int(g_b)).encode(np.asarray(u, dtype=np.int64) & 1, terminate=False)[0]
 
 def invert(p, g_f, g_b):
     """The information an RSC encoder (from the all-zero state) made p from: u = p g_b / g_f (g_f needs a D^0 term)"""

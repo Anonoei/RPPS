@@ -48,10 +48,11 @@ class Profile:
     def _fuse(steps):
         """A matched filter right before a timing that is known (not estimated) is evaluated by it, at the instants it samples:
         the step of the filter keeps no operator (Oerder & Meyr needs the filter's output at every sample, so nothing fuses)"""
-        from .steps import _KnownTiming
+        from ..sync.time import Known
+        from ..wave import Matched
         for a, b in zip(steps, steps[1:]):
-            if (a.category == "wave" and a.kind == "shape" and len(a.rx) == 1 and getattr(a.rx[0][1], "matched", False)
-                    and b.category == "sync" and b.kind == "timing" and len(b.rx) == 1 and isinstance(b.rx[0][1], _KnownTiming)):
+            if (a.category == "wave" and a.kind == "shape" and len(a.rx) == 1 and isinstance(a.rx[0][1], Matched) and a.rx[0][1].unit
+                    and b.category == "sync" and b.kind == "timing" and len(b.rx) == 1 and isinstance(b.rx[0][1], Known)):
                 b.rx[0][1].fuse(a.rx[0][1])
                 a.rx = []
 

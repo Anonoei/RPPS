@@ -41,6 +41,8 @@ class ldpc(_code):
     k/systematic: the message length, and where the message sits in the codeword: "head", "tail" or a list of
         positions. When omitted both come from GF(2) elimination, which needs a dense H (small codes only)
     iters/alpha: maximum iterations / min-sum normalisation
+    schedule: "layered" (the default: a layer of checks at a time, each codeword stopping once every check holds) or
+        "flooding" (every check from the same totals, `iters` iterations: what `flood` gives the blind tools)
     decode() takes hard bits or LLRs (log(P(0)/P(1)), positive means 0) for whole codewords, returns the message.
     After a decode, `converged` says which codewords satisfied every parity check.
     With rpps._native the codewords are decoded on several threads, each stopping as soon as it converges (the
@@ -48,8 +50,20 @@ class ldpc(_code):
     """
     soft = True
 
+    SCHEDULES = ("layered", "flooding")
+    schedule = "layered"
+
     @classmethod
     def from_config(cls, log, obj):
+        code = cls._from_config(log, obj)
+        schedule = obj.get("schedule", "layered")
+        if schedule not in cls.SCHEDULES:
+            raise ValueError(f"ldpc: schedule {schedule!r}, one of {cls.SCHEDULES}")
+        code.schedule = schedule
+        return code
+
+    @classmethod
+    def _from_config(cls, log, obj):
         """Parity checks as dense rows ("h"), sparse lists ("checks" + "n"), a DVB-S2 style address "table", a quasi-cyclic
         matrix of "shifts" lifted by "z" (IEEE 802.11n/ac, 802.16e, 5G NR style: each entry a right shift of the z x z identity,
         -1 or null a zero block), or a "gallager" construction"""
@@ -188,7 +202,43 @@ class ldpc(_code):
             _LAYERS[key] = [np.array(l, dtype=np.int64) for l in rows]
         return _LAYERS[key]
 
+    def flood(self, llr, iters=None):
+        """Flooding normalized min-sum on (B, N) LLRs for `iters` iterations (default the code's), every check from the same
+        totals: the a-posteriori LLRs (B, N), what the checks say about each bit. The C++ kernel ldpc_flood runs the same loop
+        (this is its reference)"""
+        iters = self.iters if iters is None else int(iters)
+        llr = np.asarray(llr, dtype=np.float64)
+        idx = np.where(self.valid, self.var[np.maximum(self.slot, 0)], 0)
+        if _accel.native is not None and hasattr(_accel.native, "ldpc_flood"):
+            return _accel.native.ldpc_flood(np.ascontiguousarray(llr), np.ascontiguousarray(idx), self.deg, iters, float(self.alpha))
+        B, dmax, valid, alpha = len(llr), self.dmax, self.valid, self.alpha
+        msg = np.zeros((B, self.M, dmax))
+        total = llr.copy()
+        flat = idx[valid]
+        for _ in range(iters):
+            q = total[:, idx] - msg # (B, c, dmax): variable to check, without the check's own message
+            a = np.where(valid[None], np.abs(q), np.inf)
+            neg = (q < 0) & valid[None]
+            sgn = np.where(neg.sum(axis=2, keepdims=True) % 2 == 1, -1.0, 1.0)*np.where(neg, -1.0, 1.0)
+            i1 = np.argmin(a, axis=2)[..., None]
+            m1 = np.take_along_axis(a, i1, axis=2)
+            a2 = a.copy()
+            np.put_along_axis(a2, i1, np.inf, axis=2)
+            m2 = a2.min(axis=2, keepdims=True)
+            m2 = np.where(np.isinf(m2), m1, m2)
+            msg = np.where(valid[None], alpha*sgn*np.where(np.arange(dmax)[None, None, :] == i1, m2, m1), 0.0)
+            total = llr.copy()
+            np.add.at(total.T, flat, msg[:, valid].T)
+        return total
+
     def min_sum(self, llr):
+        """Min-sum by the code's schedule: (hard decisions (B, N), converged (B,))"""
+        if self.schedule == "flooding":
+            total = self.flood(llr, _effort.iters(self.iters))
+            return total < 0, ~self.syndrome(total < 0).any(axis=1)
+        return self.layered(llr)
+
+    def layered(self, llr):
         """Layered normalized min-sum on (B, N) LLRs: (hard decisions (B, N), converged (B,)). Each codeword stops when every
         check holds. Layered (a layer of checks at a time, the variables updated after each) converges in about half the
         iterations of flooding: at Eb/N0 0.9 dB (DVB-S2 1/2 normal frame) 50 layered iterations decode what 100 flooding did.

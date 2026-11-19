@@ -5,11 +5,10 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.code import blocker
 
 
 def test_agc_lin_is_linear_agc():
-    a = rp.sync.agc.AGC_lin(2.0, 0.05)
+    a = rp.sync.AGC(2.0, 0.05, log=False)
     x = (0.1*np.exp(1j*np.linspace(0, 50, 20000))).astype(np.complex64)
     y = rp.Data(x, Fs=1e6) + a
     assert np.mean(np.abs(y.data[-2000:])) == pytest.approx(2.0, rel=0.05)
@@ -20,7 +19,7 @@ def test_bits_base2_base10_round_trip():
     assert (rp.math.bits.to_base10(rows) == np.arange(16)).all()
 
 def test_hamming_dist():
-    assert blocker.hamming_dist(np.array([1, 0, 1, 1]), np.array([0, 0, 1, 0])) == 2
+    assert rp.math.bits.hamming(np.array([1, 0, 1, 1]), np.array([0, 0, 1, 0])) == 2
 
 def test_parity_block_round_trip():
     P = np.array([[1, 1, 0], [0, 1, 1], [1, 1, 1], [1, 0, 1]])
@@ -47,7 +46,7 @@ def test_find_rate():
     sps = 8
     syms = np.exp(1j*np.pi/4*(2*rng.integers(0, 4, 4000) + 1))
     x = np.convolve(np.repeat(syms, sps), np.hanning(sps), "same")
-    assert rp.analysis.find_rate(x) == pytest.approx(1/sps, rel=0.01)
+    assert rp.sync.find_rate(x) == pytest.approx(1/sps, rel=0.01)
 
 def test_find_sync_and_decode_conv():
     rng = np.random.default_rng(1)

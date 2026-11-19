@@ -29,19 +29,14 @@ from .sequence.scrambler import descramblers, cached_scrambler
 from .sequence import scrambler
 from .code.conv import puncture
 from .code.block import rs as blind_rs, linear as blind_block
+from ..symbol.mapping import hard_bits
+from ..code.scram.scrambler import Feedthrough
 
 # --- Bit streams from symbols -------------------------------------------------------------------------
 
 def _constellation(c):
     from .. import symbol
     return symbol.load_or_generate(c) if isinstance(c, str) else c
-
-
-def _hard(y, pts, labels):
-    """Hard bits of symbols y: the labels (values) of the nearest points"""
-    idx = np.argmin(np.abs(np.asarray(y)[:, None] - np.asarray(pts)[None, :]), axis=1)
-    bps = int(np.log2(len(pts)))
-    return ((np.asarray(labels, dtype=np.int64)[idx][:, None] >> np.arange(bps-1, -1, -1)) & 1).astype(np.uint8).reshape(-1)
 
 
 def diff_alphabets(constellation):
@@ -77,7 +72,7 @@ def bit_streams(symbols, constellation, differential=True, keys=None):
     out = {}
     for i, m in enumerate(c.maps):
         if keys is None or ("abs", i) in keys:
-            out[("abs", i)] = _hard(y, c.points, m.arr)
+            out[("abs", i)] = hard_bits(y, c.points, m.arr)
     if differential and len(y) > 1:
         r = y[1:]/np.where(np.abs(y[:-1]) < 1e-12, 1.0, y[:-1])
         r = r/np.maximum(np.abs(r), 1e-12)
@@ -86,7 +81,7 @@ def bit_streams(symbols, constellation, differential=True, keys=None):
                 if abs(np.angle(np.exp(1j*m.rotation))) > 1e-6:
                     continue
                 if keys is None or ("diff", name, i) in keys:
-                    out[("diff", name, i)] = _hard(r, d.points, m.arr)
+                    out[("diff", name, i)] = hard_bits(r, d.points, m.arr)
     return out
 
 # --- Block / LDPC ---------------------------------------------------------------------------------
@@ -675,14 +670,14 @@ def solve(bits, rs_lengths=None, max_taps=2, exhaustive=False, block=True):
         from .. import code
         for name in code.scram.ls().get("feedthrough", []):
             obj = cached_scrambler(f"feedthrough/{name}")
-            found = code_layer(scrambler.descramble(bits, obj["poly"]), with_block=False)
+            found = code_layer(Feedthrough.descramble(bits, obj["poly"]), with_block=False)
             if found:
                 return [(Hypothesis("scrambler", f"feedthrough/{name}", found[0][0].z, {"taps": list(obj["poly"]), "config": name}),
                          None)] + found
         return []
     out = [(h[0], g)]
     taps = h[0].params["taps"]
-    d = scrambler.descramble(bits, taps) if taps else bits
+    d = Feedthrough.descramble(bits, taps) if taps else bits
     if taps:
         found = code_layer(d)
         if found:

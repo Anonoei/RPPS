@@ -46,8 +46,8 @@ def ble_signal():
 
 def test_ble_builds_the_pairs(ble_signal):
     p = ble_signal[0]
-    assert names(p.rx()) == ["+FMDemod", "+ShapingRect", "+_KnownTiming", "/Constellation", "+Delimiter", "/Marker", "/additive/ble_whiten", "/Header"]
-    assert names(p.tx()) == ["*Header", "*additive/ble_whiten", "*Marker", "*Constellation", "+Interpolate", "+FM"]
+    assert names(p.rx()) == ["+FMDemod", "+Matched", "+Known", "/Constellation", "+Delimiter", "/Marker", "/additive/ble_whiten", "/Header"]
+    assert names(p.tx()) == ["*Header", "*additive/ble_whiten", "*Marker", "*Constellation", "+Shape", "+FM"]
 
 def test_ble_packets_round_trip(ble_signal):
     p, x, o, pdus = ble_signal
@@ -148,8 +148,8 @@ def ax25_signal():
 
 def test_ax25_builds_the_pairs(ax25_signal):
     p = ax25_signal[0]
-    assert names(p.rx()) == ["+ShiftFreq", "+Designed", "+FMDemod", "+ShapingRect", "+MM", "/Constellation", "/Line", "/hdlc"]
-    assert names(p.tx()) == ["*hdlc", "*Line", "*Constellation", "+Interpolate", "+FM"]
+    assert names(p.rx()) == ["+ShiftFreq", "+Designed", "+FMDemod", "+Matched", "+MM", "/Constellation", "/Line", "/hdlc"]
+    assert names(p.tx()) == ["*hdlc", "*Line", "*Constellation", "+Shape", "+FM"]
     assert p.rx().ops[4][1].ted == "gardner"
 
 def test_ax25_frames_round_trip_through_noise(ax25_signal):
@@ -178,8 +178,8 @@ def ccsds_signal():
 
 def test_ccsds_builds_the_pairs(ccsds_signal):
     p = ccsds_signal[0]
-    assert names(p.rx()) == ["+_KnownTiming", "/Constellation", "+Delimiter", "/Marker", "/additive/ccsds", "/block/ccsds_rs", "/rs/ccsds_255_223"]
-    assert names(p.tx()) == ["*rs/ccsds_255_223", "*block/ccsds_rs", "*additive/ccsds", "*Marker", "*Constellation", "+Interpolate"]
+    assert names(p.rx()) == ["+Known", "/Constellation", "+Delimiter", "/Marker", "/additive/ccsds", "/block/ccsds_rs", "/rs/ccsds_255_223_dual"]
+    assert names(p.tx()) == ["*rs/ccsds_255_223_dual", "*block/ccsds_rs", "*additive/ccsds", "*Marker", "*Constellation", "+Shape"]
     assert 3*4*(32 + 8*255*2) <= len(ccsds_signal[1]) < 3*4*(32 + 8*255*2) + 4*64 # (plus the pulse tail, sent whole on the flush)
 
 def test_ccsds_frames_round_trip_inverted_and_offset(ccsds_signal):
@@ -210,3 +210,23 @@ def test_ccsds_any_block_cut(ccsds_signal):
     x = np.concatenate((np.zeros(37, np.complex64), o.data, np.zeros(100, np.complex64)))
     got, _ = receive(p, x, o.Fs, 4, o.delay, cuts=[4000, 3, 9000, len(x) - 13003])
     assert np.array_equal(got, frames)
+
+
+# ---- CCSDS telemetry, concatenated (convolutional inner code)
+
+@pytest.fixture(scope="module")
+def ccsds_concat_signal():
+    rng = np.random.default_rng(16)
+    p = rp.profile.load("ccsds/tm_concat", sync=KNOWN, depth=1)
+    frames = rng.integers(0, 2, 3*8*223).astype(bool)
+    o = p.tx()(rp.Data(frames, Fs=1e6, sps=1, flush=True))
+    return p, o, frames
+
+def test_ccsds_concat_round_trip_inverted_and_noisy(ccsds_concat_signal):
+    p, o, frames = ccsds_concat_signal
+    assert names(p.tx())[:5] == ["*rs/ccsds_255_223_dual", "*block/ccsds_rs", "*additive/ccsds", "*Marker", "*k7_171_133/ccsds_1_2"]
+    rng = np.random.default_rng(17)
+    x = -o.data + (rng.normal(size=len(o.data)) + 1j*rng.normal(size=len(o.data))).astype(np.complex64)*0.25
+    x = np.concatenate((np.zeros(37, np.complex64), x, np.zeros(400, np.complex64)))
+    got, st = receive(p, x, o.Fs, 4, o.delay)
+    assert np.array_equal(got[:len(frames)], frames)

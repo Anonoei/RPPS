@@ -201,3 +201,28 @@ def test_fsk_transmit_in_chunks_matches_one_shot():
     ref = chain(levels, [400])
     for cuts in ([301, 99], [1]*40 + [360], [0, 399, 1]):
         assert np.allclose(chain(levels, cuts), ref, atol=1e-5)
+
+# ---- wave.Shape / wave.Matched: the pair a profile's shape step builds
+
+def _pulse():
+    return rp.signal.filters.load("pulse/rrc/0p35")
+
+def test_shape_is_zeros_and_pulse_for_any_block_cut(rng):
+    sym = (rng.choice([-1, 1], 300) + 1j*rng.choice([-1, 1], 300)).astype(np.complex64)
+    ref = (rp.Data(sym, sps=1) + rp.signal.sample.up.Zeros(8) + _pulse()).data
+    shape = rp.wave.Shape(8, _pulse())
+    s = rp.Stream()
+    out = np.concatenate([(rp.Data(sym[a:b], sps=1, stream=s) + shape).data for a, b in ((0, 7), (7, 7), (7, 150), (150, 300))])
+    assert np.allclose(out, ref[:len(out)], atol=1e-5)
+
+def test_matched_gives_symbols_back_at_unit_gain(rng):
+    sym = rng.choice([-1.0, 1.0], 400).astype(np.complex64)
+    out = rp.Data(sym, sps=1) + rp.wave.Shape(8, _pulse()) + rp.wave.Matched(_pulse())
+    y = out.data
+    delay = int(round(out.delay*out.Fs)) # the group delay of both filters
+    got = y[delay::8][20:300].real
+    assert np.allclose(got, sym[20:300].real, atol=0.05)
+
+def test_shape_and_matched_are_wave():
+    assert rp.wave.Shape.CATEGORY == rp.Category.WAVE and rp.wave.Matched.CATEGORY == rp.Category.WAVE
+    assert rp.sync.time.Known.CATEGORY == rp.Category.SYNC

@@ -348,7 +348,7 @@ What the loader builds:
 
 ```
 rx = carrier sync + Stagger("i") + halfsine (matched) + timing sync + Spread(pair) decode
-tx = Spread(pair) encode + Interpolate(4, halfsine) + Stagger("q")
+tx = Spread(pair) encode + Shape(4, halfsine) + Stagger("q")
 ```
 
 Transmit is the transforms in reverse, without the sync steps. The carrier is corrected before `Stagger("i")`, because a
@@ -360,8 +360,8 @@ The profile loader knows how each wave step pairs:
 
 | Step kind | Receive (as written) | Transmit (inverted) |
 |---|---|---|
-| `shape` with a **symbol** pulse (rrc, rc, halfsine, rect) | matched filter: the pulse time-reversed and conjugated (the same taps for symmetric real pulses) | `up.Interpolate(sps, pulse)` (zero stuffing and the pulse in polyphase form) |
-| `shape` with a **frequency** pulse (gaussian, rect for FSK) | none: the discriminator in the `fm` step handles it | `up.Interpolate(sps, pulse)` |
+| `shape` with a **symbol** pulse (rrc, rc, halfsine, rect) | `wave.Matched(pulse)`: the pulse time-reversed and conjugated (the same taps for symmetric real pulses), unit gain at the instants | `wave.Shape(sps, pulse)` (zero stuffing and the pulse in polyphase form) |
+| `shape` with a **frequency** pulse (gaussian, rect for FSK) | none: the discriminator in the `fm` step handles it | `wave.Shape(sps, pulse)` |
 | `stagger` | `Stagger("i", delay)` | `Stagger("q", delay)` |
 | `fm` | `FMDemod(fm_gain(h, sps, step))` + integrate over the symbol | `FM(h, step)` |
 | `ofdm` | remove cyclic prefix + FFT | IFFT + cyclic prefix |
@@ -521,7 +521,7 @@ Each is settled by the rule.
 | Timing recovery (`MM`, `Mat`, `TLL`) | sync | estimates the sampling instant; the one sync step that changes representation |
 | Differential coding on complex symbols (`Differential`) | symbol | symbols ↔ symbols |
 | Differential coding on bits (NRZI) | code | bits ↔ bits |
-| Manchester / biphase as a pulse (`ShapingBiphase`) | wave | symbols ↔ samples |
+| Manchester / biphase as a pulse (`pulse/biphase` through `wave.Shape`) | wave | symbols ↔ samples |
 | Manchester as 0 → 01, 1 → 10 | code | bits ↔ bits |
 | Spreading and despreading at one sample per chip (`Spread`) | symbol | chips are symbols |
 | `Despread` at `sps` samples per chip, with a known code phase | symbol | the stage form of `Spread.decode` |
@@ -560,7 +560,7 @@ Each category is a package (`src/rpps/<package>`).
 | `source` | source | sources and sinks of blocks: files and their formats, sockets, radios through pysdrlib |
 | `signal` | signal | filters (`signal.filters`: FIR, IIR, windows, pulse shapes, fractional delay, polyphase channelizer), resampling (`signal.sample`), `channelize` / `Channelize`, conditioning (`DCBlock`, `Deemphasis`, `Conjugate`), and `signal.channel`, the simulated medium |
 | `sync` | sync | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, all tracked by `track`; frame sync (`FrameSync`, `Delimiter`), pilots (`PilotPhase`, `PilotEqualizer`), alignment on bits (`Align`, `Puncture`), `Acquire`, `acquire_code`, `Squelch`, `PeakAGC`. Second class, by name: `time.MM` (and Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `equalize.CMA` |
-| `wave` | wave | `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod`; pulse shapes are `signal.filters` operators on the `pulse` resource |
+| `wave` | wave | `Shape`/`Matched` (applying a `pulse` definition: the pulses themselves are `signal.filters` designs), `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod` |
 | `symbol` | symbol | `Constellation` (and the PSK, QAM, APSK, ASK generators), `Differential`, `Spread`/`Despread`, `Carriers`, and frame structure: `Header`, `Pilots`, `PhaseScramble` |
 | `code` | code | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), line codes (`Line`), sync markers (`Marker`), `Uncoded` |
 | `link` | link | CRCs, HDLC framing, `Header` (fields, CRC, payload length) |
@@ -654,23 +654,18 @@ kernels, the parallel runner's internals, how to add things) is in the sections 
 | Config by resource | `config/<resource>/`; `sequence` split from `scramble`; `rp.spread` became `rp.sequence` |
 | Parallel runner | Frame-parallel region after the frame boundary: `ParallelRunner`, `Scheduler`, thread and process executors, batch kernels, C++ demapper and front-end kernels. Output equals the serial runner's bit for bit |
 | Extending profiles | Step kinds and sync methods from a registry (`rp.profile.steps.register_step`, `register_sync_method`), any `Stage` by module path; `rp.load(path)` for any definition; `rp.Tee` branches |
-| Sources | `Source.REP` / `APPLIED` (`profile.rx(source=src)`), `Source.ppm` (clock error on Fs and cf), WAV out (`write_wav`, `WavSink`); pysdrlib only imported when a source or sink is used |
+| Sources | `Source.REP` / `APPLIED` (`profile.rx(source=src)`), `Source.ppm` (clock error on Fs and cf), WAV in and out (`Wav`, `write_wav`, `WavSink`), UDP / TCP (`Socket`), SigMF recordings (`SigMF`, `SigMFSink`); `rpps tx` writes a profile's transmission to a file; pysdrlib only imported when a source or sink needs it |
+| Codes added from the review | `polar` (SC, SCL, CRC-aided), `rm` (Reed-Muller: Hadamard transform, majority logic), turbo product codes (`product` with `chase`: Chase-Pyndiah), Reed-Solomon `basis: "dual"` (CCSDS), the multiplexed `turbo` layout (CCSDS rates 1/2 to 1/6, its permutation as `interleave/block/ccsds_turbo`), LDPC `schedule: "flooding"`, trellis-coded modulation as `fsm` with constellation `points`, line codes Bi-phi-M / S and Miller; profile `ccsds/tm_concat` |
 
 **Not yet** (reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liquid-dsp and gr-satellites)
 
 Codes
-- Polar: no code type. `analysis.code.block.polar` recognises a frozen set and decodes by successive cancellation, but
-  nothing encodes or decodes from a definition; no list (SCL) or CRC-aided decoding, no 5G reliability sequence.
-- Turbo product codes: `product` decodes hard (row and column syndromes in turn); no Chase-Pyndiah soft iteration.
-- Reed-Muller: none (an RM(2,4) experiment in `tests/dev/code_rm.py`).
-- LDPC: one schedule (layered normalized min-sum); the flooding min-sum is `analysis.code.block.ldpc.posterior` only. No 5G
-  NR base graphs, CCSDS AR4JA / C2, DVB-S2X, DVB-T2 or ATSC 3.0 tables (the QC and table loaders take them once written out).
-- Turbo: the LTE layout only (QPP interleaver in the code). CCSDS (rates 1/2 to 1/6), UMTS (PIL) and DVB-RCS duo-binary
-  need the interleaver and constituents as definitions.
-- Reed-Solomon in the dual (Berlekamp) basis: CCSDS symbols need the conversion before and after `rs/ccsds_255_223`.
-- Trellis-coded modulation as a definition: `fsm` scores real levels (ATSC) but not points of a constellation; the TCM
-  encoder lives in `analysis.code.conv.tcm`.
-- Line codes Bi-phi-M / S and delay modulation (IRIG-106 PCM), 4B5B, 8b/10b. Checksums (Fletcher, Internet), fountain codes.
+- Polar: the 5G NR reliability sequence and rate matching (the code type takes polarization weight or Bhattacharyya
+  constructions, decodes SC, SCL and CRC-aided SCL).
+- LDPC tables: 5G NR base graphs, CCSDS AR4JA / C2, DVB-S2X, DVB-T2, ATSC 3.0 (the QC and table loaders take them once
+  written out).
+- Turbo: UMTS (its PIL interleaver) and DVB-RCS duo-binary (the multiplexed layout takes binary constituents only).
+- Line codes 4B5B, 8b/10b. Checksums (Fletcher, Internet), fountain codes.
 
 Waves and sync
 - Coherent CPM (GMSK, SOQPSK) in the data path: `analysis.modulation.cpm` demodulates by per-survivor Viterbi offline.
@@ -694,10 +689,9 @@ Waves and sync
 Links, sources, profiles
 - Link layers beyond CRC, HDLC and headers: PPP, KISS, AX.25 addresses, MPEG-TS packets, CCSDS TM / AOS transfer frames
   and space packets, FX.25, headers protected by a block code (the AX100 Golay length field).
-- Sources: sockets (UDP, TCP), tun/tap, SigMF (no capture metadata is read or written), WAV input, audio devices,
-  transmitting to a radio (pysdrlib's TX side), and a `tx` command (`Profile.tx()` is Python only).
+- Sources: tun/tap, audio devices, transmitting to a radio (pysdrlib's TX side).
 - Profiles for definitions that have none: DMR, P25 (phase 1 and 2), LTE, IEEE 802.11a/g OFDM, 802.11n, ATSC 8VSB, GPS
-  C/A, DAB, UMTS, CCSDS concatenated (convolutional + Reed-Solomon) and turbo. `projects/` receives most of these by hand;
+  C/A, DAB, UMTS, CCSDS turbo (its longer attached sync markers). `projects/` receives most of these by hand;
   `projects/ble`, `adsb` and `wifi` do not yet use the `ble/adv`, `adsb/mode_s` and `ieee80211b` profiles that exist.
 - `dvbs2/normal`: dummy frames (their PLS is reported, the frame is not decoded).
 - The parallel runner numbers its output from 0 and a dropped frame leaves no gap (the serial runner keeps positions).

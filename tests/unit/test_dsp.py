@@ -44,21 +44,21 @@ def test_mixture_variance(rng):
 # --- dsp ------------------------------------------------------------------------------------------------
 
 def test_dsp_exports():
-    assert callable(rp.analysis.psd) and callable(rp.analysis.find_baud) and callable(rp.analysis.find_signals)
+    assert callable(rp.analysis.psd) and callable(rp.sync.find_baud) and callable(rp.analysis.find_signals)
     assert not hasattr(rp.utils, "psd") and hasattr(rp.utils, "arg_freq")
 
 @pytest.mark.parametrize("sps", [6, 8, 10])
 def test_find_baud(sps, rng):
     Fs = 1e6
     x = qpsk_baseband(rng, 4000, sps, Fs, cfo=2e3)
-    baud, strength = rp.analysis.find_baud(x, Fs)
+    baud, strength = rp.sync.find_baud(x, Fs)
     assert baud == pytest.approx(Fs/sps, rel=0.005)
     assert strength > 5
-    assert rp.analysis.find_baud(x[:100], Fs) == (0.0, 0.0) # Too short to say
+    assert rp.sync.find_baud(x[:100], Fs) == (0.0, 0.0) # Too short to say
 
 def test_find_baud_on_noise_is_weak(rng):
     n = (rng.normal(size=20000) + 1j*rng.normal(size=20000)).astype(np.complex64)
-    assert rp.analysis.find_baud(n, 1e6)[1] < 5
+    assert rp.sync.find_baud(n, 1e6)[1] < 5
 
 def test_psd_peak_at_tone():
     Fs, N = 1e6, 4096

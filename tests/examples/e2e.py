@@ -25,7 +25,7 @@ def main():
     post = sym_sync + freq_sync
 
     bpsk = np.array([1.0, -1.0]) # What the Costas loop locks to
-    track = rp.analysis.modulation.quality.Track(bpsk) # Es/N0 over the last symbols
+    track = rp.sync.quality.Track(bpsk) # Es/N0 over the last symbols
     shown = np.zeros(0, dtype=np.complex64) # The symbols on the phasor
 
     fig, axs = plt.subplots(1,3, layout="constrained", figsize=(12,6))

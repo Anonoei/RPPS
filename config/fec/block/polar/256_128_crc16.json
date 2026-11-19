@@ -1,0 +1,10 @@
+{
+  "base": "block",
+  "type": "polar",
+  "comment": "CRC-aided polar (256, 128): 112 message bits and a CRC-16 (XMODEM), frozen by polarization weight, list of 8 (Tal and Vardy, IEEE Trans. IT 2015)",
+  "n": 256,
+  "k": 128,
+  "order": "pw",
+  "list": 8,
+  "crc": "crc/crc16_xmodem"
+}

@@ -39,7 +39,7 @@ def rs_bits(n, k, poly, fcr, prim, words=24, payload=None, seed=0, phase=37, off
 def test_descramble_is_the_feedthrough_definition():
     y = np.random.default_rng(0).integers(0, 2, 2000).astype(bool)
     d = np.asarray((rp.Data(y, flush=True) / rp.code.scram.load("feedthrough/v35")).data).astype(np.uint8)
-    assert np.array_equal(SC.descramble(y, (20, 3))[20:], d[20:])
+    assert np.array_equal(rp.code.scram.Feedthrough.descramble(y, (20, 3))[20:], d[20:])
 
 def test_scrambler_found_from_the_structure_under_it(hdlc):
     h, n, g = SC.search(scramble(hdlc, (20, 3)))
@@ -108,7 +108,7 @@ def test_an_unmodulated_carrier_is_not_a_code():
     assert not F.identify(s, "bpsk").found
 
 def test_acquire_fec_says_it_is_still_acquiring():
-    from rpps.analysis.modulation.detect import Detection
+    from rpps.sync import Detection
     d = rp.Data(np.ones(1000, np.complex64), Fs=1e4, sps=1)
     d.meta.stream.det = Detection(mod="qpsk", baud=1e4, sps=1.0)
     d + rp.sync.AcquireFEC()
@@ -229,7 +229,7 @@ def _lfsr(taps, n, rng):
     return np.array(s[:n], np.uint8)
 
 def _feedthrough(d, taps):
-    """y[n] = d[n] ^ y[n-a] ^ y[n-b]...: the scrambler rpps.analysis.sequence.scrambler.descramble undoes"""
+    """y[n] = d[n] ^ y[n-a] ^ y[n-b]...: the scrambler rpps.code.scram.Feedthrough.descramble undoes"""
     y = np.zeros(len(d), np.uint8)
     for n in range(len(d)):
         v = d[n]

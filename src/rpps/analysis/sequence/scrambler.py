@@ -26,14 +26,7 @@ import numpy as np
 from ...math.prob import z_critical
 from ...math.gf2 import pdivmod, berlekamp_massey, lfsr_taps
 from ..result import Hypothesis, Guess
-
-def descramble(bits, taps):
-    """d[n] = y[n] ^ y[n-t] for every tap t (the first max(taps) bits are not fully descrambled)"""
-    y = np.asarray(bits, dtype=np.uint8)
-    d = y.copy()
-    for t in taps:
-        d[t:] ^= y[:-t]
-    return d
+from ...code.scram.scrambler import Feedthrough
 
 def structure(bits, lags=4096):
     """How far bits are from white, as z-scores: {"bias", "bytes", "autocorr", "score" (the largest)}
@@ -81,11 +74,11 @@ def search(bits, max_degree=31, max_taps=2, top=20):
     lowest-degree one that stands out (see the module docstring), never decoded unless saved and loaded."""
     y = np.asarray(bits, dtype=np.uint8)
     cands = [()] + polynomials(max_degree, max_taps)
-    quick = np.array([structure(descramble(y, t), lags=0)["score"] for t in cands])
+    quick = np.array([structure(Feedthrough.descramble(y, t), lags=0)["score"] for t in cands])
     order = np.argsort(-quick)[:top]
     full = quick.copy()
     for i in order:
-        full[i] = structure(descramble(y, cands[i]))["score"]
+        full[i] = structure(Feedthrough.descramble(y, cands[i]))["score"]
     med = float(np.median(quick))
     mad = float(np.median(np.abs(quick - med)))*1.4826 or 1.0
     crit = z_critical(len(cands)*4096) # Each score is itself the largest of many (byte alignments, autocorrelation lags)
@@ -239,7 +232,7 @@ def additive_search(bits, window=512, max_len=None, step=None):
             d = b
             for t, _, k in scr:
                 for _ in range(k):
-                    d = descramble(d, t)
+                    d = Feedthrough.descramble(d, t)
             d = d[64*max(max(t) for t, _, _ in scr):]
             words = d[:len(d)//period*period].reshape(-1, period)
             vals, counts = np.unique(words, axis=0, return_counts=True)

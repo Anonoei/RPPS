@@ -397,7 +397,7 @@ def test_fused_matched_filter_gives_the_same_symbols_as_filtering_every_sample()
         x = (rng.normal(size=40000) + 1j*rng.normal(size=40000)).astype(np.complex64)
         def front(p, cuts):
             ops = [op for _, op in p.rx().ops]
-            stop = next(i for i, o in enumerate(ops) if "Timing" in str(o)) + 1
+            stop = next(i for i, o in enumerate(ops) if isinstance(o, rp.sync.time.Known)) + 1
             st, outs, i = None, [], 0
             for k, n in enumerate(cuts):
                 d = rp.Data(x[i:i + n], Fs=1e6, sps=4, stream=st, flush=k == len(cuts) - 1)

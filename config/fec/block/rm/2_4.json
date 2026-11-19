@@ -1,0 +1,7 @@
+{
+  "base": "block",
+  "type": "rm",
+  "comment": "Reed-Muller RM(2,4): (16, 11, 4), the extended Hamming code; decoded by Reed's majority logic",
+  "r": 2,
+  "m": 4
+}

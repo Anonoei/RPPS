@@ -1,15 +1,16 @@
-"""Synchronization stages: acquisition, AGC, PLLs, Costas, and frequency (`freq`), phase (`phase`) and symbol-timing (`time`) recovery
+"""Synchronization stages: acquisition, AGC, PLLs, Costas, and phase (`phase`: carrier frequency and phase) and symbol-timing (`time`) recovery
 """
 from .. import _config
 
 
 from .costas import Costas
-from .acquire import Acquire
+from .acquire import Acquire, Detection, detect
+from . import rate, quality
+from .rate import find_baud, find_rate
 from .acquire_fec import AcquireFEC
 from .align import Align
 from .puncture import Puncture
 
-from . import freq
 from . import phase
 from . import time
 

@@ -48,7 +48,7 @@ def best_tau(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
 class Mat(Stage):
     """Matrix matched filter and symbol timing
 
-    Needs meta.stream.det (see rpps.analysis.modulation.detect) for beta and the timing offset. Symbols are
+    Needs meta.stream.det (see rpps.sync.detect) for beta and the timing offset. Symbols are
     taken from a lattice t_next + k*sps in the (fractional) sps of Meta, then the lattice is nudged by a
     block-wise energy-maximum estimate (`track` = fraction of it applied) to follow the clock.
 

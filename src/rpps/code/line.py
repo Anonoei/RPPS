@@ -4,6 +4,12 @@
     bits * rp.code.Line("nrzm")              # differential bits: a 1 is a transition
     bits * rp.code.Line("manchester")        # 0 -> 10, 1 -> 01 (IEEE 802.3); "thomas": 0 -> 01, 1 -> 10
     bits * rp.code.Line("invert")            # every bit inverted (data inversion)
+    bits * rp.code.Line("biphase_m")         # IRIG-106 Bi-phi-M: a transition at every bit start, and mid-bit for a 1
+    bits * rp.code.Line("biphase_s")         # Bi-phi-S: the same, mid-bit for a 0
+    bits * rp.code.Line("miller")            # delay modulation (DM-M): mid-bit for a 1, at the boundary between two 0s
+
+Bi-phase-M/S and Miller are 2 channel bits a data bit and decode from the two halves alone (a mid-bit transition or not),
+so they need no reference level and ignore an inverted signal.
 
 Decoding keeps soft values soft: an inversion negates LLRs, a differential code takes the box-plus of neighbours
 (sign times the smaller magnitude), Manchester the difference of the two halves. In a profile: {"code": "line", "name": "nrzi"}.
@@ -17,7 +23,8 @@ from ..base.rpps import Pipe, align
 from ..base.types import Category, Rep
 from ..base.control import anchor
 
-NAMES = ("invert", "nrzi", "nrzm", "manchester", "thomas")
+NAMES = ("invert", "nrzi", "nrzm", "manchester", "thomas", "biphase_m", "biphase_s", "miller")
+MID = {"biphase_m": True, "biphase_s": False, "miller": True} # the bit a mid-bit transition sends
 
 class Line(Pipe):
     CATEGORY = Category.CODE
@@ -28,7 +35,7 @@ class Line(Pipe):
         if name not in NAMES:
             raise ValueError(f"line code is one of {NAMES}, not {name!r}")
         self.name = name
-        self.pairs = name in ("manchester", "thomas")
+        self.pairs = name in ("manchester", "thomas") or name in MID
 
     def control(self, frame=None):
         self._restart = True
@@ -75,6 +82,18 @@ class Line(Pipe):
             y = (np.cumsum(t.astype(np.int64)) + int(last)) % 2 == 1
             if len(y):
                 ctx[key] = bool(y[-1])
+        elif self.name in MID:
+            level, prev = ctx.get(key, (False, True)) # the line level, the bit before (Miller: a 1, so no boundary transition)
+            y = np.empty(2*len(x), dtype=bool)
+            for i, b in enumerate(x): # (a short state machine a bit: the level carries from one to the next)
+                if self.name != "miller" or (not b and not prev):
+                    level = not level # a transition at the start of the bit
+                y[2*i] = level
+                if bool(b) == MID[self.name]:
+                    level = not level # and in its middle
+                y[2*i + 1] = level
+                prev = bool(b)
+            ctx[key] = (level, prev)
         else:
             y = np.empty(2*len(x), dtype=bool)
             first = ~x if self.name == "manchester" else x # IEEE: 0 -> 10; Thomas: 0 -> 01
@@ -107,6 +126,16 @@ class Line(Pipe):
                 y = x ^ p
                 if self.name == "nrzi":
                     y = ~y
+        elif self.name in MID: # the bit is whether the halves differ (MID) or agree
+            x = align(ctx, key, x, 2, pad=False)
+            a, b = x[0::2], x[1::2]
+            if soft: # box-plus: the LLR that the halves are equal
+                y = np.sign(a)*np.sign(b)*np.minimum(np.abs(a), np.abs(b))
+                y = y if MID[self.name] else -y # (equal halves: a 0 where a mid-bit transition sends a 1)
+            else:
+                y = (a != b) if MID[self.name] else (a == b)
+            bad = np.zeros(len(y), bool) # (any pair of halves is a valid bit)
+            self._errors = 0
         else:
             x = align(ctx, key, x, 2, pad=False)
             a, b = x[0::2], x[1::2]

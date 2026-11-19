@@ -1,11 +1,14 @@
-"""Audio out as 16-bit PCM WAV files (the stdlib `wave` module: no dependency)
+"""WAV files in and out (the stdlib `wave` module: no dependency)
 
     rp.source.write_wav("out.wav", audio, 48000, peak=0.8)      # an array at once, scaled so its peak is 0.8 of full scale
     blocks + demod >> rp.source.WavSink("out.wav")             # a stream, at the blocks' own rate
+    for blk in rp.source.Wav("sdr.wav", iq=True)(4096): ...    # in: 8/16/32-bit PCM; a 2-channel IQ recording as samples
 """
 import wave
 
 import numpy as np
+
+from .source import Source
 
 def _pcm(x, peak=None):
     """Samples as int16: floats in [-1, 1) (`peak`: first scaled so the largest is that fraction of full scale), clipped;
@@ -61,3 +64,38 @@ class WavSink:
         return self
     def __exit__(self, *a):
         self.close()
+
+
+class Wav(Source):
+    """A PCM WAV file as a source, scaled to [-1, 1): one channel gives real samples (audio); two give I and Q
+    (`iq=True`: an SDR's IQ recording) or, with iq=False, the first channel. Fs is the file's rate"""
+    def __init__(self, path, iq=None, cf=0.0):
+        self.path = str(path)
+        with wave.open(self.path, "rb") as w:
+            self.channels, self.width, rate, self.frames = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+        if self.width not in (1, 2, 4):
+            raise ValueError(f"{path}: {8*self.width}-bit samples (8, 16 or 32-bit PCM)")
+        self.iq = self.channels == 2 if iq is None else bool(iq)
+        if self.iq and self.channels != 2:
+            raise ValueError(f"{path}: IQ needs 2 channels, it has {self.channels}")
+        super().__init__(float(rate), cf)
+
+    def __str__(self):
+        return f"Wav({self.path}, {self.channels} ch, {8*self.width}-bit, {self.Fs:g} Hz)"
+
+    def _convert(self, raw):
+        if self.width == 1: # 8-bit WAV is unsigned
+            x = (np.frombuffer(raw, np.uint8).astype(np.float32) - 128.0)/128.0
+        else:
+            x = np.frombuffer(raw, f"<i{self.width}").astype(np.float32)/float(2**(8*self.width - 1))
+        x = x.reshape(-1, self.channels)
+        return (x[:, 0] + 1j*x[:, 1]).astype(np.complex64) if self.iq else x[:, 0].copy()
+
+    def _samples(self, count):
+        count = int(count)
+        with wave.open(self.path, "rb") as w:
+            left = self.frames
+            while left > 0:
+                n = min(count, left)
+                left -= n
+                yield self._block(self._convert(w.readframes(n)), flush=left == 0)

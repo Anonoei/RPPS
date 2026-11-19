@@ -66,3 +66,21 @@ def test_soft_finds_the_code_hard_misses():
     assert tcm.search(y, 8, max_nu=4) == []
     c = tcm.search(y, 8, max_nu=4, soft=True)
     assert c and c[0].match == "Ungerboeck 16 states"
+
+def test_tcm_is_a_trellis_definition_that_decodes(rng):
+    """The 8-state Ungerboeck 8PSK code as an fsm definition, decoded on the points by Viterbi"""
+    import rpps as rp
+    h = list(tcm.UNGERBOECK_8PSK[8])
+    pts = np.exp(2j*np.pi*np.arange(8)/8) # natural labelling (set partitioning)
+    bits = rng.integers(0, 2, 4000)
+    lab = tcm.encode(bits, h, 3)
+    z = (lab[:, None] >> np.arange(3)) & 1 # each label satisfies the check
+    acc = 0
+    for i, p in enumerate(h):
+        for d in range(p.bit_length()):
+            if p >> d & 1:
+                acc = acc ^ np.concatenate((np.zeros(d, int), z[:len(z) - d, i]))
+    assert not acc[8:].any()
+    code = rp.code.init("tcm8", tcm.definition(h, 3, pts))
+    y = pts[lab] + (rng.normal(size=len(lab)) + 1j*rng.normal(size=len(lab)))*0.25
+    assert np.mean(code.decoder.decode(y) != bits) < 1e-3

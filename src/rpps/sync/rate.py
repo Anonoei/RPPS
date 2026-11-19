@@ -1,7 +1,7 @@
-"""Rate processing"""
+"""Symbol rate estimates: the |x|^2 cyclostationary line on samples (`find_baud`), the rate of symbols (`find_rate`)"""
 import numpy as np
 
-from ...math.interp import parabolic_offset
+from ..math.interp import parabolic_offset
 
 def find_baud(x, Fs, lo=None, hi=None, pad=4):
     """Find the symbol rate from IQ samples using the |x|^2 cyclostationary line
