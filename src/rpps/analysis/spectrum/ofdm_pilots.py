@@ -37,7 +37,7 @@ per-symbol common phase is taken out against the previous period first).
 """
 import numpy as np
 
-from ..modulation.cpm import interpolate
+from ...math.interp import interpolate
 
 class Grid:
     """`grid`: Y (symbols, K) complex cells (kept subcarriers only), k (K,) their FFT bins (0 = the carrier, signed),

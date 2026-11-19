@@ -35,6 +35,8 @@ the bits of a spectrally inverted signal come out inverted.
 """
 import numpy as np
 
+from ...math.interp import interpolate
+
 from ... import _accel
 
 # name: (pulse, parameter, L, precoder)
@@ -196,24 +198,6 @@ def mlse(r, name, ns, parity=0, S=None, loop=(0.08, 0.002)):
         bits, best = _mlse_python(r, Q, atab, S, int(parity), loop)
     match = best/np.sqrt(np.sum(np.abs(r)**2)*n*ns)
     return bits, float(match)
-
-def interpolate(x, pos, taps=16, chunk=1 << 16):
-    """x at fractional sample positions pos (Kaiser-windowed sinc, `taps` long; x band-limited below Fs/2; outside x
-    is 0), `chunk` positions at a time"""
-    x = np.asarray(x, dtype=np.complex128)
-    pos = np.asarray(pos, dtype=np.float64)
-    k = np.arange(-taps//2 + 1, taps//2 + 1)
-    half = taps/2
-    out = np.empty(len(pos), np.complex128)
-    for a in range(0, len(pos), chunk):
-        p = pos[a:a + chunk]
-        i0 = np.floor(p).astype(np.int64)
-        d = k[None, :] - (p - i0)[:, None]
-        w = np.sinc(d)*np.i0(6.0*np.sqrt(np.clip(1 - (d/half)**2, 0, None)))/np.i0(6.0)
-        idx = i0[:, None] + k[None, :]
-        valid = (idx >= 0) & (idx < len(x))
-        out[a:a + chunk] = np.sum(np.where(valid, x[np.clip(idx, 0, max(len(x) - 1, 0))], 0)*w, axis=1)
-    return out
 
 def _peak(P, f, i):
     """f at bin i refined by a parabola through its neighbours"""

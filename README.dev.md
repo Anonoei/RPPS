@@ -291,12 +291,12 @@ a `Guess`, a definition that decodes once it is saved (`Guess.save`, then loaded
 
 | Finds | Tool | How |
 |---|---|---|
-| self-synchronising scrambler | `scrambler.search` | descramble with every polynomial; keep the one whose output stops looking random (idle ones, flags, headers, frames) |
-| Reed-Solomon code over GF(256) | `rs.search` | the roots every codeword shares, by a Galois-field Fourier transform at every byte phase: length, field, generator, alignment |
-| binary block code | `block.solve_block` | length and alignment from rank deficiency, checks from the null space; then its kind: cyclic / BCH (generator = gcd of codewords), product (rows and columns are codewords), LDPC (low-weight checks, soft values pick the cleanest words) |
-| puncture pattern of a known mother code | `puncture.search` | every rate P/(P+1) pattern, re-encoded through the Viterbi decoder |
+| self-synchronising scrambler | `sequence.scrambler.search` | descramble with every polynomial; keep the one whose output stops looking random (idle ones, flags, headers, frames) |
+| Reed-Solomon code over GF(256) | `code.block.rs.search` | the roots every codeword shares, by a Galois-field Fourier transform at every byte phase: length, field, generator, alignment |
+| binary block code | `code.block.linear.solve_block` | length and alignment from rank deficiency, checks from the null space; then its kind: cyclic / BCH (generator = gcd of codewords), product (rows and columns are codewords), LDPC (low-weight checks, soft values pick the cleanest words) |
+| puncture pattern of a known mother code | `code.conv.puncture.search` | every rate P/(P+1) pattern, re-encoded through the Viterbi decoder |
 
-`fec.solve` peels such layers off a decoder's output in turn; `identify(..., blind=True)` (or `AcquireFEC(blind=True)`) runs
+`identify.solve` peels such layers off a decoder's output in turn; `identify(..., blind=True)` (or `AcquireFEC(blind=True)`) runs
 the puncture and block searches on channel bits when no definition fits, and `solve` inside a convolutional code with
 nothing configured behind it. Structure that holds at every alignment (constant bits, idle words of one value) is not taken
 for a code. The rank methods need about n + 48 words of n bits with few errors: lengths up to about the square root of the
@@ -789,10 +789,10 @@ The blind tools' kernels, with what each changed (best of several runs, one proc
 
 | Kernel | Tool | Before -> after |
 |---|---|---|
-| `gf2_eliminate` (GF(2) Gauss-Jordan, Four Russians: 32 pivots a pass over the matrix) | `ldpc._eliminate` (`qc_staircase`, `qc_dual`, `progressive`) | DVB-S2 normal-frame table from frames: 519 s -> 6 s |
-| `ldpc_flood` (flooding min-sum, frames threaded) | `ldpc.posterior` | 31 ms -> 2.3 ms (40 frames, 60 checks); `progressive` test 12 s -> under 3 s |
-| `gf_syndromes` (exponent table instead of a modulo a symbol, words threaded) | `RS.syndromes`, `fec.scan_rs` | 1632 words of RS(204, 188): 18.8 ms -> 4.6 ms on one thread, 1.3 ms threaded |
-| `cpm_psp` (per-survivor Viterbi) | `cpm.mlse` | 6 to 18x the vectorised Python |
+| `gf2_eliminate` (GF(2) Gauss-Jordan, Four Russians: 32 pivots a pass over the matrix) | `rpps.math.gf2.eliminate_packed` (so `rref`; `code.block.ldpc.qc_staircase`, `qc_dual`, `progressive`) | DVB-S2 normal-frame table from frames: 519 s -> 6 s |
+| `ldpc_flood` (flooding min-sum, frames threaded) | `code.block.ldpc.posterior` | 31 ms -> 2.3 ms (40 frames, 60 checks); `progressive` test 12 s -> under 3 s |
+| `gf_syndromes` (exponent table instead of a modulo a symbol, words threaded) | `RS.syndromes`, `identify.scan_rs` | 1632 words of RS(204, 188): 18.8 ms -> 4.6 ms on one thread, 1.3 ms threaded |
+| `cpm_psp` (per-survivor Viterbi) | `modulation.cpm.mlse` | 6 to 18x the vectorised Python |
 
 
 **The Python loop is the reference.** Every kernel has the pure Python version in the stage that calls it, and the tests
@@ -947,48 +947,54 @@ channel with some noise floor visible beside the signal: the floors are estimate
 
 | Question | Tool | How (and limits) |
 |---|---|---|
-| symbol rate, carrier order and offset | `cyclic.features` | lines of `\|x\|^2`, `x^M` (also at the symbol instants) and the discriminator, each against a median floor with a calibrated false-alarm probability; the rate by a harmonic comb (`cyclic.comb_rate`) |
-| every cycle frequency in the band (signals sharing it) | `scf.cycle_frequencies`, `scf.coherence` | FFT-accumulation spectral coherence, conjugate too; equal-power overlap is told apart only by these features |
-| which constellation | `cumulants.classify` | C40 ... C84 against each constellation's own; families blind, orders within QAM / ASK need the SNR |
-| FSK / MSK / GMSK, CPM index | `fsk.analyze`, `fsk.cpm_index` | instantaneous frequency: rate by comb, tones by clusters that split like tones; h from the phase lattice (full response) |
-| GMSK / SOQPSK bits, which pulse | `cpm.demodulate`, `cpm.identify` | rate and carrier from the x^2 line pair; timing and clock by the detector's metric; a per-survivor Viterbi (each survivor its own carrier loop and pulse tail: SOQPSK-TG's 8 symbols); the pulse that fits best. SOQPSK bits up to complement / alternate inversion |
-| OFDM pilot pattern | `ofdm_pilots.discover`, `ofdm_pilots.grid` | the grid from CP peaks (smoothed: a line plus a per-slot CP pattern); the lag at which cells repeat coherently is the period; per symbol, the subcarrier lattice standing out across the band, or the whole symbol known; continual pilots, boost, empty cells |
-| TDMA bursts' bits, frame and slots | `burst.demodulate` | each burst on its own: the shared preamble found in it (pieces correlated), fractional timing from its phase steps, carrier and phase data-aided, a decision-directed loop; slots by start times within the frame |
-| two co-channel signals of equal power | `separate.estimate`, `separate.separate` | each one's carrier (x^M line), timing (its x^M +- baud lines) and phase; then a sequence estimate over both streams merged in time (state: two symbols), the farther coupling cancelled from the previous pass, gains refitted |
+| symbol rate, carrier order and offset | `spectrum.cyclic.features` | lines of `\|x\|^2`, `x^M` (also at the symbol instants) and the discriminator, each against a median floor with a calibrated false-alarm probability; the rate by a harmonic comb (`spectrum.cyclic.comb_rate`) |
+| every cycle frequency in the band (signals sharing it) | `spectrum.scf.cycle_frequencies`, `spectrum.scf.coherence` | FFT-accumulation spectral coherence, conjugate too; equal-power overlap is told apart only by these features |
+| which constellation | `modulation.cumulants.classify` | C40 ... C84 against each constellation's own; families blind, orders within QAM / ASK need the SNR |
+| FSK / MSK / GMSK, CPM index | `modulation.fsk.analyze`, `modulation.fsk.cpm_index` | instantaneous frequency: rate by comb, tones by clusters that split like tones; h from the phase lattice (full response) |
+| GMSK / SOQPSK bits, which pulse | `modulation.cpm.demodulate`, `modulation.cpm.identify` | rate and carrier from the x^2 line pair; timing and clock by the detector's metric; a per-survivor Viterbi (each survivor its own carrier loop and pulse tail: SOQPSK-TG's 8 symbols); the pulse that fits best. SOQPSK bits up to complement / alternate inversion |
+| OFDM pilot pattern | `spectrum.ofdm_pilots.discover`, `spectrum.ofdm_pilots.grid` | the grid from CP peaks (smoothed: a line plus a per-slot CP pattern); the lag at which cells repeat coherently is the period; per symbol, the subcarrier lattice standing out across the band, or the whole symbol known; continual pilots, boost, empty cells |
+| TDMA bursts' bits, frame and slots | `spectrum.burst.demodulate` | each burst on its own: the shared preamble found in it (pieces correlated), fractional timing from its phase steps, carrier and phase data-aided, a decision-directed loop; slots by start times within the frame |
+| two co-channel signals of equal power | `spectrum.separate.estimate`, `spectrum.separate.separate` | each one's carrier (x^M line), timing (its x^M +- baud lines) and phase; then a sequence estimate over both streams merged in time (state: two symbols), the farther coupling cancelled from the previous pass, gains refitted |
 | which named system | `catalogue.match`, `catalogue.features` | measured features (rate, modulation family, pulse, OFDM numerology and pilots, TDMA frame, spreading, band) against systems from their standards, each agreement and contradiction weighted and reported |
-| PM with a residual carrier, subcarriers | `pm.analyze`, `pm.subcarrier`, `pm.nrz` | the carrier tracked, the phase around it: a `\|x\|^2` "rate" at twice a subcarrier is a subcarrier |
-| spread (DSSS) | `spread.period`, `chip_rate`, `code`, `despread` | variance of windowed autocorrelations peaks at the code period; the code from eigenvectors; detection goes ~2 dB further under the noise than recovery |
-| frequency hopping | `hopping.track`, `hopping.dehop` | short-time spectrum, frames clustered into channels, dwells; de-hopped to one channel |
-| tones in a short record | `pencil.lines` | matrix pencil: lines a fraction of a bin apart |
-| neighbours, overlap | `impairments.neighbours` | bands over the floor, split at valleys, level steps and carriers on another's plateau |
+| PM with a residual carrier, subcarriers | `modulation.pm.analyze`, `modulation.pm.subcarrier`, `modulation.pm.nrz` | the carrier tracked, the phase around it: a `\|x\|^2` "rate" at twice a subcarrier is a subcarrier |
+| spread (DSSS) | `sequence.spread.period`, `chip_rate`, `code`, `despread` | variance of windowed autocorrelations peaks at the code period; the code from eigenvectors; detection goes ~2 dB further under the noise than recovery |
+| frequency hopping | `spectrum.hopping.track`, `spectrum.hopping.dehop` | short-time spectrum, frames clustered into channels, dwells; de-hopped to one channel |
+| what kind of waveform (tones, OFDM and which system, bursts, envelope) | `spectrum.waveform.classify` | tones by narrow peaks, OFDM by its CP correlation and numerology against a table of systems, switching power, the envelope's kurtosis |
+| tones in a short record | `spectrum.pencil.lines` | matrix pencil: lines a fraction of a bin apart |
+| neighbours, overlap | `modulation.impairments.neighbours` | bands over the floor, split at valleys, level steps and carriers on another's plateau |
 
 **Is the lock good, and what is left**
 
 | Question | Tool | How |
 |---|---|---|
-| can hard decisions be trusted for rank / LFSR tests | `quality.gate` | rotation, drift, decisions near boundaries against what the measured Es/N0 explains, displaced clusters |
-| how much of the signal we are locked to; what is underneath | `cancel.cancel`, `cancel.align` | regenerate from the symbols (block least squares through band-limited kernels), subtract, the residual's density against the floor; survey the residual |
-| amplifier, IQ, phase noise | `impairments.amplifier`, `iq`, `phase_noise` | ring gains and turns; image ratio from E[y^2]; white phase error from neighbours' differences |
-| separate an interferer with other cycle frequencies | `scf.fresh` | least-squares FRESH filter over frequency-shifted copies of x and conj(x), trained on a reference (a preamble, or `cancel`'s regenerated signal); not blind |
+| can hard decisions be trusted for rank / LFSR tests | `modulation.quality.gate` | rotation, drift, decisions near boundaries against what the measured Es/N0 explains, displaced clusters |
+| how much of the signal we are locked to; what is underneath | `modulation.cancel.cancel`, `modulation.cancel.align` | regenerate from the symbols (block least squares through band-limited kernels), subtract, the residual's density against the floor; survey the residual |
+| amplifier, IQ, phase noise | `modulation.impairments.amplifier`, `iq`, `phase_noise` | ring gains and turns; image ratio from E[y^2]; white phase error from neighbours' differences |
+| separate an interferer with other cycle frequencies | `spectrum.scf.fresh` | least-squares FRESH filter over frequency-shifted copies of x and conj(x), trained on a reference (a preamble, or `cancel`'s regenerated signal); not blind |
 
 **Which code, scrambler, interleaver**
 
 | Question | Tool | How |
 |---|---|---|
-| trellis code on PSK labels (Ungerboeck, pragmatic) | `tcm.search` | Walsh-Hadamard of label windows scores every parity check at once, per rotation and labelling; `soft=True` rescores a shortlist by LLRs |
-| scrambler taps, feedthrough or additive | `recurrence.search` (degree <= 24), `recurrence.lfsr` (any degree, Berlekamp-Massey), `recurrence.keystream` | the same transform over bit windows (`llr=` for soft); an additive keystream by fast correlation once its polynomial is known |
-| turbo / RSC constituent, turbo interleaver | `rsc.constituent`, `rsc.turbo_interleaver`, `rsc.turbo_interleaver_soft` | `p g_b + s g_f = 0` as a 2-bit-label check; the permutation by matching columns over frames (clean frames), or from noisy frames by the soft check position by position (a beam, then a repair pass): 1024-bit frames at 10% bit errors from 300 frames |
-| LDPC: IRA (staircase), QC, large | `ldpc.staircase`, `ldpc.qc_staircase`, `ldpc.qc_dual`, `ldpc.qc_size`, `ldpc.progressive` | one GF(2) solve per structure: a DVB-S2 table from k/360 + 12 clean frames; progressive search cleans frames with the checks found so far |
-| binary cyclic / BCH roots | `ldpc.roots` | zero counts of the words at every beta^j against each subfield's chance |
-| polar frozen bits, construction | `polar.frozen`, `polar.recognize`, `polar.search` | tanh-product of each u_i's column over frames; at low SNR successive cancellation over all frames with a likelihood test per position (rate 1/2 found exactly at Es/N0 -2 dB from 200 frames); the construction and K nearest it |
-| interleaver | `interleaver.block_search`, `forney_search`, `column_delays` | rank deficiency for the size, then rows x columns; Forney candidates scored by the code structure coming back; columns sent rows late |
+| convolutional mother code (rate 1/n, K) | `code.conv.mother.scan_conv` | for generators g_a, g_b, (c_a * g_b) xor (c_b * g_a) = 0 on codewords: every pair up to K, deviance z against chance; `scan_defined_conv` tries the configured codes. A found code is saved as a child of the configured mother with those generators (`code.conv.puncture.search` then finds the puncture on it) |
+| additive scrambler (PRBS) over data | `sequence.scrambler.additive_search`, `sequence.scrambler.explain` | Berlekamp-Massey over windows (`rpps.math.gf2.berlekamp_massey`); the polynomial factored into known scramblers and the data's own period |
+| trellis code on PSK labels (Ungerboeck, pragmatic) | `code.conv.tcm.search` | Walsh-Hadamard of label windows scores every parity check at once, per rotation and labelling; `soft=True` rescores a shortlist by LLRs |
+| scrambler taps, feedthrough or additive | `sequence.recurrence.search` (degree <= 24), `sequence.recurrence.lfsr` (any degree, Berlekamp-Massey), `sequence.recurrence.keystream` | the same transform over bit windows (`llr=` for soft); an additive keystream by fast correlation once its polynomial is known |
+| turbo / RSC constituent, turbo interleaver | `code.conv.rsc.constituent`, `code.conv.rsc.turbo_interleaver`, `code.conv.rsc.turbo_interleaver_soft` | `p g_b + s g_f = 0` as a 2-bit-label check; the permutation by matching columns over frames (clean frames), or from noisy frames by the soft check position by position (a beam, then a repair pass): 1024-bit frames at 10% bit errors from 300 frames |
+| LDPC: IRA (staircase), QC, large | `code.block.ldpc.staircase`, `code.block.ldpc.qc_staircase`, `code.block.ldpc.qc_dual`, `code.block.ldpc.qc_size`, `code.block.ldpc.progressive` | one GF(2) solve per structure: a DVB-S2 table from k/360 + 12 clean frames; progressive search cleans frames with the checks found so far |
+| binary cyclic / BCH roots | `code.block.ldpc.roots` | zero counts of the words at every beta^j against each subfield's chance |
+| polar frozen bits, construction | `code.block.polar.frozen`, `code.block.polar.recognize`, `code.block.polar.search` | tanh-product of each u_i's column over frames; at low SNR successive cancellation over all frames with a likelihood test per position (rate 1/2 found exactly at Es/N0 -2 dB from 200 frames); the construction and K nearest it |
+| interleaver | `code.interleave.block_search`, `forney_search`, `column_delays` | rank deficiency for the size, then rows x columns; Forney candidates scored by the code structure coming back; columns sent rows late |
 
 **What the bits are**
 
 | Question | Tool | How |
 |---|---|---|
-| framing in decoded bits | `payload.signatures` | E1/T1 G.704, ATM HEC, GFP cHEC, HDLC, IPv4, CCSDS ASM, MPEG-TS, fixed bits at a period: each against its chance rate (and the stream's own structure) |
-| structured, scrambled or random | `payload.verdict` | signatures, bias, bytes, windowed linear complexity, zlib; `frame=` sets repeated (idle) frames aside first |
+| frame period and unique word on symbols | `framing.frames.find`, `cut`, `bursts` | coherence of each position over candidate periods; the frames cut and turned on the word; TDMA bursts gated and acquired one by one |
+| sync markers, frame length, HDLC on bits | `framing.bits.find_sync`, `frame_length`, `scan_hdlc` | marker hits at a period, bit autocorrelation, flags and FCS against their chance |
+| PM telemetry end to end | `framing.telemetry.analyze` | each subcarrier's BPSK, line code (Manchester, differential), frame period by fixed bits, counters |
+| framing in decoded bits | `framing.payload.signatures` | E1/T1 G.704, ATM HEC, GFP cHEC, HDLC, IPv4, CCSDS ASM, MPEG-TS, fixed bits at a period: each against its chance rate (and the stream's own structure) |
+| structured, scrambled or random | `framing.payload.verdict` | signatures, bias, bytes, windowed linear complexity, zlib; `frame=` sets repeated (idle) frames aside first |
 
 Synthetic signals for their tests: `tests/unit/conftest.py` (`shaped` for RRC-shaped symbols at any samples per symbol,
 `cpfsk`). The tools were checked on recorded signals too;

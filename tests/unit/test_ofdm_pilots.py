@@ -2,7 +2,7 @@
 import numpy as np
 
 from rpps.analysis.spectrum import ofdm_pilots
-from rpps.analysis.modulation.cpm import interpolate
+from rpps.math.interp import interpolate
 
 CONT = [0, 48, 54, 87, 141, 156, 192, 201, 255, 279]
 
