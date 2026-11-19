@@ -5,7 +5,9 @@ Folders are kind (`base`), then the structure of the code; the standard goes in 
 
     block       {"base": "block", "type": ..., "decoder": optional type to decode with instead}
       linear      "code": [n, k], "p": parity block rows    or    "g": generator rows, "h": check rows (decoded on its syndrome "trellis" when small)
-      cyclic      "n", "k", "poly": generator polynomial (bit i = x^i), "extend": overall parity bit, "shorten": leading
+      cyclic      "n", "k", "poly": generator polynomial as a number, bit i = x^i (polynomial order: "0xb" is x^3 + x + 1;
+                  a convolutional or turbo generator is the other way round, its first or most significant bit the
+                  current input), "extend": overall parity bit, "shorten": leading
                   message bits dropped, "t": errors to correct (default from d_min); decoded by "syndrome" table
       repeat      "count": 3
       fsm         trellis code as a state machine: "k", "n", "next", "output" tables, "start", "end", "tail",

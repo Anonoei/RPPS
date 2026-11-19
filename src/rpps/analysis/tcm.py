@@ -19,6 +19,8 @@ own). Every combination is tried; the label permutation does the rotation, so de
 """
 import numpy as np
 
+from ..math.gf2 import fwht, rank_ints
+
 # Ungerboeck's 8PSK rate 2/3 codes (1987, Part II, table III): states -> (h0, h1, h2) octal
 UNGERBOECK_8PSK = {4: (0o5, 0o2, 0o0), 8: (0o11, 0o2, 0o4), 16: (0o23, 0o4, 0o16), 32: (0o45, 0o16, 0o34),
                    64: (0o103, 0o30, 0o66), 128: (0o277, 0o54, 0o122), 256: (0o435, 0o72, 0o130)}
@@ -50,17 +52,6 @@ class Check:
                 f"{self.rotation}{c}, holds {100*self.holds:.1f}%, z {self.z:.1f}{m}")
 
     __repr__ = __str__
-
-def fwht(a):
-    """Walsh-Hadamard transform (unnormalized) of a length-2^B array, a copy"""
-    a = np.array(a, dtype=np.float64)
-    n = len(a)
-    h = 1
-    while h < n:
-        a = a.reshape(-1, 2, h)
-        a = np.stack((a[:, 0] + a[:, 1], a[:, 0] - a[:, 1]), axis=1).reshape(n)
-        h *= 2
-    return a
 
 def decisions(y, M):
     """Nearest of M PSK points at angles 2 pi k / M + offset (the offset taken from the M-th power): k, 0..M-1"""
@@ -105,17 +96,6 @@ def _vector(h, m, W, shift=0):
             elif p >> d & 1:
                 return None
     return v
-
-def _rank(vs):
-    rows, r = list(vs), 0
-    basis = []
-    for v in rows:
-        for b in basis:
-            v = min(v, v ^ b)
-        if v:
-            basis.append(v)
-            r += 1
-    return r
 
 def _match(h, m):
     table = UNGERBOECK_8PSK if m == 3 else UNGERBOECK_4 if m == 2 else {}
@@ -229,7 +209,7 @@ def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4,
     for zv, v, name, r, c, holds, N in found:
         key = (name, r, c)
         have = span.setdefault(key, [])
-        if have and _rank(have + [v]) == _rank(have):
+        if have and rank_ints(have + [v]) == rank_ints(have):
             continue # A shift or sum of checks already taken
         h = _polys(v, m, W)
         nu = max(p.bit_length() for p in h) - 1

@@ -24,7 +24,7 @@ import numpy as np
 
 from .. import _accel
 from ..math.gf import GF
-from ..math.gf2 import rref
+from ..math.gf2 import rref, rank
 from .block import sparse_checks
 
 # Primitive polynomials (x^m term included) for GF(2^m)
@@ -251,49 +251,6 @@ def roots(words, m=None, z_min=8.0, reverse=False):
 
 # ---- Quasi-cyclic codes: structure exploited, so frames needed scale with k / Z, not k ----
 
-def _packed(B):
-    """Rows of bits (r, c) uint8 -> (r, words) uint64, column i at word i // 64, bit 63 - i % 64"""
-    B = np.asarray(B, dtype=np.uint8)
-    r, c = B.shape
-    pad = (-c) % 64
-    if pad:
-        B = np.concatenate((B, np.zeros((r, pad), np.uint8)), axis=1)
-    return np.ascontiguousarray(np.packbits(B, axis=1)).view(">u8").astype(np.uint64).reshape(r, -1)
-
-def _unpacked(A, c):
-    return np.unpackbits(A.astype(">u8").view(np.uint8), axis=1)[:, :c]
-
-def _eliminate(A, ncols):
-    """Reduced row echelon form in place over GF(2) of packed rows A, the first ncols columns as pivots: pivot columns.
-    The C++ kernel (gf2_eliminate, Four Russians) gives the same matrix; this loop is its reference"""
-    nat = _accel.native
-    if nat is not None and hasattr(nat, "gf2_eliminate") and A.dtype == np.uint64 and A.flags.c_contiguous:
-        return list(nat.gf2_eliminate(A, int(ncols)))
-    return _eliminate_python(A, ncols)
-
-def _eliminate_python(A, ncols):
-    r = 0
-    piv = []
-    R = A.shape[0]
-    for col in range(ncols):
-        if r == R:
-            break
-        w, b = col >> 6, np.uint64(63 - (col & 63))
-        bits = (A[r:, w] >> b) & np.uint64(1)
-        nz = np.flatnonzero(bits)
-        if not len(nz):
-            continue
-        p = r + int(nz[0])
-        if p != r:
-            A[[r, p]] = A[[p, r]]
-        hit = np.flatnonzero((A[:, w] >> b) & np.uint64(1))
-        hit = hit[hit != r]
-        if len(hit):
-            A[hit, w:] ^= A[r, w:]
-        piv.append(col)
-        r += 1
-    return piv
-
 def _qc_rows(x, Z, G):
     """For one frame's bits x (G Z of them): the (Z, G Z) block of the circulant system: row j, column (g, t) is
     x[Z g + (j - t) mod Z]"""
@@ -341,11 +298,10 @@ def qc_staircase(words, k, Z=360, rel=None, extra=12, trials=3, seed=0):
         sub = pool[:use] if t == 0 else rng.choice(pool, use, replace=False)
         M = np.concatenate([_qc_rows(words[w, :k], Z, G) for w in sub]) # (use Z, k)
         R = np.concatenate([D[w][rows_r].T for w in sub]) # (use Z, q): class c's right side at (frame, j)
-        A = _packed(np.concatenate((M, R), axis=1))
-        piv = _eliminate(A, k)
+        E, piv = rref(np.concatenate((M, R), axis=1), pivot_cols=k)
         if len(piv) < k:
             continue # the frames do not span: more frames, or not this k / Z
-        X = _unpacked(A[:k], k + q)[:, k:] # (k, q): row of pivot column = that unknown
+        X = E[:k, k:] # (k, q): row of pivot column = that unknown
         sol = np.zeros((k, q), np.uint8)
         sol[piv] = X
         # each class's rows on held-out frames
@@ -388,7 +344,6 @@ def qc_dual(words, Z, extra=8, trials=200, seed=0):
     system's null space holds every check row (a base row's shifts are base rows too); its sparse vectors, found by
     information sets over it, are the blocks' rows. Returns base rows (b, n) uint8, one per circulant block, lightest
     first: row j of a block is its base row with every block of Z cycled by j"""
-    from ..math.gf2 import rank
     words = np.asarray(words, dtype=np.uint8)
     W, n = words.shape
     if n % Z:
@@ -396,13 +351,11 @@ def qc_dual(words, Z, extra=8, trials=200, seed=0):
     G = n//Z
     use = min(W, G + extra)
     M = np.concatenate([_qc_rows(words[w], Z, G) for w in range(use)])
-    A = _packed(M)
-    piv = _eliminate(A, n)
+    R, piv = rref(M)
     pset = set(piv)
     free = [c for c in range(n) if c not in pset]
     if not free:
         return np.zeros((0, n), np.uint8)
-    R = _unpacked(A[:len(piv)], n)
     B = np.zeros((len(free), n), np.uint8)
     for i, f in enumerate(free): # null vector: x_f = 1, the pivots from their rows
         B[i, f] = 1
@@ -416,9 +369,7 @@ def qc_dual(words, Z, extra=8, trials=200, seed=0):
     found = {}
     for _ in range(trials):
         perm = rng.permutation(n)
-        Ap = _packed(B0[:, perm])
-        p2 = _eliminate(Ap, n)
-        rows = _unpacked(Ap[:len(p2)], n)
+        rows, _ = rref(B0[:, perm])
         rows_full = np.zeros_like(rows)
         rows_full[:, perm] = rows
         for r_ in rows_full:
@@ -451,8 +402,7 @@ def qc_size(words, candidates=None, extra=8):
         if W < G + extra:
             continue
         M = np.concatenate([_qc_rows(words[w], Z, G) for w in range(G + extra)])
-        A = _packed(M)
-        nul = n - len(_eliminate(A, n))
+        nul = n - rank(M)
         if nul:
             out[Z] = nul
     return out

@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from rpps.analysis import recurrence as R
+from rpps.math import gf2
 
 N = 200000
 V35 = 1 | 1 << 3 | 1 << 20          # feedthrough, ITU V.35
@@ -52,10 +53,10 @@ def test_white_bits_have_none():
 
 def test_multiples_are_dropped(data):
     found = R.search(feedthrough(data, DVB), 20)
-    assert found[0].poly == DVB and all(R.pmod(r.poly, DVB) for r in found[1:])
+    assert found[0].poly == DVB and all(gf2.pmod(r.poly, DVB) for r in found[1:])
 
 def test_gcd():
-    assert R.gcd(R.pmul(DVB, 0b1011), R.pmul(DVB, 0b111)) == DVB # 1 + x + x^3 and 1 + x + x^2: coprime
+    assert gf2.pgcd(gf2.pmul(DVB, 0b1011), gf2.pmul(DVB, 0b111)) == DVB # 1 + x + x^3 and 1 + x + x^2: coprime
 
 def test_degree_limit():
     with pytest.raises(ValueError):
@@ -94,5 +95,5 @@ def test_high_degree_by_berlekamp_massey():
     data = np.tile(word, 4000)
     s = feedthrough(feedthrough(data, 1 | 1 << 18 | 1 << 23), 1 | 1 << 18 | 1 << 23)
     C, deg, holds = R.lfsr(s)
-    assert holds == 1.0 and R.pmod(C, R.pmul(1 | 1 << 18 | 1 << 23, 1 | 1 << 18 | 1 << 23)) == 0 and deg <= 46 + 24
-    assert R.berlekamp_massey(lfsr(DVB, 200))[1] == 15
+    assert holds == 1.0 and gf2.pmod(C, gf2.pmul(1 | 1 << 18 | 1 << 23, 1 | 1 << 18 | 1 << 23)) == 0 and deg <= 46 + 24
+    assert gf2.berlekamp_massey(lfsr(DVB, 200))[1] == 15

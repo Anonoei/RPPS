@@ -7,17 +7,27 @@ def show():
     """Show plots"""
     plt.show()
 
+STYLE = "dark_background" # rpps' figures; set rp.viz.base.STYLE = None to keep matplotlib's own
+
+def styled():
+    """A context in which new figures and axes get `STYLE` (nothing when it is None)"""
+    import contextlib
+    return plt.style.context(STYLE) if STYLE else contextlib.nullcontext()
+
 def figure() -> Figure:
     """Create a new figure"""
-    return plt.figure()
+    with styled():
+        return plt.figure()
 
 def subplot(*args, **kwargs) -> Axes:
     """Create/get a subplot"""
-    return plt.subplot(*args, **kwargs)
+    with styled():
+        return plt.subplot(*args, **kwargs)
 
 def subplots(*args, **kwargs):
     """Create subplots"""
-    return plt.subplots(*args, **kwargs)
+    with styled():
+        return plt.subplots(*args, **kwargs)
 
 def ion():
     """Enable interactive mode"""
@@ -37,7 +47,7 @@ def pause(interval: float):
 
 def axes(ax=None, **kw) -> Axes:
     """ax, or the axes of a new figure when it is None (kw: for plt.subplots)"""
-    return plt.subplots(**kw)[1] if ax is None else ax
+    return subplots(**kw)[1] if ax is None else ax
 
 def line(ax, x, y, title=None, left=None, right=None, xlabel=None, ylabel=None, grid=None, **style):
     """Plot y against x and return the line. ax: axes (None: a new figure), or the line an earlier call returned, which is

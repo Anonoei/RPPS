@@ -4,6 +4,7 @@ import pytest
 
 from rpps import _accel
 from rpps.analysis import cpm, ldpc
+from rpps.math import gf2
 from rpps import code as coding
 
 pytestmark = pytest.mark.skipif(not _accel.available(), reason="rpps._native is not built")
@@ -43,8 +44,8 @@ def test_gf2_elimination(shape):
     B = (rng.random((R, C)) < 0.4).astype(np.uint8)
     B[R//2:] = B[:R - R//2] ^ B[R - R//2 - 1::-1] # dependent rows
     def run():
-        A = ldpc._packed(B)
-        return ldpc._eliminate(A, nc), A
+        A = gf2.pack_rows(B)
+        return gf2.eliminate_packed(A, nc), A
     (p0, a0), (p1, a1) = both(run)
     assert p0 == p1 and np.array_equal(a0, a1)
 
@@ -58,7 +59,7 @@ def test_flooding_min_sum():
 
 @pytest.mark.parametrize("name", ["rs/204_188", "rs/ccsds_255_223"])
 def test_rs_syndromes(name):
-    c = coding.load("block", name).encoder
+    c = coding.load(f"block/{name}").encoder
     w = np.random.default_rng(2).integers(0, 256, (500, c.den)).astype(np.int64)
     s0, s1 = both(lambda: c.syndromes(w))
     assert np.array_equal(s0, s1)

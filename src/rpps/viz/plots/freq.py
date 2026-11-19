@@ -25,8 +25,8 @@ def psd_signals(ax, samps, signals, Fs=1.0, cf=0.0, vbw_hz=None):
     """The PSD with a box over each signal found (rpps.analysis.find_signals)"""
     ln = psd(ax, samps, Fs, cf, vbw_hz)
     for signal in signals:
-        left = cf + (signal.mid - signal.baud/2)
-        ln.axes.add_patch(patches.Rectangle((left, signal.bottom), signal.baud, signal.height, facecolor="blue", alpha=0.5, zorder=2))
+        left = cf + (signal.mid - signal.width/2)
+        ln.axes.add_patch(patches.Rectangle((left, signal.bottom), signal.width, signal.height, facecolor="blue", alpha=0.5, zorder=2))
     return ln
 
 def psdreal(ax, samps, Fs=1, cf=0, vbw_hz=None):

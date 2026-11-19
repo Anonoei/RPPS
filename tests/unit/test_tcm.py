@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from rpps.analysis import tcm
+from rpps.math import gf2
 
 def noisy(rng, k, M, esn0, turn=0, conj=False):
     y = np.exp(2j*np.pi*(k + turn)/M + 0.2j)
@@ -38,7 +39,7 @@ def test_uncoded_has_no_check():
 def test_fwht_matches_the_definition():
     a = np.random.default_rng(2).standard_normal(16)
     H = np.array([[(-1)**bin(i & j).count("1") for j in range(16)] for i in range(16)])
-    assert np.allclose(tcm.fwht(a), H @ a)
+    assert np.allclose(gf2.fwht(a), H @ a)
 
 def test_window_too_wide():
     with pytest.raises(ValueError):

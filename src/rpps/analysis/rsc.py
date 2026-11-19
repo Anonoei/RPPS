@@ -26,7 +26,8 @@ needed grow as (1 - 2 BER)^(-2w) log K (3GPP's w = 6: about 100 frames of 1000 b
 """
 import numpy as np
 
-from .tcm import fwht, window_counts
+from ..math.gf2 import fwht
+from .tcm import window_counts
 
 def _poly_str(p):
     return " + ".join(("1" if d == 0 else ("D" if d == 1 else f"D^{d}")) for d in range(p.bit_length()) if p >> d & 1)

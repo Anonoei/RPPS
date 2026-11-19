@@ -191,7 +191,6 @@ def test_signal_fields_and_survey_pick(rng):
     assert a.duty > 0.9 and a.resolved
     assert sv.pick(near=140e3) is b and sv.pick(freq=100e6 - 190e3) is a and sv.pick(index=1) is b
     assert sv.pick(strongest=True) in sv
-    assert a.baud == a.width # The old alias
 
 def test_signal_channel_isolates_and_decimates(rng):
     Fs = 1e6

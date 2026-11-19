@@ -23,6 +23,7 @@ import itertools
 import numpy as np
 
 from ..math.prob import z_critical
+from ..math.gf2 import pdivmod, berlekamp_massey, lfsr_taps
 from .fec import Hypothesis, Guess
 
 def descramble(bits, taps):
@@ -131,15 +132,6 @@ def _poly(taps):
         v |= 1 << int(t)
     return v
 
-def _pdiv(a, b):
-    """(quotient, remainder) of a(x)/b(x) over GF(2), ints"""
-    q, db = 0, b.bit_length()
-    while a.bit_length() >= db:
-        sh = a.bit_length() - db
-        q |= 1 << sh
-        a ^= b << sh
-    return q, a
-
 def _scrambler_polys():
     """{taps: name} of the feedthrough scramblers configured (config/scramble/feedthrough), and the known LFSRs"""
     from .. import code
@@ -166,7 +158,7 @@ def explain(taps, max_period=4096):
     for t, name in sorted(_scrambler_polys().items(), key=lambda kv: -max(kv[0])):
         g, k = _poly(t), 0
         while rest.bit_length() > g.bit_length() - 1 and rest != 1:
-            q, r = _pdiv(rest, g)
+            q, r = pdivmod(rest, g)
             if r:
                 break
             rest, k = q, k + 1
@@ -178,31 +170,11 @@ def explain(taps, max_period=4096):
     else:
         x_p = 1 # x^P mod rest, P counting up: rest divides x^P + 1 where that is 1
         for P in range(1, max_period + 1):
-            x_p = _pdiv(x_p << 1, rest)[1]
+            x_p = pdivmod(x_p << 1, rest)[1]
             if x_p == 1:
                 period = P
                 break
     return found, period, rest
-
-def berlekamp_massey(bits):
-    """(L, taps): the shortest LFSR that generates bits, s[n] = XOR of s[n-t] for t in taps, L its length"""
-    s = np.asarray(bits, dtype=np.uint8)
-    n = len(s)
-    C = np.zeros(n + 1, dtype=np.uint8); B = np.zeros(n + 1, dtype=np.uint8)
-    C[0] = B[0] = 1
-    L, m = 0, 1
-    for i in range(n):
-        d = s[i] ^ (int(np.dot(C[1:L + 1], s[i - L:i][::-1])) & 1 if L else 0)
-        if d == 0:
-            m += 1
-            continue
-        T = C.copy()
-        C[m:] ^= B[:n + 1 - m]
-        if 2*L <= i:
-            L, B, m = i + 1 - L, T, 1
-        else:
-            m += 1
-    return L, tuple(int(t) for t in np.nonzero(C[1:L + 1])[0][::-1] + 1)
 
 def lfsr_name(taps):
     """A known name for these taps (or their reciprocal), else the polynomial written out"""
@@ -237,7 +209,8 @@ def additive_search(bits, window=512, max_len=None, step=None):
     hits, tried = {}, 0
     for start in range(0, len(b) - window + 1, step):
         tried += 1
-        L, taps = berlekamp_massey(b[start:start + window])
+        C, L = berlekamp_massey(b[start:start + window])
+        taps = lfsr_taps(C, L)
         if 0 < L <= max_len and 2*L + 64 <= window and taps:
             hits.setdefault(taps, []).append(start)
     if not hits:

@@ -22,7 +22,7 @@ of a code under a feedthrough scrambler are f(D) h(D), and `gcd` of several give
 """
 import numpy as np
 
-from .tcm import fwht
+from ..math.gf2 import pmod, berlekamp_massey, fwht
 
 class Recurrence:
     """A check found: taps (delays, descending, without 0), poly (int: bit j = the coefficient of D^j), degree, weight
@@ -56,33 +56,6 @@ def window_counts(bits, L):
     for j in range(L + 1):
         idx |= b[L - j:L - j + n] << j
     return np.bincount(idx, minlength=1 << (L + 1)), n
-
-def pmod(a, b):
-    """a mod b over GF(2) (ints as polynomials)"""
-    db = b.bit_length()
-    while a and a.bit_length() >= db:
-        a ^= b << (a.bit_length() - db)
-    return a
-
-def pmul(a, b):
-    """a b over GF(2)"""
-    out = 0
-    while b:
-        if b & 1:
-            out ^= a
-        a <<= 1
-        b >>= 1
-    return out
-
-def gcd(*polys):
-    """Greatest common divisor over GF(2) of polynomials as ints"""
-    g = 0
-    for p in polys:
-        a, b = g, int(p)
-        while b:
-            a, b = b, pmod(a, b)
-        g = a
-    return g
 
 def soft_z(t, taps):
     """The soft statistic of a check over signed reliabilities t = tanh(LLR/2) (s's +-1 expected values): sum over
@@ -237,28 +210,6 @@ def keystream(bits, poly, data_bias=None, squarings=4, iters=30, alpha=0.8):
                 v ^= out[t + L - j]
         out[t] = v
     return Keystream(bits=out, agree=float(np.mean(out == k)), data=s ^ out, checks=held)
-
-def berlekamp_massey(bits):
-    """The shortest LFSR making bits: its connection polynomial (int, bit j the coefficient of D^j, bit 0 set) and
-    length L"""
-    s = [int(b) & 1 for b in bits]
-    C, B = 1, 1
-    L, m = 0, 1
-    for n in range(len(s)):
-        d = s[n]
-        for j in range(1, L + 1):
-            if C >> j & 1:
-                d ^= s[n - j]
-        if d == 0:
-            m += 1
-        elif 2*L <= n:
-            T = C
-            C ^= B << m
-            L, B, m = n + 1 - L, T, 1
-        else:
-            C ^= B << m
-            m += 1
-    return C, L
 
 def lfsr(bits, window=1024, windows=16, seed=0):
     """A linear recurrence of any degree up to window/2 that the bits keep (an LFSR scrambler over constant or periodic
