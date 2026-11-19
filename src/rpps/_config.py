@@ -84,7 +84,7 @@ def ls(domain, path=None, all=False):
 def _files(base):
     return sorted(base.rglob("*.json")) if base.is_dir() else []
 
-_INDEX = {} # str(directory) -> its definitions by path, by name and (once asked for) by alias
+_INDEX = {} # str(directory) -> its definitions by path and by name
 
 def _index(base, fresh=False):
     """The definitions below `base`, scanned once and again when `fresh` (a miss: a file may have been written since)"""
@@ -94,7 +94,7 @@ def _index(base, fresh=False):
         names = {}
         for f in files:
             names.setdefault(f.stem.lower(), []).append(f)
-        _INDEX[key] = {"files": files, "aliases": None, "names": names,
+        _INDEX[key] = {"files": files, "names": names,
                        "rel": {f.relative_to(base).with_suffix("").as_posix().lower(): f for f in files}}
     return _INDEX[key]
 
@@ -106,13 +106,6 @@ def _lookup(domain, ref, ref_l, base, fresh):
         if len(same) > 1:
             raise ConfigError(f"{domain}/{ref} is ambiguous, use one of {sorted(f.relative_to(base).with_suffix('').as_posix() for f in same)}")
         hit = same[0] if same else None
-    if hit is None:
-        if idx["aliases"] is None:
-            idx["aliases"] = {}
-            for f in idx["files"]:
-                for a in read_raw(f).get("aliases", []):
-                    idx["aliases"].setdefault(str(a).lower(), f)
-        hit = idx["aliases"].get(ref_l)
     return hit
 
 def locate(domain, ref, category=None, path=None):
@@ -120,8 +113,8 @@ def locate(domain, ref, category=None, path=None):
     e.g. ("block", "rs", "204_188"): the category, the group folders, the name.
 
     ref is the path below the category ("rs/204_188", case-insensitive); without folders it's a bare name, which must match one file.
-    Tried in each layer, user layers first: the exact path, a bare name, then an "aliases" entry of a definition (another
-    name it goes by: "dvbs.3_4_7", "adsb").
+    Tried in each layer, user layers first: the exact path, then a bare name. (Which standard uses a definition is its
+    "tags", not another name: `tagged("dvb-s")`.)
     category: only look under that folder"""
     ref_l = ref.lower().strip("/")
     for root in _roots(domain, path):
@@ -442,7 +435,7 @@ def evaluate(expr, values, name="expression"):
 
 # ---- Writing definitions
 
-_FIRST = ("base", "extends", "abstract", "type", "comment", "ref", "tags", "aliases") # Header keys, in this order
+_FIRST = ("base", "extends", "abstract", "type", "comment", "ref", "tags") # Header keys, in this order
 
 def format_json(v, ind=0):
     """The style of every file in config/: header keys first, a row of numbers on one line, one nested row per line"""

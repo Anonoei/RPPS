@@ -2,6 +2,7 @@
   "base": "scramble",
   "type": "feedthrough",
   "comment": "V.35 feedthrough scrambler",
+  "tags": ["v.35"],
   "register": "galois_left",
   "poly": [20, 3],
   "seed": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]

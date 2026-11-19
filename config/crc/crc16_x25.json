@@ -2,6 +2,7 @@
   "base": "crc",
   "type": "crc",
   "comment": "HDLC / X.25 / PPP FCS-16",
+  "tags": ["hdlc", "ax.25"],
   "width": 16,
   "poly": "0x1021",
   "init": "0xffff",

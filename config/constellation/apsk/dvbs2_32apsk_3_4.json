@@ -1,45 +1,10 @@
 {
   "base": "constellation",
-  "comment": "DVB-S2 32APSK for code rate 3/4: 4 points on a ring of radius 1 at 45 + 90k degrees, 12 on gamma1 = 2.84 at 15 + 30k, 16 on gamma2 = 5.27 at 22.5k (unit average energy once normalized)",
+  "extends": "apsk/dvbs2_32apsk",
+  "comment": "DVB-S2 32APSK for code rate 3/4: gamma1 = 2.84, gamma2 = 5.27",
   "ref": "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10",
-  "points": [
-    {"mag": 1, "pha": 45},
-    {"mag": 1, "pha": 135},
-    {"mag": 1, "pha": 225},
-    {"mag": 1, "pha": 315},
-    {"mag": 2.84, "pha": 15},
-    {"mag": 2.84, "pha": 45},
-    {"mag": 2.84, "pha": 75},
-    {"mag": 2.84, "pha": 105},
-    {"mag": 2.84, "pha": 135},
-    {"mag": 2.84, "pha": 165},
-    {"mag": 2.84, "pha": 195},
-    {"mag": 2.84, "pha": 225},
-    {"mag": 2.84, "pha": 255},
-    {"mag": 2.84, "pha": 285},
-    {"mag": 2.84, "pha": 315},
-    {"mag": 2.84, "pha": 345},
-    {"mag": 5.27, "pha": 0},
-    {"mag": 5.27, "pha": 22.5},
-    {"mag": 5.27, "pha": 45},
-    {"mag": 5.27, "pha": 67.5},
-    {"mag": 5.27, "pha": 90},
-    {"mag": 5.27, "pha": 112.5},
-    {"mag": 5.27, "pha": 135},
-    {"mag": 5.27, "pha": 157.5},
-    {"mag": 5.27, "pha": 180},
-    {"mag": 5.27, "pha": 202.5},
-    {"mag": 5.27, "pha": 225},
-    {"mag": 5.27, "pha": 247.5},
-    {"mag": 5.27, "pha": 270},
-    {"mag": 5.27, "pha": 292.5},
-    {"mag": 5.27, "pha": 315},
-    {"mag": 5.27, "pha": 337.5}
-  ],
-  "maps": [
-    {
-      "map": [17, 21, 23, 19, 16, 0, 1, 5, 4, 20, 22, 6, 7, 3, 2, 18, 24, 8, 25, 9, 13, 29, 12, 28, 30, 14, 31, 15, 11, 27, 10, 26],
-      "comment": "DVB-S2 32APSK: label (b0b1b2b3b4) of each point, inner ring, middle, outer, by angle"
-    }
-  ]
+  "params": {
+    "gamma1": 2.84,
+    "gamma2": 5.27
+  }
 }

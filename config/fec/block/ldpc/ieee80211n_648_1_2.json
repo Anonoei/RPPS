@@ -1,11 +1,7 @@
 {
   "base": "block",
-  "type": "ldpc",
+  "extends": "ieee80211n_648",
   "comment": "IEEE 802.11n/ac LDPC, codeword 648 bits, rate 1/2: the 12 x 24 matrix prototype of Table F-1 lifted by Z = 27 (each entry a right shift of the 27 x 27 identity, -1 a zero block). Systematic, message first",
-  "ref": "IEEE 802.11-2020 F.1 (Table F-1), 20.3.11.7",
-  "z": 27,
-  "iters": 50,
-  "alpha": 0.8,
   "shifts": [
     [0, -1, -1, -1, 0, 0, -1, -1, 0, -1, -1, 0, 1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
     [22, 0, -1, -1, 17, -1, 0, 0, 12, -1, -1, -1, -1, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1],

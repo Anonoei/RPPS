@@ -3,6 +3,7 @@
   "type": "block",
   "comment": "DVB-S2 bit interleaver, short frames: the LDPC codeword written column by column into 3 columns of 5400, read row by row",
   "ref": "EN 302 307-1 5.3.3, table 8",
+  "tags": ["dvb-s2"],
   "length": 16200,
   "cols": 5400
 }

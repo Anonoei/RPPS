@@ -134,9 +134,7 @@ def test_conv_stream_corrects_errors_across_chunks(rng):
     assert np.array_equal(got[:len(bits)], bits)
 
 TERMINATED = {
-    "base": "conv", "type": "split",
-    "encode": {"type": "conv", "num": 1, "den": 2, "generator": [[1, 0, 1], [1, 1, 1]], "constraint": 3, "terminated": True},
-    "decode": {"type": "viterbi", "num": 1, "den": 2, "generator": [[1, 0, 1], [1, 1, 1]], "constraint": 3, "terminated": True},
+    "base": "conv", "generator": [[1, 0, 1], [1, 1, 1]], "constraint": 3, "termination": "zero",
 }
 
 def test_terminated_conv_gets_its_tail_when_the_stream_ends(rng):

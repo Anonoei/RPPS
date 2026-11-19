@@ -2,6 +2,7 @@
   "base": "table",
   "comment": "DVB-S2 MODCODs with normal (64800 bits, short 0) and short (16200, short 1) frames that have constellations and codes here: QPSK 1/4 to 9/10, 8PSK 3/5 to 9/10, 16APSK 2/3 to 9/10, 32APSK 3/4 to 9/10 (short frames: none at 9/10). slots: 90-symbol slots per frame; interleaver: the bit interleaver (none for QPSK); kbch: BBFRAME bits",
   "ref": "EN 302 307-1 5.5.2.2, tables 5a, 5b, 7a, 7b, 5.4.3-5.4.4 tables 8-10",
+  "tags": ["dvb-s2"],
   "key": ["modcod", "short"],
   "columns": ["modcod", "short", "constellation", "slots", "interleaver", "ldpc", "bch", "kbch"],
   "rows": [

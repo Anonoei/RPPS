@@ -1,15 +1,10 @@
 {
   "base": "constellation",
-  "comment": "DVB-S2 8PSK labelling",
-  "points": [
-    {"mag": 1, "pha": 0},
-    {"mag": 1, "pha": 45},
-    {"mag": 1, "pha": 90},
-    {"mag": 1, "pha": 135},
-    {"mag": 1, "pha": 180},
-    {"mag": 1, "pha": 225},
-    {"mag": 1, "pha": 270},
-    {"mag": 1, "pha": 315}
+  "extends": "psk/8psk",
+  "comment": "DVB-S2 8PSK labelling: the points at 45k degrees",
+  "tags": ["dvb-s2"],
+  "rings": [
+    {"n": 8, "pha": 0}
   ],
   "maps": [
     {

@@ -71,13 +71,11 @@ def test_tailbiting_in_a_pipeline(rng):
     assert np.array_equal((rp.Data(cw, flush=True) / code).data, msg)
 
 def test_termination_names_and_octal_generators(rng):
-    obj = {"base": "conv", "type": "split",
-           "encode": {"type": "conv", "num": 1, "den": 2, "constraint": 7, "generator": ["0o133", "0o171"], "termination": "zero"},
-           "decode": {"type": "viterbi", "num": 1, "den": 2, "generator": ["0o133", "0o171"]}}
+    obj = {"base": "conv", "constraint": 7, "generator": ["0o133", "0o171"], "termination": "zero"}
     a = rp.code.serial.init("t", obj)
     b = rp.code.load("conv/k7_133_171/1_2")
     assert np.array_equal(a.encoder.generator, b.encoder.generator)
-    assert a.encoder.terminated and a.decoder.terminated # The decoder takes the encoder's termination and constraint
+    assert a.encoder.terminated and a.decoder.terminated # One set of keys: the decoder has the encoder's termination
     msg = bits(rng, 50)
     assert np.array_equal(a.decoder.decode(a.encoder.encode(msg)), msg)
     with pytest.raises(ValueError):

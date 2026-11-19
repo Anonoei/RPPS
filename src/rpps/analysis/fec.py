@@ -75,14 +75,17 @@ def _hard(y, pts, labels):
 def diff_alphabets(constellation):
     """Phase-change alphabets a differential receiver of `constellation` would demap against: {name: Constellation}
 
-    The dpsk definitions (config/constellation/dpsk) with as many points, and the constellation itself when 1 is one of
-    its points (DBPSK is BPSK)."""
-    from .. import symbol
+    The PSK definitions with as many points (config/constellation/psk: QPSK is the pi/4-DQPSK alphabet, qpsk_axes 802.11b's;
+    labelling variants such as the DVB-S2 maps are skipped), and the constellation itself when 1 is one of its points
+    (DBPSK is BPSK)."""
+    from .. import symbol, _config
     c = _constellation(constellation)
     out = {}
-    for stem in symbol.ls().get("dpsk", []):
-        d = symbol.load(stem)
-        if d.order == c.order:
+    for stem in symbol.ls().get("psk", []):
+        if stem.startswith("dvbs2_"):
+            continue
+        d = symbol.load(f"psk/{stem}")
+        if d.order == c.order and np.allclose(np.abs(d.points), 1, atol=1e-6):
             out[stem] = d
     if np.min(np.abs(c.points - 1)) < 1e-6:
         out[c.name] = c
@@ -598,10 +601,11 @@ def guess_conv(hyp):
     n = p["n"]
     if len(gens) < n: # Pair relations only name two of the generators
         return None
-    enc = {"type": "conv", "num": 1, "den": n, "constraint": p["K"], "generator": gens}
-    dec = {**enc, "type": "viterbi"}
-    return Guess("conv", {"base": "conv", "type": "split", "encode": enc, "decode": dec},
-                 {"z": hyp.z, "offset": p["offset"]})
+    from ..code.serial import mother
+    m = mother(gens, p["K"])
+    obj = {"base": "conv", "extends": m, "comment": f"found by rpps.analysis.fec: the mother code {m}"} if m else \
+          {"base": "conv", "constraint": p["K"], "generator": gens}
+    return Guess("conv", obj, {"z": hyp.z, "offset": p["offset"]})
 
 def guess_block(bits, n=None, offsets=None, hints=()):
     """Find a block code's length, alignment and parity checks. Returns a Guess or None

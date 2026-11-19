@@ -16,12 +16,11 @@ class linear(_code):
         self.check = np.transpose(check)
     @classmethod
     def from_config(cls, log, obj):
-        from .. import matrix
+        from ...math.gf2 import parity_to_gh
         if obj.get("p") is None: # Explicit generator and check matrices: (n, k) are their shape
             g, h = np.array(obj["g"], dtype=bool), np.array(obj["h"], dtype=bool)
-        else: # Parity block only
-            n, k = obj["code"]
-            g, h = matrix.linear(n, k, np.array(obj["p"], dtype=bool))
+        else: # Parity block only: "n", "k" and the k rows of "p"
+            g, h = parity_to_gh(obj["n"], obj["k"], np.array(obj["p"], dtype=bool))
         code = cls(log, g, h)
         code.t = obj.get("t") # errors a syndrome decoder corrects: needed where the minimum distance is too costly to find
         return code
