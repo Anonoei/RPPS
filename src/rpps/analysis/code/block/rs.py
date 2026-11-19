@@ -18,7 +18,8 @@ import math
 
 import numpy as np
 
-from ...fec import Hypothesis, Guess, frame_length
+from ...result import Hypothesis, Guess
+from ...framing.bits import frame_length
 from ....math.prob import deviance_z
 from ....math.gf import GF
 

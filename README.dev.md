@@ -281,7 +281,7 @@ squares per window against decisions, the taps carried from window to window). P
 `lms`, `cma`).
 
 `AcquireFEC` does for the channel code what `Acquire` does for the modulation: on timed, carrier-corrected symbols it
-finds which configured code they carry, under which bit map and alignment (`analysis.fec.identify`: convolutional codes,
+finds which configured code they carry, under which bit map and alignment (`analysis.identify.identify`: convolutional codes,
 Reed-Solomon and a Forney interleaver behind them, HDLC, block codes), turns the symbols to the map the decoder uses, and
 names the profile that decodes them (a shipped one with the same steps, or one built from what was found). After that the
 code itself is the tracker: once per window the symbols are re-encoded, and a carrier turn or a symbol slip is put right.

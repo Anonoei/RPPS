@@ -22,7 +22,7 @@ import numpy as np
 
 from ....math.gf2 import rank, nullspace, pmod, pgcd, porder, berlekamp_massey, lfsr_taps
 from ....math.prob import z_critical
-from ...fec import Hypothesis, Guess, recover_dual
+from ...result import Hypothesis, Guess
 
 EXTRA = 48 # Rows beyond the row length
 
@@ -403,3 +403,48 @@ def solve_block(bits, n=None, offset=None, llr=None, max_len=None, max_n2=128):
     return [(Hypothesis("block-blind", f"linear ({n},{k})", z, {**base, "kind": "linear"}),
              Guess("block", {"base": "block", "type": "ldpc", "n": int(n), "k": int(k), "checks": _checks(H),
                              "comment": "found by rpps.analysis.code.block.linear.solve_block (dense checks)"}, base))]
+
+def recover_dual(bits, n, offset=0, trials=40, seed=0, z_min=8.0):
+    """Recover parity checks of an unknown linear block code of length n from (noisy) hard bits
+
+    Words that are codewords satisfy every parity check h. For a random set of words, the null space of
+    their matrix contains the checks that no error among them broke, and anything that is a check satisfies
+    the other words too: so null vectors are verified against all words, and those that stand out
+    from 50% are kept. Needs about n words and a word error rate that leaves some subsets of words clean.
+
+    Returns dict(H, k, words, needed, ok). H is a basis of the checks (dense, not sparse).
+    """
+    rng = np.random.default_rng(seed)
+    bits = np.asarray(bits, dtype=np.uint8)
+    m = (len(bits) - offset)//n
+    words = bits[offset:offset+m*n].reshape(m, n)
+    out = {"H": np.zeros((0, n), dtype=np.uint8), "k": n, "words": m, "needed": 2*n, "ok": False}
+    if m < n:
+        return out
+    keep = np.zeros((0, n), dtype=np.uint8)
+    rank, stale = 0, 0
+    for _ in range(trials):
+        best_rank = rank
+        for s in (n//4, n//2, (3*n)//4, n-1):
+            idx = rng.choice(m, size=min(s, m), replace=False)
+            N = nullspace(words[idx])
+            if len(N) == 0:
+                continue
+            sat = 1.0 - ((words.astype(np.uint8) @ N.T.astype(np.uint8)) % 2).mean(axis=0)
+            z = (sat - 0.5)*2*np.sqrt(m)
+            good = N[z > z_min]
+            if len(good):
+                cat = np.concatenate((keep, good))
+                B = nullspace(nullspace(cat)) # Row space of cat: its dual's dual
+                keep = B
+                rank = len(keep)
+            best_rank = max(best_rank, rank)
+        stale = stale + 1 if rank == best_rank and best_rank == out["H"].shape[0] else 0
+        out["H"] = keep
+        if stale >= 3:
+            break
+    out["H"] = keep
+    out["k"] = n - len(keep)
+    out["ok"] = len(keep) > 0
+    out["needed"] = max(2*n, 2*out["k"] + 64)
+    return out

@@ -10,7 +10,7 @@ Each signal goes through the chain once: its channel (shift and decimation), Acq
 matrix matched filter and feed-forward carrier, then AcquireFEC (the code, its bit map and alignment, with the blind tools
 when `blind`). When no code is found, shipped profiles that find their own frames (a preamble and a header: DVB-S2) are run
 on the timed symbols. A step is "found" (a definition covers it), "guess" (a blind find: a definition once saved, see
-rpps.analysis.fec.Guess) or "unsolved", which ends the profile with what it might be: hypotheses and their weight, a
+rpps.analysis.identify.Guess) or "unsolved", which ends the profile with what it might be: hypotheses and their weight, a
 softmax over their z-scores (a clear leader near 100%, close calls shared).
 """
 import json

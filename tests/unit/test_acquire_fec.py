@@ -1,9 +1,9 @@
-"""Automatic FEC identification: rpps.analysis.fec.identify and the rp.sync.AcquireFEC stage"""
+"""Automatic FEC identification: rpps.analysis.identify.identify and the rp.sync.AcquireFEC stage"""
 import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.analysis import fec as F
+from rpps.analysis import identify as F
 from rpps.analysis.modulation.detect import Detection
 
 def noisy(s, rng, sigma=0.12):

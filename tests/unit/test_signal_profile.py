@@ -6,7 +6,7 @@ import pytest
 
 import rpps as rp
 from rpps.analysis import signal_profile as SP
-from rpps.analysis.fec import Hypothesis
+from rpps.analysis.result import Hypothesis
 
 def capture(path, x, Fs, shift, rng, noise=0.05):
     n = np.arange(len(x))
@@ -60,7 +60,7 @@ def test_candidates_are_one_per_code_with_softmax_weights():
     assert "generators 5 7" in c[0][0]
 
 def test_a_weak_code_does_not_confirm_a_doubtful_rate():
-    from rpps.analysis.fec import CodeDetection
+    from rpps.analysis.identify import CodeDetection
     weak = CodeDetection(found=True, kind="conv", name="k3_5_7/1_2", mismatch=0.041, baseline=0.139)
     strong = CodeDetection(found=True, kind="conv", name="k7_133_171/3_4", mismatch=0.0009, baseline=0.051)
     framed = CodeDetection(found=True, kind="conv", name="k7_133_171/3_4", mismatch=0.02, baseline=0.051)
