@@ -39,3 +39,39 @@ def test_frozen_early_positions():
 def test_transform_is_its_own_inverse():
     G = polar.transform(16).astype(np.int64)
     assert np.array_equal((G @ G) % 2, np.eye(16, dtype=np.int64))
+
+def test_low_snr_blind_successive_cancellation():
+    """(128, 64) with a polarization-weight frozen set at Es/N0 -2 dB (Eb/N0 +1 dB), 200 frames: found exactly, which
+    the column test can't do at +2 dB"""
+    rng = np.random.default_rng(5)
+    N = 128
+    fz = np.sort(polar.pw_order(N)[:64])
+    llr = awgn(rng, code(rng, N, fz, 200), -2.0)
+    r = polar.recognize(llr)
+    assert np.array_equal(r.frozen, fz)
+    s = polar.search(llr)
+    assert np.array_equal(s.frozen, fz) and s.construction == "polarization weight" and s.k == 64
+
+def test_search_corrects_a_noisy_blind_set():
+    """On (256, 128), 200 frames: at -3 dB the blind set is a few positions off and the construction nearest it is
+    exact; at -4 dB the construction is still named and within a few positions (0 to 4 over seeds)"""
+    rng = np.random.default_rng(6)
+    N = 256
+    fz = np.sort(polar.pw_order(N)[:128])
+    s = polar.search(awgn(rng, code(rng, N, fz, 200), -3.0))
+    assert np.array_equal(s.frozen, fz)
+    s = polar.search(awgn(rng, code(rng, N, fz, 200), -4.0))
+    assert s.construction == "polarization weight" and len(np.setxor1d(s.frozen, fz)) <= 4
+
+def test_sc_decodes_clean_frames():
+    rng = np.random.default_rng(7)
+    N = 64
+    fz = np.sort(polar.pw_order(N)[:32])
+    G = polar.transform(N)
+    u = rng.integers(0, 2, (20, N)).astype(np.uint8)
+    u[:, fz] = 0
+    x = (u.astype(np.int64) @ G.astype(np.int64)) % 2
+    mask = np.zeros(N, bool)
+    mask[fz] = True
+    got, _ = polar.sc(awgn(rng, x, 8.0), lambda i, L: np.zeros(len(L), np.uint8) if mask[i] else (L < 0).astype(np.uint8))
+    assert np.array_equal(got, u)

@@ -13,4 +13,5 @@ PYBIND11_MODULE(_native, m) {
     rpps::register_firdec(m);
     rpps::register_carrier(m);
     rpps::register_resample(m);
+    rpps::register_analysis(m);
 }

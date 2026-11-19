@@ -15,7 +15,13 @@
  - telemetry: PM telemetry end to end: each subcarrier's BPSK, line code (Manchester, differential) and frames
  - tcm, recurrence, interleaver, ldpc: trellis-coded modulation checks, every scrambler recurrence to degree 24,
    interleaver size and shape, LDPC reconstruction (blind, beside rs / scrambler / block)
- - rsc, polar: turbo constituent codes and interleaver, polar frozen positions (blind)
+ - rsc, polar: turbo constituent codes and interleaver (from noisy frames too), polar frozen positions and construction
+   (blind; successive cancellation at low SNR)
+ - cpm: GMSK and SOQPSK demodulated by a per-survivor sequence detector, blind to rate, carrier and timing
+ - ofdm_pilots: an OFDM signal's time-frequency grid and its pilot pattern (period, lattice, continual, boost)
+ - burst: TDMA bursts demodulated one by one on their shared preamble; the frame and slots
+ - separate: two co-channel signals of equal power, each one's carrier and timing, both symbol streams
+ - catalogue: measured features to named systems, with the reasons
  - payload: what decoded bits carry (framing signatures, or a randomness verdict)
  - impairments: amplifier compression (AM/AM, AM/PM), IQ imbalance, phase noise, neighbouring signals
  - scf, pencil: every cycle frequency (co-channel signals, FRESH filtering); matrix-pencil lines in short records
@@ -37,6 +43,7 @@ from . import quality
 from . import cyclic, cumulants, fsk, pm, telemetry
 from . import tcm, recurrence, interleaver, ldpc, payload, cancel
 from . import rsc, polar, impairments, scf, pencil
+from . import cpm, ofdm_pilots, burst, separate, catalogue
 from .modulation import detect, Detection
 
 from . import rate

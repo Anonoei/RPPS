@@ -41,3 +41,16 @@ def test_turbo_interleaver():
     assert c2 is None # the second parity has no check with s: interleaved
     got, agree = rsc.turbo_interleaver(S, P2, GF, GB)
     assert np.array_equal(got, perm) and np.all(agree == 1.0)
+
+def test_turbo_interleaver_from_noisy_frames():
+    """1024-bit frames at Es/N0 -1 dB (10% of the channel bits wrong), 300 frames: every position right, where the
+    division by g_f (turbo_interleaver) gets a few percent"""
+    rng = np.random.default_rng(5)
+    K, F = 1024, 300
+    perm = rng.permutation(K)
+    S = rng.integers(0, 2, (F, K))
+    P2 = np.array([rsc.encode(s[perm], GF, GB) for s in S])
+    sigma = np.sqrt(1/(2*10**(-1/10)))
+    llr = lambda b: 2*(1 - 2.0*b + sigma*rng.standard_normal(b.shape))/sigma**2
+    got, conf = rsc.turbo_interleaver_soft(llr(S), llr(P2), GF, GB)
+    assert np.array_equal(got, perm)

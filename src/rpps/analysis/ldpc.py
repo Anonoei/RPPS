@@ -22,6 +22,7 @@ over 2^-m at a few percent of clean words. Consecutive roots give a BCH code's d
 """
 import numpy as np
 
+from .. import _accel
 from ..math.gf import GF
 from ..math.gf2 import rref
 from .block import sparse_checks
@@ -88,7 +89,7 @@ def staircase(words, k, rel=None, trials=16, verify=256, seed=0, extra=()):
 
 def posterior(H, llr, iters=20, alpha=0.8):
     """A-posteriori LLRs of words (B, n) through the checks H (c, n) by normalized min-sum (flooding, all checks at once):
-    what the checks known so far say about each bit"""
+    what the checks known so far say about each bit. The C++ kernel ldpc_flood runs the same loop (this is its reference)"""
     H = np.asarray(H, dtype=bool)
     llr = np.asarray(llr, dtype=np.float64)
     deg = H.sum(axis=1)
@@ -98,6 +99,9 @@ def posterior(H, llr, iters=20, alpha=0.8):
     for i, h in enumerate(H):
         idx[i, :deg[i]] = np.flatnonzero(h)
     B, n = llr.shape
+    nat = _accel.native
+    if nat is not None and hasattr(nat, "ldpc_flood"):
+        return nat.ldpc_flood(np.ascontiguousarray(llr), idx, deg.astype(np.int64), int(iters), float(alpha))
     msg = np.zeros((B, len(H), dmax))
     total = llr.copy()
     flat = idx[valid]
@@ -260,7 +264,14 @@ def _unpacked(A, c):
     return np.unpackbits(A.astype(">u8").view(np.uint8), axis=1)[:, :c]
 
 def _eliminate(A, ncols):
-    """Reduced row echelon form in place over GF(2) of packed rows A, the first ncols columns as pivots: pivot columns"""
+    """Reduced row echelon form in place over GF(2) of packed rows A, the first ncols columns as pivots: pivot columns.
+    The C++ kernel (gf2_eliminate, Four Russians) gives the same matrix; this loop is its reference"""
+    nat = _accel.native
+    if nat is not None and hasattr(nat, "gf2_eliminate") and A.dtype == np.uint64 and A.flags.c_contiguous:
+        return list(nat.gf2_eliminate(A, int(ncols)))
+    return _eliminate_python(A, ncols)
+
+def _eliminate_python(A, ncols):
     r = 0
     piv = []
     R = A.shape[0]
