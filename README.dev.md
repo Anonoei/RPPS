@@ -513,7 +513,7 @@ Each is settled by the rule.
 | Function | Category | Why |
 |---|---|---|
 | Matched filter | wave | prepares samples for sampling; does not decide when |
-| Timing recovery (`MM`, `MAT`, `TLL`) | sync | estimates the sampling instant; the one sync step that changes representation |
+| Timing recovery (`MM`, `Mat`, `TLL`) | sync | estimates the sampling instant; the one sync step that changes representation |
 | Differential coding on complex symbols (`Differential`) | symbol | symbols ↔ symbols |
 | Differential coding on bits (NRZI) | code | bits ↔ bits |
 | Manchester / biphase as a pulse (`ShapingBiphase`) | wave | symbols ↔ samples |
@@ -762,6 +762,15 @@ of something that exists is a new file; a new kind needs a loader.
   `setup.py` at build time. So a wheel that lacks `config/` is broken: CI checks the count.
 - Parameters: a definition can declare `params`, and any value can be `{"param": ...}` or `{"expr": ...}` (evaluated at
   load time). A step's resource arguments go in `"args"`.
+- Parents and children: `"extends"` makes a definition another one with some keys changed (dicts merge, lists replace,
+  null deletes, params merge by name); `"abstract": true` parents hold a family's shared fields and do not load alone.
+  `_config.read` applies the chain, `_config.read_raw` is the file as written. A load-time choice is a param; a variant a
+  standard or table names is a child. Details in [config/README.md](config/README.md#parents-and-children).
+- Tags: `"tags"` (declared in config/tags.json) say which standards use a definition; `rp.tagged("dvb-s2")`,
+  `python -m rpps ls --tag dvb-s2`. There are no aliases: one name per definition.
+- One reference per loader: `rp.code.load("conv/k7_171_133/3_4")`, `rp.link.load("crc/crc32_mpeg2")`,
+  `rp.signal.filters.load("pulse/rrc/0p35")`, `rp.symbol.load("apsk/dvbs2_16apsk", gamma=2.85)`; `rp.load("<resource>/<ref>")`
+  for any of them. `rp.symbol.load` reads definitions only (`rp.symbol.generate` makes shapes by name).
 - Loaders register per resource (`_config.Domain.register(category, loader)`); `ls`, `find` and `load` then work on it.
   The keys each loader accepts are documented in the header of its module (linked from [config/README.md](config/README.md)).
 

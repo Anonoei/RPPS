@@ -8,13 +8,13 @@ RPPS is a generic signal processor/generator library.
 ## Usage
 
 Everything is driven by operators: `*` encodes / modulates / scrambles, `/` undoes it, `+` runs a DSP stage.
-The data carries its sample rate and the state of every stage, so there is nothing to set up or reset.
+The data carries its sample rate and the state of every stage from block to block (see "Things that surprise people" below).
 
 ### Bits to symbols and back ([file](https://github.com/Anonoei/RPPS/tree/main/tests/example.py))
 ```python
 import rpps as rp
 
-mod = rp.symbol.load("QPSK")           # first bit map; load("QPSK", "R090 inverted") for a rotated / spectrally inverted one. Or rp.symbol.QAM(16), rp.symbol.PSK(8), rp.symbol.APSK(32), or any point set from a config file
+mod = rp.symbol.load("psk/qpsk")       # first bit map; load("psk/qpsk", "R090 inverted") for a rotated / spectrally inverted one. Or rp.symbol.generate("16QAM"), rp.symbol.PSK(8), rp.symbol.APSK(32)
 ecc = rp.code.Hamming(7, 4)       # or rp.code.load("block/hamming/7_4")
 scr = rp.code.scram.load("v35")
 
@@ -59,6 +59,26 @@ can name, `python -m rpps rx ble/adv capture.cf64 --fs 4e6 --param channel=38` r
 is a new file in `config/profile/<family>/<mode>.json` (or in your own config directory, `rp.add_config_path`), built from
 the shipped definitions: constellations, pulses, codes, scramblers, sequences, headers. Writing one needs no code; see
 [README.dev.md](README.dev.md#profiles) for the format and the step kinds.
+
+### Things that surprise people
+- **What `rp.Data` makes of an array.** `bytes` and `uint8` arrays are bytes (`[0, 1, 1, 0]` as uint8 is 32 bits); bits
+  are `bool` (an int 0/1 array is an error, not bits); a float array is real samples, never LLRs; `complex64` with
+  `sps=1` is symbols, `complex128` stays samples. `Fs` defaults to 1.0.
+- **Partial blocks wait.** A code or constellation keeps what doesn't fill a block in the data's context until more
+  comes or the block is flushed: three bits through QPSK give one symbol, or two with `rp.Data(bits, flush=True)`.
+- **Two kinds of carried state.** A `Stage` (`+`) keeps its state in the stream: pass `stream=prev.stream` to go on.
+  A `Pipe` (`*`, `/`) keeps it in the context: `ctx=prev.ctx`. A fresh `rp.Data(chunk)` starts both over. Iterating a
+  source does this for you.
+- **Some state lives on the operator.** `Feedthrough.encode(array)` called directly moves the register (`reset()` starts
+  it over); `control()` changes the operator for everyone holding it; decode status (`code.errors`, `crc.ok`) is the
+  last call's, on shared cached objects.
+- **Bits to a link layer go through `rp.code.Uncoded()`.** `syms / qpsk / crc` is an error: channel bits are not data
+  bits until a code (or `Uncoded`) says so.
+- **LLRs are log(P0/P1)**: positive means 0, a hard decision is `llr < 0`.
+- **Bit order is most significant first** (bytes, constellation labels, RS symbols, markers), except HDLC bytes on the
+  wire (least significant first), recurrence `init` integers (`lsb` unless `"order": "msb"`) and headers that say `"lsb"`.
+- **Shapes and definitions are separate.** `rp.symbol.load("psk/qpsk")` reads a definition; `rp.symbol.generate("16QAM")`
+  makes a shape; DVB-S2's 16APSK is `rp.symbol.load("apsk/dvbs2_16apsk_3_4")`, not `generate("16APSK")`.
 
 ### Real time
 ```python
