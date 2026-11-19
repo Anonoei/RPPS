@@ -183,7 +183,7 @@ def test_acquire_fec_does_not_depend_on_block_size():
     s = rp.symbol.load("qpsk").modulate(cw)*1j
     x = (s + 0.1*(rng.standard_normal(len(s)) + 1j*rng.standard_normal(len(s)))).astype(np.complex64)
     stage = rp.sync.AcquireFEC(window=4096, skip=256, max_wait=8192)
-    outs = []
+    outs, names = [], set()
     for sp in cuts(len(x)):
         stream, out, i = None, [], 0
         for b in sp:
@@ -193,8 +193,11 @@ def test_acquire_fec_does_not_depend_on_block_size():
                 stream.det = Detection(mod="qpsk", baud=1e4, sps=1.0)
             out.append((d + stage).data)
             i += b
-        assert stream.est["fec"].name == "k7_133_171/1_2"
+        # The code, or the same code with its generators swapped (I and Q swapped): the one a shipped profile uses wins
+        assert stream.est["fec"].name in ("k7_133_171/1_2", "k7_171_133/1_2")
+        names.add(stream.est["fec"].name)
         outs.append(np.concatenate(out))
+    assert len(names) == 1
     n = min(len(o) for o in outs)
     assert n > 8000 and all(np.array_equal(o[:n], outs[0][:n]) for o in outs)
 

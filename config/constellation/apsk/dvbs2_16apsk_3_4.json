@@ -1,0 +1,29 @@
+{
+  "base": "constellation",
+  "comment": "DVB-S2 16APSK for code rate 3/4: 4 points on a ring of radius 1 at 45 + 90k degrees, 12 on a ring of radius gamma = 2.85 at 15 + 30k (unit average energy once normalized)",
+  "ref": "EN 302 307-1 V1.2.1 5.4.3, figure 11, table 9",
+  "points": [
+    {"mag": 1, "pha": 45},
+    {"mag": 1, "pha": 135},
+    {"mag": 1, "pha": 225},
+    {"mag": 1, "pha": 315},
+    {"mag": 2.85, "pha": 15},
+    {"mag": 2.85, "pha": 45},
+    {"mag": 2.85, "pha": 75},
+    {"mag": 2.85, "pha": 105},
+    {"mag": 2.85, "pha": 135},
+    {"mag": 2.85, "pha": 165},
+    {"mag": 2.85, "pha": 195},
+    {"mag": 2.85, "pha": 225},
+    {"mag": 2.85, "pha": 255},
+    {"mag": 2.85, "pha": 285},
+    {"mag": 2.85, "pha": 315},
+    {"mag": 2.85, "pha": 345}
+  ],
+  "maps": [
+    {
+      "map": [12, 14, 15, 13, 4, 0, 8, 10, 2, 6, 7, 3, 11, 9, 1, 5],
+      "comment": "DVB-S2 16APSK: label (b0b1b2b3) of each point, inner ring then outer, by angle"
+    }
+  ]
+}

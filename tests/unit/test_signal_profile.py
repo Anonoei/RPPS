@@ -67,6 +67,17 @@ def test_a_weak_code_does_not_confirm_a_doubtful_rate():
     framed.profile_name = "dvbs/qpsk_3_4"
     assert not SP._strong(weak) and SP._strong(strong) and SP._strong(framed)
 
+def test_symbols_far_noisier_than_the_band_make_the_fit_doubtful():
+    from rpps.analysis.modulation import Detection
+    sig = rp.analysis.Signal(0.0, 1.2e6, 0.0, 1.0, snr=20.0)
+    locked = Detection(baud=1e6, esn0=20.5)
+    lost = Detection(baud=1e6, esn0=2.0) # A 20 dB band whose symbols measure 2 dB: not on this constellation
+    want, gap = SP.esn0_gap(sig, locked)
+    assert abs(want - (20 + 10*np.log10(1.2))) < 1e-9 # The band's SNR at this rate
+    assert abs(gap - (want - 20.5)) < 1e-9 and gap < SP.ESN0_GAP
+    assert SP.esn0_gap(sig, lost)[1] > SP.ESN0_GAP
+    assert SP.esn0_gap(rp.analysis.Signal(0.0, 1.2e6, 0.0, 1.0), lost) == (None, None) # No band SNR: nothing to compare
+
 def test_detection_keeps_the_rate_line_it_came_from():
     rng = np.random.default_rng(2)
     q = rp.symbol.load("qpsk")

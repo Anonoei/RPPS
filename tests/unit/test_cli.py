@@ -26,3 +26,15 @@ def test_rx_decodes_a_capture(tmp_path, capsys):
     assert cli.main(["rx", "dvbs2/normal", str(tmp_path/"cap.cf64"), "--fs", str(o.Fs), "--out", str(tmp_path/"out.bin")]) == 0
     got = np.unpackbits(np.fromfile(tmp_path/"out.bin", np.uint8)).astype(bool)
     assert np.array_equal(got[:len(data)], data)
+
+def test_solve_names_a_prbs_in_a_bit_file(tmp_path, capsys):
+    from rpps.cli import main
+    rng = np.random.default_rng(0)
+    s = list(rng.integers(0, 2, 23))
+    while len(s) < 30000:
+        s.append(s[-23] ^ s[-18])
+    path = tmp_path / "bits.npy"
+    np.save(path, np.array(s, np.uint8))
+    assert main(["solve", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "PRBS23" in out and "scrambler-additive" in out

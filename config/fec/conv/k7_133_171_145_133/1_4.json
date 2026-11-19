@@ -1,0 +1,32 @@
+{
+  "base": "conv",
+  "type": "split",
+  "comment": "DAB mother code rate 1/4, K=7: 133, 171, 145, 133 octal, outputs x0..x3, zero-terminated (DAB punctures it by the PI vectors of clause 11.1.2)",
+  "ref": "ETSI EN 300 401 V2.1.1 11.1.1",
+  "encode": {
+    "type": "conv",
+    "num": 1,
+    "den": 4,
+    "constraint": 7,
+    "generator": [
+      [1, 0, 1, 1, 0, 1, 1],
+      [1, 1, 1, 1, 0, 0, 1],
+      [1, 1, 0, 0, 1, 0, 1],
+      [1, 0, 1, 1, 0, 1, 1]
+    ],
+    "termination": "zero"
+  },
+  "decode": {
+    "type": "viterbi",
+    "num": 1,
+    "den": 4,
+    "constraint": 7,
+    "generator": [
+      [1, 0, 1, 1, 0, 1, 1],
+      [1, 1, 1, 1, 0, 0, 1],
+      [1, 1, 0, 0, 1, 0, 1],
+      [1, 0, 1, 1, 0, 1, 1]
+    ],
+    "termination": "zero"
+  }
+}
