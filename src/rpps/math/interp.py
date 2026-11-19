@@ -87,3 +87,21 @@ def fractional(x, t, taps=4):
     a = (p - k)[:, None]
     h = (1 - a)*tab[k] + a*tab[k + 1]
     return np.sum(h*np.asarray(x)[i[:, None] + n[None, :]], axis=1)
+
+def interpolate(x, pos, taps=16, chunk=1 << 16):
+    """x at fractional sample positions pos (Kaiser-windowed sinc, `taps` long; x band-limited below Fs/2; outside x
+    is 0), `chunk` positions at a time"""
+    x = np.asarray(x, dtype=np.complex128)
+    pos = np.asarray(pos, dtype=np.float64)
+    k = np.arange(-taps//2 + 1, taps//2 + 1)
+    half = taps/2
+    out = np.empty(len(pos), np.complex128)
+    for a in range(0, len(pos), chunk):
+        p = pos[a:a + chunk]
+        i0 = np.floor(p).astype(np.int64)
+        d = k[None, :] - (p - i0)[:, None]
+        w = np.sinc(d)*np.i0(6.0*np.sqrt(np.clip(1 - (d/half)**2, 0, None)))/np.i0(6.0)
+        idx = i0[:, None] + k[None, :]
+        valid = (idx >= 0) & (idx < len(x))
+        out[a:a + chunk] = np.sum(np.where(valid, x[np.clip(idx, 0, max(len(x) - 1, 0))], 0)*w, axis=1)
+    return out

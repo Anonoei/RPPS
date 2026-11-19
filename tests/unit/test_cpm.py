@@ -1,5 +1,7 @@
 """GMSK and SOQPSK demodulated blind (rpps.analysis.modulation.cpm)"""
 import numpy as np
+
+from rpps.math.interp import interpolate
 import pytest
 
 from rpps.analysis.modulation import cpm
@@ -11,7 +13,7 @@ def channel(rng, name, n, baud, Fs, ebn0, cfo=0.0, tau=0.0, ppm=0.0):
     y = cpm.modulate(b, name, up)
     t = np.arange(int(n/baud*Fs) - 40)/Fs*baud*(1 + ppm*1e-6)*up + tau*up
     t = t[t < len(y) - 10]
-    z = cpm.interpolate(y, t, 32)*np.exp(1j*(1.1 + 2*np.pi*cfo*np.arange(len(t))/Fs))
+    z = interpolate(y, t, 32)*np.exp(1j*(1.1 + 2*np.pi*cfo*np.arange(len(t))/Fs))
     s = np.sqrt(Fs/baud/2/10**(ebn0/10))
     return b, z + s*(rng.standard_normal(len(z)) + 1j*rng.standard_normal(len(z)))
 
