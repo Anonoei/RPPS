@@ -68,7 +68,7 @@ def depuncture(llr, rate):
 
 def interleave_perm(ncbps, nbpsc):
     """For each coded bit index k of the transmitted symbol: its position j after the two permutations of 17.3.5.7 (rpps interleave/block/wifi_ofdm)"""
-    return np.argsort(rp.code.load("interleave", "wifi_ofdm", ncbps=ncbps, nbpsc=nbpsc).encoder.src)
+    return np.argsort(rp.code.load("interleave/wifi_ofdm", ncbps=ncbps, nbpsc=nbpsc).encoder.src)
 
 _QAM = {4: rp.symbol.QAM(16), 6: rp.symbol.QAM(64)} # 802.11 Gray mapping (17.3.5.8): rpps QAM labels are the same
 

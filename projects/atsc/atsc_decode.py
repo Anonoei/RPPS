@@ -28,7 +28,7 @@ DELAY = BRANCHES*BRANCH_MULT*(BRANCHES - 1) # 10608 bytes: every byte is delayed
 
 # ------------------------------------------------------------------------------------------------ trellis
 
-_TCM = rp.code.load("block", "trellis/atsc_8vsb").decoder # 8 states: the precoder's last Z2 and the 4-state code
+_TCM = rp.code.load("block/trellis/atsc_8vsb").decoder # 8 states: the precoder's last Z2 and the 4-state code
 _RS = rp.code.RS(207, 187).decoder # t = 10; rpps._native decodes the codewords in C++ on several threads (RPPS_NO_NATIVE=1: Python loops)
 
 

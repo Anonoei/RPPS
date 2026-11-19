@@ -45,7 +45,7 @@ def noisy_symbols(c, n, rows, noise, seed):
 @pytest.mark.parametrize("name,noise", [("QPSK", 0.2), ("8PSK", 0.15), ("16QAM", 0.1), ("dvbs2_qpsk", 0.3), ("dvbs2_8psk", 0.1)])
 @pytest.mark.parametrize("rows", [1, 5])
 def test_demap(name, noise, rows):
-    c = rp.symbol.load(name)
+    c = rp.symbol.load_or_generate(name)
     X = noisy_symbols(c, 700, rows, noise, 3)
     both(c, DECODE, X, form(rp.Category.SYMBOL, rp.dtype.SYMBOLS, rp.Rep.SYMBOLS))
 
@@ -105,38 +105,38 @@ SOFT = form(rp.Category.SYMBOL, rp.dtype.LLR, rp.Rep.CHANNEL, Mod)
 
 @pytest.mark.parametrize("name", ["hamming/7_4", "golay/23_12", "bch/dvbs2_1_2"])
 def test_block_code_hard(name):
-    code = rp.code.load("block", name)
+    code = rp.code.load(f"block/{name}")
     X = coded_frames(code, 3, 4, 1, flips=1)
     k, got, _ = both(code, DECODE, X, HARD)
     assert got.x.shape[0] == 4
 
 @pytest.mark.parametrize("name", ["ldpc/gallager_96_48", "ldpc/3_6"])
 def test_block_code_soft(name):
-    code = rp.code.load("block", name)
+    code = rp.code.load(f"block/{name}")
     X = coded_frames(code, 4, 5, 2, noise=0.8)
     both(code, DECODE, X, SOFT)
 
 def test_ldpc_dvbs2_frame_batch():
-    code = rp.code.load("block", "ldpc/dvbs2_64800_1_2")
+    code = rp.code.load("block/ldpc/dvbs2_64800_1_2")
     X = coded_frames(code, 1, 3, 3, noise=1.0)
     both(code, DECODE, X, SOFT)
 
 def test_block_interleaver():
-    il = rp.code.load("interleave", "dvbs2_8psk")
+    il = rp.code.load("interleave/dvbs2_8psk")
     rng = np.random.default_rng(6)
     X = rng.normal(size=(3, 2*il._block(False))).astype(np.float32)
     both(il, DECODE, X, SOFT)
 
 def test_forney_interleaver_and_encoding_have_no_kernel():
     from rpps.parallel.kernel import kernel_of
-    fy = rp.code.load("interleave", "forney/12_17")
-    c = rp.code.load("block", "hamming/7_4")
+    fy = rp.code.load("interleave/forney/12_17")
+    c = rp.code.load("block/hamming/7_4")
     for op, how in ((fy, DECODE), (c, ENCODE)):
         step = SimpleNamespace(id="t", rx=[(how, op)], tx=[])
         assert isinstance(kernel_of(step, {}), LoopKernel)
 
 def test_a_frame_that_is_not_whole_blocks_reports_the_rest():
-    code = rp.code.load("block", "hamming/7_4")
+    code = rp.code.load("block/hamming/7_4")
     X = np.concatenate((coded_frames(code, 2, 3, 7, flips=1), np.zeros((3, 3), bool)), axis=1)
     k, got, ref = both(code, DECODE, X, HARD)
     assert got.notes == ref.notes and got.notes[0][0]["items"] == 3
@@ -144,7 +144,7 @@ def test_a_frame_that_is_not_whole_blocks_reports_the_rest():
 def test_thread_safe_ldpc_state_stays_per_call():
     """Two decodes of one code on different threads: each result is its own (the code keeps nothing a decode reads back)"""
     from concurrent.futures import ThreadPoolExecutor
-    code = rp.code.load("block", "ldpc/gallager_96_48")
+    code = rp.code.load("block/ldpc/gallager_96_48")
     A, B = coded_frames(code, 8, 1, 1, noise=0.7)[0], coded_frames(code, 8, 1, 2, noise=0.7)[0]
     want = [code.decoder.decode(A).copy(), code.decoder.decode(B).copy()]
     with ThreadPoolExecutor(4) as pool:
@@ -174,7 +174,7 @@ def reference_llr(c, syms):
 @pytest.mark.parametrize("name,noise", [("QPSK", 0.3), ("8PSK", 0.12), ("16QAM", 0.08), ("dvbs2_8psk", 0.1)])
 def test_llr_is_the_definition(name, noise):
     """The shared implementation against the plain log-sum-exp, which it replaced"""
-    c = rp.symbol.load(name)
+    c = rp.symbol.load_or_generate(name)
     x = noisy_symbols(c, 600, 1, noise, 9)[0]
     np.testing.assert_allclose(c.llr(x), reference_llr(c, x), rtol=1e-5, atol=1e-4)
 
@@ -251,7 +251,7 @@ def numpy_demap(monkeypatch):
 @pytest.mark.parametrize("name,noise", [("QPSK", 0.2), ("8PSK", 0.1), ("16QAM", 0.06), ("dvbs2_8psk", 0.1), ("32APSK", 0.05)])
 @pytest.mark.parametrize("kw", [{}, {"maxlog": True}, {"noise_var": 0.05}])
 def test_native_demap_equals_numpy(numpy_demap, name, noise, kw):
-    c = rp.symbol.load(name)
+    c = rp.symbol.load_or_generate(name)
     a, b = numpy_demap(noisy_symbols(c, 500, 3, noise, 11).astype(np.complex128), c, **kw)
     assert a.shape == b.shape and a.dtype == b.dtype == np.float32
     np.testing.assert_allclose(a, b, rtol=1e-5, atol=1e-4)

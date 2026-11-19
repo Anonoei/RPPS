@@ -14,9 +14,9 @@ def _unit_power(points):
     return points / np.sqrt(np.mean(np.abs(points)**2))
 
 def psk(M, offset=None):
-    """M points round the unit circle, counter-clockwise from `offset` (default: pi/M, so QPSK sits at 45 degrees)
-    Labels: Gray, going round the circle"""
-    offset = np.pi/M if offset is None else offset
+    """M points round the unit circle, counter-clockwise from `offset` (default: pi/M, so QPSK sits at 45 degrees; BPSK at 0,
+    on the real axis, as config/constellation/psk/bpsk). Labels: Gray, going round the circle"""
+    offset = (0.0 if M == 2 else np.pi/M) if offset is None else offset
     pts = np.exp(1j*(offset + 2*np.pi*np.arange(M)/M))
     return pts, gray(np.arange(M))
 

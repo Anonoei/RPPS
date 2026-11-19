@@ -1,7 +1,7 @@
 """
 RPPS command line interface
 
-    python -m rpps ls [category ...]
+    python -m rpps ls [category ...] [--tag dvb-s2] [--tags] [--all]
     python -m rpps steps
     python -m rpps survey <file> --fs <Hz> [--fmt <format>] [--cf <Hz>] [--plot]
     python -m rpps profile <file> --fs <Hz> [--fmt <format>] [--signals 0,3] [--no-blind] [--json out.jsonl]
@@ -20,16 +20,16 @@ from pathlib import Path
 
 # name -> (title, function of the rpps module giving {group: [names]}). Static, so --help needs no import of rpps
 CATEGORIES = {
-    "constellation": ('Constellations  (rp.symbol.load("<name>"[, "<mapping>"]))', lambda rp: rp.symbol.ls()),
-    "pulse": ('Pulses  (rp.signal.filters.load("pulse", "<family>/<name>"))', lambda rp: rp._config.ls("pulse")),
-    "filter": ('Filters  (rp.signal.filters.load(<kind>, "<family>/<name>"))', lambda rp: rp._config.ls("filter")),
+    "constellation": ('Constellations  (rp.symbol.load("<group>/<name>"[, "<mapping>"]); shapes: rp.symbol.generate("16QAM"))', lambda rp: rp.symbol.ls()),
+    "pulse": ('Pulses  (rp.signal.filters.load("pulse/<family>/<name>"))', lambda rp: rp._config.ls("pulse")),
+    "filter": ('Filters  (rp.signal.filters.load("<kind>/<family>/<name>"))', lambda rp: rp._config.ls("filter")),
     "sequence": ('Sequences  (rp.sequence.load("<name>"))', lambda rp: rp.sequence.ls()),
     "scramble": ('Scramblers  (rp.code.scram.load("<name>"))', lambda rp: rp.code.scram.ls()),
-    "fec": ('FEC  (rp.code.load(<kind>, "<family>/<name>"))', lambda rp: rp._config.ls("fec")),
-    "interleave": ('Interleavers  (rp.code.load("interleave", "<type>/<name>"))', lambda rp: rp._config.ls("interleave")),
-    "crc": ('CRCs  (rp.link.load("crc", "<name>"))', lambda rp: rp._config.ls("crc")),
-    "frame": ('Frames  (rp.link.load("frame", "<name>"))', lambda rp: rp._config.ls("frame")),
-    "header": ('Headers  (rp.symbol.load_header("<name>"), rp.link.load("header", "<name>"))', lambda rp: rp._config.ls("header")),
+    "fec": ('FEC  (rp.code.load("<kind>/<family>/<name>"))', lambda rp: rp._config.ls("fec")),
+    "interleave": ('Interleavers  (rp.code.load("interleave/<type>/<name>"))', lambda rp: rp._config.ls("interleave")),
+    "crc": ('CRCs  (rp.link.load("crc/<name>"))', lambda rp: rp._config.ls("crc")),
+    "frame": ('Frames  (rp.link.load("frame/<name>"))', lambda rp: rp._config.ls("frame")),
+    "header": ('Headers  (rp.symbol.load_header("<name>"), rp.link.load("header/<name>"))', lambda rp: rp._config.ls("header")),
     "table": ('Tables  (rp.profile.table("<family>/<name>"))', lambda rp: rp._config.ls("table")),
     "profile": ('Profiles  (rp.profile.load("<family>/<mode>"))', lambda rp: rp.profile.ls()),
     "windows": ("Built-in Windows  (rp.signal.filters.Window.get(<name>))", lambda rp: {"windows": rp.signal.filters.Window.s()}),
@@ -51,6 +51,18 @@ def _show(title, groups, width):
 def cmd_ls(args):
     import rpps as rp
     width = min(shutil.get_terminal_size((100, 20)).columns, 120)
+    if args.tags:
+        used = rp.tagged()
+        _show("Tags  (python -m rpps ls --tag <tag>)", {t: [f"{v.get('comment', '')} ({sum(len(r) for r in used.get(t, {}).values())})"]
+                                                      for t, v in rp.tags().items()}, width)
+        return 0
+    if args.tag:
+        _show(f"Tagged {args.tag}  (rp.tagged({args.tag!r}))", rp.tagged(args.tag, all=args.all), width)
+        return 0
+    if args.all:
+        for name in args.category or [c for c in CATEGORIES if c in rp._config.domains()]:
+            _show(name, rp._config.ls(name, all=True), width)
+        return 0
     for name in args.category or CATEGORIES:
         title, fn = CATEGORIES[name]
         _show(title, fn(rp), width)
@@ -80,8 +92,8 @@ def cmd_show(args):
     if file is None:
         print(f"{args.ref}: not found", file=sys.stderr)
         return 1
-    print(f"# {file}")
-    print(_config.format_json(_config.read(file)))
+    print(f"# {file}" + ("  (extends applied)" if "extends" in _config.read_raw(file) else ""))
+    print(_config.format_json(_config.expand(file)))
     return 0
 
 
@@ -194,7 +206,7 @@ def cmd_solve(args):
         fr = A.framing.find(x, args.mod)
         print(f"{len(x)} symbols: " + (str(fr) if fr else "no frame structure (no unique word repeats)"))
         if fr is None:
-            c = rp.symbol.load(args.mod)
+            c = rp.symbol.load_or_generate(args.mod)
             pts = np.asarray(c.points)/np.sqrt(np.mean(np.abs(c.points)**2))
             lab = np.asarray(c.mapping.arr)[np.argmin(np.abs(x[:, None]/np.sqrt(np.mean(np.abs(x)**2)) - pts[None]), axis=1)]
             bits = ((lab[:, None] >> np.arange(c.bits_per_symbol - 1, -1, -1)) & 1).ravel().astype(np.uint8)
@@ -274,6 +286,9 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="cmd", required=True)
     p_ls = sub.add_parser("ls", help="list the definitions there are, by resource")
     p_ls.add_argument("category", nargs="*", choices=list(CATEGORIES), help="limit output to these categories (default: all)")
+    p_ls.add_argument("--tag", help="only the definitions with this tag (a standard or system: dvb-s2, ccsds, ...), across every resource")
+    p_ls.add_argument("--tags", action="store_true", help="list the tags and how many definitions carry each")
+    p_ls.add_argument("--all", action="store_true", help="also the abstract parents other definitions extend")
     p_ls.set_defaults(fn=cmd_ls)
 
     p_steps = sub.add_parser("steps", help="list the step kinds and sync methods a profile can use")

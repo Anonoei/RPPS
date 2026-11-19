@@ -44,7 +44,7 @@ class Interpolate(Upsample):
     """Zero stuff by `ratio` and filter with `filt` (an FIR stage, a pulse shape) in one step: the same output as
     `Zeros(ratio) + filt`, in polyphase form, so the zeros are never multiplied (ratio times less work)
 
-        tx = symbols + rp.signal.sample.up.Interpolate(8, rp.signal.filters.load("pulse", "rrc/0_35"))
+        tx = symbols + rp.signal.sample.up.Interpolate(8, rp.signal.filters.load("pulse/rrc/0_35"))
 
     Output sample n*ratio + p is phase p of the taps (taps[p::ratio]) run over the input, so each phase is an ordinary
     FIR on the input samples, with one history shared by all of them. A flush (the end of the stream) also sends the

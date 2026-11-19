@@ -79,7 +79,7 @@ class Frame(Encap):
     def load(name, obj):
         from . import serial
         log = Logger().Child("Coding", _config.LOG_CODING).Child(name)
-        fcs = serial.load("crc", obj["fcs"]).encoder
+        fcs = serial.load(f"crc/{obj['fcs']}").encoder
         i_code = _hdlc_code(log, fcs, _int(obj, "flag", 0x7E), obj.get("stuff", 5), obj.get("nrzi", False), obj.get("min_bytes", 4))
         impl = type(name, (Frame,), dict())
         impl.name = name

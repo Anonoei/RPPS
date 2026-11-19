@@ -64,7 +64,7 @@ class Report:
 
 def _constellation(c):
     from .. import symbol
-    return symbol.load(c) if isinstance(c, str) else c
+    return symbol.load_or_generate(c) if isinstance(c, str) else c
 
 def _hard(y, pts, labels):
     """Hard bits of symbols y: the labels (values) of the nearest points"""
@@ -241,7 +241,7 @@ def _load_blocks():
     for folder in ("block",):
         for name in coding.names(folder):
             try:
-                enc = coding.load(folder, name).encoder
+                enc = coding.load(f"{folder}/{name}").encoder
             except Exception: # A config that doesn't load can't be a hypothesis
                 continue
             if hasattr(enc, "syndrome"):
@@ -315,7 +315,7 @@ def _label_configs(hyps):
     from .. import code as coding
     known = {}
     for name in coding.names("conv"):
-        c = coding.load("conv", name)
+        c = coding.load(f"conv/{name}")
         g = np.asarray(c.encoder.generator, dtype=np.uint8)
         known[name] = {tuple(map(tuple, g)), tuple(map(tuple, g[::-1]))}
     for h in hyps:
@@ -356,7 +356,7 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
     hyps, trials = [], 0
     rng = np.random.default_rng(0)
     for name in names:
-        code = coding.load("conv", name)
+        code = coding.load(f"conv/{name}")
         enc = code.encoder
         pat = enc.puncture if enc.puncture is not None else np.ones((enc.den, 1), dtype=bool)
         L = pat.shape[1]
@@ -386,7 +386,7 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
 def decode_conv(bits, hyp):
     """Run the config definition behind a conv-config hypothesis on a whole bit stream"""
     from .. import code as coding
-    code = coding.load(*hyp.coding)
+    code = coding.load("/".join(hyp.coding))
     seg = np.asarray(bits[hyp.params["offset"]:], dtype=np.uint8)
     nb = puncture_period(code)
     seg = seg[:len(seg)//nb*nb]
@@ -433,13 +433,13 @@ def scan_rs(bits, names=None, interleavers=True):
     inters = [(None, None)]
     if interleavers:
         for nm in coding.names("interleave"):
-            enc = coding.load("interleave", nm).encoder
+            enc = coding.load(f"interleave/{nm}").encoder
             if hasattr(enc, "I") and hasattr(enc, "M") and getattr(enc, "symbol", 8) == 8:
                 inters.append((nm, enc))
     hyps, trials, short = [], 0, False
     bits = np.asarray(bits, dtype=np.uint8)
     for name in names:
-        code = coding.load("block", name).encoder
+        code = coding.load(f"block/{name}").encoder
         if getattr(code, "m", 8) != 8: # The search runs on bytes: codes over other fields (P25's GF(64)) don't apply
             continue
         n = code.den
@@ -547,7 +547,7 @@ def recover_dual(bits, n, offset=0, trials=40, seed=0, z_min=8.0):
 
 class Guess:
     """A guessed definition (a code, a scrambler). Decoding only happens from a saved config: `save` it, then load it
-    (rp.code.load("block", "guess/<name>"), rp.code.scram.load("feedthrough/guess/<name>"))"""
+    (rp.code.load("block/guess/<name>"), rp.code.scram.load("feedthrough/guess/<name>"))"""
     __slots__ = ("kind", "definition", "evidence")
     FOLDER = {"block": ("fec", "block"), "rs": ("fec", "block"), "conv": ("fec", "conv"),
               "scramble": ("scramble", "feedthrough")} # kind: (config domain, folder in it)
@@ -646,7 +646,7 @@ def scan_hdlc(streams, names=None, min_frames=3):
     names = names or encap.ls().get("frame", [])
     hyps, trials = [], 0
     for name in names:
-        h = encap.load("frame", name).encoder
+        h = encap.load(f"frame/{name}").encoder
         f = h.flag_bits
         for tag, bits in streams.items():
             for pol in (0, 1):
@@ -723,7 +723,8 @@ def _symbol_steps(steps):
     from .. import symbol
     diff = any(s.get("symbol") == "differential" for s in steps)
     cons = [s for s in steps if s.get("symbol") == "constellation"]
-    return diff, [symbol.load(s["name"]).name for s in cons], cons
+    from ..profile.steps import constellation
+    return diff, [constellation(s).name for s in cons], cons
 
 @functools.lru_cache(maxsize=None)
 def _profile_codes():
@@ -880,7 +881,8 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
         if key[0] == "diff":
             d = diff_alphabets(c)[key[1]]
             return [{"symbol": "differential"}, {"symbol": "constellation", "name": key[1], "mapping": d.maps[key[2]].comment}]
-        return [{"symbol": "constellation", "name": c.name}]
+        from .. import _config
+        return [{"symbol": "constellation", **({"name": c.name} if _config.find("constellation", c.name) else {"shape": c.name})}]
 
     tried = [] # Every tier's hypotheses: the report when nothing stands out
     hyps, trials = scan_defined_conv(head, names)
@@ -903,12 +905,12 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
                 and h.params["mismatch"] < 0.5*(conv.params["mismatch"] + conv.params["baseline"])]
         same = list({str(h.params["stream"]): h for h in same}.values())
         out = CodeDetection(found=True, mod=c.name, kind="conv", name=conv.coding[1], stream=key, offset=conv.params["offset"],
-                            period=puncture_period(cached(*conv.coding)),
+                            period=puncture_period(cached("/".join(conv.coding))),
                             equivalent=[h.params["stream"] for h in same], z=conv.z, mismatch=conv.params["mismatch"],
                             baseline=conv.params["baseline"], report=rep, n=len(y))
         steps = pre + symbol_steps(key) + [{"sync": "puncture", "fec": out.name},
                                            {"code": "fec", "type": "conv", "name": out.name}]
-        info = decode_tail(bit_streams(y, c, differential, keys=[key])[key], cached(*conv.coding))
+        info = decode_tail(bit_streams(y, c, differential, keys=[key])[key], cached("/".join(conv.coding)))
         h, t, short = scan_rs(info)
         rs_rep = Report(h, t, None)
         rs = rs_rep.verdict
@@ -918,7 +920,7 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
         if rs is not None:
             out.inner.append(rs)
             p = rs.params
-            n = cached("block", rs.name).encoder.den
+            n = cached(f"block/{rs.name}").encoder.den
             pat, _ = frame_markers(info ^ p["polarity"], n, p["bit_offset"], p["byte_phase"])
             if pat is None and len(info)//(n*8) < MARKER_PERIODS:
                 out.complete = False # Too few codewords to see the markers that start them: more symbols may show them
@@ -1079,7 +1081,7 @@ def _blind(head, c, y=None):
         llr = None
         if y is not None: # Soft values on this map: the cleanest words are the ones a sparse check search uses
             from .. import symbol
-            cc = symbol.load(c.name)
+            cc = symbol.load_or_generate(c.name)
             cc.set_mapping(key[1])
             llr = cc.llr(y)[:len(bits)]
         found = blind_block.solve_block(bits, llr=llr)
@@ -1112,7 +1114,8 @@ def _target(out, c):
     """(the map the steps decode with, the correction that turns the symbols to it, or None)"""
     from .. import symbol
     spec = _symbol_steps(out.steps)[2][0]
-    target = symbol.load(spec["name"], spec.get("mapping")).mapping
+    from ..profile.steps import constellation
+    target = constellation(spec).mapping
     if out.differential: # A phase change sees no turn of the carrier, only the IQ sense
         alph = diff_alphabets(c)[out.stream[1]]
         return target, _transform(alph.points, alph.maps[out.stream[2]].arr, target.arr, rotate=False)

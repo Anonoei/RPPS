@@ -96,9 +96,9 @@ def nid(sn, i):
 
 # --- trunking signalling blocks (TSDU): 196 bits = 98 dibits, interleaved, 1/2-rate trellis coded -> 12 bytes (10 data + CRC-16). Layout checked against OP25's p25p1_fdma.cc: status dibits dropped
 # (every 36th), blocks start 112 bits after the sync; the interleave takes dibit pairs from four columns that start at dibits 0, 26, 50 and 74.
-_DEINTERLEAVE = rp.code.load("interleave", "p25_tsbk").encoder # 98 dibits from four columns (interleave/block/p25_tsbk)
-_TRELLIS = rp.code.load("block", "trellis/p25_1_2").decoder # rate 1/2 trellis code, Viterbi decoded
-_CRC = rp.link.load("crc", "crc16_gsm").encoder # CRC-CCITT, inverted remainder
+_DEINTERLEAVE = rp.code.load("interleave/p25_tsbk").encoder # 98 dibits from four columns (interleave/block/p25_tsbk)
+_TRELLIS = rp.code.load("block/trellis/p25_1_2").decoder # rate 1/2 trellis code, Viterbi decoded
+_CRC = rp.link.load("crc/crc16_gsm").encoder # CRC-CCITT, inverted remainder
 
 
 def frame_bits(sn, i, nblocks=3):

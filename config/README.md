@@ -7,15 +7,15 @@ the resource and its `type` the implementation; the keys each accepts are in the
 | Resource | Holds | Example | Load | Keys |
 |---|---|---|---|---|
 | `constellation` | point sets and their bit maps | `psk/qpsk` | `rp.symbol.load("QPSK")` | [symbol/constellation.py](../src/rpps/symbol/constellation.py) |
-| `pulse` | symbol and frequency pulses (`"kind"`): `rrc`, `rc`, `halfsine`, `gaussian`, `rect/symbol`, `rect/frequency` | `rrc/0p35` | `rp.signal.filters.load("pulse", "rrc/0p35")` | [signal/filters/serial.py](../src/rpps/signal/filters/serial.py) |
-| `filter` | FIR, IIR, windows | `fir/windowed/lowpass_0p1_60db` | `rp.signal.filters.load("fir", "windowed/lowpass_0p1_60db")` | [signal/filters/serial.py](../src/rpps/signal/filters/serial.py) |
+| `pulse` | symbol and frequency pulses (`"kind"`): `rrc`, `rc`, `halfsine`, `gaussian`, `rect/symbol`, `rect/frequency` | `rrc/0p35` | `rp.signal.filters.load("pulse/rrc/0p35")` | [signal/filters/serial.py](../src/rpps/signal/filters/serial.py) |
+| `filter` | FIR, IIR, windows | `fir/windowed/lowpass_0p1_60db` | `rp.signal.filters.load("fir/windowed/lowpass_0p1_60db")` | [signal/filters/serial.py](../src/rpps/signal/filters/serial.py) |
 | `sequence` | bit sequences (recurrences, Gold), chip codes (Barker, PN sets, GPS C/A) and fixed words (sync markers, access addresses: `word/ccsds_asm`) | `recurrence/lte_gold` | `rp.sequence.load("lte_gold", c_init=77)` | [sequence/\_\_init\_\_.py](../src/rpps/sequence/__init__.py) |
 | `scramble` | how a sequence is applied: `additive` (names a sequence), `feedthrough` (self-synchronizing) | `additive/dvb_energy` | `rp.code.scram.load("dvb_energy")` | [code/scram/serial.py](../src/rpps/code/scram/serial.py) |
-| `fec` | block and convolutional codes (LDPC from DVB-S2 tables, dense or sparse checks, or a quasi-cyclic matrix of shifts: `ldpc/ieee80211n_648_1_2`) | `block/rs/204_188` | `rp.code.load("block", "rs/204_188")` | [code/serial.py](../src/rpps/code/serial.py) |
-| `interleave` | block and Forney interleavers | `forney/12_17` | `rp.code.load("interleave", "forney/12_17")` | [code/serial.py](../src/rpps/code/serial.py) |
-| `crc` | CRCs (reveng's fields) | `crc32_mpeg2` | `rp.link.load("crc", "crc32_mpeg2")` | [link/serial.py](../src/rpps/link/serial.py) |
-| `frame` | frame formats (HDLC) | `hdlc` | `rp.link.load("frame", "hdlc")` | [link/serial.py](../src/rpps/link/serial.py) |
-| `header` | `physical` (known symbols, a short code carrying fields) and `link` (fields, CRC, payload length) | `physical/dvbs2_pl` | `rp.symbol.load_header("dvbs2_pl")`, `rp.link.load("header", "ieee80211b_plcp")` | [symbol/frame.py](../src/rpps/symbol/frame.py), [link/header.py](../src/rpps/link/header.py) |
+| `fec` | block and convolutional codes (LDPC from DVB-S2 tables, dense or sparse checks, or a quasi-cyclic matrix of shifts: `ldpc/ieee80211n_648_1_2`) | `block/rs/204_188` | `rp.code.load("block/rs/204_188")` | [code/serial.py](../src/rpps/code/serial.py) |
+| `interleave` | block and Forney interleavers | `forney/12_17` | `rp.code.load("interleave/forney/12_17")` | [code/serial.py](../src/rpps/code/serial.py) |
+| `crc` | CRCs (reveng's fields) | `crc32_mpeg2` | `rp.link.load("crc/crc32_mpeg2")` | [link/serial.py](../src/rpps/link/serial.py) |
+| `frame` | frame formats (HDLC) | `hdlc` | `rp.link.load("frame/hdlc")` | [link/serial.py](../src/rpps/link/serial.py) |
+| `header` | `physical` (known symbols, a short code carrying fields) and `link` (fields, CRC, payload length) | `physical/dvbs2_pl` | `rp.symbol.load_header("dvbs2_pl")`, `rp.link.load("header/ieee80211b_plcp")` | [symbol/frame.py](../src/rpps/symbol/frame.py), [link/header.py](../src/rpps/link/header.py) |
 | `table` | rows of parameters looked up by header fields | `dvbs2/modcod` | `rp.profile.table("dvbs2/modcod")` | [profile/control.py](../src/rpps/profile/control.py) |
 | `profile` | whole signals | `dvbs2/normal` | `rp.profile.load("dvbs2/normal")` | [profile/steps.py](../src/rpps/profile/steps.py), `controls`: [profile/control.py](../src/rpps/profile/control.py) |
 

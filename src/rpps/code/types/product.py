@@ -90,5 +90,5 @@ def _code_obj(ref):
     """A block code from a reference ("hamming/dmr_15_11") or a definition, decoded by syndrome table"""
     from .. import serial
     if isinstance(ref, str):
-        return serial.load("block", ref, decoder="syndrome")
+        return serial.load(f"block/{ref}", decoder="syndrome")
     return serial.init("product_part", {"base": "block", **ref}, "syndrome")

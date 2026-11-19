@@ -109,7 +109,7 @@ def make_ts(packets):
 
 def section(table_id, body):
     sec = bytes([table_id]) + (0xB000 | (len(body) + 4)).to_bytes(2, "big") + body
-    crc = rp.link.load("crc", "crc32_mpeg2").encoder
+    crc = rp.link.load("crc/crc32_mpeg2").encoder
     c = int(crc.compute(sec)) if not hasattr(crc.compute(sec), "tobytes") else int(crc.compute(sec))
     return sec + c.to_bytes(4, "big")
 

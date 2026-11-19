@@ -67,11 +67,14 @@ def domains():
 def _roots(domain, path):
     return [Path(path)] if path else layers(domain)
 
-def ls(domain, path=None):
-    """Definitions of a domain: {"<category>[/<group>]": [names]}, merged across layers (files straight in the domain are under the domain's name)"""
+def ls(domain, path=None, all=False):
+    """Definitions of a domain: {"<category>[/<group>]": [names]}, merged across layers (files straight in the domain are under the domain's name).
+    all: also the abstract parents (definitions only children load)"""
     out: dict = {}
     for root in _roots(domain, path):
         for f in sorted(root.rglob("*.json")):
+            if not all and _head(f).get("abstract"):
+                continue
             rel = f.parent.relative_to(root).as_posix()
             key = domain if rel == "." else rel
             out[key] = sorted(set(out.get(key, [])) | {f.stem})
@@ -107,7 +110,7 @@ def _lookup(domain, ref, ref_l, base, fresh):
         if idx["aliases"] is None:
             idx["aliases"] = {}
             for f in idx["files"]:
-                for a in read(f).get("aliases", []):
+                for a in read_raw(f).get("aliases", []):
                     idx["aliases"].setdefault(str(a).lower(), f)
         hit = idx["aliases"].get(ref_l)
     return hit
@@ -134,9 +137,162 @@ def find(domain, ref, category=None, path=None):
     """File of the definition `ref` in the first layer that has it, or None (see `locate`)"""
     return locate(domain, ref, category, path)[0]
 
-def read(path):
-    """The definition in a file"""
+def read_raw(path):
+    """The definition in a file as written (no "extends" applied): what `fmt` formats and `save` writes"""
     return json.loads(Path(path).read_text())
+
+def read(path):
+    """The definition in a file, its "extends" applied (see `expand`). An abstract definition (a parent only children load) is an error"""
+    obj = expand(path)
+    if obj.get("abstract"):
+        raise ConfigError(f"{path}: abstract (a parent for other definitions to extend), load one of its children")
+    return obj
+
+# ---- Inheritance: a definition that "extends" another is that one with its own keys changed
+
+_NOT_INHERITED = ("comment", "ref", "abstract", "extends")
+
+_HEAD: dict = {} # str(file) -> (mtime, the keys `ls` and `tagged` need)
+
+def _head(f):
+    """{"abstract", "tags", "extends"} of a file as written, cached until it changes"""
+    f = Path(f)
+    key, mt = str(f), f.stat().st_mtime_ns
+    hit = _HEAD.get(key)
+    if hit is None or hit[0] != mt:
+        raw = read_raw(f)
+        hit = (mt, {k: raw[k] for k in ("abstract", "tags", "extends") if k in raw})
+        _HEAD[key] = hit
+    return hit[1]
+
+def place(path):
+    """(domain, parts below the domain without ".json") of a definition file, or (None, None) outside every config layer"""
+    path = Path(path).resolve()
+    for root in (*_EXTRA, PATH_CONFIG):
+        try:
+            rel = path.relative_to(Path(root).resolve())
+        except ValueError:
+            continue
+        if len(rel.parts) > 1:
+            return rel.parts[0], rel.with_suffix("").parts[1:]
+    return None, None
+
+def _parent(path, ref):
+    """The file a definition at `path` extends: `ref` below the definition's category first (fec/block: "rs/p25"), then below its domain"""
+    domain, parts = place(path)
+    if domain is None:
+        raise ConfigError(f"{path}: extends {ref!r}, but the file is not in a config folder, so there is nowhere to look")
+    first = str(ref).split("/")[0]
+    if "/" in str(ref) and first in _DOMAINS and first != domain:
+        raise ConfigError(f"{domain}/{'/'.join(parts)}: extends {ref!r} in another resource; a definition extends one of its own kind")
+    hit = None
+    if len(parts) > 1:
+        hit, _ = locate(domain, ref, parts[0])
+    if hit is None:
+        hit, _ = locate(domain, ref)
+    if hit is None:
+        raise ConfigError(f"{domain}/{'/'.join(parts)}: extends {ref!r}, which is not a {domain} definition")
+    return hit
+
+def merge(parent, child):
+    """A child definition over its parent: dicts merge key by key, lists and values replace, null deletes. comment and ref
+    are the child's own; tags add to the parent's; params merge by name (a bare value pins the parent's default)"""
+    out = {k: v for k, v in parent.items() if k not in _NOT_INHERITED}
+    for k, v in child.items():
+        if k == "extends":
+            continue
+        if v is None:
+            out.pop(k, None)
+        elif k == "tags":
+            out[k] = list(dict.fromkeys([*out.get(k, []), *v]))
+        elif k == "params" and isinstance(out.get(k), dict) and isinstance(v, dict):
+            ps = dict(out[k])
+            for name, pv in v.items():
+                old = ps.get(name)
+                if pv is None:
+                    ps.pop(name, None)
+                elif isinstance(old, dict) and not isinstance(pv, dict):
+                    ps[name] = {**old, "default": pv}
+                elif isinstance(old, dict) and isinstance(pv, dict):
+                    ps[name] = {**old, **pv}
+                else:
+                    ps[name] = pv
+            out[k] = ps
+        elif isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+def _deep(a, b):
+    out = dict(a)
+    for k, v in b.items():
+        if v is None:
+            out.pop(k, None)
+        elif isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+def expand(path, _chain=()):
+    """The definition in a file with its "extends" chain applied (abstract or not)"""
+    path = Path(path)
+    obj = read_raw(path)
+    ref = obj.get("extends")
+    if ref is None:
+        return obj
+    parent = _parent(path, ref)
+    chain = (*_chain, path.resolve())
+    if parent.resolve() in chain:
+        raise ConfigError(f"extends loops: {' -> '.join(str(p) for p in (*chain, parent.resolve()))}")
+    return merge(expand(parent, chain), obj)
+
+# ---- Tags: who uses a definition (a standard, a system), from the list in config/tags.json
+
+def tags():
+    """{tag: {"comment", "ref"}} of every config layer's tags.json (user layers win)"""
+    out: dict = {}
+    for root in (PATH_CONFIG, *reversed(_EXTRA)):
+        f = Path(root) / "tags.json"
+        if f.is_file():
+            out.update(read_raw(f).get("tags", {}))
+    return dict(sorted(out.items()))
+
+def file_tags(f, _chain=()):
+    """The tags of a definition file, its parents' included"""
+    h = _head(f)
+    own = list(h.get("tags", []))
+    if "extends" not in h:
+        return own
+    parent = _parent(f, h["extends"])
+    if Path(parent).resolve() in _chain:
+        return own
+    return list(dict.fromkeys([*file_tags(parent, (*_chain, Path(f).resolve())), *own]))
+
+def tagged(tag=None, all=False):
+    """Definitions carrying `tag`: {resource: [refs below it]}. No tag: {tag: {resource: [refs]}} for every tag in use.
+    all: abstract parents too"""
+    found: dict = {}
+    for root in (*_EXTRA, PATH_CONFIG):
+        root = Path(root)
+        if not root.is_dir():
+            continue
+        for d in sorted(p for p in root.iterdir() if p.is_dir()):
+            for f in sorted(d.rglob("*.json")):
+                if not all and _head(f).get("abstract"):
+                    continue
+                ref = f.relative_to(d).with_suffix("").as_posix()
+                for t in file_tags(f):
+                    lst = found.setdefault(t, {}).setdefault(d.name, [])
+                    if ref not in lst:
+                        lst.append(ref)
+    if tag is None:
+        return dict(sorted(found.items()))
+    t = str(tag).lower()
+    if t not in found and t not in tags():
+        raise ConfigError(f"No tag {tag!r}, have {sorted(tags())}")
+    return found.get(t, {})
 
 def load(domain, name, category=None, path=None, params=None, example=False):
     """Load `name` of a domain: find the file, then hand its object to the loader of its "base" category.
@@ -286,7 +442,7 @@ def evaluate(expr, values, name="expression"):
 
 # ---- Writing definitions
 
-_FIRST = ("base", "type", "comment", "ref", "aliases") # Header keys, in this order
+_FIRST = ("base", "extends", "abstract", "type", "comment", "ref", "tags", "aliases") # Header keys, in this order
 
 def format_json(v, ind=0):
     """The style of every file in config/: header keys first, a row of numbers on one line, one nested row per line"""
@@ -309,13 +465,15 @@ def save(domain, category, ref, obj, dest=None, overwrite=False):
     """Write a definition to <dest>/<domain>/<category>/<ref>.json and return the file
 
     ref: the name, with any group folders ("taps/my_filter"): lowercase letters, digits, "_", "-" and "." in each part, never absolute or "..".
-    dest: a config directory laid out like config/; default the first one added with `add_config_path`, else the shipped config.
-    Refuses to replace an existing file unless `overwrite`"""
+    dest: a config directory laid out like config/; default the first one added with `add_config_path`. Never the shipped
+    config/ by default: pass dest=_config.PATH_CONFIG to write there on purpose. Refuses to replace an existing file unless `overwrite`"""
     import re
     ref = str(ref).lower()
     if not ref or not all(re.fullmatch(r"[a-z0-9_.\-]+", part) and not part.startswith(".") for part in ref.split("/")):
         raise ValueError(f"{ref!r} is not a definition name: use lowercase letters, digits, _ - . in folders and name")
-    root = Path(dest) if dest else (_EXTRA[0] if _EXTRA else PATH_CONFIG)
+    if not dest and not _EXTRA:
+        raise ConfigError("save: no destination; pass dest=<config dir> or add one with rp.add_config_path(dir)")
+    root = Path(dest) if dest else _EXTRA[0]
     file = root / domain / category / f"{ref}.json"
     if file.exists() and not overwrite:
         raise FileExistsError(f"{file} exists (overwrite=True replaces it)")

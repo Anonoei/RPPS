@@ -103,7 +103,7 @@ def test_stage_realigns_after_a_symbol_slip(dvbs):
         pytest.fail("no sync bytes every 204 bytes after the slip")
 
 def test_a_code_with_no_profile_gets_one(rng):
-    code = rp.code.load("conv", "k7_133_171/1_2")
+    code = rp.code.load("conv/k7_133_171/1_2")
     msg = rng.integers(0, 2, 40000).astype(bool)
     cw = code.encoder.encode(msg)[1:] # Not on a symbol boundary
     q = rp.symbol.load("qpsk")
@@ -114,7 +114,7 @@ def test_a_code_with_no_profile_gets_one(rng):
     assert max(np.mean(u[64:20000] == msg[k + 64:k + 20000]) for k in range(4)) == 1.0 # (after the Viterbi's start)
 
 def test_differential_coding_is_found(rng):
-    code = rp.code.load("conv", "k7_171_133/1_2")
+    code = rp.code.load("conv/k7_171_133/1_2")
     msg = rng.integers(0, 2, 30000).astype(bool)
     ph = rp.symbol.load("qpsk_axes").modulate(code.encoder.encode(msg))
     s = np.asarray((rp.Data(ph, sps=1, Fs=1e6, flush=True) * rp.symbol.Differential()).data)
@@ -125,13 +125,13 @@ def test_differential_coding_is_found(rng):
     assert max(np.mean(u[64:20000] == msg[k + 64:k + 20000]) for k in range(4)) == 1.0 # (after the Viterbi's start)
 
 def test_block_code_and_where_its_words_start(rng):
-    h = rp.code.load("block", "hamming/7_4")
+    h = rp.code.load("block/hamming/7_4")
     cw = h.encoder.encode(rng.integers(0, 2, 4*12000).astype(bool))[3:]
     f = F.identify(noisy(rp.symbol.load("bpsk").modulate(cw), rng, 0.1), "bpsk")
     assert f.found and f.kind == "block" and f.name == "hamming/7_4" and f.offset == 4 and f.period == 7
 
 def test_hdlc_framing(rng):
-    fr = rp.link.load("frame", "hdlc")
+    fr = rp.link.load("frame/hdlc")
     frames = [bytes(rng.integers(0, 256, int(rng.integers(20, 60))).astype(np.uint8)) for _ in range(300)]
     bits = np.asarray(fr.encoder.encode(frames)).astype(bool)
     rx = noisy(-rp.symbol.load("bpsk").modulate(bits)[7:], rng, 0.05)
@@ -184,7 +184,7 @@ def reference_conv_encode(enc, bits):
 
 @pytest.mark.parametrize("name", rp.code.names("conv"))
 def test_conv_encoder_matches_the_register_loop(name, rng):
-    enc = rp.code.load("conv", name).encoder
+    enc = rp.code.load(f"conv/{name}").encoder
     b = rng.integers(0, 2, 1001).astype(bool)
     assert np.array_equal(enc.encode(b), reference_conv_encode(enc, b))
     if enc.termination == "tailbiting": # Whole frames only: no stream to split
