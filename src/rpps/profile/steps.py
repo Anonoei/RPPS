@@ -149,7 +149,7 @@ def _stage_class(path):
 @register_step("signal", "filter")
 def _signal_filter(kind, spec, rep, ctx):
     from .. import signal
-    return [(STAGE, signal.filters.load(f'{_need(spec, "type", "signal filter")}/{_need(spec, "name", "signal filter")}'))], [], rep
+    return [(STAGE, signal.filters.load(_need(spec, "name", "signal filter")))], [], rep # "fir/...", "iir/..."
 
 @register_step("signal", "decimate")
 @_one
@@ -334,7 +334,7 @@ def _align(m, ctx):
 @_sync_one("puncture")
 def _puncture(m, ctx):
     from .. import sync, code
-    return sync.Puncture(code.load(f'{m.get("type", "conv")}/{_need(m, "fec", "puncture")}'), m.get("window", 4000))
+    return sync.Puncture(code.load(f'conv/{_need(m, "conv", "puncture")}'), m.get("window", 4000)) # {"sync": "puncture", "conv": "k7_171_133/3_4"}
 
 @_sync_one("pilots")
 def _pilot_eq(m, ctx):
@@ -561,8 +561,8 @@ def _symbol(kind, spec, rep, ctx):
 
 def _code(kind, spec, rep, ctx):
     from .. import code
-    if kind == "fec":
-        folder, name = _need(spec, "type", "code fec"), _need(spec, "name", "code fec")
+    if kind in ("block", "conv", "interleave"): # {"code": "conv", "name": "k7_171_133/3_4"}; a null name: a header names it
+        folder, name = kind, _need(spec, "name", f"code {kind}")
         def make():
             if name is None: # Nothing (yet): a header names the code
                 op = {"block": code.Block, "interleave": code.Interleaver, "conv": code.Convolutional}[folder](None, None)
@@ -597,7 +597,7 @@ def _link(kind, spec, rep, ctx):
 
 for _cat, _fn, _kinds in (("wave", _wave, ("shape", "stagger", "fm", "am", "ssb", "ofdm")),
                           ("symbol", _symbol, ("constellation", "differential", "spread", "carriers", "header", "pilots", "scramble")),
-                          ("code", _code, ("fec", "scramble", "uncoded", "line", "marker")),
+                          ("code", _code, ("block", "conv", "interleave", "scramble", "uncoded", "line", "marker")),
                           ("link", _link, ("crc", "frame", "header"))):
     for _k in _kinds:
         register_step(_cat, _k)(_fn)

@@ -100,7 +100,7 @@ def test_live_operators():
 
 def test_restart_rebuilds_and_reports(config_path):
     """A transmit schedule restarting a convolutional code each frame: rebuilt, reported, output as from a fresh one"""
-    tmp_profile(config_path, {"steps": [{"code": "fec", "id": "cc", "type": "conv", "name": "k7_171_133/1_2"}],
+    tmp_profile(config_path, {"steps": [{"code": "conv", "id": "cc", "name": "k7_171_133/1_2"}],
                               "controls": {"cc": {"schedule": [{"name": "k7_171_133/1_2"}], "drive": {"cc": {"name": "name"}}}}},
                 "t/restart")
     p = rp.profile.load("t/restart")

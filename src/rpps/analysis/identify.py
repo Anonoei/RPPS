@@ -360,8 +360,7 @@ def _transform(points, src, dst, rotate=True):
 def _fec_steps(steps):
     """The code steps that are codes: fec (type, name), and a line code or a sync marker, which a find never has (ax25/afsk1200
     is HDLC behind NRZI, not the HDLC a find names). Scramblers and alignment are not compared: a find leaves those to the profile"""
-    return [(s["type"], s["name"]) if s["code"] == "fec" else (s["code"], s.get("name"))
-            for s in steps if s.get("code") in ("fec", "line", "marker")]
+    return [(s["code"], s.get("name")) for s in steps if s.get("code") in ("block", "conv", "interleave", "line", "marker")]
 
 
 def _symbol_steps(steps):
@@ -381,10 +380,10 @@ def _profile_codes():
     for fam, modes in _config.ls("profile").items():
         for mode in modes:
             try:
-                obj = _config.read(_config.find("profile", f"{fam}/{mode}"))
+                obj = _config.resolve(_config.read(_config.find("profile", f"{fam}/{mode}")), {}, f"profile/{fam}/{mode}")
             except Exception:
                 continue
-            out |= {st["name"] for st in obj.get("steps", []) if st.get("code") == "fec" and st.get("type") == "conv"
+            out |= {st["name"] for st in obj.get("steps", []) if st.get("code") == "conv"
                     and isinstance(st.get("name"), str)}
     return frozenset(out)
 
@@ -543,8 +542,8 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
                             period=puncture_period(cached("/".join(conv.coding))),
                             equivalent=[h.params["stream"] for h in same], z=conv.z, mismatch=conv.params["mismatch"],
                             baseline=conv.params["baseline"], report=rep, n=len(y))
-        steps = pre + symbol_steps(key) + [{"sync": "puncture", "fec": out.name},
-                                           {"code": "fec", "type": "conv", "name": out.name}]
+        steps = pre + symbol_steps(key) + [{"sync": "puncture", "conv": out.name},
+                                           {"code": "conv", "name": out.name}]
         info = decode_tail(bit_streams(y, c, differential, keys=[key])[key], cached("/".join(conv.coding)))
         h, t, short = scan_rs(info)
         rs_rep = Report(h, t, None)
@@ -563,8 +562,8 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
                 p["pattern"] = pat
                 steps += [{"sync": "align", "period": n, "pattern": pat, "name": "packets"}]
                 if p["interleaver"]:
-                    steps += [{"code": "fec", "type": "interleave", "name": p["interleaver"]}]
-                steps += [{"code": "fec", "type": "block", "name": rs.name}]
+                    steps += [{"code": "interleave", "name": p["interleaver"]}]
+                steps += [{"code": "block", "name": rs.name}]
         out.steps = steps
         return _finish(out, c, profiles)
 
@@ -594,7 +593,7 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
     if v is not None:
         out = CodeDetection(found=True, complete=True, mod=c.name, kind="block", name=v.coding[1], stream=v.params["stream"],
                             offset=v.params["offset"], period=v.params["n"], z=v.z, report=rep, n=len(y))
-        out.steps = pre + symbol_steps(out.stream) + [{"code": "fec", "type": "block", "name": out.name}]
+        out.steps = pre + symbol_steps(out.stream) + [{"code": "block", "name": out.name}]
         if blind: # Its words may be the rows of a product code (a turbo product code): columns of them that are codewords too
             bits, n1 = head[out.stream], out.period
             p = blind_block.product(bits, n1, out.offset)
