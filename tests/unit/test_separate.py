@@ -1,10 +1,10 @@
-"""Two co-channel signals of equal power separated (rpps.analysis.separate)"""
+"""Two co-channel signals of equal power separated (rpps.analysis.spectrum.separate)"""
 import numpy as np
 import pytest
 
 import rpps as rp
 from rpps.signal.filters import rrc_pulse
-from rpps.analysis import separate as SP
+from rpps.analysis.spectrum import separate as SP
 
 def shaped(sym, sps, tau, beta=0.35, span=8):
     n = int((len(sym) + 2*span + 2)*sps)

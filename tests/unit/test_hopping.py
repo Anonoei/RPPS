@@ -1,8 +1,9 @@
-"""Frequency hopping: dwells, hop set, spacing, de-hopping (rpps.analysis.hopping)"""
+"""Frequency hopping: dwells, hop set, spacing, de-hopping (rpps.analysis.spectrum.hopping)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import hopping, fsk
+from rpps.analysis.spectrum import hopping
+from rpps.analysis.modulation import fsk
 from conftest import cpfsk
 
 FS = 2e6

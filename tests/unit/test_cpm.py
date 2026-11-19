@@ -1,8 +1,8 @@
-"""GMSK and SOQPSK demodulated blind (rpps.analysis.cpm)"""
+"""GMSK and SOQPSK demodulated blind (rpps.analysis.modulation.cpm)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import cpm
+from rpps.analysis.modulation import cpm
 
 def channel(rng, name, n, baud, Fs, ebn0, cfo=0.0, tau=0.0, ppm=0.0):
     """bits, and their signal at Fs: delayed tau symbols, carrier cfo (Hz), the clock ppm off, noise at Eb/N0 (dB)"""

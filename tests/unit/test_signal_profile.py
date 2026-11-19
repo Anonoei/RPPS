@@ -68,7 +68,7 @@ def test_a_weak_code_does_not_confirm_a_doubtful_rate():
     assert not SP._strong(weak) and SP._strong(strong) and SP._strong(framed)
 
 def test_symbols_far_noisier_than_the_band_make_the_fit_doubtful():
-    from rpps.analysis.modulation import Detection
+    from rpps.analysis.modulation.detect import Detection
     sig = rp.analysis.Signal(0.0, 1.2e6, 0.0, 1.0, snr=20.0)
     locked = Detection(baud=1e6, esn0=20.5)
     lost = Detection(baud=1e6, esn0=2.0) # A 20 dB band whose symbols measure 2 dB: not on this constellation
@@ -84,10 +84,10 @@ def test_detection_keeps_the_rate_line_it_came_from():
     x = np.zeros(8*4000, complex)
     x[::8] = q.points[rng.integers(0, 4, 4000)]
     x = np.convolve(x, rp.signal.filters.rrc_pulse((np.arange(-64, 65))/8, 0.35), mode="same")
-    det = rp.analysis.modulation.detect(x.astype(np.complex64), 8e6)
+    det = rp.analysis.modulation.detect.detect(x.astype(np.complex64), 8e6)
     assert det.line > 5 # A clean signal's rate line stands far above the floor
     noise = (rng.standard_normal(32000) + 1j*rng.standard_normal(32000)).astype(np.complex64)
-    assert rp.analysis.modulation.detect(noise, 8e6).line < 5
+    assert rp.analysis.modulation.detect.detect(noise, 8e6).line < 5
 
 def test_the_preamble_turning_backwards_means_an_inverted_spectrum():
     rng = np.random.default_rng(3)

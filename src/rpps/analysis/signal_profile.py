@@ -261,20 +261,20 @@ def _strong(fec):
         return True
     return fec.mismatch is not None and fec.baseline and fec.mismatch < STRONG*fec.baseline
 
-NEAR = 2**20 # Channel samples kept for rpps.analysis.waveform
+NEAR = 2**20 # Channel samples kept for rpps.analysis.spectrum.waveform
 PM_OFFSET = 0.25 # A residual carrier this far (of the signal's width) from its centre isn't one: PM is symmetric about it
 CARRIER_SHARE = 0.01 # Power share of the strongest spectral bin (of 8192) worth a residual-carrier analysis
 
 def carrier_share(x, nfft=8192):
     """The strongest bin's share of the power in an averaged spectrum: a carrier line holds far more than noise-like
-    modulation's 1/nfft or so (a quick screen before rpps.analysis.telemetry)"""
+    modulation's 1/nfft or so (a quick screen before rpps.analysis.framing.telemetry)"""
     x = np.asarray(x)
     k = len(x)//nfft
     if k < 1:
         return 0.0
     P = np.mean(np.abs(np.fft.fft(x[:k*nfft].reshape(k, nfft), axis=1))**2, axis=0)
     return float(P.max()/P.sum())
-SYMS = 2**18 # Tracked symbols kept for rpps.analysis.framing
+SYMS = 2**18 # Tracked symbols kept for rpps.analysis.framing.frames
 
 def _waveform_detail(w):
     d = {"envelope": w.envelope}
@@ -296,8 +296,8 @@ class _Chain:
         self.acq, self.mat, self.ff = sync.Acquire(baud=baud), sync.time.Mat(), sync.phase.FFCarrier()
         self.fec = sync.AcquireFEC(blind=blind)
         self.raw, self.nsym, self.dead = [], 0, False
-        self.near, self.nnear = [], 0 # The channel's first NEAR samples, for rpps.analysis.waveform
-        self.syms, self.nsyms = [], 0 # The first SYMS carrier-tracked symbols, for rpps.analysis.framing
+        self.near, self.nnear = [], 0 # The channel's first NEAR samples, for rpps.analysis.spectrum.waveform
+        self.syms, self.nsyms = [], 0 # The first SYMS carrier-tracked symbols, for rpps.analysis.framing.frames
         if getattr(sig, "holds", 0): # A raised floor under other signals: they are profiled, it isn't one
             self.ch, self.dead = None, True
             return
@@ -335,7 +335,7 @@ class _Chain:
             self.dead = True
 
     def cyclic_rate(self, p):
-        """When the chain found no rate, or a doubtful one: the symbol rate rpps.analysis.cyclic sees in |x|^2 (a
+        """When the chain found no rate, or a doubtful one: the symbol rate rpps.analysis.spectrum.cyclic sees in |x|^2 (a
         calibrated line, at any rate in band: Acquire's search starts at Fs/16), to run the chain again at; else None"""
         if self.baud or not self.near or p.solved or p.profile_name:
             return None
@@ -343,7 +343,7 @@ class _Chain:
         if acq is None or not (acq.status == UNSOLVED or "rate doubtful" in (acq.note or "") or
                                "fit doubtful" in (acq.note or "")):
             return None
-        from . import cyclic
+        from .spectrum import cyclic
         try:
             f = cyclic.features(np.concatenate(self.near)[:2**18], self.ch.Fs)
         except Exception:
@@ -362,9 +362,9 @@ class _Chain:
         return self._telemetry(p) or self._waveform(p) or p
 
     def _telemetry(self, p):
-        """A residual carrier under the signal: PM telemetry (rpps.analysis.telemetry), its subcarriers demodulated; or
+        """A residual carrier under the signal: PM telemetry (rpps.analysis.framing.telemetry), its subcarriers demodulated; or
         None (no carrier line, or the analysis failed: the chain's profile stands)"""
-        from . import telemetry
+        from .framing import telemetry
         x = np.concatenate(self.near)
         if carrier_share(x) < CARRIER_SHARE:
             return None
@@ -408,7 +408,7 @@ class _Chain:
                 f = s.frame
                 q.add("frame", str(f), GUESS, detail={"period": f.period, "fixed": f.fixed, "frames": f.frames,
                                                        "counters": [list(c) for c in f.counters]},
-                      note="blind (rpps.analysis.telemetry): no known frame sync; the fields are the frame format's")
+                      note="blind (rpps.analysis.framing.telemetry): no known frame sync; the fields are the frame format's")
             else:
                 q.add("frame", f"{len(s.bits)} data bits", UNSOLVED,
                       note="no frame period in them: a longer capture may show one")
@@ -416,8 +416,8 @@ class _Chain:
 
     def _waveform(self, p):
         """When the linear chain didn't solve it: the profile by what kind of waveform it is (tones, OFDM, a constant
-        envelope, bursts: rpps.analysis.waveform), or None when nothing there says more than the chain did"""
-        from .waveform import classify
+        envelope, bursts: rpps.analysis.spectrum.waveform), or None when nothing there says more than the chain did"""
+        from .spectrum.waveform import classify
         try:
             w = classify(np.concatenate(self.near), self.ch.Fs)
         except Exception as e: # The chain's own profile stands
@@ -455,8 +455,8 @@ class _Chain:
         return q
 
     def _fsk(self, q, x):
-        """A constant envelope: FSK / MSK / GMSK by the instantaneous frequency (rpps.analysis.fsk), else unsolved"""
-        from . import fsk
+        """A constant envelope: FSK / MSK / GMSK by the instantaneous frequency (rpps.analysis.modulation.fsk), else unsolved"""
+        from .modulation import fsk
         try:
             r = fsk.analyze(x, self.ch.Fs)
         except Exception as e:
@@ -471,47 +471,47 @@ class _Chain:
         q.add("demodulate", str(r), GUESS,
               detail={"M": r.M, "baud": r.baud, "h": r.h, "spacing": r.spacing, "deviation": r.deviation,
                       "centre": r.centre, "isi": r.isi, "name": r.name},
-              note="blind (rpps.analysis.fsk): fsk.demodulate gives the symbols")
+              note="blind (rpps.analysis.modulation.fsk): fsk.demodulate gives the symbols")
         q.add("fec", "the code on the FSK symbols", UNSOLVED, note="not searched: the FEC tools take PSK symbols or bits")
 
     def _framing(self, p, det):
-        """Locked symbols no code fits: a frame structure (rpps.analysis.framing) into p, and a block code on the
+        """Locked symbols no code fits: a frame structure (rpps.analysis.framing.frames) into p, and a block code on the
         frame-aligned payload when there are frames enough for one as long"""
-        from . import framing
-        from .block import solve_block
+        from .framing import frames
+        from .code.block.linear import solve_block
         y = np.concatenate(self.syms)[2000:] # Past the carrier loop's start
         try:
-            fr = framing.find(y, det.mod)
+            fr = frames.find(y, det.mod)
         except Exception as e:
             p.add("frame", "symbol framing", UNSOLVED, note=f"{type(e).__name__}: {e}")
             return
         if fr is None:
             return
-        frames = framing.cut(y, fr)
-        bits = framing.payload_bits(frames, fr, det.mod)
-        rep, same = framing.repeats(bits, agree=0.95)
+        cut = frames.cut(y, fr)
+        bits = frames.payload_bits(cut, fr, det.mod)
+        rep, same = frames.repeats(bits, agree=0.95)
         p.add("frame", str(fr), GUESS, detail={"period": fr.period, "uw_start": fr.uw_start, "uw_length": fr.uw_length,
                                                "coherence": fr.coherence, "payload_bits": int(bits.shape[1]),
                                                "repeats": rep},
-              note=f"blind (rpps.analysis.framing): {bits.shape[1]} payload bits a frame" +
+              note=f"blind (rpps.analysis.framing.frames): {bits.shape[1]} payload bits a frame" +
                    (f"; frames repeat every {rep} ({same*100:.0f}%): fill or a superframe" if rep else ""))
         n = bits.shape[1]
         if len(bits) >= n + 48: # The rank method: a row per codeword, more rows than its length
             from .. import symbol
-            from .quality import gate
-            g = gate(frames[:400, fr.uw_length:].ravel(), symbol.load_or_generate(det.mod).points)
+            from .modulation.quality import gate
+            g = gate(cut[:400, fr.uw_length:].ravel(), symbol.load_or_generate(det.mod).points)
             if not g.ok: # Bit errors the noise doesn't explain fill the rank: a full rank then says nothing
                 p.add("fec", "block code on the frame-aligned payload: not tried", UNSOLVED,
                       note=f"the hard decisions can't be trusted ({g.why}): fix the symbols (a pilot-aided sync, "
-                           "rpps.analysis.framing.pilot_frames) before a rank test")
+                           "rpps.analysis.framing.frames.pilot_frames) before a rank test")
                 return
             for h, g in solve_block(bits.ravel(), n=n, offset=0):
                 p.add("fec", h.name, GUESS, detail={"z": h.z, **{k: str(v) for k, v in h.params.items()}},
                       note=f"blind, on the frame-aligned payload: {g!r}" if g is not None else "blind, on the frame-aligned payload")
 
     def _tcm(self, p, det):
-        """No code on the bits: a trellis code on the labels (rpps.analysis.tcm: Ungerboeck, pragmatic), when one holds"""
-        from . import tcm
+        """No code on the bits: a trellis code on the labels (rpps.analysis.code.conv.tcm: Ungerboeck, pragmatic), when one holds"""
+        from .code.conv import tcm
         from .. import symbol
         y = np.concatenate(self.syms)[2000:2000 + 30000]
         M = len(symbol.load_or_generate(det.mod).points)
@@ -527,12 +527,12 @@ class _Chain:
             c = found[0]
             p.add("fec", f"trellis code: {c}", GUESS, detail={"h": list(c.octal), "nu": c.nu, "labels": c.labels,
                                                               "rotation": c.rotation, "conj": c.conj, "z": c.z},
-                  note="blind (rpps.analysis.tcm): parity checks on the labels; a Viterbi on this trellis decodes it")
+                  note="blind (rpps.analysis.code.conv.tcm): parity checks on the labels; a Viterbi on this trellis decodes it")
 
     def _cyclic(self, p, det):
-        """The rate is doubtful: the cyclic spectrum's own verdict (rpps.analysis.cyclic), with a calibrated false-alarm
+        """The rate is doubtful: the cyclic spectrum's own verdict (rpps.analysis.spectrum.cyclic), with a calibrated false-alarm
         probability, as a note: its rate when it differs, or that no rate line is there at all"""
-        from . import cyclic
+        from .spectrum import cyclic
         try:
             f = cyclic.features(np.concatenate(self.near)[:2**18], self.ch.Fs)
         except Exception as e:
@@ -689,7 +689,7 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
     freq: instead, the one nearest this frequency (Hz from the capture's centre)
     survey: the rp.analysis.survey of `source` already made (the indices refer to it; it isn't surveyed again)
     blind: run the blind tools where no definition fits (tens of seconds a signal)"""
-    from .signal import survey as _survey
+    from .spectrum.signal import survey as _survey
     sv = survey if survey is not None else None
     if signals is not None and not isinstance(signals, (int, np.integer)) and all(hasattr(s, "channel") for s in signals):
         picked = list(signals)
@@ -737,7 +737,7 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
         for k, ch in again.items():
             q = build(ch)
             if _further(q, out[k]):
-                q.steps.insert(1, Step("rate", f"{ch.baud/1e3:.6g} kBd from the cyclic spectrum (rpps.analysis.cyclic)",
+                q.steps.insert(1, Step("rate", f"{ch.baud/1e3:.6g} kBd from the cyclic spectrum (rpps.analysis.spectrum.cyclic)",
                                        GUESS, note="the first pass found " + (out[k].steps[1].what if len(out[k].steps) > 1
                                                                               else "nothing")))
                 out[k] = q

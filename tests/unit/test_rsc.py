@@ -1,8 +1,8 @@
-"""RSC constituents and a turbo interleaver, blind (rpps.analysis.rsc)"""
+"""RSC constituents and a turbo interleaver, blind (rpps.analysis.code.conv.rsc)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import rsc
+from rpps.analysis.code.conv import rsc
 
 GF, GB = 0b1011, 0b1101 # 3GPP: feedforward 1 + D + D^3 (15 octal), feedback 1 + D^2 + D^3 (13 octal)
 

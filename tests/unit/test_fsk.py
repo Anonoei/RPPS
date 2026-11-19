@@ -1,9 +1,9 @@
-"""FSK / MSK / GMSK parameters from the instantaneous frequency (rpps.analysis.fsk)"""
+"""FSK / MSK / GMSK parameters from the instantaneous frequency (rpps.analysis.modulation.fsk)"""
 import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.analysis import fsk
+from rpps.analysis.modulation import fsk
 from conftest import cpfsk, shaped
 
 FS = 1e6

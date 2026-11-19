@@ -1,9 +1,10 @@
-"""Regenerate-and-subtract: how much of a signal we are locked to, and what is under it (rpps.analysis.cancel)"""
+"""Regenerate-and-subtract: how much of a signal we are locked to, and what is under it (rpps.analysis.modulation.cancel)"""
 import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.analysis import cancel, cyclic
+from rpps.analysis.modulation import cancel
+from rpps.analysis.spectrum import cyclic
 from conftest import shaped
 
 SPS, FS = 4.37, 1e6

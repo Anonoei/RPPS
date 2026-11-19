@@ -1,9 +1,9 @@
-"""Cyclostationary lines: symbol rate, carrier order and offset, and a calibrated 'no line' (rpps.analysis.cyclic)"""
+"""Cyclostationary lines: symbol rate, carrier order and offset, and a calibrated 'no line' (rpps.analysis.spectrum.cyclic)"""
 import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.analysis import cyclic
+from rpps.analysis.spectrum import cyclic
 from conftest import shaped
 
 SPS, FS, CFO = 4.37, 1e6, 0.013

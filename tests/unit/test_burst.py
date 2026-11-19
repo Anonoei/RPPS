@@ -1,8 +1,9 @@
-"""TDMA bursts demodulated on their shared preamble (rpps.analysis.burst)"""
+"""TDMA bursts demodulated on their shared preamble (rpps.analysis.spectrum.burst)"""
 import numpy as np
 
 import rpps as rp
-from rpps.analysis import burst, framing as FR
+from rpps.analysis.spectrum import burst
+from rpps.analysis.framing import frames as FR
 
 def tdma(rng, frames=3, slots=(0, 2, 3, 5), fs=2e6, baud=250e3, frame=4.8e-3, slot=0.6e-3, noise=0.08):
     q = rp.symbol.load("qpsk").points

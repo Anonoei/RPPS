@@ -1,8 +1,8 @@
-"""PM telemetry end to end: subcarrier rate, BPSK, line code, idle, frames and counters (rpps.analysis.telemetry)"""
+"""PM telemetry end to end: subcarrier rate, BPSK, line code, idle, frames and counters (rpps.analysis.framing.telemetry)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import telemetry as T
+from rpps.analysis.framing import telemetry as T
 
 FS = 1e6
 

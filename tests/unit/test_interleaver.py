@@ -1,8 +1,8 @@
-"""Blind interleavers: block size and shape, Forney branches, column delays (rpps.analysis.interleaver)"""
+"""Blind interleavers: block size and shape, Forney branches, column delays (rpps.analysis.code.interleave)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import interleaver as IL
+from rpps.analysis.code import interleave as IL
 from rpps.code.types.interleave import rowcol
 
 H15 = np.array([[(i + 1) >> j & 1 for i in range(15)] for j in range(4)], np.uint8) # Hamming (15, 11)

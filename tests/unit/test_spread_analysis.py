@@ -1,8 +1,8 @@
-"""DSSS under the noise: code period, chip rate, code, despreading (rpps.analysis.spread)"""
+"""DSSS under the noise: code period, chip rate, code, despreading (rpps.analysis.sequence.spread)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import spread
+from rpps.analysis.sequence import spread
 from conftest import shaped
 
 def mseq(poly, L):

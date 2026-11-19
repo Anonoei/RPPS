@@ -29,7 +29,7 @@ class FFCarrier(Stage):
         if det is None or len(y) == 0: # Still acquiring
             return y[:0]
         if st.mod != det.mod: # Detection can change while it refines
-            from ...analysis.modulation import candidates
+            from ...analysis.modulation.detect import candidates
             st.cm = np.angle(np.mean(candidates([det.mod])[det.mod]**det.M))
             st.mod = det.mod
 

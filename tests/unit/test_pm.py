@@ -1,8 +1,9 @@
-"""PM with a residual carrier: carrier, index, data on the carrier, subcarriers (rpps.analysis.pm)"""
+"""PM with a residual carrier: carrier, index, data on the carrier, subcarriers (rpps.analysis.modulation.pm)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import pm, cyclic
+from rpps.analysis.modulation import pm
+from rpps.analysis.spectrum import cyclic
 
 FS = 1e6
 

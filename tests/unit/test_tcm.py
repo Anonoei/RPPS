@@ -1,8 +1,8 @@
-"""Blind trellis-code checks on PSK labels (rpps.analysis.tcm)"""
+"""Blind trellis-code checks on PSK labels (rpps.analysis.code.conv.tcm)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import tcm
+from rpps.analysis.code.conv import tcm
 from rpps.math import gf2
 
 def noisy(rng, k, M, esn0, turn=0, conj=False):

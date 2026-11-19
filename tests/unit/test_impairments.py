@@ -1,9 +1,9 @@
-"""Compression, IQ imbalance, phase noise, neighbours (rpps.analysis.impairments)"""
+"""Compression, IQ imbalance, phase noise, neighbours (rpps.analysis.modulation.impairments)"""
 import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.analysis import impairments as I
+from rpps.analysis.modulation import impairments as I
 from conftest import shaped
 
 def noisy(rng, pts, esn0, n=20000):
