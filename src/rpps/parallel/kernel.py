@@ -1,4 +1,4 @@
-"""Kernels: the batch face of an operator (README.dev.md, Parallelism)
+"""Running a step on a batch when its operators give no kernel (the protocol is rpps.base.kernel; README.dev.md, Parallelism)
 
 A region frame is whole, so what an operator does to it is a function of the frame and of the parameters controls gave it: no
 state across calls. A `Kernel` is that function over a batch of frames, one frame per row of an `[N, L]` array:
@@ -22,55 +22,8 @@ from ..base.data import _Data
 from ..base.meta import Meta, Stream
 from ..base.rpps import FLUSH, DROPPED
 from ..errors import RPPSError, StreamError
-from ..profile import control as _ctl
 from ..profile.steps import STAGE, DECODE
-from .frame import Form
-
-@dataclass
-class Batch:
-    """N frames that share a key, as one array. x: [N, L]; form: what the rows are; pos: each row's absolute input position;
-    n_in: the frame length they started as; bad: rows that failed, why: {row: reason}; notes: {row: [report, ...]}"""
-    x: np.ndarray
-    form: Form
-    pos: list
-    n_in: int
-    bad: np.ndarray = None
-    why: dict = field(default_factory=dict)
-    code_failed: np.ndarray = None # rows the last decoder with a verdict could not decode: dropped when the plan ends
-    notes: dict = field(default_factory=dict)
-
-    def __post_init__(self):
-        if self.bad is None:
-            self.bad = np.zeros(len(self.x), dtype=bool)
-
-    def __len__(self):
-        return len(self.x)
-
-    def fail(self, row, why):
-        if not self.bad[row]:
-            self.bad[row], self.why[row] = True, str(why)
-
-class Kernel:
-    """A batch function. Subclasses set `name` and give `run`; `shape` says the output length for an input length (None: not
-    known before running; given None, None), `consts` the arrays it was built with"""
-    name = "kernel"
-
-    def shape(self, n_in):
-        return n_in
-
-    def consts(self):
-        return {}
-
-    def run(self, xp, b):
-        raise NotImplementedError
-
-    def describe(self, n_in):
-        """A JSON-able description: what a backend (a device kernel library, an HLS generator) needs to build it"""
-        return {"kernel": self.name, "in": n_in, "out": self.shape(n_in),
-                "consts": {k: {"shape": list(np.shape(v)), "dtype": str(np.asarray(v).dtype)} for k, v in self.consts().items()}}
-
-    def __repr__(self):
-        return f"<{type(self).__name__} {self.name}>"
+from ..base.kernel import Form, Batch, Kernel
 
 class LoopKernel(Kernel):
     """A step run one frame at a time through its operators (`Data`, a fresh stream per frame): correct for any operator, and

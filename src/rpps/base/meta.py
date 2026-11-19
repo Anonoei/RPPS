@@ -47,7 +47,7 @@ class Stream:
     t0: time [s] of the source's item 0, when the source knows it (a radio's timestamp); None otherwise
     out_pos: items each stage has produced so far in this stream: the absolute position of its next output block
     est: what sync stages estimated, by name ({"align": {...}}), for whoever wants to know (det stays Acquire's)
-    control: the control path (rpps.profile.control.Control): fields header steps published, position anchors, and
+    control: the control path (rpps.base.control.Control): fields header steps published, position anchors, and
         what a profile runner did with them (applied, re-run, dropped). None until a step publishes
 
     Threads (Blocks.threaded): each stage's state is used only by the thread running that stage. `det` and

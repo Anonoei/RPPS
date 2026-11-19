@@ -9,8 +9,8 @@ import pytest
 
 import rpps as rp
 from rpps.base.data import Mod
-from rpps.parallel.frame import Form
-from rpps.parallel.kernel import Batch, LoopKernel, kernel_of
+from rpps.base.kernel import Form, Batch
+from rpps.parallel.kernel import LoopKernel, kernel_of
 from rpps.profile.steps import DECODE, ENCODE, STAGE
 
 def form(cat, dt, rep, cls=Mod):
@@ -66,7 +66,7 @@ def test_demap_rows_do_not_see_each_other():
     np.testing.assert_allclose(both_.x[0], alone.x[0], rtol=1e-5, atol=1e-4)
 
 def test_demap_chunks_give_the_same():
-    from rpps.parallel.kernels import Demap
+    from rpps.symbol.kernels import Demap
     c = rp.symbol.load("8PSK")
     X = noisy_symbols(c, 400, 6, 0.1, 5)
     f = form(rp.Category.SYMBOL, rp.dtype.SYMBOLS, rp.Rep.SYMBOLS)

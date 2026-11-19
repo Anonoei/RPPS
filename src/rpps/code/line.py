@@ -15,6 +15,7 @@ import numpy as np
 from ..base import Mod, Digital, dtype
 from ..base.rpps import Pipe, align
 from ..base.types import Category, Rep
+from ..base.control import anchor
 
 NAMES = ("invert", "nrzi", "nrzm", "manchester", "thomas")
 
@@ -35,7 +36,6 @@ class Line(Pipe):
     def _frame_start(self, data, ctx, key, out_index=0):
         """At a frame start (a profile's control) forget what the last frame left, and say where this one's output begins"""
         if self._restart:
-            from ..profile.control import anchor
             self._restart = False
             ctx.pop(key, None)
             anchor(data.meta, self, data.meta.pos, out_index)

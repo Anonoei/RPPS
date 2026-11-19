@@ -426,11 +426,11 @@ frame, and each frame carries the parameters announced for it.
 
 How it is done (`rpps.profile.control`, `rpps.profile.runner`):
 
-- **Publishing.** A step calls `rp.profile.publish(meta, op, fields, at=..., out=..., span=...)`: `at` is the absolute
+- **Publishing.** A step calls `rp.base.control.publish(meta, op, fields, at=..., out=..., span=...)`: `at` is the absolute
   position in its input from which the fields apply, `out` where that falls in what it gives in this call (`None`: none of
   its output is affected), `span` how many input items they hold for before the controls' defaults apply again (an 802.11b
   rate holds for its payload). A frame sync publishes `{"frame": k}` at each frame start. A step that drops or inserts
-  items reports `rp.profile.anchor(meta, op, at, out)`, so positions carry through it exactly. What was published goes to
+  items reports `rp.base.control.anchor(meta, op, at, out)`, so positions carry through it exactly. What was published goes to
   `stream.control`: `log`, `fields(step)`, `reports` (late, dropped, restarted, no table row), `rerun`, `buffer`.
 - **The controls section**, keyed by the publishing step's id (a step's `"id"`, else its kind):
 
@@ -781,7 +781,7 @@ Every stage and transform must behave the same however the stream is cut. The te
 3. **Whole blocks:** an operator that works on `n` items at a time uses `rp.base.rpps.align(ctx, key, x, block, pad)`: the
    leftover waits in `ctx` for the next call, and only a flush pads it (encoding) or drops and reports it (decoding).
 4. **Positions are absolute.** A stage counts its outputs from where its input was when it first ran. A stage that drops or
-   inserts items reports it (`rp.profile.anchor`), so positions after it stay exact.
+   inserts items reports it (`rp.base.control.anchor`), so positions after it stay exact.
 5. **Feedforward estimators work on windows at absolute stream positions**, track drifting parameters across windows, set the
    window in time not symbols, and declare latency in the estimates (not in `meta.delay`).
    See [Sync methods](#sync-methods).
@@ -882,7 +882,8 @@ profile.rx(parallel=rp.parallel.Parallel("thread", workers=4))     -> ParallelRu
 - An operator gives its kernel with `op.kernel(params, how)`. Kernels belong to generic operators (a constellation's demapper),
   never a protocol. They use only what numpy and cupy share (`xp`), hold their constants, and keep shapes fixed per key; a
   row that fails is marked, not raised.
-- Kernels so far: `Demap`, `BlockDecode` (block codes and block interleavers), `Rotate`, `Gather`, `XorMask`, `PilotLine`.
+- Kernels so far, each beside its operator: `symbol.kernels` (`Demap`, `Rotate`, `Gather`), `code.kernels` (`BlockDecode`: block
+  codes and block interleavers; `XorMask`), `sync.kernels` (`PilotLine`); the protocol (`Kernel`, `Batch`, `Form`) is `base.kernel`.
   Each is checked row for row against the operator run frame by frame (`tests/unit/test_batch_kernels.py`).
 - Executors: inline, threads (a batch split by rows), processes (`start_method` is `fork` where there is one, else `spawn`,
   so the script needs a `__main__` guard). Each process builds its own region from a picklable recipe (`RegionSteps`).

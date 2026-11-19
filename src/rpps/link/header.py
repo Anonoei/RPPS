@@ -18,7 +18,7 @@ A definition, config/header/link/<name>.json, `rp.link.load("header/ieee80211b_p
 
 Receiving, each frame starts where a profile applies a change (a delimiter before it publishes frame starts), or, framed,
 `length` bits after the last. The header's fields, with "bits" (the payload's length), are published from the payload's
-first bit for the payload's length, and {"frame_bits": header + payload} from the frame's first bit (rp.profile.publish),
+first bit for the payload's length, and {"frame_bits": header + payload} from the frame's first bit (rp.base.control.publish),
 so a profile can drive the rate of the payload and the length of the frame. A header whose CRC fails is counted, and its
 frame dropped; so is a frame whose FCS fails (`fcs_failed`). Out come the payloads.
 Transmitting, a frame starts at each change a profile applies: its fields are the controlled values; framed, its payload
@@ -35,6 +35,7 @@ from ..base import Digital, dtype
 from ..base.rpps import Pipe, FRAME, failed_of
 from ..base.types import Category, Rep
 from ..errors import ConfigError
+from ..base.control import publish, anchor
 
 class Header(Pipe):
     CATEGORY = Category.LINK
@@ -141,7 +142,6 @@ class Header(Pipe):
         return st
 
     def decode(self, data):
-        from ..profile.control import publish, anchor
         ctx = dict(data.ctx)
         st = self._state(ctx, False)
         x = data.bits() if hasattr(data, "bits") else np.asarray(data.data)
@@ -241,7 +241,6 @@ class Header(Pipe):
     # ---- transmit
 
     def encode(self, data):
-        from ..profile.control import publish, anchor
         ctx = dict(data.ctx)
         st = self._state(ctx, True)
         x = data.bits() if hasattr(data, "bits") else np.asarray(data.data)

@@ -7,4 +7,5 @@ from .types import Category, Rep, dtype
 from .meta import Meta, Stream, Rate
 
 from .frequency import Frequency
+from . import control
 from .rpps import *
