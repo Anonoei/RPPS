@@ -237,3 +237,46 @@ def keystream(bits, poly, data_bias=None, squarings=4, iters=30, alpha=0.8):
                 v ^= out[t + L - j]
         out[t] = v
     return Keystream(bits=out, agree=float(np.mean(out == k)), data=s ^ out, checks=held)
+
+def berlekamp_massey(bits):
+    """The shortest LFSR making bits: its connection polynomial (int, bit j the coefficient of D^j, bit 0 set) and
+    length L"""
+    s = [int(b) & 1 for b in bits]
+    C, B = 1, 1
+    L, m = 0, 1
+    for n in range(len(s)):
+        d = s[n]
+        for j in range(1, L + 1):
+            if C >> j & 1:
+                d ^= s[n - j]
+        if d == 0:
+            m += 1
+        elif 2*L <= n:
+            T = C
+            C ^= B << m
+            L, B, m = n + 1 - L, T, 1
+        else:
+            C ^= B << m
+            m += 1
+    return C, L
+
+def lfsr(bits, window=1024, windows=16, seed=0):
+    """A linear recurrence of any degree up to window/2 that the bits keep (an LFSR scrambler over constant or periodic
+    data: a scrambler of degree d applied twice over an idle word is degree 2d + the word's period, beyond `search`'s transform): Berlekamp-Massey
+    on `windows` windows, the connection polynomial most of them agree on, and how often it holds over the whole stream.
+    Returns (poly int, degree, holds) or None when no polynomial shorter than window/2 repeats"""
+    b = np.asarray(bits, dtype=np.uint8)
+    rng = np.random.default_rng(seed)
+    starts = rng.choice(max(1, len(b) - window), min(windows, max(1, len(b) - window)), replace=False)
+    seen = {}
+    for a in starts:
+        C, L = berlekamp_massey(b[a:a + window])
+        if L < window//2 - 8: # windows a clean recurrence made
+            seen[C] = seen.get(C, 0) + 1
+    if not seen:
+        return None
+    C = max(seen, key=seen.get)
+    if seen[C] < 2:
+        return None
+    holds = float(np.mean(descramble_feedthrough(b, C)[C.bit_length():] == 0))
+    return C, C.bit_length() - 1, holds
