@@ -10,8 +10,19 @@ every pair of polynomials up to the memory at once; the strongest is (g_f, g_b) 
 A turbo code's second encoder takes the information in another order: its parity p2 has no check with s, which says
 that much. With the constituent known, u' = p2 g_b / g_f (an IIR division from the all-zero start of each frame) is the
 interleaved information, and over many frames every position of u' matches one position of s bit for bit: the
-permutation, one column search per position (Burel; Tixier & Sendrier recover it from noisier frames by BCJR, which this
-is not: an error in p2 spreads through the division, so clean frames are needed, or the frames are first decoded).
+permutation, one column search per position (Burel). An error in p2 spreads through the division, so that needs clean
+frames.
+
+From noisy frames (soft values), `turbo_interleaver_soft` uses the constituent's check instead of its inverse:
+p2 g_b + u' g_f = 0 holds at every step t over p2[t - d] and u'[t - d] = s[perm[t - d]], d up to the memory, so
+with perm[t - 1] ... perm[t - m] found, each candidate j for perm[t] is scored over all frames at once by the check's
+soft value: sum over frames of tanh(L_s[j]/2) times the product of tanh(L/2) of the check's other bits (one matrix-
+vector product a position; positions taken are excluded). A wrong pick spoils the next m checks, so a repair pass then
+scores every position by all m + 1 checks it is in, with every other position as found, and reassigns them greedily
+from the most confident (a sequential search with error correction in the spirit of Tixier & Sendrier, without BCJR).
+The forward search keeps a small beam, so one wrong pick doesn't take every later one with it.
+The check's weight w = |g_f| + |g_b| bits sets the noise it takes: its soft value falls as (1 - 2 BER)^w, so the frames
+needed grow as (1 - 2 BER)^(-2w) log K (3GPP's w = 6: about 100 frames of 1000 bits at 4% bit errors).
 """
 import numpy as np
 
@@ -114,3 +125,85 @@ def turbo_interleaver(S, P2, g_f, g_b, min_frames=None):
     perm = np.argmax(A, axis=1)
     agree = (A[np.arange(K), perm] + F)/(2*F)
     return perm, agree
+
+def _taps(p):
+    return [d for d in range(p.bit_length()) if p >> d & 1]
+
+def turbo_interleaver_soft(Ls, Lp2, g_f, g_b, beam=4, expand=3, repair=2):
+    """The second encoder's permutation from noisy frames: Ls (F, K) LLRs (log P(0)/P(1)) of the systematic bits, Lp2
+    (F, K) of the second parity (hard bits work as +-large values). g_f needs a D^0 term. beam: partial permutations
+    kept, each extended by its `expand` best candidates a step; repair: passes of the repair. Returns (perm (K,): input i
+    of the second encoder is s[perm[i]], confidence (K,): each position's best check sum over its second best's;
+    near 1 is a guess)"""
+    Ts = np.tanh(np.clip(np.asarray(Ls, dtype=np.float64), -30, 30)/2)
+    Tp = np.tanh(np.clip(np.asarray(Lp2, dtype=np.float64), -30, 30)/2)
+    F, K = Ts.shape
+    if not g_f & 1:
+        raise ValueError("g_f has no D^0 term")
+    fd, bd = _taps(g_f), _taps(g_b)
+
+    def known(t, perm, skip=None):
+        """(F,): the soft value of the check at step t without s[perm[skip]] (skip: the delay left out; None: all in)"""
+        v = np.ones(F)
+        for d in bd:
+            if t - d >= 0:
+                v *= Tp[:, t - d]
+        for d in fd:
+            if d == skip or t - d < 0:
+                continue
+            if perm[t - d] < 0:
+                return None
+            v *= Ts[:, perm[t - d]]
+        return v
+
+    # forward: a beam of partial permutations, each extended by its best candidates, ranked by their summed check
+    # values over the spread a check has on random candidates (so a wrong pick that spoils later checks falls back)
+    beams = [(0.0, np.full(K, -1, np.int64), np.zeros(K, bool))]
+    for t in range(K):
+        ext = []
+        for total, pm, used in beams:
+            v = known(t, pm, skip=0)
+            sc = v @ Ts
+            spread = np.sqrt(np.sum(v**2)) + 1e-12
+            sc[used] = -np.inf
+            for j in np.argpartition(-sc, min(expand, K - 1))[:expand]:
+                if np.isfinite(sc[j]):
+                    ext.append((total + sc[j]/spread, pm, used, int(j)))
+        ext.sort(key=lambda e: -e[0])
+        beams = []
+        for total, pm, used, j in ext[:beam]:
+            pm, used = pm.copy(), used.copy()
+            pm[t], used[j] = j, True
+            beams.append((total, pm, used))
+    perm = beams[0][1]
+
+    def scores(perm):
+        """(K, K): position t, candidate j: the sum over the checks t + d (d in g_f) of the check without s[perm[t]]"""
+        S = np.zeros((K, K))
+        for t in range(K):
+            for d in fd:
+                if t + d < K:
+                    v = known(t + d, perm, skip=d)
+                    S[t] += v @ Ts
+        return S
+
+    for _ in range(repair):
+        S = scores(perm)
+        top2 = np.sort(S, axis=1)[:, -2:]
+        conf = top2[:, 1] - top2[:, 0]
+        new = np.full(K, -1, np.int64)
+        taken = np.zeros(K, bool)
+        for t in np.argsort(-conf):
+            row = np.where(taken, -np.inf, S[t])
+            j = int(np.argmax(row))
+            new[t], taken[j] = j, True
+        if np.array_equal(new, perm):
+            break
+        perm = new
+    S = scores(perm)
+    best = S[np.arange(K), perm]
+    S2 = S.copy()
+    S2[np.arange(K), perm] = -np.inf
+    second = S2.max(axis=1)
+    conf = best/np.maximum(np.abs(second), 1e-12)
+    return perm, conf

@@ -192,15 +192,41 @@ void check_symbols(const int64_t *w, long long n, int64_t size) {
         if (w[k] < 0 || w[k] >= size) throw std::invalid_argument("symbol outside the field");
 }
 
-py::array_t<int64_t> gf_syndromes(carray<int64_t> words, carray<int64_t> exp, carray<int64_t> log, int nroots, int fcr, int prim) {
+// Syndromes of many words: S_i = sum_k w_k alpha^((N-1-k)(fcr+i) prim), the exponent of every (i, k) taken mod q once
+// for all words (a table) and exp doubled so log[w_k] + e_ik indexes it with no modulo: independent lookups a symbol,
+// words in parallel. The same values as syndromes() above.
+py::array_t<int64_t> gf_syndromes(carray<int64_t> words, carray<int64_t> exp, carray<int64_t> log, int nroots, int fcr, int prim,
+                                  int threads) {
     GF gf = make_gf(exp, log);
     check_shape(words, {-1, -1}, "words");
     const long long W = words.shape(0), N = words.shape(1);
     check_symbols(words.data(), W*N, gf.q + 1);
     py::array_t<int64_t> S({W, static_cast<long long>(nroots)});
+    const int64_t *w = words.data();
+    int64_t *out = S.mutable_data();
     {
         py::gil_scoped_release nogil;
-        for (long long w = 0; w < W; w++) syndromes(gf, words.data() + w*N, N, nroots, fcr, prim, S.mutable_data() + w*nroots);
+        const int64_t q = gf.q;
+        std::vector<int64_t> exp2(2*q);
+        for (int64_t e = 0; e < 2*q; e++) exp2[e] = gf.exp[e % q];
+        std::vector<int64_t> e(static_cast<std::size_t>(nroots*N));
+        for (int i = 0; i < nroots; i++) {
+            const int64_t step = gf.mod(static_cast<int64_t>(fcr + i)*prim);
+            int64_t v = 0; // (N-1-k) step mod q, from k = N-1 down
+            for (long long k = N - 1; k >= 0; k--) { e[i*N + k] = v; v += step; if (v >= q) v -= q; }
+        }
+        const int64_t *lg = gf.log, *ex = exp2.data(), *et = e.data();
+        parallel_for(W, W*N*nroots > (1 << 16) ? threads : 1, [&](long long r) {
+            const int64_t *x = w + r*N;
+            int64_t *o = out + r*nroots;
+            for (int i = 0; i < nroots; i++) {
+                const int64_t *ei = et + i*N;
+                int64_t acc = 0;
+                for (long long k = 0; k < N; k++)
+                    if (x[k]) acc ^= ex[lg[x[k]] + ei[k]];
+                o[i] = acc;
+            }
+        });
     }
     return S;
 }
@@ -275,8 +301,8 @@ void register_fec(py::module_ &m) {
     m.def("ldpc_minsum", &ldpc_minsum, "ldpc_minsum(llr (B, N), var, cstart, deg, rows (check order: the layers), iters, alpha, threads) -> (hard (B, N), converged (B))",
           py::arg("llr"), py::arg("var"), py::arg("cstart"), py::arg("deg"), py::arg("rows"), py::arg("iters"), py::arg("alpha"),
           py::arg("threads") = 0);
-    m.def("gf_syndromes", &gf_syndromes, "gf_syndromes(words (W, N), exp, log, nroots, fcr, prim) -> S (W, nroots)",
-          py::arg("words"), py::arg("exp"), py::arg("log"), py::arg("nroots"), py::arg("fcr"), py::arg("prim"));
+    m.def("gf_syndromes", &gf_syndromes, "gf_syndromes(words (W, N), exp, log, nroots, fcr, prim, threads) -> S (W, nroots)",
+          py::arg("words"), py::arg("exp"), py::arg("log"), py::arg("nroots"), py::arg("fcr"), py::arg("prim"), py::arg("threads") = 0);
     m.def("cyclic_correct", &cyclic_correct, "cyclic_correct(S, exp, log, N, nroots, t, fcr, prim, binary, erasures) -> (positions, values) or None",
           py::arg("S"), py::arg("exp"), py::arg("log"), py::arg("N"), py::arg("nroots"), py::arg("t"), py::arg("fcr"), py::arg("prim"),
           py::arg("binary"), py::arg("erasures"));

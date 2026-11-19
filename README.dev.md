@@ -656,9 +656,10 @@ kernels, the parallel runner's internals, how to add things) is in the sections 
   spaced block equalization.
 - The DVB-S sync bytes, the 802.11b SFD and the DVB-S2 SOF as `sequence/word` definitions (the CCSDS ASM, the Mode S preamble
   and the BLE access address are; those three are still written in the steps and headers that use them).
-- Per-burst timing and carrier acquisition (a short packet alone, with no stream to track: `ble/adv` wants a continuous
-  signal or known timing; `adsb/mode_s` gets by at one sample per chip). A burst stage that acquires on the preamble of each
-  burst would serve BLE, 802.15.4, LoRa and the TDMA carriers of the surveys.
+- Per-burst timing and carrier acquisition in the data path (a short packet alone, with no stream to track: `ble/adv` wants
+  a continuous signal or known timing; `adsb/mode_s` gets by at one sample per chip). `rpps.analysis.burst` does it
+  offline (each burst acquired on the shared preamble, data-aided); a burst stage built the same way would serve BLE,
+  802.15.4, LoRa and the TDMA carriers of the surveys.
 - Reed-Solomon in the dual (Berlekamp) basis: CCSDS symbols need the conversion before and after `rs/ccsds_255_223`.
 - The parallel runner numbers its output from 0 and a dropped frame leaves no gap (the serial runner keeps positions).
 - Fusing the matched filter with Oerder & Meyr timing (its square-law line needs the filter at every sample). Interpolating
@@ -768,8 +769,18 @@ of something that exists is a new file; a new kind needs a loader.
 
 `rpps._native` (C++17, pybind11, `csrc/rpps_native/*.cpp`) holds the per-sample loops and decoders: AGC, Costas, timing,
 equalizers, IIR, Viterbi, trellis, BCJR/turbo, LDPC, Reed-Solomon, BCH, soft demapping, resampling, FIR decimation, the
-carrier estimate and the frame sync. They are optional: without pybind11 or a compiler the build warns and RPPS runs its
-Python loops.
+carrier estimate and the frame sync, and the slow loops of the blind tools (`analysis.cpp`). They are optional: without
+pybind11 or a compiler the build warns and RPPS runs its Python loops.
+
+The blind tools' kernels, with what each changed (best of several runs, one process):
+
+| Kernel | Tool | Before -> after |
+|---|---|---|
+| `gf2_eliminate` (GF(2) Gauss-Jordan, Four Russians: 32 pivots a pass over the matrix) | `ldpc._eliminate` (`qc_staircase`, `qc_dual`, `progressive`) | DVB-S2 normal-frame table from frames: 519 s -> 6 s |
+| `ldpc_flood` (flooding min-sum, frames threaded) | `ldpc.posterior` | 31 ms -> 2.3 ms (40 frames, 60 checks); `progressive` test 12 s -> under 3 s |
+| `gf_syndromes` (exponent table instead of a modulo a symbol, words threaded) | `RS.syndromes`, `fec.scan_rs` | 1632 words of RS(204, 188): 18.8 ms -> 4.6 ms on one thread, 1.3 ms threaded |
+| `cpm_psp` (per-survivor Viterbi) | `cpm.mlse` | 6 to 18x the vectorised Python |
+
 
 **The Python loop is the reference.** Every kernel has the pure Python version in the stage that calls it, and the tests
 compare the two (`test_native*.py`, `test_parallel.py`, `test_batch_kernels.py`). A kernel changes speed, never results
@@ -927,6 +938,11 @@ channel with some noise floor visible beside the signal: the floors are estimate
 | every cycle frequency in the band (signals sharing it) | `scf.cycle_frequencies`, `scf.coherence` | FFT-accumulation spectral coherence, conjugate too; equal-power overlap is told apart only by these features |
 | which constellation | `cumulants.classify` | C40 ... C84 against each constellation's own; families blind, orders within QAM / ASK need the SNR |
 | FSK / MSK / GMSK, CPM index | `fsk.analyze`, `fsk.cpm_index` | instantaneous frequency: rate by comb, tones by clusters that split like tones; h from the phase lattice (full response) |
+| GMSK / SOQPSK bits, which pulse | `cpm.demodulate`, `cpm.identify` | rate and carrier from the x^2 line pair; timing and clock by the detector's metric; a per-survivor Viterbi (each survivor its own carrier loop and pulse tail: SOQPSK-TG's 8 symbols); the pulse that fits best. SOQPSK bits up to complement / alternate inversion |
+| OFDM pilot pattern | `ofdm_pilots.discover`, `ofdm_pilots.grid` | the grid from CP peaks (smoothed: a line plus a per-slot CP pattern); the lag at which cells repeat coherently is the period; per symbol, the subcarrier lattice standing out across the band, or the whole symbol known; continual pilots, boost, empty cells |
+| TDMA bursts' bits, frame and slots | `burst.demodulate` | each burst on its own: the shared preamble found in it (pieces correlated), fractional timing from its phase steps, carrier and phase data-aided, a decision-directed loop; slots by start times within the frame |
+| two co-channel signals of equal power | `separate.estimate`, `separate.separate` | each one's carrier (x^M line), timing (its x^M +- baud lines) and phase; then a sequence estimate over both streams merged in time (state: two symbols), the farther coupling cancelled from the previous pass, gains refitted |
+| which named system | `catalogue.match`, `catalogue.features` | measured features (rate, modulation family, pulse, OFDM numerology and pilots, TDMA frame, spreading, band) against systems from their standards, each agreement and contradiction weighted and reported |
 | PM with a residual carrier, subcarriers | `pm.analyze`, `pm.subcarrier`, `pm.nrz` | the carrier tracked, the phase around it: a `\|x\|^2` "rate" at twice a subcarrier is a subcarrier |
 | spread (DSSS) | `spread.period`, `chip_rate`, `code`, `despread` | variance of windowed autocorrelations peaks at the code period; the code from eigenvectors; detection goes ~2 dB further under the noise than recovery |
 | frequency hopping | `hopping.track`, `hopping.dehop` | short-time spectrum, frames clustered into channels, dwells; de-hopped to one channel |
@@ -948,10 +964,10 @@ channel with some noise floor visible beside the signal: the floors are estimate
 |---|---|---|
 | trellis code on PSK labels (Ungerboeck, pragmatic) | `tcm.search` | Walsh-Hadamard of label windows scores every parity check at once, per rotation and labelling; `soft=True` rescores a shortlist by LLRs |
 | scrambler taps, feedthrough or additive | `recurrence.search` (degree <= 24), `recurrence.lfsr` (any degree, Berlekamp-Massey), `recurrence.keystream` | the same transform over bit windows (`llr=` for soft); an additive keystream by fast correlation once its polynomial is known |
-| turbo / RSC constituent, turbo interleaver | `rsc.constituent`, `rsc.turbo_interleaver` | `p g_b + s g_f = 0` as a 2-bit-label check; the permutation by matching columns over frames (clean frames) |
+| turbo / RSC constituent, turbo interleaver | `rsc.constituent`, `rsc.turbo_interleaver`, `rsc.turbo_interleaver_soft` | `p g_b + s g_f = 0` as a 2-bit-label check; the permutation by matching columns over frames (clean frames), or from noisy frames by the soft check position by position (a beam, then a repair pass): 1024-bit frames at 10% bit errors from 300 frames |
 | LDPC: IRA (staircase), QC, large | `ldpc.staircase`, `ldpc.qc_staircase`, `ldpc.qc_dual`, `ldpc.qc_size`, `ldpc.progressive` | one GF(2) solve per structure: a DVB-S2 table from k/360 + 12 clean frames; progressive search cleans frames with the checks found so far |
 | binary cyclic / BCH roots | `ldpc.roots` | zero counts of the words at every beta^j against each subfield's chance |
-| polar frozen bits | `polar.frozen` | tanh-product of each u_i's column over frames |
+| polar frozen bits, construction | `polar.frozen`, `polar.recognize`, `polar.search` | tanh-product of each u_i's column over frames; at low SNR successive cancellation over all frames with a likelihood test per position (rate 1/2 found exactly at Es/N0 -2 dB from 200 frames); the construction and K nearest it |
 | interleaver | `interleaver.block_search`, `forney_search`, `column_delays` | rank deficiency for the size, then rows x columns; Forney candidates scored by the code structure coming back; columns sent rows late |
 
 **What the bits are**
