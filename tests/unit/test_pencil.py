@@ -1,8 +1,8 @@
-"""Matrix pencil lines (rpps.analysis.pencil)"""
+"""Matrix pencil lines (rpps.analysis.spectrum.pencil)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import pencil
+from rpps.analysis.spectrum import pencil
 
 def test_two_lines_closer_than_a_bin():
     """256 samples at 1 MHz: an FFT bin is 3.9 kHz; tones 1.5 kHz apart (0.4 of a bin) are told apart, each to a few tens

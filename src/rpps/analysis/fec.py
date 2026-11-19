@@ -865,8 +865,8 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
     In turn, stopping at the first that stands out: configured convolutional codes (any puncture phase), with a Reed-Solomon
     code behind them (scan_rs; then the markers that start its codewords, for Align); HDLC framing; configured block codes.
     blind: look for what no definition covers, as `Guess`es only (nothing decodes from a guess). With no configured code: a
-        known mother code with an unknown puncture pattern (rpps.analysis.puncture) and what is inside it, a binary block code
-        on the channel bits (rpps.analysis.block), then unknown rate 1/n convolutional codes (detect_fec). Inside a
+        known mother code with an unknown puncture pattern (rpps.analysis.code.conv.puncture) and what is inside it, a binary block code
+        on the channel bits (rpps.analysis.code.block.linear), then unknown rate 1/n convolutional codes (detect_fec). Inside a
         convolutional code with no configured RS behind it: `solve` (RS, block codes, scramblers). Tens of seconds.
     symbols: the symbols (any gain); constellation: a Constellation or its name (the detected modulation)
     names: only these convolutional definitions. Returns a CodeDetection
@@ -965,7 +965,7 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
                             offset=v.params["offset"], period=v.params["n"], z=v.z, report=rep, n=len(y))
         out.steps = pre + symbol_steps(out.stream) + [{"code": "fec", "type": "block", "name": out.name}]
         if blind: # Its words may be the rows of a product code (a turbo product code): columns of them that are codewords too
-            from . import block as blind_block
+            from .code.block import linear as blind_block
             bits, n1 = head[out.stream], out.period
             p = blind_block.product(bits, n1, out.offset)
             found = None
@@ -1009,15 +1009,16 @@ def solve(bits, rs_lengths=None, max_taps=2, exhaustive=False, block=True):
     """Peel unknown layers off bits (a decoder's output): [(hypothesis, Guess or None)], outermost first
 
     1. Reed-Solomon on the bits as they are: a configured one (scan_rs, a Forney interleaver too), else a blind one
-       (rpps.analysis.rs.search over `rs_lengths`, or every length with `exhaustive`)
-    2. a binary block code (rpps.analysis.block.solve_block: BCH / cyclic, product, LDPC or any linear code, by rank)
-    3. a feedthrough scrambler (rpps.analysis.scrambler.search, up to `max_taps` taps); if one is found, the same codes on
+       (rpps.analysis.code.block.rs.search over `rs_lengths`, or every length with `exhaustive`)
+    2. a binary block code (rpps.analysis.code.block.linear.solve_block: BCH / cyclic, product, LDPC or any linear code, by rank)
+    3. a feedthrough scrambler (rpps.analysis.sequence.scrambler.search, up to `max_taps` taps); if one is found, the same codes on
        what it gives, then HDLC framing. A scrambler hypothesis with no taps means the bits already had structure.
     4. none found (descrambled data that is random itself, compressed or encrypted, stays white): Reed-Solomon behind each
        configured feedthrough scrambler (its structure is algebraic: a scrambler search can't see it)
     Nothing here decodes: a Guess is a definition once it is saved. Empty: nothing found (the bits stay white: another
     layer, or random payload such as encrypted data)."""
-    from . import rs as blind_rs, scrambler, block as blind_block
+    from .code.block import rs as blind_rs, linear as blind_block
+    from .sequence import scrambler
 
     def code_layer(b, with_block=block):
         h, t, _ = scan_rs(b)
@@ -1072,7 +1073,8 @@ def _blind(head, c, y=None):
     """With no configured code: a known mother code with a puncture pattern none of them has (then what is inside it), or
     a binary block code, on the channel bits (y: the symbols, for soft values). [(hypothesis, Guess or None)], outermost
     first, or []"""
-    from . import puncture, block as blind_block
+    from .code.conv import puncture
+    from .code.block import linear as blind_block
     hyps, trials = puncture.search(head)
     v, g = puncture.best(hyps, trials)
     if v is not None:

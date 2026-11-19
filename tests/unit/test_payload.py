@@ -1,8 +1,8 @@
-"""Framing signatures in decoded bits, and the verdict on the rest (rpps.analysis.payload)"""
+"""Framing signatures in decoded bits, and the verdict on the rest (rpps.analysis.framing.payload)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import payload as P
+from rpps.analysis.framing import payload as P
 from rpps.math import gf2
 
 def rbits(rng, n):

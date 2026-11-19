@@ -1,8 +1,8 @@
-"""Polar frozen positions, blind (rpps.analysis.polar)"""
+"""Polar frozen positions, blind (rpps.analysis.code.block.polar)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import polar
+from rpps.analysis.code.block import polar
 
 def code(rng, N, frozen, W):
     G = polar.transform(N)

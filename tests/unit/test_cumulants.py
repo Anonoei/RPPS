@@ -1,8 +1,8 @@
-"""Higher-order cumulants: theory values, blind classification (rpps.analysis.cumulants)"""
+"""Higher-order cumulants: theory values, blind classification (rpps.analysis.modulation.cumulants)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import cumulants as C
+from rpps.analysis.modulation import cumulants as C
 
 def noisy(rng, pts, esn0, n=20000, phase=0.7):
     pts = np.asarray(pts)/np.sqrt(np.mean(np.abs(pts)**2))

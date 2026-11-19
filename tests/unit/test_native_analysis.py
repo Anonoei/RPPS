@@ -3,7 +3,8 @@ import numpy as np
 import pytest
 
 from rpps import _accel
-from rpps.analysis import cpm, ldpc
+from rpps.analysis.modulation import cpm
+from rpps.analysis.code.block import ldpc
 from rpps.math import gf2
 from rpps import code as coding
 

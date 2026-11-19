@@ -313,7 +313,7 @@ def rds_chain():
     sym = rp.sync.time.MM(0.05, 0.0, 32, biphase=True)
     costas = rp.sync.Costas(0.132, 0.00932, order=2)
     return SimpleNamespace(pre=pre, post=sym + costas, sym=sym, costas=costas,
-                           track=rp.analysis.quality.Track(np.array([1.0, -1.0])), decoder=RDS())
+                           track=rp.analysis.modulation.quality.Track(np.array([1.0, -1.0])), decoder=RDS())
 
 def reader(blocks, out, stop):
     """The HackRF has to be drained steadily; processing happens on the other side of this queue"""

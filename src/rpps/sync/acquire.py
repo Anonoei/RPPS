@@ -1,11 +1,11 @@
-"""Acquire: streaming modulation/baud/cfo detection (the estimators are in rpps.analysis.modulation)"""
+"""Acquire: streaming modulation/baud/cfo detection (the estimators are in rpps.analysis.modulation.detect)"""
 from types import SimpleNamespace
 
 import numpy as np
 
 from ..base import Stage
-from ..analysis.rate import find_baud
-from ..analysis.modulation import detect
+from ..analysis.spectrum.rate import find_baud
+from ..analysis.modulation.detect import detect
 
 class Acquire(Stage):
     """Detect as soon as the signal is there, then keep refining as the stream grows
@@ -24,7 +24,7 @@ class Acquire(Stage):
     min_samples: samples held before the first try, whatever the line: the rate search goes down to Fs/16, so this is at
         least 64 symbols (a narrow signal decimated far, a carrier, gives a few samples a block, and a line in a few hundred
         samples is no rate)
-    baud: the symbol rate when known (a channel plan, rpps.analysis.cyclic): no waiting for a line, no rate search
+    baud: the symbol rate when known (a channel plan, rpps.analysis.spectrum.cyclic): no waiting for a line, no rate search
     """
     __slots__ = ("lock", "max_wait", "history", "names", "betas", "min_samples", "baud")
     def __init__(self, lock=5.0, max_wait=2**17, history=2**16, names=None, betas=(0.2, 0.25, 0.35), min_samples=1024,

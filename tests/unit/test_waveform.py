@@ -1,8 +1,8 @@
-"""rpps.analysis.waveform: tones, OFDM (and which system), bursts, constant envelope"""
+"""rpps.analysis.spectrum.waveform: tones, OFDM (and which system), bursts, constant envelope"""
 import numpy as np
 
 import rpps as rp
-from rpps.analysis import waveform as W
+from rpps.analysis.spectrum import waveform as W
 
 RNG = np.random.default_rng(7)
 

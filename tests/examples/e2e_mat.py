@@ -46,8 +46,8 @@ def main():
             state = f"{sink.percent*100:06.2f}% | acquiring"
         else:
             if track is None:
-                pts = rp.analysis.modulation.candidates([det.mod])[det.mod]
-                track = rp.analysis.quality.Track(pts)
+                pts = rp.analysis.modulation.detect.candidates([det.mod])[det.mod]
+                track = rp.analysis.modulation.quality.Track(pts)
             if len(mid) >= 4*round(mid.sps):
                 phase = rp.viz.eye.sync_phase(out.state(sym_sync), len(mid))
                 if phase is not None:

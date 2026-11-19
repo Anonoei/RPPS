@@ -1,9 +1,9 @@
-"""Blind LDPC / cyclic reconstruction: staircase solve, progressive search, roots (rpps.analysis.ldpc)"""
+"""Blind LDPC / cyclic reconstruction: staircase solve, progressive search, roots (rpps.analysis.code.block.ldpc)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import ldpc as L
-from rpps.analysis.block import sparse_checks
+from rpps.analysis.code.block import ldpc as L
+from rpps.analysis.code.block.linear import sparse_checks
 from rpps.code.types.ldpc import gallager
 
 def ira(rng, k, m, w=4):

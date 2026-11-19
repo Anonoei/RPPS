@@ -657,7 +657,7 @@ kernels, the parallel runner's internals, how to add things) is in the sections 
 - The DVB-S sync bytes, the 802.11b SFD and the DVB-S2 SOF as `sequence/word` definitions (the CCSDS ASM, the Mode S preamble
   and the BLE access address are; those three are still written in the steps and headers that use them).
 - Per-burst timing and carrier acquisition in the data path (a short packet alone, with no stream to track: `ble/adv` wants
-  a continuous signal or known timing; `adsb/mode_s` gets by at one sample per chip). `rpps.analysis.burst` does it
+  a continuous signal or known timing; `adsb/mode_s` gets by at one sample per chip). `rpps.analysis.spectrum.burst` does it
   offline (each burst acquired on the shared preamble, data-aided); a burst stage built the same way would serve BLE,
   802.15.4, LoRa and the TDMA carriers of the surveys.
 - Reed-Solomon in the dual (Berlekamp) basis: CCSDS symbols need the conversion before and after `rs/ccsds_255_223`.

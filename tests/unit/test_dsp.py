@@ -142,7 +142,7 @@ def test_duty_sees_bursts(rng):
     assert len(found) == 1 and found[0].duty == pytest.approx(0.5, abs=0.15)
 
 def test_reject_spur_bauds():
-    from rpps.analysis.signal import Signal, reject_spur_bauds
+    from rpps.analysis.spectrum.signal import Signal, reject_spur_bauds
     def sig(width, baud):
         s = Signal(0.0, width, 0.0, 0.0)
         s.baud_est = baud

@@ -1,9 +1,9 @@
-"""Spectral coherence over all cycle frequencies, and trained FRESH filtering (rpps.analysis.scf)"""
+"""Spectral coherence over all cycle frequencies, and trained FRESH filtering (rpps.analysis.spectrum.scf)"""
 import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.analysis import scf
+from rpps.analysis.spectrum import scf
 from conftest import shaped
 
 FS = 1e6

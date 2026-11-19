@@ -39,7 +39,7 @@ class Stream:
 
     states: the carried state of each stage (filter history, oscillator phase, loop filters...), keyed by the stage,
         so a stage object is reusable and the same stage in two streams has two states
-    det: detection result (baud, modulation, timing, cfo...), see rpps.analysis.modulation
+    det: detection result (baud, modulation, timing, cfo...), see rpps.analysis.modulation.detect
     busy: seconds each stage spent in `step`; air: seconds of signal the source produced. busy/air (`load`) over 1
         means that stage can't keep up in real time
     dropped: blocks a threaded source discarded because the stages fell behind (Blocks.threaded(drop=True))

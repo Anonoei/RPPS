@@ -1,11 +1,13 @@
-"""Blind tools for what no definition covers: feedthrough scramblers (rpps.analysis.scrambler), Reed-Solomon codes
-(rpps.analysis.rs), the layers inside a decoded stream (fec.solve), and what must not be taken for a code"""
+"""Blind tools for what no definition covers: feedthrough scramblers (rpps.analysis.sequence.scrambler), Reed-Solomon codes
+(rpps.analysis.code.block.rs), the layers inside a decoded stream (fec.solve), and what must not be taken for a code"""
 import numpy as np
 import pytest
 
 import rpps as rp
 from rpps import _config
-from rpps.analysis import fec as F, rs as B, scrambler as SC
+from rpps.analysis import fec as F
+from rpps.analysis.code.block import rs as B
+from rpps.analysis.sequence import scrambler as SC
 from rpps.code.types.rs import rs
 from rpps.logger import Logger
 
@@ -106,7 +108,7 @@ def test_an_unmodulated_carrier_is_not_a_code():
     assert not F.identify(s, "bpsk").found
 
 def test_acquire_fec_says_it_is_still_acquiring():
-    from rpps.analysis.modulation import Detection
+    from rpps.analysis.modulation.detect import Detection
     d = rp.Data(np.ones(1000, np.complex64), Fs=1e4, sps=1)
     d.meta.stream.det = Detection(mod="qpsk", baud=1e4, sps=1.0)
     d + rp.sync.AcquireFEC()
@@ -115,7 +117,8 @@ def test_acquire_fec_says_it_is_still_acquiring():
 
 # --- Binary block codes, products, unknown puncture patterns ---------------------------------------------------------
 
-from rpps.analysis import block as BK, puncture as PU
+from rpps.analysis.code.block import linear as BK
+from rpps.analysis.code.conv import puncture as PU
 from rpps.code.types.bchgf import bchgf
 from rpps.code.types.conv import conv
 from rpps.math.gf2 import nullspace, rank, rref
@@ -205,7 +208,7 @@ def test_blind_identify_peels_a_punctured_code_and_the_bch_inside():
 
 def test_fixed_and_copied_bits_are_framing_not_a_code():
     # Every 32 bits one bit is fixed and two are equal: two checks of weight 1 and 2, which a code never has alone
-    from rpps.analysis import block as B
+    from rpps.analysis.code.block import linear as B
     rng = np.random.default_rng(0)
     W = rng.integers(0, 2, (3000, 32)).astype(np.uint8)
     W[:, 5] = 1
@@ -226,7 +229,7 @@ def _lfsr(taps, n, rng):
     return np.array(s[:n], np.uint8)
 
 def _feedthrough(d, taps):
-    """y[n] = d[n] ^ y[n-a] ^ y[n-b]...: the scrambler rpps.analysis.scrambler.descramble undoes"""
+    """y[n] = d[n] ^ y[n-a] ^ y[n-b]...: the scrambler rpps.analysis.sequence.scrambler.descramble undoes"""
     y = np.zeros(len(d), np.uint8)
     for n in range(len(d)):
         v = d[n]
@@ -245,7 +248,7 @@ def test_berlekamp_massey_finds_the_register():
     assert 190 <= L <= 210 # Random bits: about half their length
 
 def test_a_prbs_and_an_additive_scrambler_over_idle_data():
-    from rpps.analysis import scrambler as SC
+    from rpps.analysis.sequence import scrambler as SC
     rng = np.random.default_rng(1)
     h, _, g = SC.additive_search(_lfsr((23, 18), 40000, rng))
     assert h[0].params["taps"] == [23, 18] and h[0].params["prbs"] and "PRBS23" in h[0].name
@@ -258,7 +261,7 @@ def test_a_prbs_and_an_additive_scrambler_over_idle_data():
 
 def test_cascaded_scramblers_over_a_repeating_word_are_explained():
     # Two scramblers (1+x^18+x^23) in cascade over a 24-bit word sent again and again
-    from rpps.analysis import scrambler as SC
+    from rpps.analysis.sequence import scrambler as SC
     word = np.random.default_rng(24).integers(0, 2, 24).astype(np.uint8)
     y = _feedthrough(_feedthrough(np.tile(word, 1700), (23, 18)), (23, 18))
     h, _, _ = SC.additive_search(y)
@@ -297,7 +300,7 @@ def test_a_ccsds_stream_on_bpsk_is_identified():
 def test_a_prbs_or_noisy_fill_is_not_a_low_rate_code():
     """What a blind search calls "linear (192,1)" and the like: rows of a short recurrence (a PRBS) are short of rank at
     any length past its degree, and fill repeating with a few bit errors is nearly rank one: neither is a code"""
-    from rpps.analysis import block as B
+    from rpps.analysis.code.block import linear as B
     rng = np.random.default_rng(11)
     s = list(rng.integers(0, 2, 15))
     for i in range(15, 30000):

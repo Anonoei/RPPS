@@ -197,7 +197,7 @@ def _read_bits(path, fmt):
 
 def cmd_solve(args):
     """What a demodulated stream carries: blind codes, Reed-Solomon, scramblers and PRBS on bits (rpps.analysis.fec.solve,
-    scrambler.additive_search); symbols (a complex .npy) are framed first (rpps.analysis.framing)"""
+    scrambler.additive_search); symbols (a complex .npy) are framed first (rpps.analysis.framing.frames)"""
     import numpy as np
     import rpps as rp
     A = rp.analysis

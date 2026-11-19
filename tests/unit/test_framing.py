@@ -1,9 +1,9 @@
-"""rpps.analysis.framing: the frame period, the unique word, frames cut and turned on it, frames that repeat"""
+"""rpps.analysis.framing.frames: the frame period, the unique word, frames cut and turned on it, frames that repeat"""
 import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.analysis import framing as FR
+from rpps.analysis.framing import frames as FR
 
 def framed(period=600, uw_len=16, frames=120, snr_db=15, slips=True, repeat=None, seed=0):
     """QPSK symbols in frames: a fixed unique word, then random data (or data that repeats every `repeat` frames), a

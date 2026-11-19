@@ -1,8 +1,8 @@
-"""Every linear recurrence up to a degree at once: scrambler taps from hard bits (rpps.analysis.recurrence)"""
+"""Every linear recurrence up to a degree at once: scrambler taps from hard bits (rpps.analysis.sequence.recurrence)"""
 import numpy as np
 import pytest
 
-from rpps.analysis import recurrence as R
+from rpps.analysis.sequence import recurrence as R
 from rpps.math import gf2
 
 N = 200000
