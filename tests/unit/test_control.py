@@ -37,7 +37,8 @@ def test_tables():
     assert t.row({"modcod": 12, "short": 0})["constellation"] == "dvbs2_8psk"
     assert t.row({"modcod": 12, "short": 0})["interleaver"] == "dvbs2_8psk_210" # 8PSK 3/5 reads its columns backwards
     assert t.row({"modcod": 4, "short": 0})["kbch"] == 32208
-    assert t.row({"modcod": 4, "short": 1}) is None and t.row({"modcod": 4}) is None # no short frames; a key missing
+    assert t.row({"modcod": 4, "short": 1})["kbch"] == 7032 # A short frame (table 5b)
+    assert t.row({"modcod": 11, "short": 1}) is None and t.row({"modcod": 4}) is None # No short 9/10; a key missing
     assert t.row({"modcod": 4, "short": False}) is not None # header bits as bools look the same
     assert rp.profile.table("ieee80211b/rate").row({"signal": 20})["constellation"] == "qpsk_axes"
 
@@ -314,3 +315,33 @@ def test_dvbs2_from_timed_symbols(s2_signal):
     syms = np.asarray((rp.Data(x, Fs=o.Fs, sps=4, delay=o.delay, flush=True) + p.rx().ops[0][1] + p.rx().ops[1][1]).data)
     out = rx(rp.Data((syms*np.exp(0.3j)).astype(np.complex64), sps=1, flush=True))
     assert np.array_equal(np.asarray(out.data).astype(bool), data)
+
+@pytest.mark.parametrize("modcod", [18, 21, 23, 24, 26, 28]) # 16APSK 2/3, 5/6, 9/10; 32APSK 3/4, 5/6, 9/10
+def test_dvbs2_apsk_loopback(modcod):
+    """16APSK and 32APSK (EN 302 307-1 5.4.3-5.4.4): each rate's own ring ratios, the bit interleaver and the mapping"""
+    p = rp.profile.load("dvbs2/normal", sync=KNOWN)
+    t = rp.profile.table("dvbs2/modcod")
+    frames = [{"modcod": modcod, "pilots": 1}, {"modcod": 4, "pilots": 1}] # Then QPSK: the receiver switches back
+    dfl = [t.row({**f, "short": 0})["kbch"] - 80 for f in frames]
+    data = bits(sum(dfl), modcod)
+    o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=frames)
+    x = np.concatenate((o.data, np.zeros(200, np.complex64)))
+    got, st = s2_receive(p, x, o, noise=0.02) # about 25 dB Es/N0: 32APSK 9/10 needs about 16
+    assert np.array_equal(got, data)
+    assert [f["modcod"] for _, f, _ in st.control.fields("pls")] == [modcod, 4]
+    assert st.est["dvbs2_bb"]["crc_failed"] == 0
+
+@pytest.mark.parametrize("modcod", [1, 4, 12, 14, 18, 22, 24, 27]) # Short: QPSK 1/4, 1/2; 8PSK 3/5, 3/4; 16APSK 2/3, 8/9; 32APSK 3/4, 8/9
+def test_dvbs2_short_frame_loopback(modcod):
+    """Short FECFRAMEs (16200 bits, EN 302 307-1 annex C and tables 5b, 6b, 7b), between normal ones"""
+    p = rp.profile.load("dvbs2/normal", sync=KNOWN)
+    t = rp.profile.table("dvbs2/modcod")
+    frames = [{"modcod": modcod, "pilots": 1, "short": 1}, {"modcod": 4, "pilots": 0}, {"modcod": modcod, "pilots": 0, "short": 1}]
+    dfl = [t.row({"short": 0, **f})["kbch"] - 80 for f in frames]
+    data = bits(sum(dfl), 100 + modcod)
+    o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=frames)
+    x = np.concatenate((o.data, np.zeros(200, np.complex64)))
+    got, st = s2_receive(p, x, o, noise=0.02)
+    assert np.array_equal(got, data)
+    assert [(f["modcod"], f["short"]) for _, f, _ in st.control.fields("pls")] == [(modcod, 1), (4, 0), (modcod, 1)]
+    assert st.est["dvbs2_bb"]["crc_failed"] == 0

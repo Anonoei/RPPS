@@ -159,8 +159,14 @@ def test_rs_scan_says_when_it_had_too_little():
     assert short and not hyps
 
 def reference_conv_encode(enc, bits):
-    """The register loop the vectorized encoder replaced"""
+    """The register loop the vectorized encoder replaced: a zero tail when terminated, the register started with the
+    frame's last bits when tail-biting, inverted outputs flipped"""
     reg = np.zeros(enc.con, dtype=bool)
+    bits = np.asarray(bits, dtype=bool)
+    if enc.termination == "tailbiting":
+        reg[1:] = bits[::-1][:enc.con - 1]
+    if enc.terminated:
+        bits = np.concatenate((bits, np.zeros(enc.con - 1, dtype=bool)))
     out = np.empty((len(bits), enc.den), dtype=int)
     for i, b in enumerate(bits):
         reg[0] = b
@@ -168,6 +174,8 @@ def reference_conv_encode(enc, bits):
             out[i, j] = np.bitwise_xor.reduce(reg[g])
         reg = np.roll(reg, 1)
         reg[0] = 0
+    if enc.invert is not None:
+        out ^= enc.invert[None, :]
     if enc.puncture is not None:
         P = enc.puncture.shape[1]
         full = len(out)//P*P
@@ -178,7 +186,9 @@ def reference_conv_encode(enc, bits):
 def test_conv_encoder_matches_the_register_loop(name, rng):
     enc = rp.code.load("conv", name).encoder
     b = rng.integers(0, 2, 1001).astype(bool)
-    assert np.array_equal(enc.encode(b), reference_conv_encode(enc, b[:len(b)] if not enc.terminated else b))
+    assert np.array_equal(enc.encode(b), reference_conv_encode(enc, b))
+    if enc.termination == "tailbiting": # Whole frames only: no stream to split
+        return
     st = {}
     split = np.concatenate((enc.encode(b[:420], st, False), enc.encode(b[420:], st, True))) # Whole puncture periods (2, 3, 5, 7)
     assert np.array_equal(split, enc.encode(b))

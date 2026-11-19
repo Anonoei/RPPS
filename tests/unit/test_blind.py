@@ -201,3 +201,110 @@ def test_blind_identify_peels_a_punctured_code_and_the_bch_inside():
     f = F.identify(s, "qpsk", blind=True)
     assert not f.found and [h.kind for h in f.inner] == ["conv-punctured", "block-blind"]
     assert f.guesses[1].definition["type"] == "bch"
+
+def test_fixed_and_copied_bits_are_framing_not_a_code():
+    # Every 32 bits one bit is fixed and two are equal: two checks of weight 1 and 2, which a code never has alone
+    from rpps.analysis import block as B
+    rng = np.random.default_rng(0)
+    W = rng.integers(0, 2, (3000, 32)).astype(np.uint8)
+    W[:, 5] = 1
+    W[:, 20] = W[:, 10]
+    (h, g), = B.solve_block(W.ravel(), n=32, offset=0)
+    assert h.kind == "frame-blind" and g is None and h.params["fixed"] == [5] and h.params["same"] == [(10, 20)]
+    W2 = rng.integers(0, 2, (3000, 4)).astype(np.uint8)
+    W2[:, 2:] = W2[:, :2] # "cyclic (4,2), g = x^2 + 1": each bit repeated two later
+    assert B.solve_block(W2.ravel())[0][0].kind == "frame-blind"
+    G = np.array([[1, 0, 0, 0, 1, 1, 0], [0, 1, 0, 0, 1, 0, 1], [0, 0, 1, 0, 0, 1, 1], [0, 0, 0, 1, 1, 1, 1]]) # Hamming (7,4)
+    c = (rng.integers(0, 2, (4000, 4)) @ G) % 2
+    assert B.solve_block(c.ravel().astype(np.uint8))[0][0].kind == "block-blind" # A real code's checks are heavier
+
+def _lfsr(taps, n, rng):
+    s = list(rng.integers(0, 2, max(taps)))
+    while len(s) < n:
+        s.append(int(np.bitwise_xor.reduce([s[-t] for t in taps])))
+    return np.array(s[:n], np.uint8)
+
+def _feedthrough(d, taps):
+    """y[n] = d[n] ^ y[n-a] ^ y[n-b]...: the scrambler rpps.analysis.scrambler.descramble undoes"""
+    y = np.zeros(len(d), np.uint8)
+    for n in range(len(d)):
+        v = d[n]
+        for t in taps:
+            if n >= t:
+                v ^= y[n - t]
+        y[n] = v
+    return y
+
+def test_berlekamp_massey_finds_the_register():
+    from rpps.analysis import scrambler as SC
+    rng = np.random.default_rng(0)
+    assert SC.berlekamp_massey(_lfsr((23, 18), 400, rng)) == (23, (23, 18))
+    L, _ = SC.berlekamp_massey(rng.integers(0, 2, 400).astype(np.uint8))
+    assert 190 <= L <= 210 # Random bits: about half their length
+
+def test_a_prbs_and_an_additive_scrambler_over_idle_data():
+    from rpps.analysis import scrambler as SC
+    rng = np.random.default_rng(1)
+    h, _, g = SC.additive_search(_lfsr((23, 18), 40000, rng))
+    assert h[0].params["taps"] == [23, 18] and h[0].params["prbs"] and "PRBS23" in h[0].name
+    d = rng.integers(0, 2, 40000).astype(np.uint8)
+    for a in range(0, 40000, 4000):
+        d[a:a + 1500] = 0 # Idle stretches: the scrambler's own sequence shows through
+    h, _, g = SC.additive_search(d ^ _lfsr((15, 14), 40000, rng))
+    assert h[0].params["taps"] == [15, 14] and not h[0].params["prbs"] and g is not None
+    assert SC.additive_search(rng.integers(0, 2, 40000).astype(np.uint8))[0] == []
+
+def test_cascaded_scramblers_over_a_repeating_word_are_explained():
+    # Two scramblers (1+x^18+x^23) in cascade over a 24-bit word sent again and again
+    from rpps.analysis import scrambler as SC
+    word = np.random.default_rng(24).integers(0, 2, 24).astype(np.uint8)
+    y = _feedthrough(_feedthrough(np.tile(word, 1700), (23, 18)), (23, 18))
+    h, _, _ = SC.additive_search(y)
+    p = h[0].params
+    assert p["data_period"] == 24 and p["scramblers"][0]["taps"] == [23, 18] and p["scramblers"][0]["times"] == 2
+    assert p["pattern_holds"] > 0.99 and p["pattern"] in "".join(map(str, np.tile(word, 3)))
+    assert SC.explain([23, 18]) [1] == 1 # A scrambler over constant data: period 1
+
+def test_an_inverted_output_is_the_code_with_that_output_flipped():
+    # CCSDS 131.0-B 3.3: the basic K=7 code sends its G2 output inverted
+    rng = np.random.default_rng(4)
+    m = rng.integers(0, 2, 500).astype(bool)
+    plain = rp.code.load("conv", "k7_171_133/1_2").encoder.encode(m)
+    ccsds = rp.code.load("conv", "k7_171_133/ccsds_1_2")
+    e = ccsds.encoder.encode(m)
+    assert np.array_equal(e[0::2], plain[0::2]) and np.array_equal(e[1::2], ~plain[1::2])
+    assert np.array_equal(ccsds.decoder.decode(e.astype(np.uint8))[:len(m)], m)
+
+@pytest.mark.parametrize("name", ["k7_133_171/2_3", "k7_133_171/5_6", "k7_133_171/7_8", "k9_561_753/1_2",
+                                  "k9_557_663_711/1_3", "k7_133_171_165/1_3", "k7_133_171_145_133/1_4"])
+def test_standard_convolutional_codes_round_trip(name):
+    rng = np.random.default_rng(5)
+    c = rp.code.load("conv", name)
+    m = rng.integers(0, 2, 1260).astype(bool) # A whole number of every puncture period (2, 3, 5, 7)
+    e = c.encoder.encode(m)
+    assert np.array_equal(c.decoder.decode(e.astype(np.uint8))[:len(m)], m)
+
+def test_a_ccsds_stream_on_bpsk_is_identified():
+    # On BPSK the G2 inversion turns every other symbol: no map of the plain code fits, the CCSDS definition does
+    rng = np.random.default_rng(6)
+    e = rp.code.load("conv", "k7_171_133/ccsds_1_2").encoder.encode(rng.integers(0, 2, 20000).astype(bool))
+    y = (1 - 2*e.astype(float)) + 0.3*rng.standard_normal(len(e))
+    out = rp.analysis.fec.identify(y.astype(np.complex64), "bpsk")
+    assert out.found and out.name == "k7_171_133/ccsds_1_2"
+
+def test_a_prbs_or_noisy_fill_is_not_a_low_rate_code():
+    """What a blind search calls "linear (192,1)" and the like: rows of a short recurrence (a PRBS) are short of rank at
+    any length past its degree, and fill repeating with a few bit errors is nearly rank one: neither is a code"""
+    from rpps.analysis import block as B
+    rng = np.random.default_rng(11)
+    s = list(rng.integers(0, 2, 15))
+    for i in range(15, 30000):
+        s.append(s[i - 15] ^ s[i - 14]) # PRBS15
+    s = np.array(s, np.uint8)
+    out = B.solve_block(s, n=64, offset=0)
+    assert out and out[0][0].kind == "frame-blind" and out[0][0].params["kind"] == "recurrence"
+    assert out[0][0].params["degree"] == 15
+    fill = np.tile(rng.integers(0, 2, 192).astype(np.uint8), 300)
+    flips = rng.random(len(fill)) < 0.03
+    out = B.solve_block(fill ^ flips, n=192, offset=0)
+    assert not out or out[0][0].kind == "frame-blind"

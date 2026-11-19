@@ -237,3 +237,44 @@ def test_baseband_one_call():
     mid = y[len(y)//4:3*len(y)//4]
     f = np.angle(np.mean(mid[1:]*np.conj(mid[:-1])))*Fs_out/(2*np.pi)
     assert f == pytest.approx(1e3, abs=5) and np.mean(np.abs(mid)) == pytest.approx(1.0, rel=0.05)
+
+def test_a_carrier_on_a_raised_floor_has_its_snr_over_that_floor():
+    # A satellite transponder: its noise and intermodulation raise the floor 12 dB across 40 MHz, and the carriers sit on
+    # it. Their SNR is over that floor (what the demodulator sees), and the raised band is marked as holding them
+    import rpps as rp
+    rng = np.random.default_rng(3)
+    Fs, n = 100e6, 2**20
+    t = np.arange(n)/Fs
+    noise = lambda: (rng.standard_normal(n) + 1j*rng.standard_normal(n))/np.sqrt(2)
+    lp = rp.signal.filters.low_pass_kaiser(20e6, 2e6, 60, Fs)
+    ped = np.convolve(noise(), np.asarray(lp.filt), mode="same")
+    ped *= np.sqrt(10**1.2/np.mean(np.abs(ped)**2)*0.4) # 12 dB over the thermal floor in its band (40 of 100 MHz)
+    q = rp.symbol.load("qpsk").points
+    def carrier(f, baud, cnr_db):
+        sps = int(Fs/baud)
+        up = np.zeros(n, complex); up[::sps] = q[rng.integers(0, 4, len(up[::sps]))]
+        x = np.convolve(up, rp.signal.filters.rrc_pulse(np.arange(-8*sps, 8*sps + 1)/sps, 0.35), mode="same")
+        # The pedestal's density is 10**1.2 x the thermal one; the carrier's power over it in its band is cnr
+        x *= np.sqrt(10**(cnr_db/10)*10**1.2*(baud/Fs)/np.mean(np.abs(x)**2))
+        return x*np.exp(2j*np.pi*f*t)
+    x = noise() + ped + carrier(-10e6, 1e6, 15.0) + carrier(5e6, 1e6, 20.0)
+    sv = rp.analysis.survey(x.astype(np.complex64), Fs=Fs, baud=False)
+    near = lambda f: min(sv, key=lambda s: abs(s.mid - f))
+    a, b = near(-10e6), near(5e6)
+    assert abs(a.esn0_db(1e6) - 15.0) < 1.0 and abs(b.esn0_db(1e6) - 20.0) < 1.0 # Not 12 dB more, over the thermal floor
+    big = max(sv, key=lambda s: s.width)
+    assert big.width > 30e6 and big.holds >= 2
+
+def test_carriers_narrower_than_the_edge_window_are_not_boxed_with_their_gaps(rng):
+    # 383 kHz carriers 750 kHz apart at 100 MS/s, strong and weak by turns: narrower than the edge step's +-w (0.5% of
+    # the band), so a strong one's steps are found out in its weak neighbours' skirts and box it with its gaps (1.3 MHz)
+    Fs = 100e6
+    mids = 6.385e6 + 750e3*np.arange(5)
+    lvs = np.array([12.0, 20.0, 12.0, 20.0, 12.0])
+    def row(f):
+        return ((np.abs(f[:, None] - mids[None, :]) < 192e3)*lvs[None, :]).max(axis=1)
+    found = rp.analysis.find_signals(shaped_psd(rng, 1 << 20, Fs, row), Fs)
+    for m in mids[lvs == 20]:
+        s = min(found, key=lambda s: abs(s.mid - m))
+        assert s.mid == pytest.approx(m, abs=60e3) and s.width == pytest.approx(383e3, rel=0.15)
+    assert all(s.width < 600e3 for s in found)

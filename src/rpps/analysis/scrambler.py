@@ -1,4 +1,4 @@
-"""Blind self-synchronising (feedthrough) scrambler search
+"""Blind scrambler search: self-synchronising (feedthrough) scramblers, and additive ones (and bare LFSR sequences: PRBS)
 
 A feedthrough scrambler sends y[n] = d[n] ^ y[n-a] ^ y[n-b] ^ ...: descrambling is d[n] = y[n] ^ y[n-a] ^ y[n-b] ^ ..., with
 no seed to find (the register fills from the received bits). Descrambling white bits with a wrong polynomial gives white
@@ -12,6 +12,11 @@ A multiple of the right polynomial also leaves structure (it is the right one fo
 a constant constant), so among the polynomials that stand out the one of lowest degree, then fewest taps, is taken.
 Output that stays white under every polynomial was not scrambled this way, or what is under it is itself random
 (compressed or encrypted data, or another layer such as an additive scrambler or a code).
+
+An additive (synchronous) scrambler sends y[n] = d[n] ^ s[n], s an LFSR sequence. Wherever the data is constant for a
+while (idle fill, padding, a fixed header) y is the LFSR sequence itself, or its complement, and a stretch of it has
+linear complexity L (its register length) where random bits have half their length (`additive_search`, by
+Berlekamp-Massey over sliding windows). A bare PRBS (a test pattern: ITU-T O.150/O.151) is the same everywhere.
 """
 import itertools
 
@@ -103,3 +108,175 @@ def search(bits, max_degree=31, max_taps=2, top=20):
                                        "poly": taps, "seed": [1]*max(taps)},
                           {"z": pick.z, "score": pick.params["score"], "median": med})
     return hyps, len(cands), guess
+
+
+# --- Additive scramblers and PRBS: LFSR sequences, by linear complexity ------------------------------------------------
+
+# Recurrences s[n] = s[n-a] ^ s[n-b] ^ ... known by name, by their taps (a polynomial and its reciprocal are one sequence
+# read backwards, so both are looked up)
+KNOWN_LFSR = {
+    (7, 6): "PRBS7 (ITU-T O.150, 1+x^6+x^7)", (9, 5): "PRBS9 (ITU-T O.150/O.153, 1+x^5+x^9)",
+    (11, 9): "PRBS11 (ITU-T O.150/O.152, 1+x^9+x^11)", (15, 14): "PRBS15 / DVB energy dispersal (1+x^14+x^15)",
+    (20, 3): "PRBS20 / V.35 polynomial (1+x^3+x^20)", (20, 17): "PRBS20 (ITU-T O.150, 1+x^17+x^20)",
+    (23, 18): "PRBS23 (ITU-T O.150/O.151, 1+x^18+x^23)", (23, 5): "V.32 call / PRBS23 reversed (1+x^5+x^23)",
+    (29, 27): "PRBS29 (1+x^27+x^29)", (31, 28): "PRBS31 (ITU-T O.150, 1+x^28+x^31)",
+    (8, 7, 5, 3): "CCSDS randomizer (1+x^3+x^5+x^7+x^8)", (17, 14): "V.22 / 1+x^14+x^17", (7, 4): "IEEE 802.11 / 1+x^4+x^7",
+    (16, 15, 13, 4): "PRBS16 (1+x^4+x^13+x^15+x^16)", (9, 4): "1+x^4+x^9 (Bluetooth/BLE whitening, ...)",
+}
+
+def _poly(taps):
+    """1 + sum x^t as an int (bit i: the coefficient of x^i)"""
+    v = 1
+    for t in taps:
+        v |= 1 << int(t)
+    return v
+
+def _pdiv(a, b):
+    """(quotient, remainder) of a(x)/b(x) over GF(2), ints"""
+    q, db = 0, b.bit_length()
+    while a.bit_length() >= db:
+        sh = a.bit_length() - db
+        q |= 1 << sh
+        a ^= b << sh
+    return q, a
+
+def _scrambler_polys():
+    """{taps: name} of the feedthrough scramblers configured (config/scramble/feedthrough), and the known LFSRs"""
+    from .. import code
+    out = {}
+    for name in code.scram.ls().get("feedthrough", []):
+        try:
+            from .fec import cached_scrambler
+            t = tuple(sorted(cached_scrambler(f"feedthrough/{name}")["poly"], reverse=True))
+            out.setdefault(t, f"feedthrough/{name} ({lfsr_name(t)})")
+        except Exception: # A definition without a plain tap list isn't one to factor by
+            continue
+    for t in KNOWN_LFSR:
+        out.setdefault(t, lfsr_name(t))
+    return out
+
+def explain(taps, max_period=4096):
+    """Factor an LFSR recurrence into known scramblers and what is left: (scramblers [(taps, name, times)], the period
+    the data under them repeats with (the least P whose x^P + 1 the rest divides; None if none up to max_period), rest)
+
+    A feedthrough scrambler over data that repeats every P bits gives a sequence whose minimal polynomial is the
+    scrambler's times a divisor of x^P + 1 (the data's own recurrence); two scramblers in cascade multiply."""
+    rest = _poly(taps)
+    found = []
+    for t, name in sorted(_scrambler_polys().items(), key=lambda kv: -max(kv[0])):
+        g, k = _poly(t), 0
+        while rest.bit_length() > g.bit_length() - 1 and rest != 1:
+            q, r = _pdiv(rest, g)
+            if r:
+                break
+            rest, k = q, k + 1
+        if k:
+            found.append((list(t), name, k))
+    period = None
+    if rest == 1:
+        period = 1
+    else:
+        x_p = 1 # x^P mod rest, P counting up: rest divides x^P + 1 where that is 1
+        for P in range(1, max_period + 1):
+            x_p = _pdiv(x_p << 1, rest)[1]
+            if x_p == 1:
+                period = P
+                break
+    return found, period, rest
+
+def berlekamp_massey(bits):
+    """(L, taps): the shortest LFSR that generates bits, s[n] = XOR of s[n-t] for t in taps, L its length"""
+    s = np.asarray(bits, dtype=np.uint8)
+    n = len(s)
+    C = np.zeros(n + 1, dtype=np.uint8); B = np.zeros(n + 1, dtype=np.uint8)
+    C[0] = B[0] = 1
+    L, m = 0, 1
+    for i in range(n):
+        d = s[i] ^ (int(np.dot(C[1:L + 1], s[i - L:i][::-1])) & 1 if L else 0)
+        if d == 0:
+            m += 1
+            continue
+        T = C.copy()
+        C[m:] ^= B[:n + 1 - m]
+        if 2*L <= i:
+            L, B, m = i + 1 - L, T, 1
+        else:
+            m += 1
+    return L, tuple(int(t) for t in np.nonzero(C[1:L + 1])[0][::-1] + 1)
+
+def lfsr_name(taps):
+    """A known name for these taps (or their reciprocal), else the polynomial written out"""
+    t = tuple(sorted(taps, reverse=True))
+    if not t:
+        return "constant"
+    L = t[0]
+    rec = tuple(sorted([L - a for a in t[1:]] + [L], reverse=True))
+    name = KNOWN_LFSR.get(t) or KNOWN_LFSR.get(rec)
+    return name or "1 + " + " + ".join(f"x^{a}" for a in sorted(t))
+
+def recurrence_holds(bits, taps):
+    """Per bit n >= max(taps): whether s[n] = XOR s[n-t] holds (1) there"""
+    s = np.asarray(bits, dtype=np.uint8)
+    L = max(taps)
+    acc = s[L:].copy()
+    for t in taps:
+        acc ^= s[L - t:len(s) - t]
+    return (acc == 0).astype(np.uint8)
+
+def additive_search(bits, window=512, max_len=None, step=None):
+    """Find an LFSR sequence in hard bits: a bare PRBS, or an additive scrambler showing through constant data. Returns
+    (hypotheses best first, windows tried, Guess or None)
+
+    Every `step` bits a window of `window` bits is put through Berlekamp-Massey; one whose linear complexity is at most
+    `max_len` (random bits: window/2, within a few) is a stretch of some LFSR's output. The polynomial most windows agree
+    on is the scrambler's; how much of the stream its recurrence predicts tells a PRBS (all of it) from a scrambler over
+    data (the constant stretches) and gives where those stretches are (a frame period, when they repeat)."""
+    b = np.asarray(bits, dtype=np.uint8)
+    step = step or window//2
+    max_len = window//2 - 32 if max_len is None else max_len # Random windows come in within a few bits of window/2
+    hits, tried = {}, 0
+    for start in range(0, len(b) - window + 1, step):
+        tried += 1
+        L, taps = berlekamp_massey(b[start:start + window])
+        if 0 < L <= max_len and 2*L + 64 <= window and taps:
+            hits.setdefault(taps, []).append(start)
+    if not hits:
+        return [], tried, None
+    hyps = []
+    for taps, starts in hits.items():
+        holds = recurrence_holds(b, taps)
+        frac = float(holds.mean())
+        # Each window is overwhelming evidence alone (random bits fall that short of window/2 about 2^-(window - 2L) of
+        # the time), so the score is how many windows agree
+        hyps.append(Hypothesis("scrambler-additive", lfsr_name(taps), float(len(starts)),
+                               {"taps": list(taps), "length": max(taps), "windows": len(starts), "of": tried,
+                                "holds": frac, "first": starts[0], "prbs": frac > 0.95}))
+    hyps.sort(key=lambda h: (-h.params["windows"], h.params["length"]))
+    best = hyps[0]
+    kind = "a bare PRBS (test pattern)" if best.params["prbs"] else "an additive scrambler showing through constant data"
+    scr, period, _ = explain(best.params["taps"])
+    if scr and best.name not in KNOWN_LFSR.values():
+        # Not a PRBS of its own: known feedthrough scramblers over data that repeats
+        names = " then ".join(f"{name} x{k}" if k > 1 else name for _, name, k in scr)
+        kind = (f"{names} over data repeating every {period} bits" if period and period > 1 else
+                f"{names} over constant data" if period == 1 else f"{names} over data with recurrence of its own")
+        best.params["scramblers"] = [{"taps": t, "name": n, "times": k} for t, n, k in scr]
+        best.params["data_period"] = period
+        if period and period <= 4096: # The data itself: descrambled, the commonest word of `period` bits
+            d = b
+            for t, _, k in scr:
+                for _ in range(k):
+                    d = descramble(d, t)
+            d = d[64*max(max(t) for t, _, _ in scr):]
+            words = d[:len(d)//period*period].reshape(-1, period)
+            vals, counts = np.unique(words, axis=0, return_counts=True)
+            w = vals[np.argmax(counts)]
+            best.params["pattern"] = "".join(map(str, w))
+            best.params["pattern_holds"] = float(counts.max()/len(words))
+            kind += f": {best.params['pattern']} ({best.params['pattern_holds']*100:.1f}% of words)"
+    best.params["what"] = kind
+    best.name = f"{best.name}: {kind}"
+    guess = Guess("scramble", {"base": "scramble", "type": "additive", "comment": f"found by rpps.analysis.scrambler.additive_search: "
+                               f"{best.name}, {kind}; the seed and where it restarts are not known yet",
+                               "poly": best.params["taps"]}, {"windows": best.params["windows"], "holds": best.params["holds"]})
+    return hyps, tried, guess
