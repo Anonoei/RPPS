@@ -85,3 +85,14 @@ def test_soft_finds_what_hard_misses():
     assert soft[0].poly == DENSE
     zh = next((r.z for r in hard if r.poly == DENSE), 0.0)
     assert soft[0].z > 1.3*zh
+
+def test_high_degree_by_berlekamp_massey():
+    """V.35 applied twice over a repeating 24-bit word: degree 40 and more, past the transform; the
+    windows' shortest LFSR repeats, holds everywhere, and V.35^2 divides it"""
+    rng = np.random.default_rng(7)
+    word = rng.integers(0, 2, 24).astype(np.uint8)
+    data = np.tile(word, 4000)
+    s = feedthrough(feedthrough(data, V35), V35)
+    C, deg, holds = R.lfsr(s)
+    assert holds == 1.0 and R.pmod(C, R.pmul(V35, V35)) == 0 and deg <= 40 + 24
+    assert R.berlekamp_massey(lfsr(DVB, 200))[1] == 15
