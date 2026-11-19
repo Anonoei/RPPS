@@ -37,6 +37,7 @@ class conv(_code):
     """Convolutional encoder, rate 1/n. See `viterbi` for the conventions
 
     puncture: optional (n, P) 0/1 pattern, 1 = send
+    invert: optional n 0/1 flags: outputs sent inverted (CCSDS 131.0-B inverts the second, G2), before puncturing
     termination: "zero" flushes the register with K-1 zeros so the decoder can end in state 0 (the older
     terminated=True); "tailbiting" starts the register with the frame's last K-1 bits, so it ends where it began
     and nothing is added (LTE); "truncated" (default) just stops. A tail-biting code works on whole frames: in a
@@ -45,13 +46,14 @@ class conv(_code):
     @classmethod
     def from_config(cls, log, obj):
         return cls(log, obj["num"], obj["den"], generators_of(obj), obj["constraint"],
-                   obj.get("puncture"), termination_of(obj))
+                   obj.get("puncture"), termination_of(obj), obj.get("invert"))
 
-    def __init__(self, log, num: int, den: int, generator, constraint: int, puncture=None, terminated=False):
+    def __init__(self, log, num: int, den: int, generator, constraint: int, puncture=None, terminated=False, invert=None):
         super().__init__(log, None, num, den)
         self.generator = np.asarray(generator, dtype=bool).reshape(den, constraint)
         self.con = constraint
         self.puncture = None if puncture is None else np.asarray(puncture, dtype=bool)
+        self.invert = None if invert is None or not any(invert) else np.asarray(invert, dtype=np.int64)
         self.termination = termination_of({"termination": terminated})
         self.stream = self.termination != "tailbiting"
 
@@ -93,6 +95,8 @@ class conv(_code):
                 state.clear()
             else:
                 state["reg"] = reg
+        if self.invert is not None:
+            encoded = encoded ^ self.invert[None, :]
         if self.puncture is not None:
             P = self.puncture.shape[1]
             full = len(encoded)//P*P

@@ -76,7 +76,7 @@ def fft_correlate(x, template):
 def pss_search(x, fs, offsets, seconds=0.1):
     """For each frequency offset (Hz, where the carrier appears relative to the capture's centre) and each root: the fold of |PSS correlation|^2 on
     5 ms. Returns a list of (peak/median, offset, root index, fold) best first."""
-    n = int(fs*seconds)
+    n = min(int(fs*seconds), len(x)) # A shorter capture: all of it
     t = np.arange(n)/fs
     ratio = int(round(fs/1.92e6))
     period = 9600 # 5 ms at 1.92 MS/s
@@ -192,30 +192,41 @@ def main(argv=None):
     hyp = [(n1, h) for n1 in range(168) for h in (0, 1)]
     bins = bins62(nfft)
     d_pss = pss_sequence(ROOTS[n_id2])
-    found = []
-    for k in range(len(pss_pos)):
-        t6 = int(pss_pos[k]) - 8 # a little early: inside the cyclic prefix
-        t5 = t6 - (cp + nfft)
-        if t5 < 0 or t6 + nfft > len(y):
-            continue
-        Y6 = np.fft.fft(y[t6:t6 + nfft])[bins]
-        Y5 = np.fft.fft(y[t5:t5 + nfft])[bins]
-        h = Y6/d_pss
-        z = Y5*np.conj(h)/np.maximum(np.abs(h)**2, 1e-12)
-        metric = np.abs(D @ z)/np.sqrt(np.sum(np.abs(z)**2)*62)
-        order = np.argsort(-metric)
-        found.append((k, hyp[order[0]], metric[order[0]], metric[order[1]], np.median(metric)))
     from collections import Counter
+    # Where the SSS is, from the PSS's useful start: FDD, the symbol before (last two of slot 0/10); TDD, three symbols
+    # before (the PSS is the 3rd symbol of subframe 1/6, the SSS the last of subframe 0/5: the gap holds symbol 0 of a
+    # slot, with its longer prefix). Both are tried; the one whose N_ID1 votes agree is the duplex mode.
+    gaps = {"FDD": cp + nfft, "TDD": 3*(cp + nfft) + (cp0 - cp)}
+    by_mode = {}
+    for mode, gap in gaps.items():
+        found = []
+        for k in range(len(pss_pos)):
+            t6 = int(pss_pos[k]) - 8 # a little early: inside the cyclic prefix
+            t5 = t6 - gap
+            if t5 < 0 or t6 + nfft > len(y):
+                continue
+            Y6 = np.fft.fft(y[t6:t6 + nfft])[bins]
+            Y5 = np.fft.fft(y[t5:t5 + nfft])[bins]
+            h = Y6/d_pss
+            z = Y5*np.conj(h)/np.maximum(np.abs(h)**2, 1e-12)
+            metric = np.abs(D @ z)/np.sqrt(np.sum(np.abs(z)**2)*62)
+            order = np.argsort(-metric)
+            found.append((k, hyp[order[0]], metric[order[0]], metric[order[1]], np.median(metric)))
+        by_mode[mode] = found
+    mode = max(by_mode, key=lambda m: Counter(f[1][0] for f in by_mode[m]).most_common(1)[0][1] if by_mode[m] else 0)
+    found = by_mode[mode]
     votes = Counter(f[1][0] for f in found)
     n1, nv = votes.most_common(1)[0]
-    print(f"\nSSS: {len(found)} occurrences; N_ID1 votes (top 3): {votes.most_common(3)}")
+    print(f"\nSSS ({mode}: the layout whose votes agree; "
+          + ", ".join(f"{m} {Counter(f[1][0] for f in fs_).most_common(1)[0][1] if fs_ else 0}" for m, fs_ in by_mode.items())
+          + f"): {len(found)} occurrences; N_ID1 votes (top 3): {votes.most_common(3)}")
     good = [f for f in found if f[1][0] == n1]
     print(f"  best-vs-second metric on the agreeing ones: {np.mean([f[2] for f in good]):.2f} vs {np.mean([f[3] for f in good]):.2f} (chance level {np.mean([f[4] for f in good]):.2f})")
     halves = [f[1][1] for f in found if f[1][0] == n1]
     print(f"  half-frame (0 = subframe 0, 1 = subframe 5) by occurrence: {halves[:12]} ... (should alternate)")
     cell = 3*n1 + n_id2
     print(f"\nCell ID: N_ID1 = {n1}, N_ID2 = {n_id2}  =>  PCI {cell}")
-    return dict(y=y, fs=fs, cf=cf, nfft=nfft, pss_pos=pss_pos, period=period, pci=cell, off=off_tot, found=found, n1=n1, n2=n_id2)
+    return dict(y=y, fs=fs, cf=cf, nfft=nfft, pss_pos=pss_pos, period=period, pci=cell, off=off_tot, found=found, n1=n1, n2=n_id2, duplex=mode)
 
 if __name__ == "__main__":
     main()
