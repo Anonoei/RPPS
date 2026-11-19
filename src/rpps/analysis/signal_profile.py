@@ -165,8 +165,9 @@ def _guess_steps(p, hyps):
     for h in hyps:
         g = h.guess
         kind = {"conv-punctured": "fec", "block-blind": "fec", "rs-blind": "fec", "rs": "fec", "scrambler": "descramble",
-                "hdlc": "frame"}.get(h.kind, h.kind)
-        p.add(kind, h.name, GUESS if g is not None else FOUND, detail={"z": h.z, **{k: str(v) for k, v in h.params.items()}},
+                "scrambler-additive": "descramble", "hdlc": "frame", "frame-blind": "frame"}.get(h.kind, h.kind)
+        p.add(kind, h.name, GUESS if g is not None or h.kind == "frame-blind" else FOUND,
+              detail={"z": h.z, **{k: str(v) for k, v in h.params.items()}},
               note=f"blind: {g!r}" if g is not None else ("found, but nothing places it in the decoder" if h.kind == "rs" else None))
 
 # --- Framed profiles (a preamble and headers: DVB-S2) ----------------------------------------------------------------
@@ -241,6 +242,17 @@ def rotation(z, preamble, threshold=0.6, top=8):
 
 RATE_WIDTH = 0.85 # A signal narrower than this times its symbol rate wasn't timed at its rate
 STRONG = 0.1      # A code re-encoding under this times a wrong code's mismatch confirms the rate it was found at
+ESN0_GAP = 1.5 # dB: a linear carrier, locked, measures the Es/N0 its band's SNR gives to within about 1 dB (carriers on air
+               # that decode cleanly come in 0.5-1 dB under; this leaves the band estimate a little room). Further under it,
+               # the symbols don't sit on this constellation: not linear, a wrong rate, or carriers on top of each other
+
+def esn0_gap(sig, det):
+    """(expected Es/N0, gap) in dB: what the survey's in-band SNR (over the noise beside the signal) gives at the acquired
+    rate (Signal.esn0_db), and how far the measured one falls under it; (None, None) when either is unknown"""
+    if det.esn0 is None or getattr(sig, "snr", None) is None or not getattr(sig, "width", None):
+        return None, None
+    want = sig.esn0_db(det.baud)
+    return want, want - det.esn0
 
 def _strong(fec):
     """Whether a found code is evidence enough for the symbol rate too: one with more than a re-encoding (RS, HDLC, a
@@ -249,16 +261,46 @@ def _strong(fec):
         return True
     return fec.mismatch is not None and fec.baseline and fec.mismatch < STRONG*fec.baseline
 
+NEAR = 2**20 # Channel samples kept for rpps.analysis.waveform
+PM_OFFSET = 0.25 # A residual carrier this far (of the signal's width) from its centre isn't one: PM is symmetric about it
+CARRIER_SHARE = 0.01 # Power share of the strongest spectral bin (of 8192) worth a residual-carrier analysis
+
+def carrier_share(x, nfft=8192):
+    """The strongest bin's share of the power in an averaged spectrum: a carrier line holds far more than noise-like
+    modulation's 1/nfft or so (a quick screen before rpps.analysis.telemetry)"""
+    x = np.asarray(x)
+    k = len(x)//nfft
+    if k < 1:
+        return 0.0
+    P = np.mean(np.abs(np.fft.fft(x[:k*nfft].reshape(k, nfft), axis=1))**2, axis=0)
+    return float(P.max()/P.sum())
+SYMS = 2**18 # Tracked symbols kept for rpps.analysis.framing
+
+def _waveform_detail(w):
+    d = {"envelope": w.envelope}
+    if w.tones is not None:
+        d["tones"] = [[f, sh] for f, sh in w.tones.lines]
+    if w.ofdm is not None:
+        d["ofdm"] = {"tu": w.ofdm.tu, "tcp": w.ofdm.tcp, "strength": w.ofdm.strength, "systems": [n for n, _ in w.ofdm.systems[:3]]}
+    if w.bursts is not None:
+        d["bursts"] = {"duty": w.bursts.duty, "period": w.bursts.period}
+    return d
+
 class _Chain:
     """A signal's chain over the blocks of its capture, and what it keeps for the profile"""
-    def __init__(self, sig, Fs, blind):
+    def __init__(self, sig, Fs, blind, baud=None):
         from .. import sync
         from ..base import Stream
-        self.sig, self.Fs = sig, Fs
+        self.sig, self.Fs, self.baud = sig, Fs, baud
         self.errors = []
-        self.acq, self.mat, self.ff = sync.Acquire(), sync.time.Mat(), sync.phase.FFCarrier()
+        self.acq, self.mat, self.ff = sync.Acquire(baud=baud), sync.time.Mat(), sync.phase.FFCarrier()
         self.fec = sync.AcquireFEC(blind=blind)
         self.raw, self.nsym, self.dead = [], 0, False
+        self.near, self.nnear = [], 0 # The channel's first NEAR samples, for rpps.analysis.waveform
+        self.syms, self.nsyms = [], 0 # The first SYMS carrier-tracked symbols, for rpps.analysis.framing
+        if getattr(sig, "holds", 0): # A raised floor under other signals: they are profiled, it isn't one
+            self.ch, self.dead = None, True
+            return
         try:
             self.ch = sig.channel()
             self.stream = Stream(Fs)
@@ -273,6 +315,9 @@ class _Chain:
         stage = "channel"
         try:
             near = Data(samps, Fs=self.Fs, stream=self.stream) + self.ch.front
+            if self.nnear < NEAR and len(near):
+                self.near.append(near.data[:NEAR - self.nnear].copy())
+                self.nnear += len(self.near[-1])
             stage = "acquire / timing"
             mat = near + self.acq + self.mat
             if sum(len(r) for r in self.raw) < 6000 + 400000:
@@ -280,19 +325,240 @@ class _Chain:
             stage = "carrier"
             syms = mat + self.ff
             self.nsym += len(syms)
+            if self.nsyms < SYMS and len(syms):
+                self.syms.append(np.asarray(syms.data)[:SYMS - self.nsyms].copy())
+                self.nsyms += len(self.syms[-1])
             stage = "fec"
             syms + self.fec
         except Exception as e:
             self.errors.append((stage, e, traceback.format_exc(limit=4)))
             self.dead = True
 
+    def cyclic_rate(self, p):
+        """When the chain found no rate, or a doubtful one: the symbol rate rpps.analysis.cyclic sees in |x|^2 (a
+        calibrated line, at any rate in band: Acquire's search starts at Fs/16), to run the chain again at; else None"""
+        if self.baud or not self.near or p.solved or p.profile_name:
+            return None
+        acq = next((st for st in p.steps if st.kind == "acquire"), None)
+        if acq is None or not (acq.status == UNSOLVED or "rate doubtful" in (acq.note or "") or
+                               "fit doubtful" in (acq.note or "")):
+            return None
+        from . import cyclic
+        try:
+            f = cyclic.features(np.concatenate(self.near)[:2**18], self.ch.Fs)
+        except Exception:
+            return None
+        if not f.linear:
+            return None
+        det = self.stream.det
+        if det is not None and abs(f.baud - det.baud) < 0.01*det.baud:
+            return None
+        return f.baud
+
     def profile(self, name):
+        p = self._linear(name)
+        if p.solved or p.profile_name or not self.near:
+            return p
+        return self._telemetry(p) or self._waveform(p) or p
+
+    def _telemetry(self, p):
+        """A residual carrier under the signal: PM telemetry (rpps.analysis.telemetry), its subcarriers demodulated; or
+        None (no carrier line, or the analysis failed: the chain's profile stands)"""
+        from . import telemetry
+        x = np.concatenate(self.near)
+        if carrier_share(x) < CARRIER_SHARE:
+            return None
+        try:
+            t = telemetry.analyze(x, self.ch.Fs)
+        except Exception as e:
+            p.add("telemetry", "residual-carrier PM", UNSOLVED, note=f"{type(e).__name__}: {e}")
+            return None
+        if t is None or t.pm.share > 0.95: # No carrier, or nothing but one (the waveform step names tones)
+            return None
+        m = t.pm
+        width = getattr(self.sig, "width", None) or self.ch.Fs
+        sym, side = telemetry.symmetry(x, self.ch.Fs, m.carrier, band=width, snr_db=getattr(self.sig, "snr", None))
+        if not any(s.ok for s in t.subcarriers) and (sym < telemetry.SYMMETRIC or side < telemetry.SIDEBANDS
+                                                     or abs(m.carrier) > PM_OFFSET*width):
+            return None # Nothing demodulated, and the spectrum isn't phase modulation's about that line: a tone in noise or
+                        # beside another signal (the waveform step names tones)
+        q = SignalProfile(p.name, p.signal)
+        q.symbols, q.det = p.symbols, p.det
+        q.steps.append(p.steps[0])
+        q.add("waveform", f"residual carrier {m.carrier:+.1f} Hz off with {100*m.share:.0f}% of the power: phase modulation, "
+                          f"index {m.index:.2f} rad",
+              detail={"carrier": m.carrier, "share": m.share, "index": m.index, "phase_rms": m.phase_rms, "symmetry": sym,
+                      "sidebands": side},
+              note=f"the linear chain's reading, not used: {p.steps[1].what}" if len(p.steps) > 1 else None)
+        q.add("demodulate", "the phase around the carrier (a narrow loop), data on it and on subcarriers",
+              detail={"subcarriers": [[f, h] for f, h in m.subcarriers], "tones": list(m.tones or [])},
+              note=("tones in the phase: " + ", ".join(f"{f/1e3:.3f} kHz" for f in m.tones)) if m.tones else None)
+        if not t.subcarriers:
+            q.add("subcarrier", "data in the phase", UNSOLVED, note="neither data on the carrier nor a subcarrier stood out")
+        for s in t.subcarriers:
+            d = {"freq": s.freq, "baud": s.baud, "quality": s.quality, "esn0": s.esn0, "manchester": s.manchester,
+                 "differential": s.differential, "rate": s.rate, "idle": s.idle}
+            if not s.ok:
+                q.add("subcarrier", f"{s.freq/1e3:.3f} kHz", UNSOLVED, detail=d, note=s.why)
+                continue
+            q.add("subcarrier", s.head(), detail=d)
+            if s.idle:
+                q.add("frame", f"idle: {s.idle}")
+            elif s.frame is not None:
+                f = s.frame
+                q.add("frame", str(f), GUESS, detail={"period": f.period, "fixed": f.fixed, "frames": f.frames,
+                                                       "counters": [list(c) for c in f.counters]},
+                      note="blind (rpps.analysis.telemetry): no known frame sync; the fields are the frame format's")
+            else:
+                q.add("frame", f"{len(s.bits)} data bits", UNSOLVED,
+                      note="no frame period in them: a longer capture may show one")
+        return q
+
+    def _waveform(self, p):
+        """When the linear chain didn't solve it: the profile by what kind of waveform it is (tones, OFDM, a constant
+        envelope, bursts: rpps.analysis.waveform), or None when nothing there says more than the chain did"""
+        from .waveform import classify
+        try:
+            w = classify(np.concatenate(self.near), self.ch.Fs)
+        except Exception as e: # The chain's own profile stands
+            p.add("waveform", "classify", UNSOLVED, note=f"{type(e).__name__}: {e}")
+            return None
+        kind = w.kind
+        det = self.stream.det
+        lost = det is None or p.steps[1].status == UNSOLVED or "doubtful" in (p.steps[1].note or "")
+        if kind is None and w.bursts is None:
+            return None
+        if kind is None or kind == "constant envelope" and not lost:
+            # Only bursts, or a constant envelope the PSK chain locked onto anyway (a carrier is one PSK point): noted
+            p.steps.insert(2 if len(p.steps) > 1 else 1, Step("waveform", str(w), FOUND, detail=_waveform_detail(w)))
+            return p
+        q = SignalProfile(p.name, p.signal)
+        q.symbols, q.det = p.symbols, p.det
+        q.steps.append(p.steps[0])
+        q.add("waveform", str(w), FOUND, detail=_waveform_detail(w),
+              note=f"the linear chain's reading, not used: {p.steps[1].what}" if len(p.steps) > 1 else None)
+        if kind == "tones":
+            q.add("demodulate", "nothing: unmodulated carrier" + ("s" if len(w.tones.lines) > 1 else ""))
+        elif kind == "ofdm":
+            sy = w.ofdm.systems[0][0] if w.ofdm.systems else None
+            hint = (" (projects/lte: cell search, PBCH; projects/nr/nr_cell.py: NR SSB)" if sy and ("LTE" in sy or "NR" in sy)
+                    else "")
+            if w.ofdm.comb:
+                note = (f"a pilot comb, every {w.ofdm.comb} subcarriers: FFT {w.ofdm.comb*w.ofdm.tu*self.ch.Fs:.0f} at this "
+                        "rate; the cell search tools name the cell" + (f"; {sy}{hint}" if sy else ""))
+            else:
+                note = (f"no OFDM chain in rp: FFT {w.ofdm.tu*self.ch.Fs:.0f} at this rate, prefix "
+                        f"{w.ofdm.tcp*self.ch.Fs:.0f} samples" + (f"; {sy}{hint}" if sy else ""))
+            q.add("demodulate", "OFDM receiver", UNSOLVED, note=note)
+        else:
+            self._fsk(q, np.concatenate(self.near))
+        return q
+
+    def _fsk(self, q, x):
+        """A constant envelope: FSK / MSK / GMSK by the instantaneous frequency (rpps.analysis.fsk), else unsolved"""
+        from . import fsk
+        try:
+            r = fsk.analyze(x, self.ch.Fs)
+        except Exception as e:
+            r = None
+            why = f"{type(e).__name__}: {e}"
+        else:
+            why = r.why
+        if r is None or r.M is None:
+            q.add("demodulate", "FM, FSK or CPM", UNSOLVED,
+                  note=f"a constant envelope: not a filtered PSK, which is all the linear chain tries; FSK: {why}")
+            return
+        q.add("demodulate", str(r), GUESS,
+              detail={"M": r.M, "baud": r.baud, "h": r.h, "spacing": r.spacing, "deviation": r.deviation,
+                      "centre": r.centre, "isi": r.isi, "name": r.name},
+              note="blind (rpps.analysis.fsk): fsk.demodulate gives the symbols")
+        q.add("fec", "the code on the FSK symbols", UNSOLVED, note="not searched: the FEC tools take PSK symbols or bits")
+
+    def _framing(self, p, det):
+        """Locked symbols no code fits: a frame structure (rpps.analysis.framing) into p, and a block code on the
+        frame-aligned payload when there are frames enough for one as long"""
+        from . import framing
+        from .block import solve_block
+        y = np.concatenate(self.syms)[2000:] # Past the carrier loop's start
+        try:
+            fr = framing.find(y, det.mod)
+        except Exception as e:
+            p.add("frame", "symbol framing", UNSOLVED, note=f"{type(e).__name__}: {e}")
+            return
+        if fr is None:
+            return
+        frames = framing.cut(y, fr)
+        bits = framing.payload_bits(frames, fr, det.mod)
+        rep, same = framing.repeats(bits, agree=0.95)
+        p.add("frame", str(fr), GUESS, detail={"period": fr.period, "uw_start": fr.uw_start, "uw_length": fr.uw_length,
+                                               "coherence": fr.coherence, "payload_bits": int(bits.shape[1]),
+                                               "repeats": rep},
+              note=f"blind (rpps.analysis.framing): {bits.shape[1]} payload bits a frame" +
+                   (f"; frames repeat every {rep} ({same*100:.0f}%): fill or a superframe" if rep else ""))
+        n = bits.shape[1]
+        if len(bits) >= n + 48: # The rank method: a row per codeword, more rows than its length
+            from .. import symbol
+            from .quality import gate
+            g = gate(frames[:400, fr.uw_length:].ravel(), symbol.load(det.mod).points)
+            if not g.ok: # Bit errors the noise doesn't explain fill the rank: a full rank then says nothing
+                p.add("fec", "block code on the frame-aligned payload: not tried", UNSOLVED,
+                      note=f"the hard decisions can't be trusted ({g.why}): fix the symbols (a pilot-aided sync, "
+                           "rpps.analysis.framing.pilot_frames) before a rank test")
+                return
+            for h, g in solve_block(bits.ravel(), n=n, offset=0):
+                p.add("fec", h.name, GUESS, detail={"z": h.z, **{k: str(v) for k, v in h.params.items()}},
+                      note=f"blind, on the frame-aligned payload: {g!r}" if g is not None else "blind, on the frame-aligned payload")
+
+    def _tcm(self, p, det):
+        """No code on the bits: a trellis code on the labels (rpps.analysis.tcm: Ungerboeck, pragmatic), when one holds"""
+        from . import tcm
+        from .. import symbol
+        y = np.concatenate(self.syms)[2000:2000 + 30000]
+        M = len(symbol.load(det.mod).points)
+        try:
+            found = tcm.search(y, M, max_nu=5)
+        except Exception as e:
+            p.add("fec", "trellis-coded modulation", UNSOLVED, note=f"{type(e).__name__}: {e}")
+            return
+        # A check on z^0 alone (h^1.. all zero) ties no coded bit in: that bit's own recurrence (a period, a wrong rate),
+        # not a trellis code
+        found = [c for c in found if any(c.h[1:])]
+        if found:
+            c = found[0]
+            p.add("fec", f"trellis code: {c}", GUESS, detail={"h": list(c.octal), "nu": c.nu, "labels": c.labels,
+                                                              "rotation": c.rotation, "conj": c.conj, "z": c.z},
+                  note="blind (rpps.analysis.tcm): parity checks on the labels; a Viterbi on this trellis decodes it")
+
+    def _cyclic(self, p, det):
+        """The rate is doubtful: the cyclic spectrum's own verdict (rpps.analysis.cyclic), with a calibrated false-alarm
+        probability, as a note: its rate when it differs, or that no rate line is there at all"""
+        from . import cyclic
+        try:
+            f = cyclic.features(np.concatenate(self.near)[:2**18], self.ch.Fs)
+        except Exception as e:
+            p.add("rate", "cyclic spectrum", UNSOLVED, note=f"{type(e).__name__}: {e}")
+            return
+        if f.baud is None:
+            what, st = "no symbol-rate line at all: not a linear modulation at a rate in band (or too short)", UNSOLVED
+        elif abs(f.baud - det.baud) > 0.01*det.baud:
+            what, st = f"{f.baud/1e3:.6g} kBd from {f.baud_from}, not the {det.baud/1e3:.6g} kBd acquired", GUESS
+        else:
+            return
+        p.add("rate", f"cyclic spectrum: {what}", st, detail={"baud": f.baud, "from": f.baud_from, "order": f.order,
+                                                             "envelope": f.envelope}, note=str(f))
+
+    def _linear(self, name):
         from .. import symbol
         sig = self.sig
         p = SignalProfile(name, sig)
         p.symbols = self.nsym
         ch = getattr(self, "ch", None)
         snr = f", SNR {sig.snr:.1f} dB in band" if getattr(sig, "snr", None) is not None else ""
+        if ch is None and getattr(sig, "holds", 0):
+            p.add("band", f"{sig.mid/1e6:+.3f} MHz, {sig.width/1e3:.0f} kHz wide, holding {sig.holds} other signals")
+            p.add("demodulate", "nothing: a raised noise floor (a satellite transponder's noise and intermodulation) under "
+                                "the signals it holds, each profiled on its own")
+            return p
         if ch is None:
             p.add("channel", f"{sig.mid/1e6:+.3f} MHz, {sig.width/1e3:.0f} kHz wide", UNSOLVED,
                   note=f"{self.errors[0][0]}: {self.errors[0][1]}")
@@ -317,14 +583,23 @@ class _Chain:
                               "needed): the rate was taken anyway")
         if sig.width < RATE_WIDTH*det.baud:
             rate_doubt.append(f"the signal is {sig.width/1e3:.0f} kHz wide, narrower than this rate")
+        # The fit: symbols far noisier than the band is strong weren't locked onto this constellation at this rate
+        want, gap = esn0_gap(sig, det)
+        fit_doubt = []
+        if gap is not None and gap > ESN0_GAP:
+            fit_doubt.append(f"Es/N0 {det.esn0:.1f} dB is {gap:.1f} dB under the {want:.1f} dB the band's SNR gives at this "
+                             "rate: the symbols don't sit on this constellation (not linear, a wrong rate, one not tried "
+                             "such as APSK, carriers on top of each other, bursts, or OFDM)")
         q = "" if det.esn0 is None else f", Es/N0 {det.esn0:.1f} dB"
         p.add("acquire", f"{det.mod.upper()} at {det.baud/1e6:.6g} MBd (sps {det.sps:.4f}), roll-off {det.beta}, "
                          f"CFO {det.cfo/1e3:+.2f} kHz{q}",
               detail={"mod": det.mod, "baud": det.baud, "sps": det.sps, "beta": det.beta, "cfo": det.cfo, "esn0": det.esn0,
-                      "scores": dict(scores), "margin": det.margin},
-              note="; ".join(["rate doubtful: " + ", ".join(rate_doubt)] if rate_doubt else []) +
-                   ("; " if rate_doubt else "") + ("doubtful: " if doubt else "") +
-                   "log-likelihood per symbol " + ", ".join(f"{m} {s:.3f}" for m, s in scores))
+                      "esn0_expected": want, "esn0_gap": gap, "scores": dict(scores), "margin": det.margin},
+              note="; ".join((["rate doubtful: " + ", ".join(rate_doubt)] if rate_doubt else []) +
+                             (["fit doubtful: " + ", ".join(fit_doubt)] if fit_doubt else []) +
+                             [("doubtful: " if doubt else "") + "log-likelihood per symbol " +
+                              ", ".join(f"{m} {s:.3f}" for m, s in scores)]))
+        rate_doubt = rate_doubt + fit_doubt # Either way a weak code fitting these symbols is no evidence
         for stage in ("carrier", "fec"):
             if stage in failed:
                 p.add(stage, "failed", UNSOLVED, note=f"{type(failed[stage][0]).__name__}: {failed[stage][0]}")
@@ -335,14 +610,8 @@ class _Chain:
         fec = self.stream.est.get("fec")
         p.fec = fec
         c = symbol.load(det.mod)
-        if fec is not None and fec.found and rate_doubt and not _strong(fec):
-            # At a wrong rate the symbols repeat or smear, and a weak code (short constraint, low rate) can still fit them
-            p.add("fec", "a code fits, but the symbol rate is doubtful", UNSOLVED,
-                  candidates=[(f"{fec.kind} {fec.name} on {fec.stream}" + (f" ({fec.mismatch*100:.2f}% mismatch, a wrong code "
-                               f"{fec.baseline*100:.1f}%)" if fec.mismatch is not None else ""), float(fec.z or 0.0), 1.0)],
-                  note=f"re-encoding is not far enough below a wrong code's to confirm the rate: {'; '.join(rate_doubt)}")
-            return p
-        if fec is not None and fec.found:
+        weak = fec is not None and fec.found and rate_doubt and not _strong(fec)
+        if fec is not None and fec.found and not weak:
             p.profile_name = fec.profile_name
             _code_steps(p, fec, c)
             # Inner finds the steps don't hold: blind ones, and a configured RS code with nothing to align it by
@@ -378,10 +647,25 @@ class _Chain:
                 else:
                     p.add("header", f"{hid}: " + "; ".join(f"{n}x {fields}" for fields, n in sets))
             return p
+        if weak:
+            # At a wrong rate (or off the constellation) the symbols repeat or smear, and a weak code (short constraint,
+            # low rate) can still fit them. Framed profiles were tried first: their headers are evidence of their own
+            what = "the symbol rate" if any("wide" in d or "line" in d for d in rate_doubt) else "the symbol fit"
+            p.add("fec", f"a code fits, but {what} is doubtful", UNSOLVED,
+                  candidates=[(f"{fec.kind} {fec.name} on {fec.stream}" + (f" ({fec.mismatch*100:.2f}% mismatch, a wrong code "
+                               f"{fec.baseline*100:.1f}%)" if fec.mismatch is not None else ""), float(fec.z or 0.0), 1.0)],
+                  note=f"re-encoding is not far enough below a wrong code's to confirm the symbols: {'; '.join(rate_doubt)}")
+            return p
         if fec.inner:
             _guess_steps(p, fec.inner)
             return p
-        more = "" if fec.complete else f"; the capture ended before the full window ({fec.n} symbols): more may still show it"
+        if not rate_doubt and not doubt and self.syms:
+            self._framing(p, det)
+            if det.mod in ("8psk", "16qam", "16apsk") and self.syms:
+                self._tcm(p, det)
+        if rate_doubt and self.near:
+            self._cyclic(p, det)
+        more ="" if fec.complete else f"; the capture ended before the full window ({fec.n} symbols): more may still show it"
         cand = weights(fec.report.hyps if fec.report is not None else [])
         if not cand:
             why = "no hypothesis above chance"
@@ -420,21 +704,48 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
             idx = [signals] if isinstance(signals, (int, np.integer)) else list(signals)
             picked = [sv[i] for i in idx]
     index = {id(s): i for i, s in enumerate(sv)}
-    chains = [_Chain(s, source.Fs, blind) for s in picked]
-    for i, blk in enumerate(source(block)):
-        if i >= blocks:
-            break
-        for ch in chains:
-            ch.step(blk.data)
-    out = []
-    for ch in chains:
+
+    def run(chains):
+        for i, blk in enumerate(source(block)):
+            if i >= blocks:
+                break
+            for ch in chains:
+                ch.step(blk.data)
+
+    def build(ch):
         s = ch.sig
         j = index.get(id(s))
         name = f"signal {j if j is not None else '?'}: {s.mid/1e6:+.3f} MHz, {s.width/1e3:.0f} kHz wide"
         try:
-            out.append(ch.profile(name))
+            return ch.profile(name)
         except Exception as e:
             p = SignalProfile(name, s)
             p.add("profile", "building the profile", UNSOLVED, note=f"{type(e).__name__}: {e}")
-            out.append(p)
+            return p
+
+    chains = [_Chain(s, source.Fs, blind) for s in picked]
+    run(chains)
+    out = [build(ch) for ch in chains]
+    # Where the chain found no rate (or a doubtful one) and the cyclic spectrum sees one: a second pass at that rate
+    again = {}
+    for k, (ch, p) in enumerate(zip(chains, out)):
+        baud = ch.cyclic_rate(p) if not p.solved else None
+        if baud:
+            again[k] = _Chain(ch.sig, source.Fs, blind, baud=baud)
+    if again:
+        run(list(again.values()))
+        for k, ch in again.items():
+            q = build(ch)
+            if _further(q, out[k]):
+                q.steps.insert(1, Step("rate", f"{ch.baud/1e3:.6g} kBd from the cyclic spectrum (rpps.analysis.cyclic)",
+                                       GUESS, note="the first pass found " + (out[k].steps[1].what if len(out[k].steps) > 1
+                                                                              else "nothing")))
+                out[k] = q
     return out
+
+def _further(q, p):
+    """Whether profile q got further than p: solved, a profile, or more steps found before the first unsolved one"""
+    def reach(x):
+        n = next((i for i, st in enumerate(x.steps) if st.status == UNSOLVED), len(x.steps))
+        return (x.solved, bool(x.profile_name), n)
+    return reach(q) > reach(p)

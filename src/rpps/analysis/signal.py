@@ -16,6 +16,7 @@ class Signal:
     resolved: there were enough bins across it to trust the edges. False means read more samples
     clipped: it runs into the edge of the capture's band, so its width and centre are only what is inside
     baud_est / baud_strength: symbol rate from the |x|^2 line of the channelized signal (None: no clear line)
+    holds: how many other signals lie inside it (a band that holds some is a raised floor, a transponder's, not a signal)
     Fs, cf, bin_hz: the capture's rates and the spectrum's resolution
     baud: an alias of width (older callers)
     """
@@ -36,6 +37,7 @@ class Signal:
         self.Fs, self.cf, self.bin_hz = Fs, cf, bin_hz
         self.baud_est = None
         self.baud_strength = 0.0
+        self.holds = 0
 
     @property
     def freq(self):
@@ -98,6 +100,8 @@ class Signal:
             bits.append("unresolved")
         if self.clipped:
             bits.append("cut by band edge")
+        if self.holds:
+            bits.append(f"holds {self.holds} other signal{'s' if self.holds > 1 else ''}")
         return ", ".join(bits)
 
     def __repr__(self):
@@ -251,6 +255,29 @@ MARGIN = 1.5
 EDGE_DB = 1.0 # A signal's edge: the level changes this much across 1% of the band
 STRONG_DB = 6.0 # Above both neighbours by this much, a level is a signal whatever its edges look like
 
+def _edge_at(y, p, w, sgn):
+    """Where the step found at p (the largest difference across +-w bins) actually is: where y crosses halfway between
+    its levels w bins either side. The difference peaks anywhere the window straddles the step, so for a signal narrower
+    than w it sits up to w outside the signal's edge, out in its neighbour's skirt"""
+    lo, hi = max(0, p - w), min(len(y) - 1, p + w)
+    mid = 0.5*(y[lo] + y[hi])
+    seg = y[lo:hi + 1]
+    if sgn > 0: # Rising: the last bin under the midpoint before it stays above
+        above = np.flatnonzero(seg < mid)
+        return int(lo + above[-1] + 1) if len(above) and above[-1] + 1 < len(seg) else p
+    below = np.flatnonzero(seg < mid) # Falling: the first bin under the midpoint
+    return int(lo + below[0]) if len(below) else p
+
+def _displaced(y, q, p, w, shrink=0.7):
+    """A box a few w wide whose edges, each moved to where the level crosses halfway (_edge_at, inward only), leave
+    under `shrink` of it: the steps were found up to w outside a signal narrower than w, out in its neighbours' skirts
+    (two neighbours' fall and rise make a box around it). Too narrow for a box's checks: the runs above the floor find it.
+    Only moved once paired: before, a rise could pass the next fall and pair with a far one"""
+    if p - q > 4*w:
+        return False
+    q2, p2 = max(q, _edge_at(y, q, w, 1)), min(p, _edge_at(y, p, w, -1))
+    return p2 - q2 < shrink*(p - q)
+
 def _edge_boxes(pw, nfft, K=31, inner=0.06, T=EDGE_DB, w_frac=0.005, min_w=2.0, flat_db=3.0):
     """Signals as boxes: a steep rise then a steep fall, standing above what is right outside them
 
@@ -289,7 +316,7 @@ def _edge_boxes(pw, nfft, K=31, inner=0.06, T=EDGE_DB, w_frac=0.005, min_w=2.0, 
             stack.append((p, st))
         elif stack:
             q, sq = stack.pop()
-            if p - q >= min_w*w:
+            if p - q >= min_w*w and not _displaced(y, q, p, w):
                 pairs.append((q, p, min(sq, st), False))
         else:
             lone_falls.append((p, st))
@@ -312,14 +339,23 @@ def _edge_boxes(pw, nfft, K=31, inner=0.06, T=EDGE_DB, w_frac=0.005, min_w=2.0, 
             left = -np.inf
         n4 = max(1, (p - q)//4)
         ends = abs(np.median(y[q+w:q+w+n4]) - np.median(y[max(p-w-n4, q+w):max(p-w, q+w+1)]))
+        # Each end at the box's own level too (nested boxes set aside): a "box" from one carrier's fall to the next
+        # one's rise, with a narrower carrier between, has both ends low and its middle high
+        msk = inside[:len(seg)]
+        q4 = max(1, len(seg)//4)
+        sag = max((lvl - np.median(e[m]) for e, m in ((seg[:q4], msk[:q4]), (seg[-q4:], msk[-q4:])) if m.any()),
+                  default=0.0)
         outside = max(left, right)
-        if lvl - outside >= 0.6*T and ends <= (flat_db/2 if clipped else flat_db) and np.isfinite(outside): # Cut ones are held to flat tops
+        if (lvl - outside >= 0.6*T and ends <= (flat_db/2 if clipped else flat_db) and sag <= flat_db
+                and np.isfinite(outside)): # Cut ones are held to flat tops
             good.append((q, p, st, clipped))
     out = []
     for q, p, st, clipped in sorted(good, key=lambda c: -c[2]): # Near-duplicates (edges of one ramp): the steepest
         if all(min(p, p2) - max(q, q2) <= 0.7*max(p - q, p2 - q2) for q2, p2, _ in out):
             out.append((q, p, clipped))
     return sorted(out)
+
+HOLD_DB = 10.0 # dB: a signal inside a wider band holds it up (a raised floor) only standing this far above its own floor
 
 def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occupied=0.99, min_bins=4, edge=0.02,
                  cf=0.0, split_db=3.0, min_across=8, min_band_snr_db=None, edges=True, edge_db=EDGE_DB):
@@ -404,6 +440,7 @@ def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occ
 
     floor_lin = 10**(floor/10)
     quiet = ~above
+    psm = 10**(sm/10)
     out = []
     for lo, hi, box_clipped in parts:
         if hi - lo + 1 < min_bins:
@@ -412,7 +449,13 @@ def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occ
         lo, hi = max(0, lo - k//2), min(nfft-1, hi + k//2)
         w = hi - lo + 1
         flank = np.concatenate((pw[max(0, lo - w):lo][quiet[max(0, lo - w):lo]], pw[hi+1:hi+1+w][quiet[hi+1:hi+1+w]]))
-        local = np.median(flank) if len(flank) >= 8 else floor_lin # The noise right beside this signal
+        if len(flank) >= 8:
+            local = np.median(flank) # The noise right beside this signal
+        else:
+            # Nothing beside it is down at the floor: it sits on a raised one (a satellite transponder's noise and
+            # intermodulation, under all its carriers). That floor is the bottom of the valleys beside it
+            near = np.concatenate((psm[max(0, lo - w):lo], psm[hi+1:hi+1+w]))
+            local = max(floor_lin, float(np.percentile(near, 20))) if len(near) >= 8 else floor_lin
         excess = np.clip(pw[lo:hi+1] - local, 0, None)
         if excess.sum() <= 0:
             continue
@@ -443,6 +486,19 @@ def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occ
             lo=(e0 - nfft/2)*bin_hz, hi=(e1 + 1 - nfft/2)*bin_hz, power=float(10*np.log10(band.sum()*bin_hz + 1e-30)),
             peak_freq=float(freq[e0 + int(np.argmax(band))]), duty=duty, resolved=n >= min_across, clipped=clipped,
             Fs=Fs, cf=cf, bin_hz=bin_hz))
+    # One signal found twice (an edge box and a run over the same carrier): keep the one with more SNR
+    out.sort(key=lambda a: -a.snr)
+    kept = []
+    for a in out:
+        if not any(abs(a.mid - b.mid) < 0.25*min(a.width, b.width) and 0.7 < a.width/b.width < 1/0.7 for b in kept):
+            kept.append(a)
+    out = sorted(kept, key=lambda a: a.mid)
+    # A weak narrow detection at the centre of a wider one is that signal's own peak found again: not a signal
+    out = [b for b in out if not any(a is not b and a.width > 2*b.width and abs(b.mid - a.mid) < 0.1*a.width
+                                     and b.snr < HOLD_DB for a in out)]
+    for a in out: # A band holding other signals (a transponder's noise pedestal under its carriers) is not one signal: they
+        # stand well above it (a carrier's own peak, or ripple on it, doesn't)
+        a.holds = sum(1 for b in out if b is not a and a.lo <= b.mid <= a.hi and b.width < 0.5*a.width and b.snr >= HOLD_DB)
     return Survey(out, Fs, cf, nfft, K, freq, db, float(floor))
 
 def survey(source, Fs=None, cf=None, samples=2**17, more=2**20, baud=True, **kw):

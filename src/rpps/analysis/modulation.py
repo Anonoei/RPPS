@@ -96,16 +96,17 @@ def refine_timing(x, sps, beta, span, rounds=2):
     tau, _e = best_tau(x, sps, beta, span)
     return sps, tau
 
-def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8):
+def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None):
     """Find symbol rate, timing, modulation, frequency offset and phase from baseband samples
 
     x: complex baseband at Fs, with the signal of interest centred and filtered
     names: candidate modulations, default everything in config/constellation
     betas: RRC roll-offs to try
+    baud: the symbol rate when already known (a channel plan, rpps.analysis.cyclic): timing refines it, no search
     Returns a Detection; its tau is relative to x[0].
     """
     cands = candidates(names)
-    baud0, line = find_baud(x, Fs)
+    baud0, line = (float(baud), None) if baud else find_baud(x, Fs)
     best = None
     for beta in betas:
         sps, tau = refine_timing(x, Fs/baud0, beta, span)

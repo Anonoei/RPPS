@@ -283,6 +283,56 @@ def _product_of(b, n, k, offset):
 
 # --- All of it --------------------------------------------------------------------------------------------------------
 
+def trivial_checks(words, nk, hold=0.97):
+    """When checks of weight 1 and 2 (bits that hold one value, pairs that are equal or opposite, in `hold` of the words)
+    account for all nk independent checks: (fixed positions, equal pairs); else (None, None)"""
+    W = np.asarray(words[:400], dtype=np.int8)
+    n = W.shape[1]
+    m = W.mean(axis=0)
+    fixed = [int(j) for j in np.nonzero((m <= 1 - hold) | (m >= hold))[0]]
+    rows = []
+    for j in fixed:
+        r = np.zeros(n, dtype=np.uint8)
+        r[j] = 1
+        rows.append(r)
+    rest = [j for j in range(n) if j not in set(fixed)]
+    same = []
+    if 1 < len(rest) <= 512:
+        X = 2*W[:, rest].astype(np.float32) - 1
+        C = np.abs(X.T @ X)/len(W)
+        for a, c in zip(*np.nonzero(np.triu(C >= 2*hold - 1, 1))):
+            r = np.zeros(n, dtype=np.uint8)
+            r[rest[a]] = r[rest[c]] = 1
+            rows.append(r)
+            same.append((int(rest[a]), int(rest[c])))
+    if not rows or rank(np.array(rows)) < nk:
+        return None, None
+    return fixed, same
+
+LOW_RATE = 4 # Codes of rate under 1/LOW_RATE get the looser fill tests
+
+def _majority(words):
+    return (np.asarray(words[:400]).mean(axis=0) >= 0.5).astype(np.uint8)
+
+def recurrence(bits, n, windows=4, hold=0.9):
+    """(degree, taps, fraction holding) when the bits follow one short linear recurrence (shorter than n: what makes every
+    row of n bits short of rank, at every alignment), else None. Berlekamp-Massey on a few clean-looking stretches of
+    3n bits; the shortest recurrence found must hold over the whole stream"""
+    from .scrambler import berlekamp_massey, recurrence_holds
+    b = np.asarray(bits, dtype=np.uint8)
+    span = 3*n
+    if len(b) < 2*span:
+        return None
+    best = None
+    for s in np.linspace(0, len(b) - span, windows).astype(int):
+        L, taps = berlekamp_massey(b[s:s + span])
+        if 0 < L < n and taps and (best is None or L < best[0]):
+            best = (L, tuple(taps))
+    if best is None:
+        return None
+    h = float(np.mean(recurrence_holds(b, best[1])))
+    return (best[0], best[1], h) if h >= hold else None
+
 def _checks(H):
     return [list(map(int, np.nonzero(row)[0])) for row in np.asarray(H, dtype=bool)]
 
@@ -309,6 +359,24 @@ def solve_block(bits, n=None, offset=None, llr=None, max_len=None, max_n2=128):
     sat = 1.0 - ((words[:400].astype(np.int32) @ H.T.astype(np.int32)) % 2).mean()
     base = {"n": int(n), "k": int(k), "offset": int(offset), "checks_hold": float(sat)}
     z = float((sat - 0.5)*2*np.sqrt(min(W, 400)*len(H)))
+    fixed, same = trivial_checks(words, n - k)
+    if fixed is None and k <= n//LOW_RATE: # A code this low a rate is rare; fill with a few bit errors is not
+        fixed, same = trivial_checks(words, n - k, hold=0.9)
+    if fixed is not None: # Bits that never change, or copy one another, every n bits: a frame's structure, not a code
+        return [(Hypothesis("frame-blind", f"period {n} bits: {len(fixed)} bits fixed, {len(same)} pairs equal (framing or "
+                            "fill, not an error-correcting code)", z, {**base, "kind": "frame", "fixed": fixed,
+                                                                       "same": same}), None)]
+    rec = recurrence(b, n)
+    if rec is not None: # Every bit a sum of the few before it: rows of any length past that are short of rank
+        L, taps, holds = rec
+        return [(Hypothesis("frame-blind", f"a recurrence of degree {L} ({holds*100:.0f}% of bits): a PRBS, idle pattern or "
+                            "test sequence, not an error-correcting code", z, {**base, "kind": "recurrence", "degree": L,
+                                                                                 "taps": list(taps), "holds": holds}), None)]
+    if k <= n//LOW_RATE:
+        dist = (words != _majority(words)).mean(axis=1)
+        if np.median(dist) < 0.1: # Most words the same pattern: fill, a carrier, a locked rate too high
+            return [(Hypothesis("frame-blind", f"period {n} bits: most words within {np.median(dist)*100:.0f}% of one "
+                                "pattern (fill, not an error-correcting code)", z, {**base, "kind": "fill"}), None)]
 
     prod = _product_of(b, n, k, offset)
     if prod is not None:

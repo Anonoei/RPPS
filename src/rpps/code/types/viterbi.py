@@ -10,6 +10,7 @@ class viterbi(_code):
 
     generator: (n, K) taps. generator[j][i] multiplies the input delayed by i, the same convention as `conv`
     puncture: optional (n, P) 0/1 pattern, 1 = bit was sent. Punctured positions are decoded as erasures
+    invert: optional n 0/1 flags: outputs the encoder sent inverted (their values are turned back before decoding)
     terminated: the encoder was flushed with K-1 zeros, so the path ends in state 0 (and the tail is dropped).
         Or a termination name: "zero" (the same), "truncated" (no tail: the best end state), "tailbiting" (the
         path ends where it started: decoded on three laps round the frame, keeping the middle one; frames only)
@@ -27,13 +28,14 @@ class viterbi(_code):
     @classmethod
     def from_config(cls, log, obj):
         return cls(log, obj["num"], obj["den"], obj["constraint"], generators_of(obj),
-                   obj.get("puncture"), termination_of(obj))
+                   obj.get("puncture"), termination_of(obj), obj.get("invert"))
 
-    def __init__(self, log, num, den, constraint, generator, puncture=None, terminated=False):
+    def __init__(self, log, num, den, constraint, generator, puncture=None, terminated=False, invert=None):
         super().__init__(log, None, num, den)
         self.con = constraint
         self.gen = np.asarray(generator, dtype=np.uint8).reshape(den, constraint)
         self.puncture = None if puncture is None else np.asarray(puncture, dtype=bool)
+        self.invert = None if invert is None or not any(invert) else np.where(np.asarray(invert, dtype=bool), -1.0, 1.0)
         self.termination = termination_of({"termination": terminated})
         if self.termination == "tailbiting":
             self.stream = False # Whole frames: a stream is collected until it ends
@@ -81,6 +83,8 @@ class viterbi(_code):
 
     def decode(self, bits: np.ndarray, soft=None, state=None, final=True):
         llr = self.depuncture(as_llr(bits, soft))                              # (T, n)
+        if self.invert is not None:
+            llr = llr*self.invert[None, :] # An inverted output's 0 means 1 (erasures stay 0)
         S = self.n_states
         if self.termination == "tailbiting":
             # Three laps of the circular trellis from no particular state, the middle one kept: by then the path has

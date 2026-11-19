@@ -3,6 +3,8 @@ RPPS command line interface
 
     python -m rpps ls [category ...]
     python -m rpps survey <file> --fs <Hz> [--fmt <format>] [--cf <Hz>] [--plot]
+    python -m rpps profile <file> --fs <Hz> [--fmt <format>] [--signals 0,3] [--no-blind] [--json out.jsonl]
+    python -m rpps solve <bits or symbols file> [--format bits|bytes|npy] [--mod qpsk]
     python -m rpps fmt [--check] [dir]
     python -m rpps gen-ldpc <dvb_s2_tables.hh> [table ids ...] [--out dir]
 """
@@ -139,6 +141,69 @@ def cmd_survey(args):
     return 0
 
 
+def cmd_profile(args):
+    """Profile every signal (or the chosen ones) of a capture: each step that processes it, what it might be where not"""
+    import rpps as rp
+    src = rp.source.File(args.fmt, args.file, Fs=args.fs, cf=args.cf)
+    sv = rp.analysis.survey(src, samples=args.samples)
+    idx = None if not args.signals else [int(x) for x in args.signals.split(",")]
+    print(f"{src.path}: {len(sv)} signals")
+    for i, s in enumerate(sv):
+        print(f"  {i:>2}  {s.describe()}")
+    out = open(args.json, "a") if args.json else None
+    for p in rp.analysis.profile(src, signals=idx, survey=sv, blocks=args.blocks, blind=not args.no_blind):
+        print(f"\n{p}")
+        if out:
+            out.write(json.dumps({"file": str(args.file), "mid": p.signal.mid, "profile": p.to_dict()}, default=str) + "\n")
+    if out:
+        out.close()
+    return 0
+
+
+def _read_bits(path, fmt):
+    import numpy as np
+    if fmt == "npy" or path.endswith(".npy"):
+        return np.load(path)
+    raw = np.fromfile(path, dtype=np.uint8)
+    if fmt == "bytes":
+        return np.unpackbits(raw)
+    return (raw & 1).astype(np.uint8) # One bit a byte (0/1), as rpps rx --out writes unpacked
+
+
+def cmd_solve(args):
+    """What a demodulated stream carries: blind codes, Reed-Solomon, scramblers and PRBS on bits (rpps.analysis.fec.solve,
+    scrambler.additive_search); symbols (a complex .npy) are framed first (rpps.analysis.framing)"""
+    import numpy as np
+    import rpps as rp
+    A = rp.analysis
+    x = _read_bits(args.file, args.format)
+    if np.iscomplexobj(x):
+        fr = A.framing.find(x, args.mod)
+        print(f"{len(x)} symbols: " + (str(fr) if fr else "no frame structure (no unique word repeats)"))
+        if fr is None:
+            c = rp.symbol.load(args.mod)
+            pts = np.asarray(c.points)/np.sqrt(np.mean(np.abs(c.points)**2))
+            lab = np.asarray(c.mapping.arr)[np.argmin(np.abs(x[:, None]/np.sqrt(np.mean(np.abs(x)**2)) - pts[None]), axis=1)]
+            bits = ((lab[:, None] >> np.arange(c.bits_per_symbol - 1, -1, -1)) & 1).ravel().astype(np.uint8)
+        else:
+            fb = A.framing.payload_bits(A.framing.cut(x, fr), fr, args.mod)
+            rep, same = A.framing.repeats(fb, agree=0.95)
+            print(f"  payload {fb.shape[1]} bits a frame, {len(fb)} frames" + (f"; frames repeat every {rep}" if rep else ""))
+            if len(fb) >= fb.shape[1] + 48:
+                for h, g in A.block.solve_block(fb.ravel(), n=fb.shape[1], offset=0):
+                    print(f"  frame-aligned block code: {h.name}  (z {h.z:.1f})")
+            bits = fb.ravel()
+    else:
+        bits = np.asarray(x, dtype=np.uint8).ravel()
+    print(f"{len(bits)} bits, {bits.mean()*100:.1f}% ones")
+    found = A.fec.solve(bits)
+    if not found:
+        print("  nothing found: no code, RS, scrambler or PRBS (white under every test: encrypted, compressed, or too short)")
+    for h, g in found:
+        print(f"  {h.kind}: {h.name}  (z {h.z:.1f})" + (f"\n      save to decode with it: {g!r}" if g is not None else ""))
+    return 0
+
+
 _LDPC_RATES = {"B1": "1_4", "B2": "1_3", "B3": "2_5", "B4": "1_2", "B5": "3_5", "B6": "2_3", "B7": "3_4", "B8": "4_5",
                "B9": "5_6", "B10": "8_9", "B11": "9_10"}
 
@@ -225,6 +290,24 @@ def main(argv=None):
     p_sv.add_argument("--samples", type=int, default=2**17, help="samples to read (default: 131072)")
     p_sv.add_argument("--plot", action="store_true", help="show the survey plot (needs matplotlib)")
     p_sv.set_defaults(fn=cmd_survey)
+
+    p_pr = sub.add_parser("profile", help="every step that processes each signal of a capture, and what is unknown")
+    p_pr.add_argument("file", help="capture file")
+    p_pr.add_argument("--fs", type=float, required=True, help="sample rate [Hz]")
+    p_pr.add_argument("--fmt", default="cf64", help="sample format (default: cf64); a gqrx .cs16 is ci32t")
+    p_pr.add_argument("--cf", type=float, default=0.0, help="centre frequency [Hz] (default: 0)")
+    p_pr.add_argument("--samples", type=int, default=2**17, help="samples the survey reads (default: 131072)")
+    p_pr.add_argument("--signals", help="only these, by survey index: 0,3")
+    p_pr.add_argument("--blocks", type=int, default=450, help="blocks of 16384 samples each chain runs over (default: 450)")
+    p_pr.add_argument("--no-blind", action="store_true", help="skip the blind tools where no definition fits (faster)")
+    p_pr.add_argument("--json", help="also append each profile as a JSON line here")
+    p_pr.set_defaults(fn=cmd_profile)
+
+    p_so = sub.add_parser("solve", help="what a demodulated bit or symbol stream carries: codes, RS, scramblers, frames")
+    p_so.add_argument("file", help="bits (one a byte, or packed with --format bytes), or a .npy of bits or complex symbols")
+    p_so.add_argument("--format", choices=["bits", "bytes", "npy"], default="bits", help="how the file holds the bits")
+    p_so.add_argument("--mod", default="qpsk", help="constellation of a symbol file (default: qpsk)")
+    p_so.set_defaults(fn=cmd_solve)
 
     p_fmt = sub.add_parser("fmt", help="rewrite config json files in one style")
     p_fmt.add_argument("dir", nargs="?", help="config directory (default: the shipped config)")

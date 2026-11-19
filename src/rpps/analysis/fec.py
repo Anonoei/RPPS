@@ -670,6 +670,7 @@ def scan_hdlc(streams, names=None, min_frames=3):
 # --- One answer: which code a symbol stream carries ------------------------------------------------------
 
 CONV_SYMBOLS = 2**15 # Symbols the convolutional and block scans look at (the inner layers use all there are)
+MARKER_PERIODS = 64  # Codewords enough to find a pattern of up to 16 markers (frame_markers: three of each, past the first half)
 
 def frame_markers(bits, period, offset, column, unit=8, threshold=0.9, lengths=(1, 2, 4, 8, 16)):
     """The values that start every `period` units at `column` (units after bit `offset`): a pattern for `sync.Align`
@@ -682,8 +683,8 @@ def frame_markers(bits, period, offset, column, unit=8, threshold=0.9, lengths=(
     if P < 8:
         return None, 0.0
     vals = b[:P*span].reshape(P, period, unit)[:, column].astype(np.int64) @ (1 << np.arange(unit-1, -1, -1))
-    if P >= 32:
-        vals = vals[P//2:] # The later half: the start of a window is where the sync before it was settling
+    if P >= 32: # The later half (the start of a window is where the sync before it was settling), but enough periods
+        vals = vals[max(0, min(P//2, P - 3*max(lengths))):] # left for the longest pattern (a low code rate brings fewer)
     P = len(vals)
     for L in lengths:
         if P < 3*L: # At least three periods at every position of the pattern
@@ -720,6 +721,21 @@ def _symbol_steps(steps):
     diff = any(s.get("symbol") == "differential" for s in steps)
     cons = [s for s in steps if s.get("symbol") == "constellation"]
     return diff, [symbol.load(s["name"]).name for s in cons], cons
+
+@functools.lru_cache(maxsize=None)
+def _profile_codes():
+    """The names of the convolutional codes shipped profiles decode with"""
+    from .. import _config
+    out = set()
+    for fam, modes in _config.ls("profile").items():
+        for mode in modes:
+            try:
+                obj = _config.read(_config.find("profile", f"{fam}/{mode}"))
+            except Exception:
+                continue
+            out |= {st["name"] for st in obj.get("steps", []) if st.get("code") == "fec" and st.get("type") == "conv"
+                    and isinstance(st.get("name"), str)}
+    return frozenset(out)
 
 def match_profile(steps):
     """A shipped profile (config/profile) with the same code and symbol steps as `steps`: (name, its steps) or (None, None)"""
@@ -869,6 +885,15 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
     tried.append(rep)
     conv = _pick(rep.hyps, rep.z_crit, lambda h: h.params["mismatch"]/h.params["baseline"],
                  lambda b, h: h.params["mismatch"] < 0.5*(b.params["mismatch"] + b.params["baseline"]))
+    if conv is not None and profiles:
+        # Codes that are one another under a different map (a rate 1/2 code with its generators swapped is the same code
+        # with I and Q swapped) fit as well, and which one wins is chance: prefer the one a shipped profile decodes with
+        shipped = _profile_codes()
+        if conv.coding[1] not in shipped:
+            alike = [h for h in rep.hyps if h.coding[1] in shipped and h.z > rep.z_crit
+                     and h.params["mismatch"] < 0.5*(conv.params["mismatch"] + conv.params["baseline"])]
+            if alike:
+                conv = min(alike, key=lambda h: h.params["mismatch"]/h.params["baseline"])
     if conv is not None:
         key = conv.params["stream"]
         same = [h for h in rep.hyps if h.coding == conv.coding and h.params["stream"] != key and h.z > rep.z_crit
@@ -892,6 +917,8 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
             p = rs.params
             n = cached("block", rs.name).encoder.den
             pat, _ = frame_markers(info ^ p["polarity"], n, p["bit_offset"], p["byte_phase"])
+            if pat is None and len(info)//(n*8) < MARKER_PERIODS:
+                out.complete = False # Too few codewords to see the markers that start them: more symbols may show them
             if pat is not None:
                 p["pattern"] = pat
                 steps += [{"sync": "align", "period": n, "pattern": pat, "name": "packets"}]
@@ -997,7 +1024,14 @@ def solve(bits, rs_lengths=None, max_taps=2, exhaustive=False, block=True):
     found = code_layer(bits)
     if found:
         return found
+    # The whole stream an LFSR sequence (a PRBS, or scramblers over repeating data): that explains every bit, and a
+    # feedthrough search would only find a part of it
+    ha, ta, ga = scrambler.additive_search(bits)
+    if ha and ha[0].params["holds"] > 0.95:
+        return [(ha[0], ga)]
     h, t, g = scrambler.search(bits, max_taps=max_taps)
+    if not h and ha: # Not a feedthrough scrambler: an additive one showing through constant stretches
+        return [(ha[0], ga)]
     if not h: # Bits that stay white: maybe RS-coded random payload behind a known scrambler (RS structure is algebraic)
         from .. import code
         for name in code.scram.ls().get("feedthrough", []):
