@@ -109,9 +109,11 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
 
 ## Roadmap
  - [ ] [Source](https://github.com/Anonoei/RPPS/tree/main/src/rpps/source)
-   - [X] File
+   - [X] File, memory, radios (pysdrlib), WAV out
    - [ ] (Linux only) tun/tap
-   - [ ] Socket
+   - [ ] Socket (UDP, TCP)
+   - [ ] SigMF (capture metadata in and out), WAV in
+   - [ ] Transmit: to a radio, and `rpps tx` from the shell
  - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/filters)
    - [X] Pulse Shaping (rrc, rc, halfsine, gaussian, rect)
    - [X] Window functions
@@ -122,12 +124,15 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
    - [X] Phase (M-th power, Costas, pilots)
    - [X] Time (Oerder & Meyr, Mueller & Muller, Gardner, timing locked loop)
    - [X] Frames: preambles among symbols, delimiter words among bits (fixed or header-driven length, polarity), repeating markers
- - [X] [Symbol](https://github.com/Anonoei/RPPS/tree/main/src/rpps/symbol)
-   - [X] PSK
-   - [X] QAM
-   - [X] APSK
-   - [X] ASK
-   - [X] FSK
+   - [X] Equalizers: block least squares, LMS, CMA; OFDM pilots and cyclic prefix
+   - [ ] Per-burst acquisition (packets with no stream to track: BLE, 802.15.4, TDMA)
+   - [ ] OFDM preamble sync (Schmidl-Cox, 802.11 STF/LTF), LTE cell search
+   - [ ] Tone / pilot PLL (FM stereo, ATSC pilot), decision-feedback equalizer
+ - [ ] [Symbol and wave](https://github.com/Anonoei/RPPS/tree/main/src/rpps/symbol)
+   - [X] PSK, QAM, APSK, ASK, any point set from a file; differential coding; spreading (Barker, Gold, 802.15.4)
+   - [X] FSK, GFSK, MSK, C4FM (frequency pulses), O-QPSK, OFDM, AM, SSB, analog FM
+   - [ ] Coherent CPM (GMSK, SOQPSK by MLSE) in the data path
+   - [ ] VSB / PAM (ATSC 8VSB), chirp spread spectrum, space-time coding
  - [ ] [Code](https://github.com/Anonoei/RPPS/tree/main/src/rpps/code)
    - [ ] Block
      - [X] Repetition
@@ -135,22 +140,34 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
      - [X] BCH
      - [X] Reed-Solomon
      - [X] LDPC (layered min-sum; DVB-S2 tables, quasi-cyclic matrices: IEEE 802.11n)
-     - [ ] TPC
+     - [X] Golay, cyclic codes by generator polynomial, product codes (DMR BPTC), turbo (LTE), rate matching (LTE)
+     - [ ] Polar (successive cancellation, list, CRC-aided; 5G NR sequence)
+     - [ ] Turbo product codes (Chase-Pyndiah)
+     - [ ] Reed-Muller
+     - [ ] Reed-Solomon dual basis (CCSDS)
+     - [ ] LDPC: 5G NR base graphs, CCSDS AR4JA, DVB-S2X
+     - [ ] Turbo interleavers as definitions (CCSDS, UMTS)
    - [X] Convolutional
      - [X] Viterbi (hard and soft)
      - [X] BCJR / trellis (log-MAP, max-log-MAP)
+     - [X] Trellis codes on levels (ATSC, P25)
+     - [ ] Trellis-coded modulation on constellation points
    - [X] Soft decisions (demodulator LLRs into the decoders)
  - [ ] [Scramblers](https://github.com/Anonoei/RPPS/tree/main/src/rpps/code/scram)
    - [X] fibonacci
    - [X] galois
    - [X] V.35
    - [X] Line codes: NRZI, NRZ-M, Manchester, inversion; sync markers (CCSDS ASM, preambles) attached and stripped
+   - [ ] Line codes: Bi-phi-M/S and delay modulation (IRIG-106), 4B5B, 8b/10b
  - [ ] [Link](https://github.com/Anonoei/RPPS/tree/main/src/rpps/link)
    - [X] CRC
    - [X] HDLC (streaming, any block cut)
    - [X] Headers: fields, a CRC over them or a frame check sequence over header and payload, header-driven lengths
-   - [ ] PPP
- - [ ] [Profiles](https://github.com/Anonoei/RPPS/tree/main/config/profile): DVB-S, DVB-S2, IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
+   - [ ] PPP, KISS, AX.25 addresses
+   - [ ] MPEG-TS packets, CCSDS transfer frames and space packets, FX.25
+ - [ ] [Profiles](https://github.com/Anonoei/RPPS/tree/main/config/profile)
+   - [X] DVB-S, DVB-S2 (normal and short frames, APSK), IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
+   - [ ] From definitions already shipped: CCSDS concatenated and turbo, P25, DMR, LTE, IEEE 802.11a/g, 802.11n, ATSC 8VSB, GPS C/A, DAB
  - [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey
 
 ## Contributing

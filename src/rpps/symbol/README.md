@@ -4,7 +4,7 @@ A signal is built from explicit pieces, and a new kind of signal is a new config
 
 | Layer | Pieces | Operator | What flows |
 |---|---|---|---|
-| **Symbol** (`rp.symbol`; codes from `rp.sequence`) | `Constellation`, `Differential`, `Spread`, `OFDM` | `*` encodes, `/` decodes | bits, symbols, chips (a `Pipe` each; decoding ends in LLRs) |
+| **Symbol** (`rp.symbol`; codes from `rp.sequence`) | `Constellation`, `Differential`, `Spread`, `Carriers` | `*` encodes, `/` decodes | bits, symbols, chips (a `Pipe` each; decoding ends in LLRs) |
 | **Waveform** (`rp.wave`, `rp.signal.sample`, `rp.signal.filters`) | `Zeros` / `Upsample`, pulse shaping, `Stagger`, `FM`, `FMDemod` | `+` | symbols and samples (a streaming `Stage` each; any block length) |
 
 ## Constellations

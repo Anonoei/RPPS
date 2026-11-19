@@ -1,4 +1,4 @@
-// Block FEC decoders: LDPC min-sum (rpps/coding/types/ldpc.py) and the algebraic decoding of cyclic codes over
+// Block FEC decoders: LDPC min-sum (rpps/code/types/ldpc.py) and the algebraic decoding of cyclic codes over
 // GF(2^m) (rpps/math/cyclic.py: Reed-Solomon with erasures, binary BCH). Codewords are independent: batches run on
 // several threads.
 #include "common.hpp"

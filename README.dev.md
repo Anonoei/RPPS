@@ -147,6 +147,7 @@ Receive direction. Transmit runs the transforms in reverse; sync has no transmit
 | Code transform | `code` | channel bits ↔ data bits | Pipe, `*` and `/` |
 | Link transform | `link` | data bits ↔ packets and messages | Pipe, `*` and `/` |
 | Profile | `profile` | one whole signal, both directions | builds the pipelines above |
+| Parallel | `parallel` | the frame-parallel region of a profile: frames → batches → results in order | `profile.rx(parallel=...)` |
 
 #### Two kinds of framing
 
@@ -240,8 +241,8 @@ DVB-S shows sync acting on channel bits, between two parts of the code transform
 
 - **First class, estimation:** estimate a parameter from a window of data with block operations: FFTs, correlations, least
   squares, matrix solves. Examples: the M-th power FFT for carrier frequency, square-law (Oerder-Meyr) timing plus
-  interpolation, least squares on preambles and pilots, code-phase search by FFT correlation (`spread.acquire`), a block
-  LS/MMSE equalizer. Existing pieces already work this way: `sync/phase/ff.py`, the `Acquire` estimators, `spread.acquire`,
+  interpolation, least squares on preambles and pilots, code-phase search by FFT correlation (`sync.acquire_code`), a block
+  LS/MMSE equalizer. Existing pieces already work this way: `sync/phase/ff.py`, the `Acquire` estimators, `sync.acquire_code`,
   the DVB-S2 pilot phase fit.
 - **First class, tracking:** a slow loop that runs **once per window** over the window estimates, carrying phase and rate
   from one window to the next and gating outliers. It is part of the estimator, not a separate stage.
@@ -524,7 +525,7 @@ Each is settled by the rule.
 | Manchester as 0 → 01, 1 → 10 | code | bits ↔ bits |
 | Spreading and despreading at one sample per chip (`Spread`) | symbol | chips are symbols |
 | `Despread` at `sps` samples per chip, with a known code phase | symbol | the stage form of `Spread.decode` |
-| Code-phase and Doppler search (`spread.acquire`) | sync | estimates timing and frequency |
+| Code-phase and Doppler search (`sync.acquire_code`) | sync | estimates timing and frequency |
 | Correlating a known preamble in samples or symbols (DVB-S2 SOF, 802.15.4 SHR) | sync | finds the frame start |
 | Searching for sync markers or sync bytes in channel bits (CCSDS ASM, DVB-S byte alignment) | sync | finds a codeword start |
 | Attaching a sync marker on transmit | code | known structure among channel bits |
@@ -558,12 +559,13 @@ Each category is a package (`src/rpps/<package>`).
 |---|---|---|
 | `source` | source | sources and sinks of blocks: files and their formats, sockets, radios through pysdrlib |
 | `signal` | signal | filters (`signal.filters`: FIR, IIR, windows, pulse shapes, fractional delay, polyphase channelizer), resampling (`signal.sample`), `channelize` / `Channelize`, conditioning (`DCBlock`, `Deemphasis`, `Conjugate`), and `signal.channel`, the simulated medium |
-| `sync` | sync | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, all tracked by `track`; frame sync (`FrameSync`, `Delimiter`), pilots (`PilotPhase`, `PilotEqualizer`), alignment on bits (`Align`, `Puncture`), `Acquire`, `acquire_code`, `Squelch`, `PeakAGC`. Second class, by name: `time.MM` (and Gardner), `Costas`, `AGC`, `PLL`, `equalize.LMS`, `equalize.CMA` |
+| `sync` | sync | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, all tracked by `track`; frame sync (`FrameSync`, `Delimiter`), pilots (`PilotPhase`, `PilotEqualizer`), alignment on bits (`Align`, `Puncture`), `Acquire`, `acquire_code`, `Squelch`, `PeakAGC`. Second class, by name: `time.MM` (and Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `equalize.CMA` |
 | `wave` | wave | `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod`; pulse shapes are `signal.filters` operators on the `pulse` resource |
 | `symbol` | symbol | `Constellation` (and the PSK, QAM, APSK, ASK generators), `Differential`, `Spread`/`Despread`, `Carriers`, and frame structure: `Header`, `Pilots`, `PhaseScramble` |
 | `code` | code | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), line codes (`Line`), sync markers (`Marker`), `Uncoded` |
 | `link` | link | CRCs, HDLC framing, `Header` (fields, CRC, payload length) |
 | `profile` | profile | loading (`profile`), the steps (`steps`), header-driven control (`control`), runners (`runner`) |
+| `parallel` | (runs profiles) | the frame-parallel region: `Scheduler`, executors (inline, threads, processes), `BatchPlan`, the batch kernels |
 | `sequence` | (a resource engine) | recurrences and Gold sequences, chip codes, LFSR registers: what scramblers, spreaders and searches share |
 | `analysis` | (outside the data path) | spectra, rate estimation, survey, blind analysis of modulation and FEC; can write definitions |
 | `base`, `math`, `utils`, `viz` | (cross-cutting) | `Data`, `Stage`, `Pipe`, `Stream` and the type tags; finite fields and GF(2); helpers; plots |
@@ -654,20 +656,51 @@ kernels, the parallel runner's internals, how to add things) is in the sections 
 | Extending profiles | Step kinds and sync methods from a registry (`rp.profile.steps.register_step`, `register_sync_method`), any `Stage` by module path; `rp.load(path)` for any definition; `rp.Tee` branches |
 | Sources | `Source.REP` / `APPLIED` (`profile.rx(source=src)`), `Source.ppm` (clock error on Fs and cf), WAV out (`write_wav`, `WavSink`); pysdrlib only imported when a source or sink is used |
 
-**Not yet**
-- `dvbs2/normal`: short frames, 16/32APSK and dummy frames (their PLS is reported, the frame is not decoded).
-- A first-class carrier estimator for staggered signals (802.15.4 still needs its carrier taken off first), and fractionally
-  spaced block equalization.
-- The DVB-S sync bytes, the 802.11b SFD and the DVB-S2 SOF as `sequence/word` definitions (the CCSDS ASM, the Mode S preamble
-  and the BLE access address are; those three are still written in the steps and headers that use them).
+**Not yet** (reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liquid-dsp and gr-satellites)
+
+Codes
+- Polar: no code type. `analysis.code.block.polar` recognises a frozen set and decodes by successive cancellation, but
+  nothing encodes or decodes from a definition; no list (SCL) or CRC-aided decoding, no 5G reliability sequence.
+- Turbo product codes: `product` decodes hard (row and column syndromes in turn); no Chase-Pyndiah soft iteration.
+- Reed-Muller: none (an RM(2,4) experiment in `tests/dev/code_rm.py`).
+- LDPC: one schedule (layered normalized min-sum); the flooding min-sum is `analysis.code.block.ldpc.posterior` only. No 5G
+  NR base graphs, CCSDS AR4JA / C2, DVB-S2X, DVB-T2 or ATSC 3.0 tables (the QC and table loaders take them once written out).
+- Turbo: the LTE layout only (QPP interleaver in the code). CCSDS (rates 1/2 to 1/6), UMTS (PIL) and DVB-RCS duo-binary
+  need the interleaver and constituents as definitions.
+- Reed-Solomon in the dual (Berlekamp) basis: CCSDS symbols need the conversion before and after `rs/ccsds_255_223`.
+- Trellis-coded modulation as a definition: `fsm` scores real levels (ATSC) but not points of a constellation; the TCM
+  encoder lives in `analysis.code.conv.tcm`.
+- Line codes Bi-phi-M / S and delay modulation (IRIG-106 PCM), 4B5B, 8b/10b. Checksums (Fletcher, Internet), fountain codes.
+
+Waves and sync
+- Coherent CPM (GMSK, SOQPSK) in the data path: `analysis.modulation.cpm` demodulates by per-survivor Viterbi offline.
+- VSB / PAM waves (ATSC 8VSB is `projects/atsc` only), chirp spread spectrum, space-time coding (Alamouti, SFBC) and
+  multi-channel data.
 - Per-burst timing and carrier acquisition in the data path (a short packet alone, with no stream to track: `ble/adv` wants
   a continuous signal or known timing; `adsb/mode_s` gets by at one sample per chip). `rpps.analysis.spectrum.burst` does it
   offline (each burst acquired on the shared preamble, data-aided); a burst stage built the same way would serve BLE,
-  802.15.4, LoRa and the TDMA carriers of the surveys.
-- Reed-Solomon in the dual (Berlekamp) basis: CCSDS symbols need the conversion before and after `rs/ccsds_255_223`.
-- The parallel runner numbers its output from 0 and a dropped frame leaves no gap (the serial runner keeps positions).
+  802.15.4, DMR and the TDMA carriers of the surveys.
+- OFDM preamble synchronisation (Schmidl-Cox, 802.11 STF / LTF), LTE cell search (PSS / SSS) and reference-signal channel
+  estimation: written in `projects/wifi` and `projects/lte`, not here.
+- A tone / pilot PLL stage (the FM stereo pilot, the ATSC pilot): `projects/fm_radio` and `projects/atsc` each have one;
+  `sync.pll` holds only the loop filter.
+- A first-class carrier estimator for staggered signals (802.15.4 still needs its carrier taken off first), fractionally
+  spaced block equalization, a decision-feedback equalizer.
+- The DVB-S sync bytes, the 802.11b SFD and the DVB-S2 SOF as `sequence/word` definitions (the CCSDS ASM, the Mode S preamble
+  and the BLE access address are; those three are still written in the steps and headers that use them).
 - Fusing the matched filter with Oerder & Meyr timing (its square-law line needs the filter at every sample). Interpolating
   its output is at the pulse's own floor (see [Effort](#effort)).
+
+Links, sources, profiles
+- Link layers beyond CRC, HDLC and headers: PPP, KISS, AX.25 addresses, MPEG-TS packets, CCSDS TM / AOS transfer frames
+  and space packets, FX.25, headers protected by a block code (the AX100 Golay length field).
+- Sources: sockets (UDP, TCP), tun/tap, SigMF (no capture metadata is read or written), WAV input, audio devices,
+  transmitting to a radio (pysdrlib's TX side), and a `tx` command (`Profile.tx()` is Python only).
+- Profiles for definitions that have none: DMR, P25 (phase 1 and 2), LTE, IEEE 802.11a/g OFDM, 802.11n, ATSC 8VSB, GPS
+  C/A, DAB, UMTS, CCSDS concatenated (convolutional + Reed-Solomon) and turbo. `projects/` receives most of these by hand;
+  `projects/ble`, `adsb` and `wifi` do not yet use the `ble/adv`, `adsb/mode_s` and `ieee80211b` profiles that exist.
+- `dvbs2/normal`: dummy frames (their PLS is reported, the frame is not decoded).
+- The parallel runner numbers its output from 0 and a dropped frame leaves no gap (the serial runner keeps positions).
 - Branches inside a profile (`rp.Tee` works on operators and `Blocks`; the profile runner's control and re-run assume one chain).
 - Moving the remaining project DSP up: burst / energy detection gated on the noise floor, symbol level slicers, the FM pilot
   PLL, one allocation table for the scanners (projects/TODO.md section 2).
