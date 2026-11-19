@@ -94,15 +94,15 @@ def test_effort_change_mid_stream_and_any_cut():
 
 def test_ldpc_and_turbo_follow_the_level():
     c = rp.symbol.load("dvbs2_qpsk")
-    ld = rp.code.load("block", "ldpc/dvbs2_64800_1_2").decoder
+    ld = rp.code.load("block/ldpc/dvbs2_64800_1_2").decoder
     rng = np.random.default_rng(5)
     s = np.asarray((rp.Data(np.zeros(ld.den, bool))*c).data)
     llr = c.llr(s + np.sqrt(10**(-0.9/10)/2)*(rng.standard_normal(len(s)) + 1j*rng.standard_normal(len(s))))
     with rp.effort("max"):
         assert not np.any(ld.decode(llr)) # 0.9 dB: 200 iterations get there (the definition's 50 mostly don't)
-    tb = rp.code.load("block", "turbo/lte", K=40).decoder
+    tb = rp.code.load("block/turbo/lte", K=40).decoder
     m = rng.integers(0, 2, 40).astype(bool)
-    x = 1.0 - 2.0*rp.code.load("block", "turbo/lte", K=40).encoder.encode(m)
+    x = 1.0 - 2.0*rp.code.load("block/turbo/lte", K=40).encoder.encode(m)
     for lvl in rp._effort.LEVELS:
         with rp.effort(lvl):
             assert np.array_equal(tb.decode(4*x)[:40].astype(bool), m)

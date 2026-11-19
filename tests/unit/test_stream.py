@@ -95,7 +95,7 @@ def test_pipelines_compose_and_match_the_operators(x):
 
 def test_digital_pipelines_encode_forward_and_decode_backward():
     m = rp.symbol.load("QPSK"); m.set_mapping(m.maps[0])
-    ecc = rp.code.load("block", "hamming/7_4")
+    ecc = rp.code.load("block/hamming/7_4")
     scr = rp.code.scram.load("v35")
     link = scr * ecc * m
     msg = rp.Data(b"Hello World!")
@@ -179,7 +179,7 @@ def test_acquire_fec_does_not_depend_on_block_size():
     """Coded symbols (K=7 rate 1/2 on QPSK, a quarter turn off) with the modulation already detected"""
     from rpps.analysis.modulation import Detection
     rng = np.random.default_rng(5)
-    cw = rp.code.load("conv", "k7_133_171/1_2").encoder.encode(rng.integers(0, 2, 12000).astype(bool))
+    cw = rp.code.load("conv/k7_133_171/1_2").encoder.encode(rng.integers(0, 2, 12000).astype(bool))
     s = rp.symbol.load("qpsk").modulate(cw)*1j
     x = (s + 0.1*(rng.standard_normal(len(s)) + 1j*rng.standard_normal(len(s)))).astype(np.complex64)
     stage = rp.sync.AcquireFEC(window=4096, skip=256, max_wait=8192)

@@ -55,7 +55,7 @@ def sc_bin(k, nfft, n_rb):
 # ---------------------------------------------------------------------------------------------------------------- channel coding (36.212 5.1, 5.3.1)
 CONV_GENS = (0o133, 0o171, 0o165)
 
-_CRC16 = rp.link.load("crc", "crc16_xmodem").encoder # 36.212 5.1.1 gCRC16: D^16 + D^12 + D^5 + 1, zero start
+_CRC16 = rp.link.load("crc/crc16_xmodem").encoder # 36.212 5.1.1 gCRC16: D^16 + D^12 + D^5 + 1, zero start
 
 def crc16(bits):
     """CRC (36.212 5.1.1) of a bit list, fed MSB first; returns 16 bits"""
@@ -71,10 +71,10 @@ def conv_encode(c):
 
 def subblock_perm(D):
     """For each output position of the sub-block interleaver (5.1.4.2.1) the input index, the <NULL> dummies left out (rpps interleave/block/lte_subblock)"""
-    return rp.code.load("interleave", "lte_subblock", length=D).encoder.src
+    return rp.code.load("interleave/lte_subblock", length=D).encoder.src
 
 def _rm(D, E):
-    return rp.code.load("block", "ratematch/lte_conv", D=D, E=E).encoder # 5.1.4.2
+    return rp.code.load("block/ratematch/lte_conv", D=D, E=E).encoder # 5.1.4.2
 
 
 def rate_match(d, E):

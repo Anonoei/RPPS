@@ -75,7 +75,7 @@ def test_termination_names_and_octal_generators(rng):
            "encode": {"type": "conv", "num": 1, "den": 2, "constraint": 7, "generator": ["0o133", "0o171"], "termination": "zero"},
            "decode": {"type": "viterbi", "num": 1, "den": 2, "generator": ["0o133", "0o171"]}}
     a = rp.code.serial.init("t", obj)
-    b = rp.code.load("conv", "k7_133_171/1_2")
+    b = rp.code.load("conv/k7_133_171/1_2")
     assert np.array_equal(a.encoder.generator, b.encoder.generator)
     assert a.encoder.terminated and a.decoder.terminated # The decoder takes the encoder's termination and constraint
     msg = bits(rng, 50)
@@ -87,7 +87,7 @@ def test_termination_names_and_octal_generators(rng):
 
 @pytest.mark.parametrize("ncbps,nbpsc", [(48, 1), (96, 2), (192, 4), (288, 6)])
 def test_wifi_interleaver(ncbps, nbpsc, rng):
-    il = rp.code.load("interleave", "wifi_ofdm", ncbps=ncbps, nbpsc=nbpsc).encoder
+    il = rp.code.load("interleave/wifi_ofdm", ncbps=ncbps, nbpsc=nbpsc).encoder
     s = max(nbpsc//2, 1)
     k = np.arange(ncbps)
     i = (ncbps//16)*(k % 16) + k//16                   # 17-17
@@ -99,7 +99,7 @@ def test_wifi_interleaver(ncbps, nbpsc, rng):
 
 def test_p25_tsbk_interleave():
     order = [d for r in range(12) for d in (2*r, 2*r + 1, 26 + 2*r, 27 + 2*r, 50 + 2*r, 51 + 2*r, 74 + 2*r, 75 + 2*r)] + [24, 25]
-    il = rp.code.load("interleave", "p25_tsbk").encoder
+    il = rp.code.load("interleave/p25_tsbk").encoder
     rx = np.arange(98*2) # Dibits as pairs of positions
     assert np.array_equal(il.decode(rx).reshape(98, 2)[:, 0]//2, order)
 
@@ -110,7 +110,7 @@ def test_lte_subblock(D):
     y = [None]*(R*32 - D) + list(range(D))
     want = [y[r*32 + P[c]] for c in range(32) for r in range(R)]
     want = [v for v in want if v is not None]
-    il = rp.code.load("interleave", "lte_subblock", length=D).encoder
+    il = rp.code.load("interleave/lte_subblock", length=D).encoder
     assert list(il.encode(np.arange(D))) == want
 
 def test_block_interleaver_rejects_non_permutation():

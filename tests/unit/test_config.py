@@ -17,7 +17,7 @@ def refs(domain):
                 yield cat, f"{group}/{n}" if group else n
 
 def test_every_file_has_header():
-    for f in _config.PATH_CONFIG.rglob("*.json"):
+    for f in _config.PATH_CONFIG.glob("*/**/*.json"): # Definitions are in a resource folder; config/tags.json is the tag list
         obj = json.loads(f.read_text())
         assert "base" in obj, f
         domain = f.relative_to(_config.PATH_CONFIG).parts[0]
@@ -52,9 +52,10 @@ def test_aliases_resolve():
     assert [s.kind for s in rp.profile.load("dvbs_3_4").steps][-1] == "scramble" # a profile's alias
     assert _config.find("fec", "rs.204_188", "block") is None # a dotted name is an alias or nothing: no family.name guess
 
-def test_family_names_the_loaded_code():
-    assert type(rp.code.load("block", "rs/204_188")).__name__ == "rs"
-    assert type(rp.code.load("block", "204_188")).__name__ == "rs"
+def test_a_loaded_code_is_named_by_its_ref():
+    assert type(rp.code.load("block/rs/204_188")).__name__ == "rs/204_188"
+    assert type(rp.code.load("block/204_188")).__name__ == "rs/204_188"
+    assert rp.code.load("conv/k7_171_133/3_4").name != rp.code.load("conv/k7_171_133/1_2").name
 
 def test_user_layer(tmp_path):
     (tmp_path / "crc").mkdir(parents=True)
@@ -68,7 +69,7 @@ def test_user_layer(tmp_path):
     try:
         assert "mycrc" in rp.link.ls()["crc"]
         assert _config.find("crc", "crc16_arc").parent == tmp_path / "crc"
-        rp.link.load("crc", "mycrc")
+        rp.link.load("crc/mycrc")
         assert "rs/255_223" in rp.code.names("block")
         assert "rs/204_188" in rp.code.names("block")
     finally:

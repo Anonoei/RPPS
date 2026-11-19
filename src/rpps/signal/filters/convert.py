@@ -6,7 +6,7 @@ become one. Read a file, get the definition as a dict, or have it written into a
     d = rp.signal.filters.import_fir("taps.txt")                                  # {"base": "fir", "type": "taps", "taps": [...]}
     rp.signal.filters.import_fir("lp.f32", dtype="f32", name="my_lp", dest="mine")  # writes mine/filter/fir/taps/my_lp.json
     rp.signal.filters.import_iir("sections.npy", form="sos", name="my_iir")
-    rp.add_config_path("mine"); rp.signal.filters.load("fir", "taps/my_lp")
+    rp.add_config_path("mine"); rp.signal.filters.load("fir/taps/my_lp")
 
 Formats: text/CSV, NumPy .npy/.npz, headerless raw binary (GNU Radio file sinks, `tofile`), numbers in a C/Python/Verilog array
 literal, Xilinx .coe. Arrays already in memory (scipy, firdes...) go through `fir_def`, `sos_def`, `ba_def` and `zpk_def`.

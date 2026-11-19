@@ -143,26 +143,26 @@ def test_delimiter_frames_by_control_strip(rng):
 
 def test_header_fcs_round_trip_and_rejects_a_damaged_frame(rng):
     msg = rng.integers(0, 2, 8*20).astype(bool)
-    tx = rp.Data(msg) * rp.link.load("header", "ble_adv")
+    tx = rp.Data(msg) * rp.link.load("header/ble_adv")
     assert len(tx) == 16 + 160 + 24
-    out = as_data_bits(np.asarray(tx.data)) / rp.link.load("header", "ble_adv")
+    out = as_data_bits(np.asarray(tx.data)) / rp.link.load("header/ble_adv")
     assert np.array_equal(hard(out), msg) and out.stream.est["ble_adv"]["last"]["length"] == 20
     bad = np.asarray(tx.data).copy()
     bad[16 + 50] ^= True
-    out = as_data_bits(bad) / rp.link.load("header", "ble_adv")
+    out = as_data_bits(bad) / rp.link.load("header/ble_adv")
     assert len(out) == 0 and out.stream.est["ble_adv"]["fcs_failed"] == 1 and out.stream.est["ble_adv"]["frames"] == 0
 
 def test_mode_s_header_matches_a_real_frame():
     """A real DF17 extended squitter (ICAO address 4840D6): the header reads its DF, checks its parity and gives the 83 bits between"""
     frame = bytes.fromhex("8D4840D6202CC371C32CE0576098")
     bits = np.unpackbits(np.frombuffer(frame, np.uint8)).astype(bool)
-    out = as_data_bits(bits) / rp.link.load("header", "mode_s")
+    out = as_data_bits(bits) / rp.link.load("header/mode_s")
     assert out.stream.est["mode_s"]["last"] == {"df": 17} and len(out) == 83
     assert np.array_equal(hard(out), bits[5:88])
 
 @pytest.mark.parametrize("name", ["hdlc", "hdlc_nrzi"])
 def test_hdlc_streams_frames_across_any_block_cut(name, rng):
-    fr = rp.link.load("frame", name)
+    fr = rp.link.load(f"frame/{name}")
     pk = [bytes(rng.integers(0, 256, n).astype(np.uint8)) for n in (10, 33, 100, 12)]
     bits, ctx = [], None
     for p in pk:
@@ -230,7 +230,7 @@ def test_am_envelope_can_keep_its_mean():
 
 @pytest.mark.parametrize("rate,k", [("1_2", 324), ("2_3", 432), ("3_4", 486), ("5_6", 540)])
 def test_ieee80211n_ldpc_from_shifts(rate, k, rng):
-    c = rp.code.load("block", f"ldpc/ieee80211n_648_{rate}")
+    c = rp.code.load(f"block/ldpc/ieee80211n_648_{rate}")
     assert c.encoder.num == k and c.encoder.den == 648
     msg = rng.integers(0, 2, 2*k).astype(bool)
     enc = rp.Data(msg) * c

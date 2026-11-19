@@ -81,7 +81,7 @@ class AcquireFEC(Stage):
         if not fec.found:
             return x
         from .. import symbol
-        st.c = symbol.load(fec.mod)
+        st.c = symbol.load_or_generate(fec.mod)
         bps = st.c.bits_per_symbol
         # Out from the window the code was identified on: before it the sync was settling (a symbol slipped there would
         # give a decoder that aligns once, on what comes first, another alignment than the one found and tracked here)
@@ -90,7 +90,7 @@ class AcquireFEC(Stage):
             e = next((fec.offset + k*fec.period for k in range(bps) if (fec.offset + k*fec.period) % bps == 0), None)
             st.drop += 0 if e is None else e//bps
         if fec.kind == "conv" and not fec.differential:
-            st.code = cached("conv", fec.name)
+            st.code = cached(f"conv/{fec.name}")
         st.out = st.drop
         return self._emit(x[st.drop:], st)
 

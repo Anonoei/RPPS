@@ -11,7 +11,7 @@ from .. import _config
 # -----
 from . import types
 from . import matrix
-from .serial import ls, names, load, init, find, generate
+from .serial import ls, names, load, init, find, locate
 
 from .coding import Coding, Block, Convolutional, Interleaver, puncture_period, mismatch, cached
 from .uncoded import Uncoded

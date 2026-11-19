@@ -73,7 +73,7 @@ def brute_app(codewords, llr, maxlog):
 @pytest.mark.parametrize("name", ["hamming/7_4", "hamming/15_11", "hamming/3_1"])
 @pytest.mark.parametrize("maxlog", [False, True])
 def test_trellis_matches_enumeration(name, maxlog, rng):
-    code = rp.code.load("block", name)
+    code = rp.code.load(f"block/{name}")
     enc, dec = code.encoder, code.decoder
     assert type(dec).__name__ == "trellis"
     dec.maxlog = maxlog
@@ -85,7 +85,7 @@ def test_trellis_matches_enumeration(name, maxlog, rng):
         assert np.allclose(app[w], brute_app(cw, llr[w], maxlog), atol=1e-9)
 
 def test_hamming_corrects_any_single_error():
-    code = rp.code.load("block", "hamming/7_4")
+    code = rp.code.load("block/hamming/7_4")
     msg = np.array([1, 0, 1, 1, 0, 0, 1, 0], dtype=bool)
     coded = code.encoder.encode(msg)
     for i in range(7):
@@ -94,7 +94,7 @@ def test_hamming_corrects_any_single_error():
         assert np.array_equal(code.decoder.decode(bad), msg)
 
 def test_soft_trellis_beats_hard_on_hamming(rng):
-    code = rp.code.load("block", "hamming/7_4")
+    code = rp.code.load("block/hamming/7_4")
     msg = bits(rng, 4*4000)
     coded = code.encoder.encode(msg)
     rx = (1.0 - 2.0*coded) + rng.normal(0, 0.8, len(coded))
@@ -104,7 +104,7 @@ def test_soft_trellis_beats_hard_on_hamming(rng):
     assert (soft != msg).mean() < 0.06 # Uncoded BPSK at this noise level makes about 10.6% errors
 
 def test_linear_decoder_override():
-    code = rp.code.load("block", "hamming/7_4", decoder="linear")
+    code = rp.code.load("block/hamming/7_4", decoder="linear")
     assert type(code.decoder).__name__ == "linear" and code.decision.name == "HARD"
 
 def test_big_linear_code_falls_back():
@@ -133,7 +133,7 @@ def test_conv_bcjr_matches_enumeration(maxlog, rng):
 
 def test_conv_bcjr_clean_and_hard(rng):
     for name in ("k3_5_7/1_2", "k7_133_171/1_2", "k7_171_133/3_4"):
-        code = rp.code.load("conv", name, decoder="bcjr")
+        code = rp.code.load(f"conv/{name}", decoder="bcjr")
         msg = bits(rng, 600)
         out = code.decoder.decode(code.encoder.encode(msg))
         n = min(len(out), len(msg)) - 20
@@ -141,8 +141,8 @@ def test_conv_bcjr_clean_and_hard(rng):
 
 def test_bcjr_close_to_viterbi_and_better_calibrated(rng):
     msg = bits(rng, 4000)
-    code_v = rp.code.load("conv", "k7_133_171/1_2")
-    code_b = rp.code.load("conv", "k7_133_171/1_2", decoder="bcjr")
+    code_v = rp.code.load("conv/k7_133_171/1_2")
+    code_b = rp.code.load("conv/k7_133_171/1_2", decoder="bcjr")
     coded = code_v.encoder.encode(msg)
     sigma = 0.9
     rx = (1.0 - 2.0*coded) + rng.normal(0, sigma, len(coded))
@@ -158,7 +158,7 @@ def test_bcjr_close_to_viterbi_and_better_calibrated(rng):
     assert wrong[conf].mean() < 1e-2 # Confident bits are right
 
 def test_bcjr_handles_puncturing(rng):
-    code = rp.code.load("conv", "k7_171_133/3_4", decoder="bcjr")
+    code = rp.code.load("conv/k7_171_133/3_4", decoder="bcjr")
     msg = bits(rng, 1200)
     coded = code.encoder.encode(msg)
     rx = (1.0 - 2.0*coded) + rng.normal(0, 0.5, len(coded))
@@ -169,14 +169,14 @@ def test_bcjr_handles_puncturing(rng):
 # --- soft decisions through the pipeline --------------------------------------------------------------
 
 def test_decisions_default_by_decoder():
-    assert rp.code.load("conv", "k7_171_133/3_4").decision.name == "SOFT"
-    assert rp.code.load("block", "ldpc/gallager_96_48").decision.name == "SOFT"
-    assert rp.code.load("block", "repeat/3").decision.name == "SOFT"
-    assert rp.code.load("block", "hamming/7_4").decision.name == "SOFT"
-    assert rp.code.load("block", "rs/204_188").decision.name == "SOFT" # LLRs pick the symbols to erase on a retry
+    assert rp.code.load("conv/k7_171_133/3_4").decision.name == "SOFT"
+    assert rp.code.load("block/ldpc/gallager_96_48").decision.name == "SOFT"
+    assert rp.code.load("block/repeat/3").decision.name == "SOFT"
+    assert rp.code.load("block/hamming/7_4").decision.name == "SOFT"
+    assert rp.code.load("block/rs/204_188").decision.name == "SOFT" # LLRs pick the symbols to erase on a retry
 
 def test_repeat_adds_llrs():
-    rep = rp.code.load("block", "repeat/3").decoder
+    rep = rp.code.load("block/repeat/3").decoder
     llr = np.array([+3.0, -1.0, -1.0,  +1.0, +1.0, -1.5], dtype=np.float32)
     assert rep.decode(llr).tolist() == [False, False]
     assert rep.decode(np.array([1, 1, 0, 0, 1, 0], dtype=bool)).tolist() == [True, False]
@@ -193,14 +193,14 @@ def run_link(ecc, mod, esn0, rng, nbits, soft=True):
     return (got[:n] != msg[:n]).mean()
 
 def test_soft_beats_hard_end_to_end_conv(rng):
-    ecc, mod = rp.code.load("conv", "k7_133_171/1_2"), modem("qpsk")
+    ecc, mod = rp.code.load("conv/k7_133_171/1_2"), modem("qpsk")
     hard = run_link(ecc, mod, 2.5, np.random.default_rng(5), 6000, soft=False)
     soft = run_link(ecc, mod, 2.5, np.random.default_rng(5), 6000, soft=True)
     assert soft < hard
     assert soft < 0.01
 
 def test_soft_beats_hard_end_to_end_ldpc():
-    ecc, mod = rp.code.load("block", "ldpc/gallager_96_48"), modem("qpsk")
+    ecc, mod = rp.code.load("block/ldpc/gallager_96_48"), modem("qpsk")
     n = ecc.e_num*60
     hard = run_link(ecc, mod, 2.0, np.random.default_rng(9), n, soft=False)
     soft = run_link(ecc, mod, 2.0, np.random.default_rng(9), n, soft=True)
@@ -208,7 +208,7 @@ def test_soft_beats_hard_end_to_end_ldpc():
 
 def test_hard_only_decoder_still_works_behind_soft_demod(rng):
     """RS can't use LLRs: the demodulator's soft output is decided before it"""
-    ecc, mod = rp.code.load("block", "rs/204_188"), modem("qpsk")
+    ecc, mod = rp.code.load("block/rs/204_188"), modem("qpsk")
     msg = rp.Data(bytes(rng.integers(0, 256, 188*2).astype(np.uint8)))
     want = msg.as_bytes().hex
     out = (((msg*ecc*mod) / mod) / ecc).as_bytes().hex
@@ -217,7 +217,7 @@ def test_hard_only_decoder_still_works_behind_soft_demod(rng):
 def test_rs_soft_retry_never_passes_noise():
     """Erasing enough positions decodes any word to some codeword: a soft retry is kept only with checks to spare, so random
     words (no codeword near) are reported failed, never 'corrected'"""
-    rs = rp.code.load("block", "rs/204_188").decoder
+    rs = rp.code.load("block/rs/204_188").decoder
     rng = np.random.default_rng(11)
     llr = rng.standard_normal(204*8*40)*2
     rs.decode(llr)
@@ -225,7 +225,7 @@ def test_rs_soft_retry_never_passes_noise():
 
 def test_rs_soft_retry_still_corrects_with_erasures():
     """A word with errors past t = 8 symbols, but where the soft values say which bytes are doubtful, is corrected"""
-    code = rp.code.load("block", "rs/204_188")
+    code = rp.code.load("block/rs/204_188")
     rng = np.random.default_rng(12)
     msg = rng.integers(0, 2, 188*8).astype(bool)
     cw = code.encoder.encode(msg)
@@ -239,13 +239,13 @@ def test_rs_soft_retry_still_corrects_with_erasures():
 def test_forney_and_bcjr_pass_llrs_on():
     """LLRs through a Forney deinterleaver stay LLRs (the same permutation as on bits), and a BCJR decoder hands its
     a-posteriori LLRs on in a chain"""
-    il = rp.code.load("interleave", "forney/12_17").decoder
+    il = rp.code.load("interleave/forney/12_17").decoder
     rng = np.random.default_rng(13)
     llr = rng.standard_normal(8*12*17*12)
     soft = il.decode(llr, state={})
     hard = il.decode(llr < 0, state={})
     assert soft.dtype.kind == "f" and np.array_equal((soft < 0)[soft != 0], np.asarray(hard)[soft != 0])
-    cv = rp.code.load("conv", "k7_133_171/1_2", decoder="bcjr")
+    cv = rp.code.load("conv/k7_133_171/1_2", decoder="bcjr")
     m = rng.integers(0, 2, 400).astype(bool)
     y = rp.base.Mod(4.0*(1.0 - 2.0*cv.encoder.encode(m)), rep=rp.Rep.CHANNEL, ctx={rp.base.rpps.FLUSH: True}) / cv
     assert y.DT == rp.dtype.LLR and np.array_equal(np.asarray(y.data)[:400] < 0, m)

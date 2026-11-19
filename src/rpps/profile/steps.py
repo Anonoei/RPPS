@@ -149,7 +149,7 @@ def _stage_class(path):
 @register_step("signal", "filter")
 def _signal_filter(kind, spec, rep, ctx):
     from .. import signal
-    return [(STAGE, signal.filters.load(_need(spec, "type", "signal filter"), _need(spec, "name", "signal filter")))], [], rep
+    return [(STAGE, signal.filters.load(f'{_need(spec, "type", "signal filter")}/{_need(spec, "name", "signal filter")}'))], [], rep
 
 @register_step("signal", "decimate")
 @_one
@@ -334,7 +334,7 @@ def _align(m, ctx):
 @_sync_one("puncture")
 def _puncture(m, ctx):
     from .. import sync, code
-    return sync.Puncture(code.load(m.get("type", "conv"), _need(m, "fec", "puncture")), m.get("window", 4000))
+    return sync.Puncture(code.load(f'{m.get("type", "conv")}/{_need(m, "fec", "puncture")}'), m.get("window", 4000))
 
 @_sync_one("pilots")
 def _pilot_eq(m, ctx):
@@ -393,7 +393,7 @@ def _delimit(m, ctx):
     if "header" in m:
         from .. import link
         pre = _config.read(_config.find("header", m["header"], "link")).get("preamble") or {}
-        h = link.load("header", m["header"])
+        h = link.load(f"header/{m['header']}")
         word, bits, order = pre.get("word"), pre.get("bits"), h.order
         if word is None:
             raise ConfigError(f"sync delimit: {m.get('header')} has no preamble word")
@@ -481,7 +481,7 @@ def _pulse(name):
     if f is None:
         raise ConfigError(f"wave shape: no pulse {name!r} in config/pulse")
     kind = _config.read(f).get("kind", "symbol")
-    return (lambda: signal.filters.load("pulse", name)), kind
+    return (lambda: signal.filters.load(f"pulse/{name}")), kind
 
 def _wave(kind, spec, rep, ctx):
     from .. import wave, signal
@@ -520,11 +520,19 @@ def _wave(kind, spec, rep, ctx):
 def _pair(op_rx, op_tx, gives):
     return [(DECODE, op_rx)], [(ENCODE, op_tx)], gives
 
+def constellation(spec):
+    """The constellation of a {"symbol": "constellation"} step: "name", a definition ("psk/qpsk"), or "shape", a generated one
+    ("OOK", "16QAM"); "mapping" picks a map"""
+    from .. import symbol
+    if "shape" in spec:
+        c = symbol.generate(spec["shape"])
+        return c if spec.get("mapping") is None else c.set_mapping(spec["mapping"])
+    return symbol.load(_need(spec, "name", "symbol constellation"), spec.get("mapping"))
+
 def _symbol(kind, spec, rep, ctx):
     from .. import symbol, sequence
     if kind == "constellation":
-        name = _need(spec, "name", "symbol constellation")
-        make = lambda: symbol.load(name, spec.get("mapping"))
+        make = lambda: constellation(spec)
         return _pair(make(), make(), Rep.CHANNEL)
     if kind == "differential":
         d = symbol.Differential()
@@ -560,7 +568,7 @@ def _code(kind, spec, rep, ctx):
                 op = {"block": code.Block, "interleave": code.Interleaver, "conv": code.Convolutional}[folder](None, None)
                 op.folder, op.name = folder, "none"
                 return op
-            return code.load(folder, name, **spec.get("args", {}))
+            return code.load(f"{folder}/{name}", **spec.get("args", {}))
         return _pair(make(), make(), Rep.DATA)
     if kind == "scramble":
         ref = _need(spec, "name", "code scramble")
@@ -584,7 +592,7 @@ def _link(kind, spec, rep, ctx):
     from .. import link
     if kind in ("crc", "frame", "header"):
         name = _need(spec, "name", f"link {kind}")
-        make = lambda: link.load(kind, name)
+        make = lambda: link.load(f"{kind}/{name}")
         return _pair(make(), make(), Rep.PACKETS)
 
 for _cat, _fn, _kinds in (("wave", _wave, ("shape", "stagger", "fm", "am", "ssb", "ofdm")),

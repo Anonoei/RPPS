@@ -178,8 +178,8 @@ def ccsds_signal():
 
 def test_ccsds_builds_the_pairs(ccsds_signal):
     p = ccsds_signal[0]
-    assert names(p.rx()) == ["+_KnownTiming", "/Constellation", "+Delimiter", "/Marker", "/additive/ccsds", "/block", "/rs"]
-    assert names(p.tx()) == ["*rs", "*block", "*additive/ccsds", "*Marker", "*Constellation", "+Interpolate"]
+    assert names(p.rx()) == ["+_KnownTiming", "/Constellation", "+Delimiter", "/Marker", "/additive/ccsds", "/block/ccsds_rs", "/rs/ccsds_255_223"]
+    assert names(p.tx()) == ["*rs/ccsds_255_223", "*block/ccsds_rs", "*additive/ccsds", "*Marker", "*Constellation", "+Interpolate"]
     assert 3*4*(32 + 8*255*2) <= len(ccsds_signal[1]) < 3*4*(32 + 8*255*2) + 4*64 # (plus the pulse tail, sent whole on the flush)
 
 def test_ccsds_frames_round_trip_inverted_and_offset(ccsds_signal):

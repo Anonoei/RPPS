@@ -90,10 +90,10 @@ def test_live_operators():
     c = rp.symbol.load("bpsk")
     c.control(name="qpsk_axes")
     assert c.bits_per_symbol == 2 and c.pos_rate(True) == 2 and len(c.points) == 4
-    code = rp.code.load("block", "bch/dvbs2_1_2")
+    code = rp.code.load("block/bch/dvbs2_1_2")
     code.control(name="bch/dvbs2_3_4")
     assert (code.e_num, code.e_den) == (48408, 48600)
-    il = rp.code.load("interleave", "dvbs2_8psk")
+    il = rp.code.load("interleave/dvbs2_8psk")
     il.control(name=None) # nothing: QPSK has no bit interleaver
     x = rp.base.Mod(np.linspace(-1, 1, 30).astype(np.float32), rep=Rep.CHANNEL)
     assert np.array_equal((x/il).data, x.data)
@@ -114,7 +114,7 @@ def test_restart_rebuilds_and_reports(config_path):
         outs.append(np.asarray(tx(d).data))
     restarts = [r for r in s.control.reports if r["what"] == "restart"]
     assert len(restarts) == 2 and restarts[0]["step"] == "cc"
-    fresh = rp.code.load("conv", "k7_171_133/1_2")
+    fresh = rp.code.load("conv/k7_171_133/1_2")
     assert np.array_equal(outs[1], np.asarray((rp.Data(b) * fresh).data)) # the trellis started again
 
 # ---- operators of the frame structure
@@ -149,7 +149,7 @@ def test_pilots_round_trip():
     assert np.allclose((y / rp.symbol.Pilots(slots=40)).data, x)
 
 def test_link_header_round_trip():
-    h = rp.link.load("header", "ieee80211b_plcp")
+    h = rp.link.load("header/ieee80211b_plcp")
     h.control(signal=20)
     out = rp.Data(bits(200, 3)) * h
     assert len(out) == 128 + 16 + 48 + 200

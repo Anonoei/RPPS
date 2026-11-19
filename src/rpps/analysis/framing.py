@@ -128,7 +128,7 @@ def cut(y, fr, M=None, grid=4):
 def payload_bits(frames, fr, constellation):
     """Frames x bits of the symbols after each unique word, hard-decided on `constellation` (a name or a Constellation)"""
     from .. import symbol
-    c = symbol.load(constellation) if isinstance(constellation, str) else constellation
+    c = symbol.load_or_generate(constellation) if isinstance(constellation, str) else constellation
     pay = frames[:, fr.uw_length:]
     pts = np.asarray(c.points)/np.sqrt(np.mean(np.abs(c.points)**2))
     labels = np.asarray(c.mapping.arr if hasattr(c, "mapping") else np.arange(len(pts)))

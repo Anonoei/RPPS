@@ -499,7 +499,7 @@ class _Chain:
         if len(bits) >= n + 48: # The rank method: a row per codeword, more rows than its length
             from .. import symbol
             from .quality import gate
-            g = gate(frames[:400, fr.uw_length:].ravel(), symbol.load(det.mod).points)
+            g = gate(frames[:400, fr.uw_length:].ravel(), symbol.load_or_generate(det.mod).points)
             if not g.ok: # Bit errors the noise doesn't explain fill the rank: a full rank then says nothing
                 p.add("fec", "block code on the frame-aligned payload: not tried", UNSOLVED,
                       note=f"the hard decisions can't be trusted ({g.why}): fix the symbols (a pilot-aided sync, "
@@ -514,7 +514,7 @@ class _Chain:
         from . import tcm
         from .. import symbol
         y = np.concatenate(self.syms)[2000:2000 + 30000]
-        M = len(symbol.load(det.mod).points)
+        M = len(symbol.load_or_generate(det.mod).points)
         try:
             found = tcm.search(y, M, max_nu=5)
         except Exception as e:
@@ -609,7 +609,7 @@ class _Chain:
         p.add("carrier", f"feed-forward: {det.cfo/1e3:+.2f} kHz off, phase by the {nth} power over 64 symbols")
         fec = self.stream.est.get("fec")
         p.fec = fec
-        c = symbol.load(det.mod)
+        c = symbol.load_or_generate(det.mod)
         weak = fec is not None and fec.found and rate_doubt and not _strong(fec)
         if fec is not None and fec.found and not weak:
             p.profile_name = fec.profile_name

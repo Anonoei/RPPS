@@ -38,7 +38,7 @@ def test_wrong_decisions_show_where_they_are(qpsk):
 
 def test_a_weak_signal_underneath_is_found(qpsk):
     x, s = qpsk
-    w, _ = shaped(np.random.default_rng(2), rp.symbol.PSK(2).points, 20000, 3.1, beta=0.35, cfo=0.03)
+    w, _ = shaped(np.random.default_rng(2), rp.symbol.PSK(2, offset=np.pi/2).points, 20000, 3.1, beta=0.35, cfo=0.03) # BPSK on +-j: here the QPSK hides its x^2 line
     y = x + 0.2*w[:len(x)] # 14 dB under, overlapping the QPSK's band
     assert cyclic.features(y, FS).order == 4 # the strong one hides it
     c = cancel.cancel(y, FS, s, SPS, tau=0.3*SPS)

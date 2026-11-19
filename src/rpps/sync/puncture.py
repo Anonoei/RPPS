@@ -8,7 +8,7 @@ from ..code.coding import puncture_period, mismatch
 class Puncture(BitStage):
     """Find where a punctured convolutional code's puncture pattern starts, and start the stream there
 
-        aligned = llrs + rp.sync.Puncture(rp.code.load("conv", "k7_171_133/3_4")) + ...   # then Viterbi
+        aligned = llrs + rp.sync.Puncture(rp.code.load("conv/k7_171_133/3_4")) + ...   # then Viterbi
 
     Block estimation on channel bits: once `window` coded bits are in, each offset into the puncture period is tried by
     decoding that window and coding the decision again; the right offset reproduces what was received (only channel errors

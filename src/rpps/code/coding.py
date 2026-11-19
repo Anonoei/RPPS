@@ -82,7 +82,7 @@ class Coding(base.rpps.Pipe):
         if name is None:
             self.encoder = self.decoder = None
         else:
-            new = cached(self.folder or type(self).__name__.lower(), name)
+            new = cached(f"{self.folder or type(self).__name__.lower()}/{name}")
             self.encoder, self.decoder = new.encoder, new.decoder
         self.name = name or "none"
         self._restart = True # A frame starts here: a codeword never spans two
@@ -210,11 +210,11 @@ def mismatch(code, hard):
     return int(np.count_nonzero(e[:n] != hard[:n].astype(bool))), n
 
 @functools.lru_cache(maxsize=None)
-def cached(folder, name):
+def cached(ref):
     """A definition loaded once per process and shared (a DVB-S2 LDPC code takes a moment to build): what `control`
-    swaps in, and what the blind tools try: `rp.code.cached("conv", "k7_171_133/3_4")`"""
+    swaps in, and what the blind tools try: `rp.code.cached("conv/k7_171_133/3_4")`"""
     from .serial import load
-    return load(folder, name)
+    return load(ref)
 
 def _impl(parent, name):
     """Named subclass of `parent`, so each loaded code reports its own name"""
@@ -274,10 +274,20 @@ class Convolutional(Coding):
 
     @staticmethod
     def load(name, obj, decoder=None):
-        """decoder: use this decoder type (viterbi, bcjr) with the definition's decode parameters"""
-        if obj["type"] != "split":
-            raise ConfigError(f"{name}: a convolutional definition is type 'split' (encode + decode), not {obj['type']!r}")
+        """{"base": "conv", "constraint": K, "generator": [...], "puncture": [...], "decoder": "viterbi"}: one set of keys
+        builds the encoder and its decoder. decoder: use this decoder type (viterbi, bcjr) instead of the definition's"""
         log = Logger().Child("Coding", _config.LOG_CODING).Child(name)
+        if "encode" not in obj:
+            if "generator" not in obj:
+                raise ConfigError(f"{name}: a convolutional code needs 'generator' (and 'constraint')")
+            keys = {k: v for k, v in obj.items() if k not in ("base", "type", "comment", "ref", "tags", "params", "decoder")}
+            keys.setdefault("num", 1)
+            keys.setdefault("den", len(obj["generator"]))
+            e = {**keys, "type": "conv"}
+            d = {**keys, "type": decoder or obj.get("decoder", "viterbi")}
+            return _impl(Convolutional, name)(_code_of(e).from_config(log, e), _code_of(d).from_config(log, d))
+        if obj.get("type") != "split":
+            raise ConfigError(f"{name}: a convolutional definition is type 'split' (encode + decode), not {obj.get('type')!r}")
         e, d = dict(obj["encode"]), dict(obj["decode"])
         if decoder is not None:
             d["type"] = decoder

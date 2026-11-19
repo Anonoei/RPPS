@@ -55,7 +55,7 @@ def candidates(names=None):
         names = [n for cat, stems in symbol.ls().items() if cat == "psk" for n in stems if not n.startswith("dvbs2_")] # The PSK family (differential alphabets are another folder); labelling variants are not separate modulations
     out = {}
     for name in names:
-        pts = np.asarray(symbol.load(name).points, dtype=np.complex128)
+        pts = np.asarray(symbol.load_or_generate(name).points, dtype=np.complex128)
         out[name] = pts / np.sqrt(np.mean(np.abs(pts)**2))
     return out
 

@@ -1,6 +1,6 @@
 """Link headers: fields, a CRC, and the payload they announce (README.dev.md, link and Header-driven control)
 
-A definition, config/header/link/<name>.json, `rp.link.load("header", "ieee80211b_plcp")`:
+A definition, config/header/link/<name>.json, `rp.link.load("header/ieee80211b_plcp")`:
 
     {"base": "header", "type": "link", "comment": "...", "ref": "...",
      "order": "lsb",                                      field bits sent least ("lsb") or most ("msb") significant first
@@ -296,4 +296,4 @@ class Header(Pipe):
 
 def _crc(name):
     from .serial import load
-    return load("crc", name).encoder
+    return load(f"crc/{name}").encoder

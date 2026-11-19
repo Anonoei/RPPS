@@ -1,4 +1,4 @@
-"""Link definitions, one resource each: config/crc, config/frame, config/header/link; `rp.link.load("crc", "crc32_mpeg2")`
+"""Link definitions, one resource each: config/crc, config/frame, config/header/link; `rp.link.load("crc/crc32_mpeg2")`
 
     crc    {"base": "crc", "type": "crc", "width": 16, "poly": "0x1021", "init": "0x0", "xorout": "0x0",
             "refin": false, "refout": false,       the reveng catalogue fields (numbers or hex strings)
@@ -13,11 +13,25 @@
 from pathlib import Path
 
 from .. import _config
+from ..errors import ConfigError
 from .encap import CRC, Frame
 
 KINDS = ("crc", "frame", "header")
 
 DOMAINS = {"crc": _config.register_domain("crc", {"crc": CRC.load}), "frame": _config.register_domain("frame", {"frame": Frame.load})}
+
+def _header(name, obj):
+    """A header definition: "physical" (known symbols and a short code: rp.symbol.Header) or "link" (fields, CRC, payload length)"""
+    t = obj.get("type")
+    if t == "physical":
+        from ..symbol.frame import Header as PhysicalHeader
+        return PhysicalHeader.load(name, obj)
+    if t == "link":
+        from .header import Header as LinkHeader
+        return LinkHeader.load(name, obj)
+    raise ConfigError(f"header {name}: type is physical or link, not {t!r}")
+
+HEADERS = _config.register_domain("header", {"header": _header}) # One resource for both kinds, whichever package is imported first
 
 def root() -> Path:
     """Directory holding the encapsulation definitions"""
@@ -28,12 +42,20 @@ def ls(path=None):
     return {k: sorted(n for names in _config.ls(k, path).items() if k != "header" or names[0] == "link" for n in names[1])
             for k in KINDS}
 
-def load(kind: str, ref: str, path=None, **params):
-    """Load config/<kind>/<name>.json (a link header: config/header/link/<name>.json), or from `path`/<kind>/. kind: crc | frame | header"""
-    if kind not in KINDS:
-        raise ValueError(f"kind is one of {KINDS}, not {kind!r}")
-    file, parts = _config.locate(kind, ref, "link" if kind == "header" else None, path)
-    if file is None:
-        raise FileNotFoundError(f"{kind}/{ref}: not found, have {_config.ls(kind, path)}")
-    obj = _config.resolve(_config.read(file), params, f"{kind}/{ref}")
-    return _config.load_obj(kind, parts[-1], obj)
+def load(ref: str, path=None, **params):
+    """Load a link definition by "<kind>/<name>": `load("crc/crc32_mpeg2")`, `load("frame/hdlc")`, `load("header/ble_adv")`
+    (config/<kind>/<name>.json; a link header is config/header/link/<name>.json), or below `path`. kind: crc | frame | header.
+    A bare name works while one definition of the three kinds has it"""
+    ref = str(ref).strip("/")
+    kind, _, rest = ref.partition("/")
+    kinds = [kind] if kind in KINDS and rest else list(KINDS)
+    rest = rest if kind in KINDS and rest else ref
+    hits = [(k, *_config.locate(k, rest, "link" if k == "header" else None, path)) for k in kinds]
+    hits = [h for h in hits if h[1] is not None]
+    if len(hits) > 1:
+        raise ConfigError(f"{ref} is ambiguous: {[f'{k}/{rest}' for k, _, _ in hits]}")
+    if not hits:
+        raise FileNotFoundError(f"{ref}: no link definition (give <kind>/<name>, kind one of {KINDS}), have {ls(path)}")
+    k, file, parts = hits[0]
+    obj = _config.resolve(_config.read(file), params, f"{k}/{rest}")
+    return _config.load_obj(k, parts[-1], obj)

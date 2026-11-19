@@ -23,7 +23,7 @@ def scramble(d, taps):
 @pytest.fixture(scope="module")
 def hdlc():
     rng = np.random.default_rng(1)
-    fr = rp.link.load("frame", "hdlc")
+    fr = rp.link.load("frame/hdlc")
     frames = [bytes(rng.integers(0, 256, int(rng.integers(20, 200))).astype(np.uint8)) for _ in range(120)]
     return np.asarray(fr.encoder.encode(frames)).astype(np.uint8)[:100000]
 
@@ -85,7 +85,7 @@ def test_guesses_save_as_definitions_that_load(tmp_path, monkeypatch, hdlc):
     bits = rs_bits(219, 201, 0x187, 120, 1, phase=0, offset=0)
     g = B.search(bits, lengths=(219,))[2]
     g.save("found", tmp_path/"fec")
-    code = rp.code.load("block", "guess/found").encoder
+    code = rp.code.load("block/guess/found").encoder
     words = np.packbits(bits[:len(bits)//(8*219)*8*219]).reshape(-1, 219).astype(np.int64)
     assert not code.syndromes(words).any()
 
@@ -139,13 +139,13 @@ def test_bch_found_with_its_field_and_t_shortened_too():
 
 def test_cyclic_code_found_by_its_generator():
     rng = np.random.default_rng(2)
-    b = np.asarray(rp.code.load("block", "golay/23_12").encoder.encode(rng.integers(0, 2, 12*600).astype(bool))).astype(np.uint8)
+    b = np.asarray(rp.code.load("block/golay/23_12").encoder.encode(rng.integers(0, 2, 12*600).astype(bool))).astype(np.uint8)
     (h, g), = BK.solve_block(b[5:])
     assert g.definition["type"] == "cyclic" and int(g.definition["poly"], 16) == 0xC75
 
 def test_an_ldpc_code_from_its_sparse_checks():
     rng = np.random.default_rng(6)
-    H = np.asarray(rp.code.load("block", "ldpc/gallager_96_48").encoder.H, dtype=np.uint8)[:, rng.permutation(96)]
+    H = np.asarray(rp.code.load("block/ldpc/gallager_96_48").encoder.H, dtype=np.uint8)[:, rng.permutation(96)]
     cw = (rng.integers(0, 2, (1500, len(nullspace(H)))) @ nullspace(H) % 2).astype(np.uint8).reshape(-1)[13:]
     (h, g), = BK.solve_block(cw[:32768])
     assert h.params["kind"] == "ldpc" and (h.params["n"], h.params["k"]) == (96, 50)
@@ -153,7 +153,7 @@ def test_an_ldpc_code_from_its_sparse_checks():
 
 def test_soft_values_find_sparse_checks_at_a_bit_error_rate_hard_bits_cannot():
     rng = np.random.default_rng(6)
-    H = np.asarray(rp.code.load("block", "ldpc/gallager_96_48").encoder.H, dtype=np.uint8)[:, rng.permutation(96)]
+    H = np.asarray(rp.code.load("block/ldpc/gallager_96_48").encoder.H, dtype=np.uint8)[:, rng.permutation(96)]
     G = nullspace(H)
     cw = (rng.integers(0, 2, (3000, len(G))) @ G % 2).astype(np.uint8)
     y = (1 - 2.0*cw) + 0.4*rng.standard_normal(cw.shape) # BER about 0.6%
@@ -162,7 +162,7 @@ def test_soft_values_find_sparse_checks_at_a_bit_error_rate_hard_bits_cannot():
 
 def test_product_code_rows_and_columns():
     rng = np.random.default_rng(3)
-    r, c = rp.code.load("block", "hamming/15_11").encoder, rp.code.load("block", "hamming/7_4").encoder
+    r, c = rp.code.load("block/hamming/15_11").encoder, rp.code.load("block/hamming/7_4").encoder
     blocks = []
     for _ in range(500):
         rows = np.array([r.encode(x) for x in rng.integers(0, 2, (4, 11)).astype(bool)])
@@ -269,8 +269,8 @@ def test_an_inverted_output_is_the_code_with_that_output_flipped():
     # CCSDS 131.0-B 3.3: the basic K=7 code sends its G2 output inverted
     rng = np.random.default_rng(4)
     m = rng.integers(0, 2, 500).astype(bool)
-    plain = rp.code.load("conv", "k7_171_133/1_2").encoder.encode(m)
-    ccsds = rp.code.load("conv", "k7_171_133/ccsds_1_2")
+    plain = rp.code.load("conv/k7_171_133/1_2").encoder.encode(m)
+    ccsds = rp.code.load("conv/k7_171_133/ccsds_1_2")
     e = ccsds.encoder.encode(m)
     assert np.array_equal(e[0::2], plain[0::2]) and np.array_equal(e[1::2], ~plain[1::2])
     assert np.array_equal(ccsds.decoder.decode(e.astype(np.uint8))[:len(m)], m)
@@ -279,7 +279,7 @@ def test_an_inverted_output_is_the_code_with_that_output_flipped():
                                   "k9_557_663_711/1_3", "k7_133_171_165/1_3", "k7_133_171_145_133/1_4"])
 def test_standard_convolutional_codes_round_trip(name):
     rng = np.random.default_rng(5)
-    c = rp.code.load("conv", name)
+    c = rp.code.load(f"conv/{name}")
     m = rng.integers(0, 2, 1260).astype(bool) # A whole number of every puncture period (2, 3, 5, 7)
     e = c.encoder.encode(m)
     assert np.array_equal(c.decoder.decode(e.astype(np.uint8))[:len(m)], m)
@@ -287,7 +287,7 @@ def test_standard_convolutional_codes_round_trip(name):
 def test_a_ccsds_stream_on_bpsk_is_identified():
     # On BPSK the G2 inversion turns every other symbol: no map of the plain code fits, the CCSDS definition does
     rng = np.random.default_rng(6)
-    e = rp.code.load("conv", "k7_171_133/ccsds_1_2").encoder.encode(rng.integers(0, 2, 20000).astype(bool))
+    e = rp.code.load("conv/k7_171_133/ccsds_1_2").encoder.encode(rng.integers(0, 2, 20000).astype(bool))
     y = (1 - 2*e.astype(float)) + 0.3*rng.standard_normal(len(e))
     out = rp.analysis.fec.identify(y.astype(np.complex64), "bpsk")
     assert out.found and out.name == "k7_171_133/ccsds_1_2"

@@ -16,7 +16,7 @@ LDU2 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0, 43, 11, 34, 36, 38, 61,
 
 @pytest.mark.parametrize("ref,word", [("rs/p25_24_12", LDU1), ("rs/p25_24_16", LDU2)])
 def test_rs_p25_on_air_words(ref, word, rng):
-    code = rp.code.load("block", ref).decoder
+    code = rp.code.load(f"block/{ref}").decoder
     w = np.array(word)
     assert not code.syndromes(w[None]).any() # A real codeword: the definition's roots are right
     bad = w.copy()
@@ -37,7 +37,7 @@ def _rs_trial(code, rng, n_err, n_era):
     return np.array_equal(out, info), int(code.errors[0])
 
 def test_rs_errors_and_erasures(rng):
-    code = rp.code.load("block", "p25p2_63_35").decoder
+    code = rp.code.load("block/p25p2_63_35").decoder
     for _ in range(60):
         n_era = int(rng.integers(0, code.nroots + 1))
         n_err = int(rng.integers(0, (code.nroots - n_era)//2 + 1))
@@ -45,7 +45,7 @@ def test_rs_errors_and_erasures(rng):
         assert ok and fixed == n_err + n_era//2
 
 def test_rs_beyond_capacity_fails_cleanly(rng):
-    code = rp.code.load("block", "p25p2_63_35").decoder
+    code = rp.code.load("block/p25p2_63_35").decoder
     fails = [_rs_trial(code, rng, 10, 12)[1] for _ in range(20)] # 2*10 + 12 > 28
     assert fails.count(-1) >= 18
 
@@ -63,7 +63,7 @@ def test_rs_erasure_mask_form(rng):
 @pytest.mark.parametrize("ref,sent", [("p25p2_soemi", 45), ("p25p2_ioemi", 52)])
 def test_rs_punctured(ref, sent, rng):
     """Shortened and punctured as P25 phase 2 sends its MAC: the missing parity is decoded as erasures"""
-    code = rp.code.load("block", ref)
+    code = rp.code.load(f"block/{ref}")
     assert code.decoder.den == sent
     msg = bits(rng, 6*code.decoder.num)
     cw = (rp.Data(msg, flush=True) * code).data
@@ -78,7 +78,7 @@ def test_rs_punctured(ref, sent, rng):
     assert np.array_equal(out.data, msg) and code.errors[0] == t + restored
 
 def test_rs_soft_retry_erases_unreliable(rng):
-    code = rp.code.load("block", "p25p2_63_35").decoder
+    code = rp.code.load("block/p25p2_63_35").decoder
     info = rng.integers(0, 64, 35)
     b = code.to_bits(code.encode(info, symbols=True))
     llr = np.where(b, -4.0, 4.0)
@@ -90,7 +90,7 @@ def test_rs_soft_retry_erases_unreliable(rng):
     assert code.errors[0] == -1 # The same word from hard bits is beyond errors-only decoding
 
 def test_rs_dvb_unchanged(rng):
-    code = rp.code.load("block", "rs/204_188")
+    code = rp.code.load("block/rs/204_188")
     msg = bits(rng, 8*188*2)
     cw = (rp.Data(msg, flush=True) * code).data.copy()
     cw[:64] ^= True # 8 byte errors in the first word
@@ -114,7 +114,7 @@ def test_golay23_is_perfect():
     assert (dec.weight >= 0).all() # Every syndrome is within 3 errors of a codeword
 
 def test_extended_golay_detects_four(rng):
-    code = rp.code.load("block", "golay/24_12")
+    code = rp.code.load("block/golay/24_12")
     assert code.decoder.t == 3
     msg = bits(rng, 12)
     cw = code.encoder.encode(msg)
@@ -149,7 +149,7 @@ def test_cyclic_matches_bch():
 # --- status of the other block decoders ---------------------------------------------------------------------
 
 def test_linear_own_decoder_flags_instead_of_raising(rng):
-    code = rp.code.load("block", "hamming/p25_10_6", decoder="linear")
+    code = rp.code.load("block/hamming/p25_10_6", decoder="linear")
     msg = bits(rng, 6*40)
     cw = code.encoder.encode(msg).reshape(-1, 10).copy()
     cw[::2, [0, 3]] ^= True # Syndrome 1110 ^ 0111 = 1001: no single flip makes it
@@ -157,7 +157,7 @@ def test_linear_own_decoder_flags_instead_of_raising(rng):
     assert list(code.errors) == [-1, 0]*20
 
 def test_trellis_decoder_status(rng):
-    code = rp.code.load("block", "hamming/7_4")
+    code = rp.code.load("block/hamming/7_4")
     msg = bits(rng, 4*30)
     cw = code.encoder.encode(msg).reshape(-1, 7).copy()
     cw[::2, 3] ^= True
@@ -166,12 +166,12 @@ def test_trellis_decoder_status(rng):
     assert list(code.errors) == [1, 0]*15
 
 def test_repeat_status():
-    rep = rp.code.load("block", "repeat/3").decoder
+    rep = rp.code.load("block/repeat/3").decoder
     rep.decode(np.array([1, 1, 0, 0, 0, 0, 1, 1, 1], dtype=np.uint8))
     assert list(rep.errors) == [1, 0, 0]
 
 def test_ldpc_status(rng):
-    code = rp.code.load("block", "ldpc/gallager_96_48")
+    code = rp.code.load("block/ldpc/gallager_96_48")
     msg = bits(rng, code.encoder.num*4)
     cw = code.encoder.encode(msg)
     llr = (1.0 - 2.0*cw)*4.0
@@ -180,7 +180,7 @@ def test_ldpc_status(rng):
     assert list(code.errors) == [1, 0, 0, 0]
 
 def test_crc_status(rng):
-    crc = rp.link.load("crc", "crc16_xmodem")
+    crc = rp.link.load("crc/crc16_xmodem")
     sent = crc.encoder.encode(bits(rng, 40))
     crc.encoder.decode(sent)
     assert list(crc.errors) == [0]
@@ -189,4 +189,4 @@ def test_crc_status(rng):
     assert list(crc.errors) == [-1]
 
 def test_conv_has_no_word_status():
-    assert rp.code.load("conv", "k7_133_171/1_2").errors is None
+    assert rp.code.load("conv/k7_133_171/1_2").errors is None

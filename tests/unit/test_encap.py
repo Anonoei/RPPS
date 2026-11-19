@@ -14,17 +14,17 @@ CHECK = {
 
 @pytest.mark.parametrize("name", rp.link.ls()["crc"])
 def test_crc_loads_and_self_checks(name):
-    crc = rp.link.load("crc", name).encoder # A wrong definition raises on load (its own check value)
+    crc = rp.link.load(f"crc/{name}").encoder # A wrong definition raises on load (its own check value)
     assert crc.compute(b"123456789") == crc.check
 
 @pytest.mark.parametrize("name,value", CHECK.items())
 def test_crc_catalogue_values(name, value):
-    assert rp.link.load("crc", name).encoder.compute(b"123456789") == value
+    assert rp.link.load(f"crc/{name}").encoder.compute(b"123456789") == value
 
 @pytest.mark.parametrize("name", rp.link.ls()["crc"])
 @pytest.mark.parametrize("n", [8*40, 37, 1])
 def test_crc_append_and_detect(name, n, rng):
-    crc = rp.link.load("crc", name).encoder
+    crc = rp.link.load(f"crc/{name}").encoder
     msg = bits(rng, n)
     coded = crc.encode(msg)
     assert len(coded) == len(msg) + crc.width
@@ -46,7 +46,7 @@ def _serial(bits, width, poly, init=0, xorout=0):
 
 @pytest.mark.parametrize("name", rp.link.ls()["crc"])
 def test_crc_bytes_and_bits_agree(name, rng):
-    crc = rp.link.load("crc", name).encoder
+    crc = rp.link.load(f"crc/{name}").encoder
     data = rng.integers(0, 256, 23).astype(np.uint8)
     assert crc.compute(data) == crc.compute_bits(np.unpackbits(data, bitorder="little" if crc.refin else "big"))
 
@@ -54,7 +54,7 @@ def test_crc_bytes_and_bits_agree(name, rng):
     (16, 0x1021, 0, 0, "crc16_xmodem"), (24, 0x864CFB, 0, 0, "crc24_lte_a"), (16, 0x1021, 0xFFFF, 0xFFFF, "crc16_genibus"),
     (12, 0x897, 0, 0xFFF, "crc12_p25"), (24, 0xFFF409, 0, 0, "crc24_mode_s")])
 def test_crc_any_length_matches_serial(width, poly, init, xorout, ref, rng):
-    crc = rp.link.load("crc", ref).encoder
+    crc = rp.link.load(f"crc/{ref}").encoder
     for n in (1, 7, 13, 21, 24, 37, 100):
         msg = bits(rng, n)
         assert crc.compute_bits(msg) == _serial(msg, width, poly, init, xorout)
@@ -81,13 +81,13 @@ def test_crc_ble_against_spec_lfsr(rng):
             for t in (1, 3, 4, 6, 9, 10):
                 p[t] ^= fb
         return [p[i] for i in range(23, -1, -1)]
-    crc = rp.link.load("crc", "crc24_ble").encoder
+    crc = rp.link.load("crc/crc24_ble").encoder
     for n in (16, 48, 8*37):
         msg = bits(rng, n)
         assert list(crc.encode(msg)[n:].astype(int)) == spec(msg)
 
 def test_crc_mode_s_frame():
-    crc = rp.link.load("crc", "adsb").encoder
+    crc = rp.link.load("crc/adsb").encoder
     frame = np.unpackbits(np.frombuffer(bytes.fromhex("8D4840D6202CC371C32CE0576098"), np.uint8)) # DF17, KLM1023
     assert crc.syndrome(frame) == 0
     crc.decode(frame)
@@ -97,7 +97,7 @@ def test_crc_mode_s_frame():
 
 def test_crc_mask_overlay(rng):
     """LTE BCH: the CRC is XORed with an antenna-port mask; the syndrome of an unmasked check recovers it"""
-    crc = rp.link.load("crc", "crc16_xmodem").encoder
+    crc = rp.link.load("crc/crc16_xmodem").encoder
     msg = bits(rng, 24)
     sent = crc.encode(msg, mask=0xFFFF)
     assert crc.syndrome(sent) == 0xFFFF
@@ -112,7 +112,7 @@ def test_crc_width_out_of_range():
 
 @pytest.mark.parametrize("name", rp.link.ls()["frame"])
 def test_hdlc_round_trip(name, rng):
-    h = rp.link.load("frame", name).encoder
+    h = rp.link.load(f"frame/{name}").encoder
     frames = [bytes(rng.integers(0, 256, n).astype(np.uint8)) for n in (10, 33, 100)]
     frames.append(b"\xff"*12) # Runs of ones need bit stuffing
     got, aborts = h.deframe(h.encode(frames))
@@ -122,7 +122,7 @@ def test_hdlc_round_trip(name, rng):
 
 @pytest.mark.parametrize("name", rp.link.ls()["frame"])
 def test_hdlc_bad_fcs_flagged(name, rng):
-    h = rp.link.load("frame", name).encoder
+    h = rp.link.load(f"frame/{name}").encoder
     frames = [bytes(rng.integers(0, 256, 40).astype(np.uint8)) for _ in range(3)]
     bits = h.encode(frames).copy()
     mid = len(bits)//2
