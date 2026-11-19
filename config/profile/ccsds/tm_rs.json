@@ -1,6 +1,6 @@
 {
   "base": "profile",
-  "comment": "CCSDS telemetry, Reed-Solomon only: BPSK, each transfer frame of `depth` interleaved RS(255,223) codewords behind the 32-bit attached sync marker, the frame randomized (restarting at each marker). Timing and carrier from block estimators (the carrier by the 2nd power: the delimiter puts the 180 degree ambiguity right by the marker's sense). The RS code works in the conventional basis: a spacecraft's dual-basis symbols need the conversion before and after. Out come the 223 x depth bytes of each frame",
+  "comment": "CCSDS telemetry, Reed-Solomon only: BPSK, each transfer frame of `depth` interleaved RS(255,223) codewords behind the 32-bit attached sync marker, the frame randomized (restarting at each marker). Timing and carrier from block estimators (the carrier by the 2nd power: the delimiter puts the 180 degree ambiguity right by the marker's sense). The Reed-Solomon symbols are in the dual basis, as the standard sends them (`rs`: rs/ccsds_255_223 for a spacecraft that uses the conventional one). Out come the 223 x depth bytes of each frame",
   "ref": "CCSDS 131.0-B-4 4, 8, 10",
   "tags": ["ccsds"],
   "params": {
@@ -11,6 +11,10 @@
     "depth": {
       "default": 5,
       "comment": "Reed-Solomon interleaving depth I (1 to 8)"
+    },
+    "rs": {
+      "default": "rs/ccsds_255_223_dual",
+      "comment": "the Reed-Solomon code: rs/ccsds_255_223_dual (the standard's dual basis) or rs/ccsds_255_223 (conventional)"
     }
   },
   "steps": [
@@ -69,7 +73,9 @@
     },
     {
       "code": "block",
-      "name": "rs/ccsds_255_223"
+      "name": {
+        "param": "rs"
+      }
     }
   ]
 }

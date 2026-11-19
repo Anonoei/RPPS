@@ -108,7 +108,7 @@ CODE = 0.6 # A check's bias over the bias a code would have at this noise: more 
 
 def label_errors(y, M, labs, k, seed=0):
     """Per label bit, the probability a hard decision gets it wrong at the noise of these symbols: {labelling: array(m)}"""
-    from ...modulation import quality
+    from ....sync import quality
     m = int(round(np.log2(M)))
     off = np.angle(np.sum(np.asarray(y, dtype=np.complex128)**M))/M if M > 1 else 0.0
     pts = np.exp(1j*(2*np.pi*np.arange(M)/M + off))
@@ -134,7 +134,7 @@ def _expected(h, p):
 def _label_tanh(y, M, lab, r, c):
     """tanh(LLR/2) of each label bit (N, m) for one variant (labelling, rotation r, conjugated c), max-log over the points
     at the measured noise: +1 sure 0, -1 sure 1"""
-    from ...modulation import quality
+    from ....sync import quality
     m = int(round(np.log2(M)))
     y = np.asarray(y, dtype=np.complex128)
     off = np.angle(np.sum(y**M))/M if M > 1 else 0.0
@@ -232,27 +232,64 @@ def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4,
         out = [c for c in out if c.code]
     return out[:top]
 
-def encode(bits, h, m):
-    """A systematic feedback trellis encoder for the check h (z^0's polynomial h[0] with taps at delay 0 and nu): the
-    upper m-1 label bits are bits (rows of m-1, z^1 first), z^0 is solved from sum_i h^i z^i = 0. Returns labels"""
-    bits = np.asarray(bits, dtype=np.int64).reshape(-1, m - 1)
-    n = len(bits)
+def definition(h, m, points=None):
+    """The trellis code of check h as an `fsm` definition (rpps.code.types.fsm): the systematic feedback encoder whose
+    upper m-1 label bits are the input (z^1 the first input bit) and z^0 is solved from sum_i h^i z^i = 0 (h[0] with taps
+    at delay 0 and nu). The state is the delays the check reaches (z^0's last nu, each z^i's as far as its h^i does);
+    the output word is the label (z^0 its last bit). points: the constellation in label order, to decode symbols"""
+    h = [int(p) for p in h]
     h0 = h[0]
     nu = max(p.bit_length() for p in h) - 1
-    if not (h0 & 1 and h0 >> nu & 1):
+    if nu < 1 or not (h0 & 1 and h0 >> nu & 1):
         raise ValueError("h0 needs taps at delay 0 and nu")
-    z = np.zeros((n, m), dtype=np.int64)
-    z[:, 1:] = bits
-    for t in range(n):
+    k = m - 1
+    depth = [nu] + [max(h[i].bit_length() - 1, 0) for i in range(1, m)] # delays kept of each label bit
+    shift = np.concatenate(([0], np.cumsum(depth)[:-1]))
+    bits = int(sum(depth))
+    def step(state, u):
+        hist = [[(state >> (shift[i] + d)) & 1 for d in range(depth[i])] for i in range(m)] # hist[i][d-1]: z^i at t-d
+        z = [0] + [(u >> (k - i)) & 1 for i in range(1, m)]
         acc = 0
         for d in range(1, nu + 1):
-            if t - d < 0:
-                break
             if h0 >> d & 1:
-                acc ^= z[t - d, 0]
+                acc ^= hist[0][d - 1]
         for i in range(1, m):
-            for d in range(0, nu + 1):
-                if t - d >= 0 and h[i] >> d & 1:
-                    acc ^= z[t - d, i]
-        z[t, 0] = acc
-    return (z << np.arange(m)).sum(axis=1)
+            for d in range(0, depth[i] + 1):
+                if h[i] >> d & 1:
+                    acc ^= z[i] if d == 0 else hist[i][d - 1]
+        z[0] = acc
+        new = 0
+        for i in range(m):
+            for d in range(depth[i]):
+                b = z[i] if d == 0 else hist[i][d - 1]
+                new |= b << (shift[i] + d)
+        return new, sum(z[i] << i for i in range(m))
+    # The states reachable from 0, numbered as found
+    index, order, nxt, out = {0: 0}, [0], [], []
+    while len(nxt) < len(order):
+        s = order[len(nxt)]
+        row_n, row_o = [], []
+        for u in range(1 << k):
+            n2, w = step(s, u)
+            if n2 not in index:
+                index[n2] = len(order)
+                order.append(n2)
+            row_n.append(index[n2])
+            row_o.append(w)
+        nxt.append(row_n)
+        out.append(row_o)
+    obj = {"base": "block", "type": "fsm", "comment": f"trellis code of the check h = {[oct(p) for p in h]}, {m}-bit labels",
+           "k": k, "n": m, "next": nxt, "output": out, "start": 0, "end": None}
+    if points is not None:
+        pts = np.asarray(points, dtype=np.complex128)
+        obj["symbols"] = {"bits": m, "points": [[float(p.real), float(p.imag)] for p in pts]}
+    return obj
+
+def encode(bits, h, m):
+    """Labels of a systematic feedback trellis encoder for the check h (see `definition`): the upper m-1 label bits are
+    bits (rows of m-1, z^1 first), z^0 is solved from sum_i h^i z^i = 0"""
+    from ....code import init
+    code = init("tcm", definition(h, m)).encoder
+    sent = np.asarray(code.encode(np.asarray(bits, dtype=np.uint8).reshape(-1)), dtype=np.int64).reshape(-1, m)
+    return (sent * (1 << np.arange(m - 1, -1, -1))).sum(axis=1)
+

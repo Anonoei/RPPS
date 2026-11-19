@@ -23,6 +23,7 @@ of a code under a feedthrough scrambler are f(D) h(D), and `gcd` of several give
 import numpy as np
 
 from ...math.gf2 import pmod, berlekamp_massey, fwht
+from ...code.scram.scrambler import Feedthrough
 
 class Recurrence:
     """A check found: taps (delays, descending, without 0), poly (int: bit j = the coefficient of D^j), degree, weight
@@ -115,14 +116,9 @@ def search(bits, max_degree=20, pfa=1e-6, top=8, llr=None, shortlist=256):
     out.sort(key=lambda r: (-round(np.log(r.z)/0.1), r.degree))
     return out
 
-def descramble_feedthrough(bits, poly):
-    """d = f(D) s: the data under a feedthrough scrambler (the first `degree` bits are not fully descrambled)"""
-    s = np.asarray(bits, dtype=np.uint8)
-    d = s.copy()
-    for j in range(1, int(poly).bit_length()):
-        if poly >> j & 1:
-            d[j:] ^= s[:-j]
-    return d
+def _taps(poly):
+    """The delays of a feedthrough polynomial (bit j: a tap j bits back)"""
+    return [j for j in range(1, int(poly).bit_length()) if poly >> j & 1]
 
 def _square(poly):
     """f(D)^2 = f(D^2) over GF(2)"""
@@ -160,7 +156,7 @@ def keystream(bits, poly, data_bias=None, squarings=4, iters=30, alpha=0.8):
     L = int(poly).bit_length() - 1
     w = bin(int(poly)).count("1")
     if data_bias is None:
-        d = descramble_feedthrough(s, poly)[L:] # f(D) s = f(D) data for an additive scrambler
+        d = Feedthrough.descramble(s, _taps(poly))[L:] # f(D) s = f(D) data for an additive scrambler
         b_w = abs(2*np.mean(d == 0) - 1)
         data_bias = max(min(b_w**(1/w), 0.999), 1e-3)
     prior = np.log((1 + data_bias)/(1 - data_bias))*(1 - 2.0*s) # LLR of k = s (data 0 most likely)
@@ -229,5 +225,5 @@ def lfsr(bits, window=1024, windows=16, seed=0):
     C = max(seen, key=seen.get)
     if seen[C] < 2:
         return None
-    holds = float(np.mean(descramble_feedthrough(b, C)[C.bit_length():] == 0))
+    holds = float(np.mean(Feedthrough.descramble(b, _taps(C))[C.bit_length():] == 0))
     return C, C.bit_length() - 1, holds

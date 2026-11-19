@@ -2,17 +2,12 @@ import numpy as np
 
 from ._code import _code, register
 
-from ..blocker import block, unblock
 
 TERMINATIONS = ("truncated", "zero", "tailbiting")
 
 def termination_of(obj):
-    """A definition's "termination" ("zero" | "tailbiting" | "truncated"), or the older "terminated": true/false"""
-    t = obj.get("termination")
-    if t is None:
-        return "zero" if obj.get("terminated", False) else "truncated"
-    if t is True or t is False:
-        return "zero" if t else "truncated"
+    """A definition's "termination": "zero" | "tailbiting" | "truncated" (the default)"""
+    t = obj.get("termination", "truncated")
     if t not in TERMINATIONS:
         raise ValueError(f"termination {t!r}: one of {TERMINATIONS}")
     return t
@@ -39,7 +34,7 @@ class conv(_code):
     puncture: optional (n, P) 0/1 pattern, 1 = send
     invert: optional n 0/1 flags: outputs sent inverted (CCSDS 131.0-B inverts the second, G2), before puncturing
     termination: "zero" flushes the register with K-1 zeros so the decoder can end in state 0 (the older
-    terminated=True); "tailbiting" starts the register with the frame's last K-1 bits, so it ends where it began
+    termination="zero"); "tailbiting" starts the register with the frame's last K-1 bits, so it ends where it began
     and nothing is added (LTE); "truncated" (default) just stops. A tail-biting code works on whole frames: in a
     stream the bits are collected until the stream is flushed.
     """
@@ -48,13 +43,13 @@ class conv(_code):
         return cls(log, obj["num"], obj["den"], generators_of(obj), obj["constraint"],
                    obj.get("puncture"), termination_of(obj), obj.get("invert"))
 
-    def __init__(self, log, num: int, den: int, generator, constraint: int, puncture=None, terminated=False, invert=None):
+    def __init__(self, log, num: int, den: int, generator, constraint: int, puncture=None, termination="truncated", invert=None):
         super().__init__(log, None, num, den)
         self.generator = np.asarray(generator, dtype=bool).reshape(den, constraint)
         self.con = constraint
         self.puncture = None if puncture is None else np.asarray(puncture, dtype=bool)
         self.invert = None if invert is None or not any(invert) else np.asarray(invert, dtype=np.int64)
-        self.termination = termination_of({"termination": terminated})
+        self.termination = termination_of({"termination": termination})
         self.stream = self.termination != "tailbiting"
 
     @property
@@ -76,7 +71,7 @@ class conv(_code):
             reg[1:1 + len(past)] = past
         if self.terminated and final:
             bits = np.concatenate((bits, np.zeros(self.con-1, dtype=bool)))
-        blocks = block(bits[:len(bits)//self.num*self.num], self.num)
+        blocks = bits[:len(bits)//self.num*self.num].reshape(-1, self.num)
         self.log.trace(f"encoding {len(bits)}, {blocks.shape}")
 
         # reg[k] at input i is u[i-k]: past bits (reg[1:], newest first) then the input, one window of K per output
@@ -102,6 +97,6 @@ class conv(_code):
             full = len(encoded)//P*P
             mask = np.tile(self.puncture.T, (full//P, 1))
             encoded = encoded[:full][mask]
-        encoded = unblock(encoded).astype(bool)
+        encoded = encoded.reshape(-1).astype(bool)
         self.log.trace(f"encoded {len(encoded)}")
         return encoded

@@ -20,6 +20,7 @@ from ..spectrum.cyclic import spectrum_floor
 
 from ..spectrum import cyclic
 from ..spectrum.cyclic import comb_rate
+from ...wave.fm import discriminate
 
 ENVELOPE = 1.25 # E|x|^4/(E|x|^2)^2 in band over this: not constant envelope (8PSK RRC 0.35 is ~1.3-1.6)
 REPEAT = 0.2 # A tone the same as the one before this much more often than 1/M: sampled at twice the rate
@@ -60,11 +61,6 @@ class FSK:
                 f"spacings), clusters {self.separation:.1f} widths apart, envelope {self.envelope:.2f}")
 
     __repr__ = __str__
-
-def discriminator(x, Fs):
-    """Instantaneous frequency (Hz) between samples: arg(x[n] conj(x[n-1])) Fs / 2 pi, len(x) - 1 values"""
-    x = np.asarray(x, dtype=np.complex128)
-    return np.angle(x[1:]*np.conj(x[:-1]))*Fs/(2*np.pi)
 
 def _kmeans1(v, M, iters=30):
     """1-D k-means from equally spaced quantiles: (sorted centres, labels)"""
@@ -119,8 +115,8 @@ def _timing(f, sps):
 def _centre_freqs(x, Fs, sps, tau):
     """(centres, frequency of each symbol, Hz): the phase advance across the middle half of the symbol (for CPFSK the
     phase is a line there, so this is the least noisy estimate), relative to the median discriminator output"""
-    off = np.median(discriminator(x, Fs))
-    fmax = np.percentile(np.abs(discriminator(x, Fs) - off), 99)
+    off = np.median(discriminate(np.asarray(x, dtype=np.complex128), Fs))
+    fmax = np.percentile(np.abs(discriminate(np.asarray(x, dtype=np.complex128), Fs) - off), 99)
     # Half a symbol, but short enough that the outer tones' phase advance stays inside +-pi (0.4 of a cycle)
     L = max(1, min(int(round(sps/2)), int(0.4*Fs/max(fmax, 1e-9))))
     centres = tau + sps*np.arange(int((len(x) - 1 - L - tau)//sps) + 1)
@@ -189,7 +185,7 @@ def analyze(x, Fs, lo=None, hi=None, pfa=1e-3, mask=True, force=False, max_sampl
         return FSK(why=f"the envelope is not constant ({out['envelope']:.2f}): a linear modulation, OFDM or noise", **out)
     lo = Fs/256 if lo is None else lo
     hi = Fs/2 if hi is None else hi
-    f = discriminator(x, Fs)
+    f = discriminate(np.asarray(x, dtype=np.complex128), Fs)
     f = f - np.median(f)
     lines = []
     # f is white noise plus a symbol-rate signal: smoothing it (over 1, 4, 16 samples) before squaring keeps the line of
@@ -220,7 +216,7 @@ def analyze(x, Fs, lo=None, hi=None, pfa=1e-3, mask=True, force=False, max_sampl
             baud, tau, centres, v, M, lev, sep = baud/2, t2, c2, v2, M2, lev2, sep2
     best = (None, baud, line, tau, centres, v, M, lev, sep)
     _, baud, line, tau, centres, v, M, lev, sep = best
-    off = float(np.median(discriminator(x, Fs)))
+    off = float(np.median(discriminate(np.asarray(x, dtype=np.complex128), Fs)))
     out.update(baud=baud, baud_line=line, tau=tau, separation=sep)
     if M is None:
         return FSK(why=f"the frequency at the symbol centres does not fall in equally spaced clusters (best {sep:.1f} widths)",
@@ -250,7 +246,7 @@ def demodulate(x, Fs, r, mask=True):
     if len(x) >= 1024 and mask:
         x = _band(x, Fs)
     _, v = _centre_freqs(x, Fs, Fs/r.baud, r.tau)
-    v = v + np.median(discriminator(x, Fs)) # _centre_freqs is relative to the median
+    v = v + np.median(discriminate(np.asarray(x, dtype=np.complex128), Fs)) # _centre_freqs is relative to the median
     return np.argmin(np.abs(v[:, None] - np.asarray(r.levels)[None, :]), axis=1)
 
 def cpm_index(x, Fs, baud, tau=None, h_range=(0.05, 2.0), steps=1951, lags=(1, 2, 3, 4)):
@@ -261,7 +257,7 @@ def cpm_index(x, Fs, baud, tau=None, h_range=(0.05, 2.0), steps=1951, lags=(1, 2
     Returns (h, score 0..1). Partial-response CPM (L > 1, GMSK) leaves pulses straddling the boundaries: lower scores"""
     x = np.asarray(x, dtype=np.complex128)
     sps = Fs/baud
-    f = discriminator(x, Fs)
+    f = discriminate(np.asarray(x, dtype=np.complex128), Fs)
     if tau is None:
         tau = _timing(f - np.median(f), sps)
     ph = np.concatenate(([0.0], np.cumsum(np.angle(x[1:]*np.conj(x[:-1]))))) # unwrapped phase, rad

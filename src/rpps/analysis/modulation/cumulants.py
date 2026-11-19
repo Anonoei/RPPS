@@ -111,8 +111,8 @@ def classify(x, points=None, esn0_db=None, shares=np.linspace(0.05, 1.0, 96)):
     `candidates()`). For each, the signal's share of the power is fitted (noise adds only to C21) unless esn0_db fixes it.
 
     Families separate on their own (PSK orders, QAM, APSK, ASK, BPSK); orders within QAM or ASK do not without the SNR:
-    a larger QAM at a higher SNR has the cumulants of a smaller one with more noise. Give esn0_db (rpps.analysis.modulation.quality,
-    or the residual of rpps.analysis.modulation.cancel) to tell them apart, or fit the constellation (rpps.analysis.modulation.detect)"""
+    a larger QAM at a higher SNR has the cumulants of a smaller one with more noise. Give esn0_db (rpps.sync.quality,
+    or the residual of rpps.analysis.modulation.cancel) to tell them apart, or fit the constellation (rpps.sync.detect)"""
     if esn0_db is not None:
         shares = [1/(1 + 10**(-esn0_db/10))]
     x = np.asarray(x, dtype=np.complex128)

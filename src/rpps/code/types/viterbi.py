@@ -30,13 +30,13 @@ class viterbi(_code):
         return cls(log, obj["num"], obj["den"], obj["constraint"], generators_of(obj),
                    obj.get("puncture"), termination_of(obj), obj.get("invert"))
 
-    def __init__(self, log, num, den, constraint, generator, puncture=None, terminated=False, invert=None):
+    def __init__(self, log, num, den, constraint, generator, puncture=None, termination="truncated", invert=None):
         super().__init__(log, None, num, den)
         self.con = constraint
         self.gen = np.asarray(generator, dtype=np.uint8).reshape(den, constraint)
         self.puncture = None if puncture is None else np.asarray(puncture, dtype=bool)
         self.invert = None if invert is None or not any(invert) else np.where(np.asarray(invert, dtype=bool), -1.0, 1.0)
-        self.termination = termination_of({"termination": terminated})
+        self.termination = termination_of({"termination": termination})
         if self.termination == "tailbiting":
             self.stream = False # Whole frames: a stream is collected until it ends
         self.depth = 10*constraint # Traceback depth of a stream

@@ -246,3 +246,22 @@ def test_qc_checks_lift_shifts():
     assert n == 9 and len(checks) == 6
     assert checks[0].tolist() == [0, 7] and checks[1].tolist() == [1, 8] and checks[2].tolist() == [2, 6] # shift 1: row r -> column (r + 1) % 3
     assert checks[3].tolist() == [2, 3] # shift 2 of block 0: row 0 -> column 2
+
+@pytest.mark.parametrize("name", ["biphase_m", "biphase_s", "miller"])
+def test_irig_line_codes(name, rng):
+    import rpps as rp
+    x = rng.integers(0, 2, 400).astype(bool)
+    line = rp.code.Line(name)
+    ctx, parts = None, []
+    for a, b in ((0, 3), (3, 3), (3, 250), (250, 400)): # any block cut
+        o = (rp.Data(x[a:b]) if ctx is None else rp.Data(x[a:b], ctx=ctx)) * line
+        ctx = o.ctx
+        parts.append(np.asarray(o.data, bool))
+    y = np.concatenate(parts)
+    if name.startswith("biphase"):
+        assert all(y[2*i - 1] != y[2*i] for i in range(1, 400)) # a transition at every bit start
+    else: # Miller: never more than two bits without a transition
+        runs = np.diff(np.flatnonzero(np.diff(y.astype(int)) != 0))
+        assert runs.max() <= 4
+    assert np.array_equal(np.asarray((rp.Data(y) / line).data, bool), x)
+    assert np.array_equal(np.asarray((rp.Data(~y) / line).data, bool), x) # an inverted line decodes the same

@@ -2,7 +2,6 @@ import numpy as np
 
 from ._code import _code, register
 
-from ..blocker import block, unblock
 
 @register("linear")
 class linear(_code):
@@ -26,20 +25,20 @@ class linear(_code):
         return code
 
     def encode(self, bits: np.ndarray):
-        blocks = block(bits, self.num)
+        blocks = bits.reshape(-1, self.num)
         self.log.trace(f"encoding {len(bits)}, {blocks.shape}")
 
         encoded = np.empty((len(blocks), self.den), dtype=int)
         for i, blk in enumerate(blocks):
             encoded[i] = np.matmul(blk.astype(int), self.generator)
-        encoded = unblock(encoded) % 2
+        encoded = encoded.reshape(-1) % 2
         self.log.trace(f"encoded {len(encoded)}")
         return encoded.astype(bool)
 
     def decode(self, bits: np.ndarray):
         """Hard decode by syndrome: corrects a single bit error; a word with any other syndrome is returned as
         received with `errors` -1"""
-        blocks = block(bits, self.den).astype(np.uint8)
+        blocks = bits.reshape(-1, self.den).astype(np.uint8)
         self.log.trace(f"decoding {len(bits)}, {blocks.shape}")
         synd = (blocks.astype(int) @ self.check.astype(int)) % 2 # (blocks, n-k)
         self.errors = np.zeros(len(blocks), dtype=int)
@@ -53,4 +52,4 @@ class linear(_code):
                     continue
                 blocks[b, i] ^= 1
                 self.errors[b] = 1
-        return unblock(blocks[:, 0:self.num]).astype(bool)
+        return blocks[:, 0:self.num].reshape(-1).astype(bool)

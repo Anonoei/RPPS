@@ -2,7 +2,6 @@ import numpy as np
 
 from ._code import _code, register
 
-from ..blocker import block
 
 @register("repeat")
 class repeat(_code):
@@ -23,7 +22,7 @@ class repeat(_code):
 
     def decode(self, bits: np.ndarray):
         bits = np.asarray(bits)
-        blocks = block(bits[:len(bits)//self.den*self.den], self.den)
+        blocks = bits[:len(bits)//self.den*self.den].reshape(-1, self.den)
         self.log.trace(f"decoding {len(bits)}, {blocks.shape}")
 
         if bits.dtype.kind == "f": # LLRs add up: the sum is the combined LLR

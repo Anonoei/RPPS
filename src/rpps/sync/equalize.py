@@ -100,7 +100,7 @@ class LMS(_Equalizer):
             det = meta.stream.det
             if det is None:
                 return samples[:0]
-            from ..analysis.modulation.detect import candidates  # Late: analysis imports sync
+            from .acquire import candidates
             st.points = candidates([det.mod])[det.mod].astype(np.complex64)
         return super().step(samples, st, meta)
 

@@ -2,6 +2,8 @@
 import numpy as np
 import pytest
 
+import rpps as rp
+
 from rpps.analysis.sequence import recurrence as R
 from rpps.math import gf2
 
@@ -41,7 +43,7 @@ def test_feedthrough_taps_and_data_back(data):
     s = feedthrough(data, V35)
     r = R.search(s, 20)[0]
     assert r.poly == V35 and r.data_bias(additive=False) == pytest.approx(0.6, abs=0.02)
-    assert np.array_equal(R.descramble_feedthrough(s, V35)[20:], data[20:])
+    assert np.array_equal(rp.code.scram.Feedthrough.descramble(s, R._taps(V35))[20:], data[20:])
 
 @pytest.mark.parametrize("poly", [DVB, DENSE])
 def test_additive_taps(data, poly):

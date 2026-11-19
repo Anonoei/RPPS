@@ -295,9 +295,66 @@ py::tuple cyclic_decode(carray<int64_t> words, carray<uint8_t> erased, carray<in
     return py::make_tuple(out, errors);
 }
 
+// LDPC normalized min-sum, flooding (every check from the same totals; rpps.code.types.ldpc, schedule "flooding"), frames in parallel.
+// llr (B, n); idx (c, dmax) with deg (c) valid entries a row. Returns the totals (B, n). Ties in the minimum go to the
+// first entry, as numpy's argmin.
+py::array_t<double> ldpc_flood(carray<double> llr, carray<int64_t> idx, carray<int64_t> deg, int iters, double alpha, int threads) {
+    check_shape(llr, {-1, -1}, "llr");
+    check_shape(idx, {-1, -1}, "idx");
+    const long long B = llr.shape(0), n = llr.shape(1), C = idx.shape(0), D = idx.shape(1);
+    check_shape(deg, {C}, "deg");
+    const int64_t *ix = idx.data(), *dg = deg.data();
+    for (long long i = 0; i < C; i++) {
+        if (dg[i] < 0 || dg[i] > D) throw std::invalid_argument("ldpc_flood: deg");
+        for (long long j = 0; j < dg[i]; j++)
+            if (ix[i*D + j] < 0 || ix[i*D + j] >= n) throw std::invalid_argument("ldpc_flood: idx outside the word");
+    }
+    py::array_t<double> out({B, n});
+    const double *L = llr.data();
+    double *T = out.mutable_data();
+    {
+        py::gil_scoped_release nogil;
+        parallel_for(B, threads, [&](long long b) {
+            const double *l = L + b*n;
+            double *t = T + b*n;
+            std::vector<double> msg(static_cast<std::size_t>(C*D), 0.0), nt(n), q(D);
+            std::copy(l, l + n, t);
+            for (int it = 0; it < iters; it++) {
+                std::copy(l, l + n, nt.begin());
+                for (long long i = 0; i < C; i++) {
+                    const long long d = dg[i];
+                    if (!d) continue;
+                    double *m = msg.data() + i*D;
+                    const int64_t *ii = ix + i*D;
+                    double m1 = INFINITY, m2 = INFINITY;
+                    long long i1 = 0;
+                    int neg = 0;
+                    for (long long j = 0; j < d; j++) {
+                        q[j] = t[ii[j]] - m[j];
+                        const double a = std::fabs(q[j]);
+                        if (q[j] < 0) neg ^= 1;
+                        if (a < m1) { m2 = m1; m1 = a; i1 = j; }
+                        else if (a < m2) m2 = a;
+                    }
+                    if (std::isinf(m2)) m2 = m1;
+                    for (long long j = 0; j < d; j++) {
+                        const double sg = ((neg ^ (q[j] < 0 ? 1 : 0)) ? -1.0 : 1.0);
+                        m[j] = alpha*sg*(j == i1 ? m2 : m1);
+                        nt[ii[j]] += m[j];
+                    }
+                }
+                std::copy(nt.begin(), nt.end(), t);
+            }
+        });
+    }
+    return out;
+}
+
 } // namespace
 
 void register_fec(py::module_ &m) {
+    m.def("ldpc_flood", &ldpc_flood, "ldpc_flood(llr (B, n), idx (c, dmax), deg (c), iters, alpha, threads) -> totals (B, n)",
+          py::arg("llr"), py::arg("idx"), py::arg("deg"), py::arg("iters"), py::arg("alpha"), py::arg("threads") = 0);
     m.def("ldpc_minsum", &ldpc_minsum, "ldpc_minsum(llr (B, N), var, cstart, deg, rows (check order: the layers), iters, alpha, threads) -> (hard (B, N), converged (B))",
           py::arg("llr"), py::arg("var"), py::arg("cstart"), py::arg("deg"), py::arg("rows"), py::arg("iters"), py::arg("alpha"),
           py::arg("threads") = 0);

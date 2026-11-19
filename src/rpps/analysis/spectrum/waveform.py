@@ -138,7 +138,7 @@ def ofdm(x, Fs, tu_min=2e-6, tu_max=5e-3, min_ratio=8.0, min_envelope=1.8, max_s
     """OFDM in baseband samples x at Fs: OFDM, or None (no lag stands out, no symbol period, or not Gaussian)
 
     tu_min/tu_max: useful symbol lengths searched. min_ratio: the correlation at Tu over the median of the other lags.
-    max_rate_line: a |x|^2 line this far over its floor (rpps.analysis.find_baud) is a single carrier's symbol rate"""
+    max_rate_line: a |x|^2 line this far over its floor (rpps.sync.find_baud) is a single carrier's symbol rate"""
     x = np.asarray(x[:max_samples], dtype=np.complex128)
     x = x - x.mean()
     n = len(x)
@@ -147,7 +147,7 @@ def ofdm(x, Fs, tu_min=2e-6, tu_max=5e-3, min_ratio=8.0, min_envelope=1.8, max_s
     if env < min_envelope or hi <= lo + 8:
         return None
     # A single carrier has a symbol-rate line in |x|^2 (near its bandwidth); OFDM's subcarriers have none there
-    from .rate import find_baud
+    from ...sync.rate import find_baud
     if find_baud(x[:2**18], Fs)[1] >= max_rate_line:
         return None
     r = autocorr(x)

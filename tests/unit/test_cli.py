@@ -38,3 +38,16 @@ def test_solve_names_a_prbs_in_a_bit_file(tmp_path, capsys):
     assert main(["solve", str(path)]) == 0
     out = capsys.readouterr().out
     assert "PRBS23" in out and "scrambler-additive" in out
+
+def test_tx_writes_what_rx_receives(tmp_path, capsys):
+    """BLE advertising packets out of `rpps tx`, back through the profile"""
+    payload = bytes(range(60))
+    (tmp_path/"in.bin").write_bytes(payload)
+    assert cli.main(["tx", "ble/adv", str(tmp_path/"ble.cf64"), "--rate", "1e6", "--in", str(tmp_path/"in.bin"),
+                     "--packet", "20", "--gap", "64", "--field", "type=2"]) == 0
+    assert "samples at 4e+06 Hz" in capsys.readouterr().out
+    x = np.fromfile(tmp_path/"ble.cf64", np.complex64)
+    p = rp.profile.load("ble/adv", sync={"timing": {"method": "known"}})
+    out = p.rx()(rp.Data(np.concatenate((np.zeros(36, np.complex64), x)), Fs=4e6, sps=4, flush=True))
+    got = np.packbits(np.asarray(out.data) < 0 if np.asarray(out.data).dtype.kind == "f" else np.asarray(out.data).astype(bool)).tobytes()
+    assert got == payload

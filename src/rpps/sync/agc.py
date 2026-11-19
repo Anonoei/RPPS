@@ -82,7 +82,4 @@ class AGC(Stage):
         st.gain = gain
         return out
 
-AGC_log = AGC
-def AGC_lin(target=1.0, mu=0.01, **kw):
-    """Linear-domain AGC"""
-    return AGC(target, mu, log=False, **kw)
+

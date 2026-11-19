@@ -1,10 +1,10 @@
-"""The timing locked loop and the timing error detectors it is built from (rpps.sync.time.ed, rpps.sync.pll)"""
+"""The timing locked loop and the timing error detectors it is built from (rpps.sync.time.ted, rpps.sync.pll)"""
 import numpy as np
 import pytest
 
 import rpps as rp
 from rpps.sync import pll
-from rpps.sync.time import ed
+from rpps.sync.time import ted
 
 P = np.exp(1j*np.pi/4*(2*np.arange(4) + 1))
 
@@ -23,17 +23,19 @@ def evm(y):
     y = y[-2000:]/np.sqrt(np.mean(np.abs(y[-2000:])**2))
     return float(np.sqrt(np.mean(np.min(np.abs(y[:, None] - P[None, :])**2, axis=1))))
 
+@pytest.mark.parametrize("ted", ["zx", "el"])
 @pytest.mark.parametrize("delay", [0.0, 1.3, 2.7])
-def test_tll_locks_like_oerder_meyr(delay):
+def test_tll_locks_like_oerder_meyr(delay, ted):
     x = matched_qpsk(delay=delay)
-    tll = evm((rp.Data(x, Fs=4e3, sps=4) + rp.sync.time.TLL(4, bw=0.01)).data)
+    tll = evm((rp.Data(x, Fs=4e3, sps=4) + rp.sync.time.TLL(4, bw=0.01, ted=ted)).data)
     om = evm((rp.Data(x, Fs=4e3, sps=4, flush=True) + rp.sync.time.OerderMeyr(4)).data)
     assert tll < om + 0.02 # (both at the cubic interpolation's floor at 4 samples per symbol)
 
-def test_tll_any_block_cut():
+@pytest.mark.parametrize("ted", ["zx", "el"])
+def test_tll_any_block_cut(ted):
     x = matched_qpsk(2000)
     def run(cut):
-        stage, st, out, i = rp.sync.time.TLL(4), None, [], 0
+        stage, st, out, i = rp.sync.time.TLL(4, ted=ted), None, [], 0
         for b in cut:
             d = rp.Data(x[i:i+b], stream=st, Fs=4e3, sps=4)
             st = d.stream
@@ -46,12 +48,14 @@ def test_tll_any_block_cut():
     np.testing.assert_allclose(run([1, 0, 777, 3000, len(x) - 3778]), whole, atol=1e-6)
 
 def test_error_detectors():
-    assert np.real(ed.zx.zx_nd(1 + 0j, 0.2 + 0j, -1 + 0j)) == pytest.approx(0.4)
-    for cls in (ed.ZX_ND, ed.EL_ND):
-        d = cls()
-        for v in (1 + 1j, 0.5 - 0.2j, -1 - 1j):
-            d.input(v)
-        assert np.isfinite(d.err)
+    assert ted.zx(1 + 0j, 0.2 + 0j, -1 + 0j) == pytest.approx(0.4) # sampled early: the zero crossing not reached yet
+    assert ted.el(0.2 + 0j, 1 + 0j, 0.6 + 0j) == pytest.approx(0.4) # sampled early: |z| still rising
+    assert ted.el(0.5 + 0j, 1 + 0j, 0.5 + 0j) == 0.0
+
+def test_profile_picks_the_detector():
+    from rpps.profile import steps
+    st = steps.build({"sync": "timing", "method": "tll", "ted": "el"}, rp.Rep.SAMPLES, steps.context({"sps": 4}))
+    assert st.rx[0][1].ted == "el"
 
 def test_loop_gain_helpers_agree():
     a, b = pll.loop_gains(0.01)

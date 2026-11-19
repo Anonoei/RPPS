@@ -22,12 +22,12 @@ def test_802154_builds_the_documented_pairs():
     p = rp.profile.load("ieee802154/2450", sync=KNOWN)
     assert [f"{s.category}:{s.kind}" for s in p.steps] == ["sync:carrier", "wave:stagger", "wave:shape", "sync:timing", "symbol:spread"]
     # carrier: method none. Known timing takes the matched filter in (it is evaluated at the instants it samples) ...
-    assert names(p.rx()) == ["+Stagger", "+_KnownTiming", "/Spread"]
-    assert str(p.rx().ops[1][1]) == "KnownTiming(matched)"
+    assert names(p.rx()) == ["+Stagger", "+Known", "/Spread"]
+    assert str(p.rx().ops[1][1]) == "Known(matched)"
     # ... unless asked not to
     apart = rp.profile.load("ieee802154/2450", sync={"timing": {"method": "known", "fuse": False}})
-    assert names(apart.rx()) == ["+Stagger", "+Designed", "+_KnownTiming", "/Spread"]
-    assert names(p.tx()) == ["*Spread", "+Interpolate", "+Stagger"]
+    assert names(apart.rx()) == ["+Stagger", "+Matched", "+Known", "/Spread"]
+    assert names(p.tx()) == ["*Spread", "+Shape", "+Stagger"]
     assert str(p.rx().ops[0][1]) == "Stagger(i)" and str(p.tx().ops[-1][1]) == "Stagger(q)"
     assert [s.takes for s in p.steps] == [Rep.SAMPLES, Rep.SAMPLES, Rep.SAMPLES, Rep.SAMPLES, Rep.SYMBOLS]
 

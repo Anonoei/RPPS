@@ -19,7 +19,6 @@ from ... import _accel, _effort
 from ._code import _code, register, word_errors, as_llr
 from .viterbi import viterbi
 from .conv import termination_of, generators_of
-from ..blocker import block
 
 class Trellis:
     """Sections of a trellis
@@ -130,8 +129,8 @@ class bcjr_conv(viterbi):
         return cls(log, obj["num"], obj["den"], obj["constraint"], generators_of(obj),
                    obj.get("puncture"), termination_of(obj), obj.get("maxlog", False), obj.get("hard_llr", 2.94))
 
-    def __init__(self, log, num, den, constraint, generator, puncture=None, terminated=False, maxlog=False, hard_llr=2.94):
-        super().__init__(log, num, den, constraint, generator, puncture, terminated)
+    def __init__(self, log, num, den, constraint, generator, puncture=None, termination="truncated", maxlog=False, hard_llr=2.94):
+        super().__init__(log, num, den, constraint, generator, puncture, termination)
         self.maxlog, self.hard_llr = maxlog, hard_llr
         self.trellis = Trellis(self.next_state[None], self.out_bits[None])
 
@@ -172,7 +171,7 @@ class trellis(_code):
     def app(self, bits, soft=None):
         """A-posteriori LLRs of the coded bits, (words, n)"""
         llr = as_llr(bits, soft, self.hard_llr)
-        llr = block(llr[:len(llr)//self.den*self.den], self.den)
+        llr = llr[:len(llr)//self.den*self.den].reshape(-1, self.den)
         return bcjr(self.trellis, llr[:, :, None], start=0, end=0, maxlog=_effort.maxlog(self.maxlog))
 
     def decode(self, bits, soft=None):

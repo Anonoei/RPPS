@@ -177,7 +177,7 @@ def test_more_stages_do_not_depend_on_block_size(name, x):
 
 def test_acquire_fec_does_not_depend_on_block_size():
     """Coded symbols (K=7 rate 1/2 on QPSK, a quarter turn off) with the modulation already detected"""
-    from rpps.analysis.modulation.detect import Detection
+    from rpps.sync import Detection
     rng = np.random.default_rng(5)
     cw = rp.code.load("conv/k7_133_171/1_2").encoder.encode(rng.integers(0, 2, 12000).astype(bool))
     s = rp.symbol.load("qpsk").modulate(cw)*1j

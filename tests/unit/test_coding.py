@@ -146,3 +146,66 @@ def test_import_alist_rejects_inconsistent(tmp_path):
     f.write_text(HAMMING_ALIST.replace("2 3 6 7", "2 3 5 7"))
     with pytest.raises(ValueError, match="different matrices"):
         rp.code.import_alist(f)
+
+@pytest.mark.parametrize("ref", ["block/ldpc/gallager_96_48", "block/ldpc/ieee80211n_648_1_2"])
+def test_ldpc_flooding_schedule_decodes_what_layered_does(ref, rng):
+    layered = rp.code.load(ref)
+    flooding = rp.code.init("flood", {**rp._config.read(rp._config.find("fec", ref)), "schedule": "flooding", "iters": 100})
+    k, n = layered.encoder.num, layered.encoder.den
+    msg = rng.integers(0, 2, 8*k).astype(bool)
+    x = layered.encoder.encode(msg)
+    llr = 2*(1 - 2.0*x)/0.6**2 + rng.normal(0, 2/0.6, len(x))
+    a, b = layered.decoder.decode(llr), flooding.decoder.decode(llr)
+    assert np.array_equal(a, msg) and np.array_equal(b, msg)
+    with pytest.raises(ValueError):
+        rp.code.init("x", {**rp._config.read(rp._config.find("fec", ref)), "schedule": "sideways"})
+
+def test_rs_dual_basis_is_the_ccsds_one(rng):
+    """CCSDS 131.0-B Annex F: the conventional-to-dual table starts 00 7b af d4 99 e2 36 4d (libfec's Taltab)"""
+    dual = rp.code.load("block/rs/ccsds_255_223_dual")
+    conv = rp.code.load("block/rs/ccsds_255_223")
+    assert list(dual.encoder._to_dual[:8]) == [0x00, 0x7b, 0xaf, 0xd4, 0x99, 0xe2, 0x36, 0x4d]
+    msg = rng.integers(0, 2, 2*223*8).astype(bool)
+    cw = dual.encoder.encode(msg)
+    as_conv = dual.encoder.to_bits(dual.encoder.to_symbols(cw)) # (round trip of the conversion)
+    assert np.array_equal(as_conv, cw)
+    assert not np.array_equal(cw, conv.encoder.encode(msg)) # the parity differs: not the same bits on air
+    bad = cw.copy()
+    for w in range(2): # 8 symbol errors a codeword (t = 16)
+        bad[(w*255 + rng.choice(255, 8, replace=False))*8 + rng.integers(0, 8, 8)] ^= True
+    assert np.array_equal(dual.decoder.decode(bad), msg)
+
+@pytest.mark.parametrize("r, m", [(1, 5), (2, 4), (2, 5), (3, 6), (0, 3)])
+def test_reed_muller_corrects_half_its_distance(r, m, rng):
+    c = rp.code.init("rm", {"base": "block", "type": "rm", "r": r, "m": m})
+    k, n = c.encoder.num, c.encoder.den
+    assert n == 2**m
+    msg = rng.integers(0, 2, 20*k).astype(bool)
+    x = c.encoder.encode(msg)
+    t = 2**(m - r - 1) - 1 if m > r else 0
+    bad = x.reshape(20, n).copy()
+    for w in range(20):
+        bad[w, rng.choice(n, t, replace=False)] ^= True
+    assert np.array_equal(c.decoder.decode(bad.reshape(-1)), msg)
+
+def test_reed_muller_first_order_is_soft(rng):
+    c = rp.code.load("block/rm/1_5")
+    msg = rng.integers(0, 2, 50*6).astype(bool)
+    x = c.encoder.encode(msg)
+    llr = 2*(1 - 2.0*x) + rng.normal(0, 2, len(x)) # Es/N0 0 dB: hard decisions have ~16% errors
+    assert np.mean(c.decoder.decode(llr) != msg) < 0.01
+
+def test_turbo_product_code_soft_beats_hard(rng):
+    """Chase-Pyndiah on LLRs decodes frames the hard iterative decoder cannot"""
+    tpc = rp.code.load("block/product/tpc_64_57_sq")
+    hard = rp.code.init("hard", {**rp._config.read(rp._config.find("fec", "block/product/tpc_64_57_sq")), "chase": None})
+    k = tpc.encoder.num
+    W = 4
+    msg = rng.integers(0, 2, W*k).astype(bool)
+    x = tpc.encoder.encode(msg)
+    sigma = 0.5 # Eb/N0 about 4 dB at rate 0.79: hard decisions have ~2.5% errors
+    llr = 2*((1 - 2.0*x) + rng.normal(0, sigma, len(x)))/sigma**2
+    ber_soft = np.mean(tpc.decoder.decode(llr) != msg)
+    ber_hard = np.mean(hard.decoder.decode(llr) != msg)
+    assert ber_soft < 1e-3 and ber_hard > 1e-3
+    assert np.array_equal(tpc.decoder.decode(4.0*(1 - 2.0*x)), msg) and (tpc.decoder.errors == 0).all()

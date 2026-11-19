@@ -4,7 +4,7 @@ import pytest
 
 import rpps as rp
 from rpps.analysis import identify as F
-from rpps.analysis.modulation.detect import Detection
+from rpps.sync import Detection
 
 def noisy(s, rng, sigma=0.12):
     return (s + sigma*(rng.standard_normal(len(s)) + 1j*rng.standard_normal(len(s)))).astype(np.complex64)

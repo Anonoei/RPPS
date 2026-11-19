@@ -13,14 +13,23 @@ class product(_code):
         offset: a fixed word XOR'd onto every codeword (a coset of the product code: parity bits sent inverted, fill), as
             a hex string of n bits, the lead first then the matrix row by row; decoding takes it off first
         iters: decoding rounds of all columns then all rows (hard decisions, each code's own syndrome decoder)
+        chase: decode soft instead, as a turbo product code (Pyndiah, "Near-optimum decoding of product codes: block turbo
+            codes", IEEE Trans. Commun. 1998): each row and column by Chase-II over its `chase` least reliable bits (2^chase
+            test patterns through the component's algebraic decoder, the candidate nearest the input chosen), and the
+            extrinsic information of each bit from the best candidate that disagrees with the decision on it (or beta
+            times the decision when none does), fed to the next half iteration scaled by alpha. `iters` rounds
     After a decode `errors` is the bits corrected per word, -1 where a row or column still fails its check.
     """
+    ALPHA = (0.2, 0.3, 0.5, 0.7, 0.9, 1.0) # Extrinsic weight per half iteration (Pyndiah), the last repeated
+    BETA = (0.2, 0.4, 0.6, 0.8, 1.0)       # Reliability when no competitor, in units of the mean input magnitude
     @classmethod
     def from_config(cls, log, obj):
         return cls(log, _code_obj(obj["rows"]), _code_obj(obj["cols"]), obj.get("reserved", 0), obj.get("lead", 0),
-                   obj.get("iters", 4), obj.get("offset"))
+                   obj.get("iters", 4), obj.get("offset"), obj.get("chase"))
 
-    def __init__(self, log, rows, cols, reserved=0, lead=0, iters=4, offset=None):
+    def __init__(self, log, rows, cols, reserved=0, lead=0, iters=4, offset=None, chase=None):
+        self.chase = None if chase is None else int(chase)
+        self.soft = self.chase is not None
         self.rows, self.cols = rows, cols # Coding objects (encoder + hard decoder)
         self.k1, self.n1 = rows.encoder.num, rows.encoder.den
         self.k2, self.n2 = cols.encoder.num, cols.encoder.den
@@ -50,8 +59,61 @@ class product(_code):
         words[ok] = fixed[ok] # A failed word is left as received
         return words, st
 
+    def _chase(self, coder, R, n, k):
+        """One half iteration on the rows of R (rows, n) of LLRs: (soft output, extrinsic) by Chase-II"""
+        p = min(self.chase, n)
+        rows = len(R)
+        y = (R < 0).astype(np.uint8)
+        weak = np.argsort(np.abs(R), axis=1)[:, :p] # (rows, p)
+        pats = ((np.arange(1 << p)[:, None] >> np.arange(p)) & 1).astype(np.uint8) # (T, p)
+        T = len(pats)
+        cand = np.repeat(y[:, None, :], T, axis=1) # (rows, T, n)
+        flip = np.zeros((rows, T, n), np.uint8)
+        np.put_along_axis(flip, np.broadcast_to(weak[:, None, :], (rows, T, p)), np.broadcast_to(pats[None], (rows, T, p)), axis=2)
+        cand ^= flip
+        msg = coder.decoder.decode(cand.reshape(-1)).reshape(rows*T, k).astype(np.uint8)
+        ok = np.asarray(coder.errors) >= 0
+        cw = coder.encoder.encode(msg.reshape(-1)).reshape(rows, T, n).astype(np.uint8)
+        metric = (np.abs(R)[:, None, :]*(cw != y[:, None, :])).sum(axis=2) # correlation distance to the input
+        metric = np.where(ok.reshape(rows, T), metric, np.inf)
+        best = np.argmin(metric, axis=1)
+        D = cw[np.arange(rows), best] # (rows, n) decisions
+        mD = metric[np.arange(rows), best]
+        sD = 1.0 - 2.0*D # +1 for a 0
+        differs = cw != D[:, None, :] # (rows, T, n): candidate disagrees with the decision on the bit
+        mC = np.where(differs, metric[:, :, None], np.inf).min(axis=1) # best competitor per bit
+        return D, sD, mD, mC
+
+    def _soft(self, w):
+        """Turbo decoding of one word's LLRs (n2, n1): the decided matrix"""
+        R = w.copy()
+        Wx = np.zeros_like(R)
+        half = 0
+        for _ in range(self.iters):
+            for axis in (0, 1): # columns, then rows
+                a = self.ALPHA[min(half, len(self.ALPHA) - 1)]
+                b = self.BETA[min(half, len(self.BETA) - 1)]
+                inp = R + a*Wx
+                if axis == 0:
+                    D, sD, mD, mC = self._chase(self.cols, inp.T, self.n2, self.k2)
+                    D, sD, mC, inpT = D.T, sD.T, mC.T, inp
+                    mD = mD[None, :]
+                else:
+                    D, sD, mD, mC = self._chase(self.rows, inp, self.n1, self.k1)
+                    mD = mD[:, None]
+                scale = np.mean(np.abs(inp)) or 1.0
+                out = np.where(np.isfinite(mC), (mC - mD)*sD, b*scale*sD)
+                Wx = out - inp
+                half += 1
+            M = D.astype(np.uint8)
+            if self._clean(M):
+                break
+        return M
+
     def decode(self, bits, soft=None):
         x = np.asarray(bits)
+        if self.chase is not None and x.dtype.kind == "f" and soft is not False:
+            return self._decode_soft(x)
         if soft or (soft is None and x.dtype.kind == "f"):
             x = x < 0
         x = x.astype(np.uint8)
@@ -69,6 +131,18 @@ class product(_code):
                     break
             good = (st_c >= 0).all() and (st_r >= 0).all() and self._clean(M)
             errs.append(int(np.count_nonzero(M != first)) if good else -1)
+            out.append(M[:self.k2, :self.k1].reshape(-1)[self.reserved:])
+        self.errors = np.array(errs, dtype=int)
+        return np.concatenate(out).astype(bool) if out else np.zeros(0, bool)
+
+    def _decode_soft(self, x):
+        out, errs = [], []
+        for w in np.asarray(x, dtype=np.float64)[:len(x)//self.den*self.den].reshape(-1, self.den):
+            if self.offset is not None:
+                w = np.where(self.offset == 1, -w, w)
+            L = w[self.lead:].reshape(self.n2, self.n1)
+            M = self._soft(L)
+            errs.append(int(np.count_nonzero(M != (L < 0))) if self._clean(M) else -1)
             out.append(M[:self.k2, :self.k1].reshape(-1)[self.reserved:])
         self.errors = np.array(errs, dtype=int)
         return np.concatenate(out).astype(bool) if out else np.zeros(0, bool)

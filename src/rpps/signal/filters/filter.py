@@ -16,12 +16,8 @@ class FIR(Filter):
     def make_taps(self, meta: Meta):
         raise NotImplementedError()
 
-    matched = False # A matched filter (a profile sets it): its taps are scaled so that with the pulse it matches, the symbols come back at unit gain
-
     def new_state(self, meta: Meta):
         taps = np.asarray(self.make_taps(meta))
-        if self.matched:
-            taps = taps/np.sum(taps*taps) # pulse * matched filter peaks at sum(h^2): taken off, so a symbol of 1 comes back as 1
         return SimpleNamespace(taps=taps, hist=None)
 
     @staticmethod

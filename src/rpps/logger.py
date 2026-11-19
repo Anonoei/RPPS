@@ -38,7 +38,6 @@ class Logger:
         self._log.info(msg, *args)
     def warn(self, msg, *args):
         self._log.warning(msg, *args)
-    warning = warn
     def error(self, msg, *args):
         self._log.error(msg, *args)
     def exception(self, msg, *args):

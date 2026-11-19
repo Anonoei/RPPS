@@ -101,13 +101,7 @@ def cmd_rx(args):
     """Receive a capture with a profile: the data bits out, as bytes (most significant bit first) to --out"""
     import numpy as np
     import rpps as rp
-    params = {}
-    for kv in args.param:
-        k, v = kv.split("=", 1)
-        try:
-            params[k] = json.loads(v) # numbers, lists, true / false
-        except ValueError:
-            params[k] = v # a name
+    params = _params(args.param)
     sync = {}
     for kv in args.sync:
         kind, method = kv.split("=", 1)
@@ -128,6 +122,47 @@ def cmd_rx(args):
         print(f"wrote {args.out}")
     return 0
 
+
+def _params(pairs):
+    """NAME=VALUE pairs: values as JSON where they parse (numbers, lists, true / false), else as names"""
+    out = {}
+    for kv in pairs:
+        k, v = kv.split("=", 1)
+        try:
+            out[k] = json.loads(v)
+        except ValueError:
+            out[k] = v
+    return out
+
+def cmd_tx(args):
+    """Transmit with a profile: data (a file's bytes, or random) through its transforms to samples in a file
+
+    --packet N splits the data into packets of N bytes, each sent as a burst of its own (its pulses complete), with --gap
+    zero samples between them; otherwise it is one stream. --field NAME=VALUE sets the fields of every frame's header
+    (the profile's schedule or defaults otherwise)."""
+    import numpy as np
+    import rpps as rp
+    p = rp.profile.load(args.profile, **_params(args.param))
+    if args.input:
+        data = np.frombuffer(Path(args.input).read_bytes(), np.uint8)
+    else:
+        data = np.random.default_rng(args.seed).integers(0, 256, args.random, dtype=np.uint8)
+    bits = np.unpackbits(data).astype(bool)
+    size = 8*args.packet if args.packet else len(bits)
+    fields = _params(args.field) or None
+    tx, stream, n_out, Fs = p.tx(), None, 0, None
+    with rp.source.Sink(args.fmt, args.out) as sink:
+        for a in range(0, len(bits), max(size, 1)):
+            d = rp.Data(bits[a:a + size], Fs=args.rate, sps=1, stream=stream, flush=True)
+            stream = d.stream
+            o = tx(d, fields=fields)
+            x = np.asarray(o.data, dtype=np.complex64)
+            if args.packet and args.gap:
+                x = np.concatenate((x, np.zeros(args.gap, np.complex64)))
+            sink.write(x)
+            n_out, Fs = n_out + len(x), o.Fs
+    print(f"{args.out}: {n_out} samples at {Fs:g} Hz ({len(data)} bytes through {args.profile})")
+    return 0
 
 def cmd_fmt(args):
     """Rewrite config/**/*.json in the house style; with --check only list the files that would change"""
@@ -312,6 +347,21 @@ def main(argv=None):
                       help="speed against recovered SNR (default: balanced; see rpps._effort)")
     p_rx.add_argument("--out", help="write the bits out as bytes here")
     p_rx.set_defaults(fn=cmd_rx)
+
+    p_tx = sub.add_parser("tx", help="transmit data with a profile into a sample file")
+    p_tx.add_argument("profile", help="profile, e.g. ble/adv")
+    p_tx.add_argument("out", help="sample file to write")
+    p_tx.add_argument("--rate", type=float, required=True, help="rate of the data at the profile's first step (bits or symbols a second)")
+    p_tx.add_argument("--fmt", default="cf64", help="sample format (default: cf64)")
+    src = p_tx.add_mutually_exclusive_group(required=True)
+    src.add_argument("--in", dest="input", help="the data: this file's bytes")
+    src.add_argument("--random", type=int, help="the data: this many random bytes")
+    p_tx.add_argument("--seed", type=int, default=0, help="seed of --random")
+    p_tx.add_argument("--packet", type=int, default=0, help="bytes a packet, each sent as a burst of its own")
+    p_tx.add_argument("--gap", type=int, default=0, help="zero samples after each packet")
+    p_tx.add_argument("--param", action="append", default=[], metavar="NAME=VALUE", help="a profile parameter (repeatable)")
+    p_tx.add_argument("--field", action="append", default=[], metavar="NAME=VALUE", help="a header field of every frame (repeatable)")
+    p_tx.set_defaults(fn=cmd_tx)
 
     p_sv = sub.add_parser("survey", help="find and list the signals in a capture file")
     p_sv.add_argument("file", help="capture file")

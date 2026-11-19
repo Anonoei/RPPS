@@ -64,7 +64,7 @@ class Signal:
         """Es/N0 [dB] from the in-band SNR: the noise in the signal's width (snr) is that density times width, the
         symbol energy is the power over the symbol rate, so Es/N0 = snr + 10log10(width/baud). `baud` defaults to
         baud_est. The spectrum can't tell signal from noise inside the band, so this is the guide, the measured one
-        (rp.analysis.modulation.quality.measure on the locked symbols) the answer"""
+        (rp.sync.quality.measure on the locked symbols) the answer"""
         baud = baud or self.baud_est
         if baud is None or self.snr is None:
             return None
@@ -72,7 +72,7 @@ class Signal:
 
     def estimate_baud(self, samps, min_strength=4.0):
         """Fill baud_est from samples of the capture (this signal is channelized first)"""
-        from .rate import find_baud
+        from ...sync.rate import find_baud
         from ...base import Data
         ch = self.channel()
         x = (Data(np.asarray(samps), Fs=self.Fs) + ch.front).data

@@ -14,6 +14,10 @@ class rs(_code):
     puncture: positions of the n-symbol codeword that are not sent (negative counts from the end, so [-4, -3, -2, -1]
     drops the last four parity symbols). They are decoded as erasures; a word has n - len(puncture) symbols on the wire.
 
+    basis: "conventional" (the polynomial basis: a symbol's bits are its coefficients) or "dual": the bits are the symbol in
+    the Berlekamp dual basis of {1, beta, ..., beta^(m-1)}, beta = alpha^`beta`: bit j (most significant first) is
+    Tr(z beta^j). CCSDS sends RS(255, 223) that way, beta = alpha^117 (131.0-B, Annex F). Symbols given with symbols=True
+    are field elements (conventional) either way.
     encode/decode take bits (or symbols with symbols=True) of whole codewords as sent.
     decode(..., erasures=...) also takes symbols known to be unreliable: a (words, sent symbols) bool array, or one
     list of positions per word. e erasures and r errors are corrected while 2r + e <= n - k.
@@ -26,9 +30,9 @@ class rs(_code):
     @classmethod
     def from_config(cls, log, obj):
         return cls(log, obj["k"], obj["n"], obj.get("m", 8), _int(obj.get("poly", 0x11D)), obj.get("fcr", 0), obj.get("prim", 1),
-                   obj.get("puncture"))
+                   obj.get("puncture"), obj.get("basis", "conventional"), obj.get("beta"))
 
-    def __init__(self, log, num: int, den: int, m=8, poly=0x11D, fcr=0, prim=1, puncture=None):
+    def __init__(self, log, num: int, den: int, m=8, poly=0x11D, fcr=0, prim=1, puncture=None, basis="conventional", beta=None):
         n = den
         if n > 2**m - 1:
             raise ValueError(f"RS({n}, {num}) is longer than GF(2^{m}) allows ({2**m - 1})")
@@ -50,14 +54,43 @@ class rs(_code):
             root = self.gf.pow_alpha((fcr + i)*prim)
             g = self.gf.polymul(g, np.array([1, root]))
         self.gen = g
+        self.basis = basis
+        self._to_dual = self._from_dual = None
+        if basis == "dual":
+            if beta is None:
+                raise ValueError("RS dual basis: needs \"beta\", the power of alpha whose powers it is the dual of")
+            self._to_dual = self.dual_table(int(beta))
+            self._from_dual = np.argsort(self._to_dual)
+            if not np.array_equal(np.sort(self._to_dual), np.arange(2**m)):
+                raise ValueError(f"RS dual basis: alpha^{beta}'s powers are not a basis")
+        elif basis != "conventional":
+            raise ValueError(f"RS basis {basis!r}: conventional or dual")
+
+    def dual_table(self, beta):
+        """Each field element (conventional) in the dual basis of {1, b, ..., b^(m-1)}, b = alpha^beta: bit j, most
+        significant first, is the trace of z b^j"""
+        m, size = self.m, 2**self.m
+        z = np.arange(size)
+        out = np.zeros(size, dtype=np.int64)
+        for j in range(m):
+            y = np.where(z == 0, 0, self.gf.exp[(self.gf.log[z] + beta*j) % (size - 1)]) # z b^j
+            t = np.zeros(size, dtype=np.int64)
+            for _ in range(m): # trace: y + y^2 + y^4 + ...
+                t ^= y
+                y = np.where(y == 0, 0, self.gf.exp[(2*self.gf.log[y]) % (size - 1)])
+            out |= (t & 1) << (m - 1 - j)
+        return out
 
     def to_symbols(self, bits):
         bits = np.asarray(bits).astype(np.uint8)
         bits = bits[:len(bits)//self.m*self.m]
-        return (bits.reshape(-1, self.m) * (1 << np.arange(self.m-1, -1, -1))).sum(axis=1)
+        s = (bits.reshape(-1, self.m) * (1 << np.arange(self.m-1, -1, -1))).sum(axis=1)
+        return s if self._from_dual is None else self._from_dual[s]
 
     def to_bits(self, symbols):
         s = np.asarray(symbols, dtype=np.int64)
+        if self._to_dual is not None:
+            s = self._to_dual[s]
         return ((s[:, None] >> np.arange(self.m-1, -1, -1)) & 1).astype(bool).reshape(-1)
 
     def syndromes(self, words):

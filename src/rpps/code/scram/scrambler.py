@@ -104,6 +104,18 @@ class Feedthrough(Scram):
         self.d_lfsr.reset()
 
     @staticmethod
+    def descramble(bits, taps):
+        """d[n] = y[n] ^ y[n-t] for every tap t, on a whole array at once (the first max(taps) bits are not fully
+        descrambled: the register before them is unknown). What a search over taps runs (rpps.analysis.sequence)"""
+        y = np.asarray(bits, dtype=np.uint8)
+        d = y.copy()
+        for t in taps:
+            t = int(t)
+            if 0 < t < len(y):
+                d[t:] ^= y[:-t]
+        return d
+
+    @staticmethod
     def _run_bits(data, reg, descramble):
         out = np.empty_like(data, dtype=bool)
         for i, bit in enumerate(data):

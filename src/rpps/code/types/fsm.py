@@ -14,7 +14,8 @@ class fsm(_code):
               path must end in (null: any)
         symbols: {"bits": b, "levels": [...]} to decode received amplitudes instead of bits: each b-bit group of a
               word is sent as levels[group] (ATSC: 3 bits -> -7..7). decode() then takes the amplitudes, n/b per step,
-              and the branch metric is the squared distance
+              and the branch metric is the squared distance. {"bits": b, "points": [[re, im], ...]}: the same with points
+              of a constellation (trellis-coded modulation: Ungerboeck, pragmatic), in label order, decoding complex symbols
     Bit decoding takes hard bits or LLRs (positive = 0). decode() takes one sequence, decode_batch() a (W, ...) array
     of independent ones (all the same length) and returns the input bits of each.
     After decode(), `errors` is the number of received bits (hard decided) that differ from the decoded path's words.
@@ -39,12 +40,18 @@ class fsm(_code):
         self.k, self.n, self.S, self.U = k, n, S, U
         self.next, self.out = nxt, out
         self.start, self.end, self.tail = start, end, int(tail)
-        self.levels = None
+        self.levels, self.dims = None, 1
         if symbols is not None:
             b = int(symbols["bits"])
             if n % b:
                 raise ValueError(f"{n}-bit words don't split into {b}-bit symbols")
-            self.sym_bits, self.levels = b, np.asarray(symbols["levels"], dtype=np.float64)
+            if ("levels" in symbols) == ("points" in symbols):
+                raise ValueError("symbols: give \"levels\" (amplitudes) or \"points\" ([re, im] pairs)")
+            if "points" in symbols:
+                pts = np.asarray(symbols["points"], dtype=np.float64).reshape(-1, 2)
+                self.sym_bits, self.levels, self.dims = b, pts[:, 0] + 1j*pts[:, 1], 2
+            else:
+                self.sym_bits, self.levels = b, np.asarray(symbols["levels"], dtype=np.float64)
             if len(self.levels) != 1 << b:
                 raise ValueError(f"{1 << b} levels needed for {b}-bit symbols")
         steps_out = n
@@ -69,7 +76,12 @@ class fsm(_code):
         else:
             m = n // self.sym_bits
             idx = (word_bits.reshape(-1, m, self.sym_bits) * (1 << np.arange(self.sym_bits - 1, -1, -1))).sum(axis=2)
-            self._tab = np.ascontiguousarray(self.levels[idx], dtype=np.float64)
+            self._tab = np.ascontiguousarray(self._coords(self.levels[idx]).reshape(1 << n, -1), dtype=np.float64)
+
+    def _coords(self, v):
+        """Values as real coordinates (..., dims): a point's squared distance is the sum over them"""
+        v = np.asarray(v)
+        return np.stack((v.real, v.imag), axis=-1) if self.dims == 2 else np.asarray(v, dtype=np.float64)[..., None]
 
     # ------------------------------------------------------------------ encoder
     def encode(self, bits):
@@ -94,9 +106,11 @@ class fsm(_code):
         W = x.shape[0]
         if self.levels is not None:
             m = self.n // self.sym_bits
-            r = np.asarray(x, dtype=np.float64).reshape(W, -1, m)
+            r = self._coords(np.asarray(x).reshape(W, -1, m) if self.dims == 2 else np.asarray(x, dtype=np.float64).reshape(W, -1, m))
+            r = r.reshape(W, r.shape[1], -1) # (W, T, m*dims)
             wl = self.levels[(self.out_bits.reshape(self.S, self.U, m, self.sym_bits) *
                               (1 << np.arange(self.sym_bits - 1, -1, -1))).sum(axis=3)] # (S, U, m)
+            wl = self._coords(wl).reshape(self.S, self.U, -1)
             return r, lambda v: ((v[:, None, None, :] - wl[None])**2).sum(axis=3)
         llr = np.asarray(x, dtype=np.float64) if soft else 1.0 - 2.0*np.asarray(x, dtype=np.float64)
         ob = self.out_bits.astype(np.float64)
