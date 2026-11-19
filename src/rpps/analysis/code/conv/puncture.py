@@ -12,7 +12,7 @@ import itertools
 
 import numpy as np
 
-from ...fec import Hypothesis, Guess, Report, _pick
+from ...result import Hypothesis, Guess, Report, pick
 from ....math.prob import deviance_z
 from ....code.coding import mismatch
 
@@ -20,10 +20,10 @@ def patterns(P):
     """Rate P/(P+1) puncture patterns (2, P), one per turn"""
     seen, out = set(), []
     for both in range(P):
-        for pick in itertools.product((0, 1), repeat=P - 1):
+        for choice in itertools.product((0, 1), repeat=P - 1):
             pat = np.zeros((2, P), dtype=bool)
             pat[:, both] = True
-            for col, which in zip([c for c in range(P) if c != both], pick):
+            for col, which in zip([c for c in range(P) if c != both], choice):
                 pat[which, col] = True
             key = min(tuple(map(tuple, np.roll(pat, s, axis=1))) for s in range(P))
             if key not in seen:
@@ -98,7 +98,7 @@ def search(streams, periods=range(2, 8), steps=400, confirm=4, codes=None):
 def best(hyps, trials):
     """The hypothesis that stands out and fits at one offset only, with its Guess (a conv definition), or (None, None)"""
     rep = Report(hyps, trials, None)
-    v = _pick(rep.hyps, rep.z_crit, lambda h: h.params["mismatch"]/h.params["baseline"],
+    v = pick(rep.hyps, rep.z_crit, lambda h: h.params["mismatch"]/h.params["baseline"],
               lambda b, h: h.params["mismatch"] < 0.5*(b.params["mismatch"] + b.params["baseline"]))
     if v is None:
         return None, None

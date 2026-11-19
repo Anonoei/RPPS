@@ -1,10 +1,10 @@
-"""AcquireFEC: which code timed symbols carry, found as the stream arrives (the scans are in rpps.analysis.fec)"""
+"""AcquireFEC: which code timed symbols carry, found as the stream arrives (the scans are in rpps.analysis.identify)"""
 from types import SimpleNamespace
 
 import numpy as np
 
 from ..base import Stage
-from ..analysis.fec import identify, CodeDetection, _hard
+from ..analysis.identify import identify, CodeDetection, _hard
 from ..code.coding import mismatch, cached
 
 class AcquireFEC(Stage):
@@ -12,12 +12,12 @@ class AcquireFEC(Stage):
 
         rx = front + rp.sync.Acquire() + rp.sync.time.Mat() + rp.sync.phase.FFCarrier() + rp.sync.AcquireFEC()
         out = blk + rx
-        fec = out.stream.est.get("fec")           # an rpps.analysis.fec.CodeDetection, once there is one
+        fec = out.stream.est.get("fec")           # an rpps.analysis.identify.CodeDetection, once there is one
         dec = fec.rx()                             # once fec.complete: the decoder (a profile runner), bits = dec(out)
 
     Takes timed, carrier-corrected symbols (after `phase.FFCarrier`, with the modulation from `Acquire` in meta.stream.det)
     and gives the same symbols, turned and conjugated so the decoder's map is the right one (the carrier phase has an
-    M-fold ambiguity, and the IQ sense is unknown). Codes are the configured ones (`rpps.analysis.fec.identify`).
+    M-fold ambiguity, and the IQ sense is unknown). Codes are the configured ones (`rpps.analysis.identify.identify`).
 
     Acquisition: symbols are held until `skip` + `window` have arrived, and the code is identified on those `window`
     (at absolute positions, so the result is the same however the stream was cut). While more symbols could tell more

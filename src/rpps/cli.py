@@ -196,14 +196,14 @@ def _read_bits(path, fmt):
 
 
 def cmd_solve(args):
-    """What a demodulated stream carries: blind codes, Reed-Solomon, scramblers and PRBS on bits (rpps.analysis.fec.solve,
+    """What a demodulated stream carries: blind codes, Reed-Solomon, scramblers and PRBS on bits (rpps.analysis.identify.solve,
     scrambler.additive_search); symbols (a complex .npy) are framed first (rpps.analysis.framing.frames)"""
     import numpy as np
     import rpps as rp
     A = rp.analysis
     x = _read_bits(args.file, args.format)
     if np.iscomplexobj(x):
-        fr = A.framing.find(x, args.mod)
+        fr = A.framing.frames.find(x, args.mod)
         print(f"{len(x)} symbols: " + (str(fr) if fr else "no frame structure (no unique word repeats)"))
         if fr is None:
             c = rp.symbol.load_or_generate(args.mod)
@@ -211,17 +211,17 @@ def cmd_solve(args):
             lab = np.asarray(c.mapping.arr)[np.argmin(np.abs(x[:, None]/np.sqrt(np.mean(np.abs(x)**2)) - pts[None]), axis=1)]
             bits = ((lab[:, None] >> np.arange(c.bits_per_symbol - 1, -1, -1)) & 1).ravel().astype(np.uint8)
         else:
-            fb = A.framing.payload_bits(A.framing.cut(x, fr), fr, args.mod)
-            rep, same = A.framing.repeats(fb, agree=0.95)
+            fb = A.framing.frames.payload_bits(A.framing.frames.cut(x, fr), fr, args.mod)
+            rep, same = A.framing.frames.repeats(fb, agree=0.95)
             print(f"  payload {fb.shape[1]} bits a frame, {len(fb)} frames" + (f"; frames repeat every {rep}" if rep else ""))
             if len(fb) >= fb.shape[1] + 48:
-                for h, g in A.block.solve_block(fb.ravel(), n=fb.shape[1], offset=0):
+                for h, g in A.code.block.linear.solve_block(fb.ravel(), n=fb.shape[1], offset=0):
                     print(f"  frame-aligned block code: {h.name}  (z {h.z:.1f})")
             bits = fb.ravel()
     else:
         bits = np.asarray(x, dtype=np.uint8).ravel()
     print(f"{len(bits)} bits, {bits.mean()*100:.1f}% ones")
-    found = A.fec.solve(bits)
+    found = A.identify.solve(bits)
     if not found:
         print("  nothing found: no code, RS, scrambler or PRBS (white under every test: encrypted, compressed, or too short)")
     for h, g in found:

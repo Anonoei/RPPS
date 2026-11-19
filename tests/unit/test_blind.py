@@ -5,7 +5,7 @@ import pytest
 
 import rpps as rp
 from rpps import _config
-from rpps.analysis import fec as F
+from rpps.analysis import identify as F
 from rpps.analysis.code.block import rs as B
 from rpps.analysis.sequence import scrambler as SC
 from rpps.code.types.rs import rs
@@ -294,7 +294,7 @@ def test_a_ccsds_stream_on_bpsk_is_identified():
     rng = np.random.default_rng(6)
     e = rp.code.load("conv/k7_171_133/ccsds_1_2").encoder.encode(rng.integers(0, 2, 20000).astype(bool))
     y = (1 - 2*e.astype(float)) + 0.3*rng.standard_normal(len(e))
-    out = rp.analysis.fec.identify(y.astype(np.complex64), "bpsk")
+    out = rp.analysis.identify.identify(y.astype(np.complex64), "bpsk")
     assert out.found and out.name == "k7_171_133/ccsds_1_2"
 
 def test_a_prbs_or_noisy_fill_is_not_a_low_rate_code():

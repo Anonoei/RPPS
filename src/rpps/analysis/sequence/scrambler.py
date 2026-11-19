@@ -18,13 +18,14 @@ while (idle fill, padding, a fixed header) y is the LFSR sequence itself, or its
 linear complexity L (its register length) where random bits have half their length (`additive_search`, by
 Berlekamp-Massey over sliding windows). A bare PRBS (a test pattern: ITU-T O.150/O.151) is the same everywhere.
 """
+import functools
 import itertools
 
 import numpy as np
 
 from ...math.prob import z_critical
 from ...math.gf2 import pdivmod, berlekamp_massey, lfsr_taps
-from ..fec import Hypothesis, Guess
+from ..result import Hypothesis, Guess
 
 def descramble(bits, taps):
     """d[n] = y[n] ^ y[n-t] for every tap t (the first max(taps) bits are not fully descrambled)"""
@@ -138,7 +139,6 @@ def _scrambler_polys():
     out = {}
     for name in code.scram.ls().get("feedthrough", []):
         try:
-            from ..fec import cached_scrambler
             t = tuple(sorted(cached_scrambler(f"feedthrough/{name}")["poly"], reverse=True))
             out.setdefault(t, f"feedthrough/{name} ({lfsr_name(t)})")
         except Exception: # A definition without a plain tap list isn't one to factor by
@@ -253,3 +253,13 @@ def additive_search(bits, window=512, max_len=None, step=None):
                                f"{best.name}, {kind}; the seed and where it restarts are not known yet",
                                "poly": best.params["taps"]}, {"windows": best.params["windows"], "holds": best.params["holds"]})
     return hyps, tried, guess
+
+def descramblers():
+    """Self-synchronising descramblers {name: taps}: out[t] = in[t] ^ in[t-k] for each tap"""
+    return {"g3ruh": (12, 17), "v34": (18, 23), "none": ()}
+
+@functools.lru_cache(maxsize=None)
+def cached_scrambler(ref):
+    """A scrambler definition's JSON (its "poly": the taps), read once"""
+    from ... import _config
+    return _config.read(_config.find("scramble", ref))
