@@ -42,7 +42,8 @@ def pack_rows(B):
     pad = (-c) % 64
     if pad or not c:
         B = np.concatenate((B, np.zeros((r, pad or 64), np.uint8)), axis=1)
-    return np.ascontiguousarray(np.packbits(B, axis=1)).view(">u8").astype(np.uint64).reshape(r, -1)
+    words = B.shape[1]//64
+    return np.ascontiguousarray(np.packbits(B, axis=1)).view(">u8").astype(np.uint64).reshape(r, words)
 
 def unpack_rows(A, c):
     """`pack_rows` undone: (r, c) uint8"""
