@@ -1,4 +1,4 @@
-"""Conditioning after demodulation: DC removal and de-emphasis"""
+"""Conditioning: DC removal, FM de-emphasis, spectral inversion"""
 from types import SimpleNamespace
 
 import numpy as np
@@ -54,3 +54,12 @@ class Deemphasis(Stage):
             out[i] = y
         st.y = y
         return out
+
+
+class Conjugate(Stage):
+    """Spectral inversion of a complex signal: x -> conj(x), so a capture whose I and Q were swapped (or taken from the
+    lower sideband of a mixer) comes out the right way round. Inverting the spectrum at the symbol level instead is a
+    constellation map ("R090 inverted"); this does it on the samples, before any sync"""
+    def step(self, samples, st, meta):
+        x = np.asarray(samples)
+        return np.conj(x) if x.dtype.kind == "c" else x

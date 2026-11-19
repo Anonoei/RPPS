@@ -97,19 +97,23 @@ class _Data:
             out_meta.pos = meta.pos if start is None else start
             stream.out_pos[stage] = out_meta.pos + len(out)
             return self.derive(out, cat, self.DT, ctx=dict(self.ctx), meta=out_meta, rep=self.REP)
+        # One value per symbol is symbols: a stage that takes samples to one per symbol (timing recovery, an FFT) gives
+        # them, and a stage on symbols keeps them. Real values (a discriminator's levels, an envelope) are symbols too once
+        # there is one per symbol; their form stays REAL
+        one_per_symbol = meta.op.sps == 1 or (meta.op.sps <= 1.0 and self.REP == Rep.SYMBOLS)
         if out.dtype.kind == "c":
-            # One value per symbol is symbols: a stage that takes samples to one per symbol (timing recovery, an FFT)
-            # gives them, and a stage on symbols keeps them
-            dt = dtype.SYMBOLS if meta.op.sps == 1 or (meta.op.sps <= 1.0 and self.DT == dtype.SYMBOLS) else dtype.SAMPLES
+            dt = dtype.SYMBOLS if one_per_symbol else dtype.SAMPLES
+            rep = None
         else:
             dt = dtype.REAL
+            rep = Rep.SYMBOLS if one_per_symbol else None
         out_meta = meta.fork()
         start = stream.out_pos.get(stage)
         if start is None: # First block this stage sees in the stream: its outputs start where its input is, at the new rate
             start = int(round(meta.pos * meta.op.Fs / meta.state.Fs)) if meta.state.Fs else 0
         out_meta.pos = start # Then it counts its own outputs: independent of how the blocks were cut
         stream.out_pos[stage] = start + len(out)
-        return Analog(out, cat, dt, dict(self.ctx), out_meta)
+        return Analog(out, cat, dt, dict(self.ctx), out_meta, rep)
 
     def __rshift__(self, sink):
         """data >> sink: write this block to a sink"""

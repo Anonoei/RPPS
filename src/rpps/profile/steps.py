@@ -16,6 +16,22 @@ Sync steps name what is estimated; how is a method, chosen by `defaults` in the 
 Every step has an id ("id", else its kind), by which a profile's `controls` name it, and says which of its parameters a
 header may change and how (`controls`: {parameter: "live" | "restart"}, from its operators' CONTROLS). A parameter it
 does not list cannot be controlled (see rpps.profile.control).
+
+The kinds (`python -m rpps steps` lists them with the sync methods):
+
+    signal   filter (a definition), lowpass / highpass / bandpass / bandstop (designed in Hz: cutoff + taps, or transition +
+             atten_db), decimate, resample (up/down), channelize (freq, width), shift (freq), conjugate (spectral inversion),
+             dc_block, deemphasis, stage (any Stage class by module path)
+    sync     timing, carrier, equalize, agc (methods), frame (a physical header's preamble), delimit (a word among bits:
+             word + bits, a word sequence, or a link header's preamble; length, keep, polarity, errors), align (a repeating
+             marker), puncture, pilots, squelch, ofdm
+    wave     shape (a pulse definition; symbol pulses get a matched filter), stagger, fm (h + sps: FSK; deviation: analog),
+             am (the envelope; alpha null keeps its mean), ssb (bw, sideband), ofdm (n_fft, n_cp)
+    symbol   constellation (name, mapping), differential, spread (a chip sequence), carriers, header, pilots, scramble
+    code     fec (type block / conv / interleave, name, args), scramble (name, args; length: frames of that many bits from
+             the first), line (invert, nrzi, nrzm, manchester, thomas), marker (a word before each frame: length, or frames by
+             control), uncoded
+    link     crc, frame (HDLC), header (fields, crc, fcs, payload)
 """
 from dataclasses import dataclass, field
 
@@ -159,6 +175,40 @@ def _shift(spec, ctx):
     from .. import signal
     return signal.filters.ShiftFreq(_need(spec, "freq", "signal shift"))
 
+@register_step("signal", "conjugate")
+@_one
+def _conjugate(spec, ctx):
+    """Spectral inversion of the capture (I and Q swapped, a lower-sideband mixer)"""
+    from .. import signal
+    return signal.Conjugate()
+
+@register_step("signal", "resample")
+@_one
+def _resample(spec, ctx):
+    """Rational resampling by up/down (a capture at 2.5 MS/s to 4 samples a symbol at 500 kBd: up 4, down 5)"""
+    from .. import signal
+    return signal.sample.re.Polyphase(_need(spec, "up", "signal resample"), _need(spec, "down", "signal resample"), spec.get("taps"))
+
+@register_step("signal", "channelize")
+@_one
+def _channelize(spec, ctx):
+    """One channel of a wider capture to baseband at about `oversample` times its width: {"signal": "channelize", "freq": -250e3,
+    "width": 200e3}. The stages are designed from the stream's sample rate when it starts"""
+    from .. import signal
+    return signal.Channelize(spec.get("freq", 0.0), _need(spec, "width", "signal channelize"), spec.get("oversample", 3.0))
+
+def _designed_fir(kind, spec, rep, ctx):
+    """A windowed FIR designed in Hz from the stream's sample rate: {"signal": "lowpass", "cutoff": 100e3, "taps": 101} or
+    {"signal": "bandpass", "cutoff": [50e3, 150e3], "transition": 20e3, "atten_db": 60} (a Kaiser window meeting that)"""
+    from ..signal.filters.serial import _windowed, Designed
+    obj = {k: v for k, v in spec.items() if k != "signal"}
+    obj["pass"], obj["units"] = kind, "hz"
+    _need(obj, "cutoff", f"signal {kind}")
+    return [(STAGE, Designed(kind, _windowed(kind, obj)))], [], rep
+
+for _k in ("lowpass", "highpass", "bandpass", "bandstop"):
+    register_step("signal", _k)(_designed_fir)
+
 @register_step("signal", "stage")
 def _signal_stage(kind, spec, rep, ctx):
     """Any Stage, by its class's module path: {"signal": "stage", "class": "mypkg.Gain", "args": {"k": 2}}"""
@@ -184,7 +234,7 @@ _SYNC_DEFAULTS = {
     "delimit": {"method": "word"},
 }
 
-for _kind in ("timing", "carrier", "equalize"):
+for _kind in ("timing", "carrier", "equalize", "agc"):
     register_step("sync", _kind)(_by_method(_kind))
 
 def _sps(m, ctx, where):
@@ -294,10 +344,16 @@ def _pilot_eq(m, ctx):
         raise ConfigError("pilots: needs a symbol carriers step after it")
     return sync.PilotEqualizer(carriers, m.get("taps"))
 
-@_sync_one("agc")
-def _agc(m, ctx):
+@register_sync_method("agc", "agc")
+def _agc(m, rep, ctx):
     from .. import sync
     return sync.AGC(m.get("target", 1.0), m.get("mu", 0.01))
+
+@register_sync_method("agc", "peak")
+def _peak_agc(m, rep, ctx):
+    """The gain from the peak, followed at once (bursts, on-off keying)"""
+    from .. import sync
+    return sync.PeakAGC(m.get("target", 1.0), m.get("decay", 0.999))
 
 @_sync_one("squelch")
 def _squelch(m, ctx):
@@ -318,20 +374,33 @@ def _frame(m, ctx):
     return sync.FrameSync(h.preamble, h.words() if m.get("words", True) else None, m.get("threshold"), m.get("max_length"),
                           m.get("name", "frame"))
 
+def _word(m, where):
+    """(word, bits, order) a step gives: a `sequence` of type word, or `word` + `bits` (+ `order`) inline"""
+    if "sequence" in m:
+        from .. import sequence
+        w = sequence.load(m["sequence"])
+        if not hasattr(w, "bits") or not hasattr(w, "value"):
+            raise ConfigError(f"{where}: sequence {m['sequence']!r} is not a word")
+        return w.bits, None, "msb"
+    return _need(m, "word", where), _need(m, "bits", where), m.get("order", "msb")
+
 @_sync_one("delimit")
 def _delimit(m, ctx):
-    """Frames by the word before them among bits: a link header's preamble word, or one given"""
+    """Frames by the word before them among bits: a link header's preamble word, a word sequence, or one given inline;
+    `length` (bits per frame after the word, else until the next word or a header's control), `keep` (give the word too,
+    for a code marker step to strip), `polarity` (match the inverted word too and put the frame's sense right)"""
     from .. import sync
     if "header" in m:
         from .. import link
         pre = _config.read(_config.find("header", m["header"], "link")).get("preamble") or {}
         h = link.load("header", m["header"])
         word, bits, order = pre.get("word"), pre.get("bits"), h.order
+        if word is None:
+            raise ConfigError(f"sync delimit: {m.get('header')} has no preamble word")
     else:
-        word, bits, order = _need(m, "word", "sync delimit"), _need(m, "bits", "sync delimit"), m.get("order", "msb")
-    if word is None:
-        raise ConfigError(f"sync delimit: {m.get('header')} has no preamble word")
-    return sync.Delimiter(word, bits, order, m.get("errors", 0), m.get("name", "delimiter"))
+        word, bits, order = _word(m, "sync delimit")
+    return sync.Delimiter(word, bits, order, m.get("errors", 0), m.get("name", m.get("id", "delimiter")), m.get("length"),
+                          m.get("keep", False), m.get("polarity", False))
 
 def _given(spec, keys, **convert):
     """The operator's arguments the step gives (the operator's defaults stand for the rest); convert: {key: function}"""
@@ -430,10 +499,18 @@ def _wave(kind, spec, rep, ctx):
         d = spec.get("delay", 0.5)
         return [(STAGE, wave.Stagger("i", d))], [(STAGE, wave.Stagger("q", d))], Rep.SAMPLES
     if kind == "fm":
+        if "deviation" in spec: # Analog: the levels in, the levels out (audio), nothing per symbol
+            dev = spec["deviation"]
+            return [(STAGE, wave.FMDemod(deviation=dev))], [(STAGE, wave.FM(deviation=dev))], Rep.SAMPLES
         h, step = _need(spec, "h", "wave fm"), spec.get("step", 2.0)
+        sps = _need({"sps": sps}, "sps", "wave fm")
         rx = [(STAGE, wave.FMDemod(wave.fm_gain(h, sps, step))),
               (STAGE, signal.filters.ShapingRect(int(sps), int(sps), 1/int(sps)))]
         return rx, [(STAGE, wave.FM(h, step))], Rep.SAMPLES
+    if kind == "am": # The envelope: on transmit the levels through their pulse are the envelope already
+        return [(STAGE, wave.AMDemod(spec.get("alpha", 1e-3)))], [], Rep.SAMPLES
+    if kind == "ssb":
+        return [(STAGE, wave.SSBDemod(spec.get("bw", 2800.0), spec.get("sideband", "usb"), spec.get("taps", 201)))], [], Rep.SAMPLES
     if kind == "ofdm":
         n, cp = spec.get("n_fft", 64), spec.get("n_cp", 16)
         return [(STAGE, wave.OFDMRx(n, cp))], [(STAGE, wave.OFDMTx(n, cp))], Rep.SYMBOLS
@@ -487,10 +564,21 @@ def _code(kind, spec, rep, ctx):
         return _pair(make(), make(), Rep.DATA)
     if kind == "scramble":
         ref = _need(spec, "name", "code scramble")
-        make = lambda: code.scram.load(ref, **spec.get("args", {}))
+        def make():
+            op = code.scram.load(ref, **spec.get("args", {}))
+            if "length" in spec: # Frames of a fixed length from the first bit: the sequence restarts at each (a CCSDS frame)
+                op.control(length=spec["length"])
+            return op
         return _pair(make(), make(), Rep.DATA)
     if kind == "uncoded":
         return _pair(code.Uncoded(), code.Uncoded(), Rep.DATA)
+    if kind == "line":
+        make = lambda: code.Line(_need(spec, "name", "code line"))
+        return _pair(make(), make(), Rep.DATA)
+    if kind == "marker":
+        word, bits, order = _word(spec, "code marker")
+        make = lambda: code.Marker(word, bits, spec.get("length"), order)
+        return _pair(make(), make(), Rep.DATA)
 
 def _link(kind, spec, rep, ctx):
     from .. import link
@@ -499,9 +587,9 @@ def _link(kind, spec, rep, ctx):
         make = lambda: link.load(kind, name)
         return _pair(make(), make(), Rep.PACKETS)
 
-for _cat, _fn, _kinds in (("wave", _wave, ("shape", "stagger", "fm", "ofdm")),
+for _cat, _fn, _kinds in (("wave", _wave, ("shape", "stagger", "fm", "am", "ssb", "ofdm")),
                           ("symbol", _symbol, ("constellation", "differential", "spread", "carriers", "header", "pilots", "scramble")),
-                          ("code", _code, ("fec", "scramble", "uncoded")),
+                          ("code", _code, ("fec", "scramble", "uncoded", "line", "marker")),
                           ("link", _link, ("crc", "frame", "header"))):
     for _k in _kinds:
         register_step(_cat, _k)(_fn)

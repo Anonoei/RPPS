@@ -9,10 +9,11 @@ from ..signal.filters.filter import FIR
 from ..signal.filters.impl.designer import designer
 
 class AMDemod(Stage):
-    """Envelope detector: |x| with the carrier (DC) removed by a slow running mean"""
+    """Envelope detector: |x| with the carrier (DC) removed by a slow running mean (alpha: how fast the mean follows, the
+    fraction of the gap closed per sample); `AMDemod(alpha=None)` keeps the envelope as it is (on-off keying, pulse position:
+    the levels themselves carry the bits)"""
     __slots__ = ("alpha",)
     def __init__(self, alpha=1e-3):
-        """alpha: how fast the mean follows (fraction of the gap closed per sample)"""
         self.alpha = alpha
 
     def new_state(self, meta):
@@ -20,6 +21,8 @@ class AMDemod(Stage):
 
     def step(self, samples, st, meta):
         env = np.abs(samples).astype(np.float32)
+        if self.alpha is None:
+            return env
         if _accel.native is not None:
             out, mean, have = _accel.native.am_demod(env, 0.0 if st.mean is None else float(st.mean), st.mean is not None, float(self.alpha))
             st.mean = mean if have else None

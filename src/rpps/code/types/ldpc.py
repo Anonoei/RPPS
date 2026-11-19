@@ -16,6 +16,20 @@ def gallager(n, wc=3, wr=6, seed=0):
     return np.vstack([base] + [base[:, rng.permutation(n)] for _ in range(wc-1)])
 
 
+def qc_checks(base, z):
+    """The checks of a quasi-cyclic code: (n, checks) from a base matrix of shifts (an entry s >= 0 is the z x z identity
+    shifted right by s: row r of the block has its 1 at column (r + s) % z; -1 or None is a zero block)"""
+    z = int(z)
+    B = [[-1 if v is None else int(v) for v in row] for row in base]
+    nb = len(B[0])
+    checks = []
+    for row in B:
+        if len(row) != nb:
+            raise ValueError("every row of the base matrix has the same number of blocks")
+        for r in range(z):
+            checks.append(np.array([j*z + (r + s) % z for j, s in enumerate(row) if s >= 0], dtype=np.int64))
+    return nb*z, checks
+
 _LAYERS = {} # (N, M, edges) -> the code's check layers: one colouring per code per process
 
 @register("ldpc")
@@ -36,8 +50,14 @@ class ldpc(_code):
 
     @classmethod
     def from_config(cls, log, obj):
-        """Parity checks as dense rows ("h"), sparse lists ("checks" + "n"), a DVB-S2 style address "table", or a "gallager" construction"""
+        """Parity checks as dense rows ("h"), sparse lists ("checks" + "n"), a DVB-S2 style address "table", a quasi-cyclic
+        matrix of "shifts" lifted by "z" (IEEE 802.11n/ac, 802.16e, 5G NR style: each entry a right shift of the z x z identity,
+        -1 or null a zero block), or a "gallager" construction"""
         from .ira import ira_checks
+        if "shifts" in obj:
+            n, checks = qc_checks(obj["shifts"], obj["z"])
+            k = obj.get("k", n - len(checks))
+            return cls(log, n, checks, k, obj.get("systematic", "head"), obj.get("iters", 50), obj.get("alpha", 0.8))
         if "table" in obj:
             n, checks = obj["n"], ira_checks(obj["n"], obj["k"], obj["table"], obj.get("group", 360))
             code = cls(log, n, checks, obj.get("k"), obj.get("systematic"), obj.get("iters", 50), obj.get("alpha", 0.8))

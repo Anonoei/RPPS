@@ -2,6 +2,7 @@
 RPPS command line interface
 
     python -m rpps ls [category ...]
+    python -m rpps steps
     python -m rpps survey <file> --fs <Hz> [--fmt <format>] [--cf <Hz>] [--plot]
     python -m rpps fmt [--check] [dir]
     python -m rpps gen-ldpc <dvb_s2_tables.hh> [table ids ...] [--out dir]
@@ -51,6 +52,18 @@ def cmd_ls(args):
     for name in args.category or CATEGORIES:
         title, fn = CATEGORIES[name]
         _show(title, fn(rp), width)
+    return 0
+
+
+def cmd_steps(args):
+    """The step kinds a profile's "steps" can name, by category, and the methods of the sync kinds that have them"""
+    import rpps as rp
+    from rpps.profile import steps
+    width = min(shutil.get_terminal_size((100, 20)).columns, 120)
+    print("A profile step is {\"<category>\": \"<kind>\", ...}, in receive order (python -m rpps show profile/<family>/<mode> for examples):")
+    _show("Step kinds", steps.kinds(), width)
+    _show("Sync methods  (\"method\" on the step, or \"defaults\": {\"timing\": {\"method\": ...}})",
+          {k: steps.methods(k) for k in sorted(steps.METHODS)}, width)
     return 0
 
 
@@ -197,6 +210,9 @@ def main(argv=None):
     p_ls = sub.add_parser("ls", help="list the definitions there are, by resource")
     p_ls.add_argument("category", nargs="*", choices=list(CATEGORIES), help="limit output to these categories (default: all)")
     p_ls.set_defaults(fn=cmd_ls)
+
+    p_steps = sub.add_parser("steps", help="list the step kinds and sync methods a profile can use")
+    p_steps.set_defaults(fn=cmd_steps)
 
     p_show = sub.add_parser("show", help="print a definition, e.g. fec/block/rs/204_188")
     p_show.add_argument("ref", help="<resource>/<name>")

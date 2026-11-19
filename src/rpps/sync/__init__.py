@@ -14,7 +14,7 @@ from . import phase
 from . import time
 
 from . import agc
-from .agc import AGC
+from .agc import AGC, PeakAGC
 from . import pll
 from . import equalize
 from .squelch import Squelch

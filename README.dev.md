@@ -553,11 +553,11 @@ Each category is a package (`src/rpps/<package>`).
 | Package | Category | What is in it |
 |---|---|---|
 | `source` | source | sources and sinks of blocks: files and their formats, sockets, radios through pysdrlib |
-| `signal` | signal | filters (`signal.filters`: FIR, IIR, windows, pulse shapes, fractional delay, polyphase channelizer), resampling (`signal.sample`), `channelize`, audio conditioning (`DCBlock`, `Deemphasis`), and `signal.channel`, the simulated medium |
-| `sync` | sync | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, all tracked by `track`; frame sync (`FrameSync`, `Delimiter`), pilots (`PilotPhase`, `PilotEqualizer`), alignment on bits (`Align`, `Puncture`), `Acquire`, `acquire_code`, `Squelch`. Second class, by name: `time.MM` (and Gardner), `Costas`, `AGC`, `PLL`, `equalize.LMS`, `equalize.CMA` |
+| `signal` | signal | filters (`signal.filters`: FIR, IIR, windows, pulse shapes, fractional delay, polyphase channelizer), resampling (`signal.sample`), `channelize` / `Channelize`, conditioning (`DCBlock`, `Deemphasis`, `Conjugate`), and `signal.channel`, the simulated medium |
+| `sync` | sync | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, all tracked by `track`; frame sync (`FrameSync`, `Delimiter`), pilots (`PilotPhase`, `PilotEqualizer`), alignment on bits (`Align`, `Puncture`), `Acquire`, `acquire_code`, `Squelch`, `PeakAGC`. Second class, by name: `time.MM` (and Gardner), `Costas`, `AGC`, `PLL`, `equalize.LMS`, `equalize.CMA` |
 | `wave` | wave | `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod`; pulse shapes are `signal.filters` operators on the `pulse` resource |
 | `symbol` | symbol | `Constellation` (and the PSK, QAM, APSK, ASK generators), `Differential`, `Spread`/`Despread`, `Carriers`, and frame structure: `Header`, `Pilots`, `PhaseScramble` |
-| `code` | code | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), `Uncoded` |
+| `code` | code | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), line codes (`Line`), sync markers (`Marker`), `Uncoded` |
 | `link` | link | CRCs, HDLC framing, `Header` (fields, CRC, payload length) |
 | `profile` | profile | loading (`profile`), the steps (`steps`), header-driven control (`control`), runners (`runner`) |
 | `sequence` | (a resource engine) | recurrences and Gold sequences, chip codes, LFSR registers: what scramblers, spreaders and searches share |
@@ -575,7 +575,7 @@ implementation of a function is a new loader, and a new instance of it is a new 
 | `constellation` | `config/constellation` | symbol |
 | `pulse` | `config/pulse` | wave (shaping, matched filters). Each pulse says `"kind": "symbol"` or `"frequency"` |
 | `filter` | `config/filter/{fir,iir,window}` | signal |
-| `sequence` | `config/sequence/{recurrence,chips,set,gold}`: LFSRs and Gold sequences (LTE, DVB-S2 PL, P25, 802.11a, BLE, the LFSRs of CCSDS and DVB), chip codes (Barker, 802.15.4, GPS C/A) | code (scramble), symbol (spread, PL scramble), sync (code-phase search). Sync markers and start-of-frame words are still in the steps that use them |
+| `sequence` | `config/sequence/{recurrence,chips,set,gold,word}`: LFSRs and Gold sequences (LTE, DVB-S2 PL, P25, 802.11a, BLE, the LFSRs of CCSDS and DVB), chip codes (Barker, 802.15.4, GPS C/A), fixed words (the CCSDS ASM, the BLE access address, the Mode S preamble) | code (scramble, marker), symbol (spread, PL scramble), sync (code-phase search, delimiter) |
 | `scramble` | `config/scramble/{additive,feedthrough}` | code: how a sequence is applied, additive (naming a sequence, with a frame or period restart) or self-synchronizing (its own register, since the data runs through it) |
 | `fec` | `config/fec/{block,conv}` | code |
 | `interleave` | `config/interleave/{block,forney}` | code |
@@ -639,7 +639,10 @@ kernels, the parallel runner's internals, how to add things) is in the sections 
 | Streaming on bits | `BitStage` and `sync.Align` (bit offset, pattern phase, polarity, tracking) |
 | Packages | One per category (see [Where things are](#where-things-are)); no aliases for the old names |
 | Mixed modules split | `AMDemod`/`SSBDemod` in `wave`, `Squelch` in `sync`, `DCBlock`/`Deemphasis` in `signal`, spreading in `symbol`, code-phase search in `sync`, OFDM in three operators (`symbol.Carriers`, `wave.OFDMTx`/`OFDMRx`, `sync.PilotEqualizer`) |
-| Profiles | `ieee802154/2450`, `ieee80211b/{1m,2m,long}`, `dvbs/qpsk_3_4`, `dvbs2/normal`; `chain` is gone, its special cases are ordinary sync and code steps |
+| Profiles | `ieee802154/2450`, `ieee80211b/{1m,2m,long}`, `dvbs/qpsk_3_4`, `dvbs2/normal`, `ble/adv`, `adsb/mode_s`, `ax25/afsk1200`, `ccsds/tm_rs`; `chain` is gone, its special cases are ordinary sync and code steps |
+| Packet links | Line codes (`code.Line`: NRZI, NRZ-M, Manchester, inversion), sync markers among channel bits (`code.Marker`, found by `sync.Delimiter` with a fixed or header-driven length, the word kept for the marker to strip, polarity resolved), fixed words as `sequence/word`, link headers with a frame check sequence after the payload (`fcs`), additive scramblers restarting at a frame start (`frame`), streaming HDLC (a frame cut by a block boundary waits), a control entry for one direction (`"on": "tx"`) |
+| Signal and wave steps | `conjugate` (spectral inversion), `resample`, `channelize` (designed from the stream's rate), `lowpass` / `bandpass` ... in Hz, `am` and `ssb` demodulation, analog `fm` by deviation, a peak-following AGC for bursts (`agc` method `peak`) |
+| Codes | Quasi-cyclic LDPC from a matrix of shifts (`ldpc/ieee80211n_648_*`), CCSDS RS(255,223) in the conventional basis with its symbol interleaver |
 | Header-driven control | `rpps.profile.control` and `rpps.profile.runner`: publishing, tables, live and restart changes, late changes re-run from checkpoints, drops reported |
 | First-class sync | `sync.time.OerderMeyr`, `sync.phase.MPower`, `sync.equalize.BlockLS`, tracked by `sync.track`; the profile defaults for `timing`, `carrier`, `equalize` |
 | Config by resource | `config/<resource>/`; `sequence` split from `scramble`; `rp.spread` became `rp.sequence` |
@@ -651,8 +654,12 @@ kernels, the parallel runner's internals, how to add things) is in the sections 
 - `dvbs2/normal`: short frames, 16/32APSK and dummy frames (their PLS is reported, the frame is not decoded).
 - A first-class carrier estimator for staggered signals (802.15.4 still needs its carrier taken off first), and fractionally
   spaced block equalization.
-- Sync markers and start-of-frame words as sequences (the DVB-S sync bytes, the 802.11b SFD and the DVB-S2 SOF are written in
-  the steps and headers that use them).
+- The DVB-S sync bytes, the 802.11b SFD and the DVB-S2 SOF as `sequence/word` definitions (the CCSDS ASM, the Mode S preamble
+  and the BLE access address are; those three are still written in the steps and headers that use them).
+- Per-burst timing and carrier acquisition (a short packet alone, with no stream to track: `ble/adv` wants a continuous
+  signal or known timing; `adsb/mode_s` gets by at one sample per chip). A burst stage that acquires on the preamble of each
+  burst would serve BLE, 802.15.4, LoRa and the TDMA carriers of the surveys.
+- Reed-Solomon in the dual (Berlekamp) basis: CCSDS symbols need the conversion before and after `rs/ccsds_255_223`.
 - The parallel runner numbers its output from 0 and a dropped frame leaves no gap (the serial runner keeps positions).
 - Fusing the matched filter with Oerder & Meyr timing (its square-law line needs the filter at every sample). Interpolating
   its output is at the pulse's own floor (see [Effort](#effort)).

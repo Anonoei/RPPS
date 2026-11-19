@@ -24,6 +24,7 @@ The profile side (`"controls"` in a profile, keyed by the header step's id):
               "schedule": [{"modcod": 4}, {"modcod": 12}],        transmit: the fields of each frame in turn
               "frame": {"calc": "kbch - 80"},                     transmit: items at the first step per frame
               "reach": 64,                                        how far back (header input items) a field can apply
+              "on": "tx",                                         this entry drives only when transmitting ("rx", "both": default)
               "drive": {"map": {"name": "constellation"},         step id -> {parameter: source}: a field, a column of
                         "ldpc": {"name": "ldpc"},                   the key's row, or {"calc": ...} over both
                         "plscram": {"length": {"calc": "slots*90 + pilots*((slots - 1)//16)*36"}}}}}
@@ -142,6 +143,9 @@ class Entry:
         self.schedule = [dict(f) for f in obj.get("schedule", [])]
         self.frame = obj.get("frame")
         self.reach = obj.get("reach")
+        self.on = obj.get("on", "both")
+        if self.on not in ("rx", "tx", "both"):
+            raise ConfigError(f"{where}: controls[{header!r}] 'on' is rx, tx or both, not {self.on!r}")
         self.drive = {sid: dict(ps) for sid, ps in obj["drive"].items()}
 
     def __repr__(self):

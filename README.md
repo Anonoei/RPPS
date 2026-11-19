@@ -44,6 +44,22 @@ src(16384) + rx >> rp.source.Sink("cf64", "symbols.iq")       # or straight into
 A stage can also be applied by hand to a block: `blk + rp.signal.filters.ShiftFreq(1e3)`.
 `rp.signal.channel` has impairments to test against (`AWGN`, `CFO`, `Fading`, `Multipath`, `ClockDrift`...).
 
+### A known signal: profiles
+A profile is one JSON file that describes a whole signal, both directions: its steps in receive order (filters, sync,
+pulse, modulation, codes, framing) and the parameters a header may change along the way.
+```python
+# docs: skip
+p = rp.profile.load("ble/adv", channel=38)                 # or dvbs2/normal, adsb/mode_s, ax25/afsk1200, ccsds/tm_rs, ieee80211b/long...
+for pdu in rp.source.File("cf64", "ch38.cf64", Fs=4e6, cf=2426e6)(65536) + p.rx():
+    print(pdu.as_bytes().hex, pdu.stream.est["ble_adv"]["last"])        # the payloads of the packets whose CRC checks, and their header fields
+wave = p.tx()(rp.Data(bytes(31)), fields={"type": 2})                   # the same file transmits: the steps inverted, in reverse
+```
+`python -m rpps ls profile` lists the shipped profiles, `python -m rpps steps` the step kinds and sync methods a profile
+can name, `python -m rpps rx ble/adv capture.cf64 --fs 4e6 --param channel=38` receives a file from the shell. A new signal
+is a new file in `config/profile/<family>/<mode>.json` (or in your own config directory, `rp.add_config_path`), built from
+the shipped definitions: constellations, pulses, codes, scramblers, sequences, headers. Writing one needs no code; see
+[README.dev.md](README.dev.md#profiles) for the format and the step kinds.
+
 ### Real time
 ```python
 # docs: skip
@@ -77,13 +93,15 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
    - [ ] (Linux only) tun/tap
    - [ ] Socket
  - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/filters)
-   - [X] Pulse Shaping
+   - [X] Pulse Shaping (rrc, rc, halfsine, gaussian, rect)
    - [X] Window functions
+   - [X] Designed in a profile (lowpass, bandpass... in Hz), channelizer, resampler, spectral inversion
  - [X] [Sample](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/sample)
  - [ ] [Sync](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sync)
    - [X] Frequency
    - [X] Phase (M-th power, Costas, pilots)
    - [X] Time (Oerder & Meyr, Mueller & Muller, Gardner, timing locked loop)
+   - [X] Frames: preambles among symbols, delimiter words among bits (fixed or header-driven length, polarity), repeating markers
  - [X] [Symbol](https://github.com/Anonoei/RPPS/tree/main/src/rpps/symbol)
    - [X] PSK
    - [X] QAM
@@ -96,7 +114,7 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
      - [X] Hamming (decoded on its syndrome trellis)
      - [X] BCH
      - [X] Reed-Solomon
-     - [X] LDPC (min-sum, DVB-S2 tables)
+     - [X] LDPC (layered min-sum; DVB-S2 tables, quasi-cyclic matrices: IEEE 802.11n)
      - [ ] TPC
    - [X] Convolutional
      - [X] Viterbi (hard and soft)
@@ -106,10 +124,13 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
    - [X] fibonacci
    - [X] galois
    - [X] V.35
+   - [X] Line codes: NRZI, NRZ-M, Manchester, inversion; sync markers (CCSDS ASM, preambles) attached and stripped
  - [ ] [Link](https://github.com/Anonoei/RPPS/tree/main/src/rpps/link)
    - [X] CRC
-   - [X] HDLC
+   - [X] HDLC (streaming, any block cut)
+   - [X] Headers: fields, a CRC over them or a frame check sequence over header and payload, header-driven lengths
    - [ ] PPP
+ - [ ] [Profiles](https://github.com/Anonoei/RPPS/tree/main/config/profile): DVB-S, DVB-S2, IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
  - [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey
 
 ## Contributing

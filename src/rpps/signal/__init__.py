@@ -4,9 +4,10 @@
     sample      sample-rate changes: decimation, interpolation, rational resampling
     channelize  bring one signal of a wider capture to baseband at a few times its width
     channel     the simulated medium between transmitter and receiver: AWGN, offsets, multipath, fading
+    DCBlock, Deemphasis, Conjugate   conditioning: DC removal, FM de-emphasis, spectral inversion
 """
 from . import filters
 from . import sample
 from . import channel
-from .channelize import channelize, baseband
-from .condition import DCBlock, Deemphasis
+from .channelize import channelize, baseband, Channelize
+from .condition import DCBlock, Deemphasis, Conjugate

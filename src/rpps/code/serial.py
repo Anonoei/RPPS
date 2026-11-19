@@ -18,7 +18,8 @@ Folders are kind (`base`), then the structure of the code; the standard goes in 
     Every block decoder leaves `errors` per codeword after a decode: bits (RS: symbols) corrected, -1 for a failure.
       bch         "n", "k", "t", "m": 16, "poly": "0x1002D"
       ldpc        "n" and the checks as "checks" (positions per check), "h" (dense rows), "table" + "k" + "group" (DVB-S2 address
-                  table) or "gallager": {...}; optional "k" + "systematic": "head" | "tail" | [positions], "iters": 50, "alpha": 0.8
+                  table), "shifts" + "z" (quasi-cyclic: a matrix of shifts of the z x z identity, -1 a zero block: 802.11n, 802.16e)
+                  or "gallager": {...}; optional "k" + "systematic": "head" | "tail" | [positions], "iters": 50, "alpha": 0.8
     conv        {"base": "conv", "type": "split", "encode": {...}, "decode": {...}} sharing "puncture" and "terminated"
       encode      "type": "conv", "num", "den", "constraint", "generator": den rows of K bits, "puncture": den rows
       decode      "type": "viterbi" | "bcjr" (soft output; also "maxlog", "hard_llr"), same keys as encode

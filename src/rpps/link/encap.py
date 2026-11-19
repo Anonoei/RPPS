@@ -1,9 +1,12 @@
 """Encapsulation parent classes"""
+import numpy as np
+
 from ..logger import Logger
 from ..errors import ConfigError
 
 from .. import _config
 from ..code.coding import Coding
+from ..base.rpps import FLUSH
 from ..base.types import Category, Rep
 from .crc import crc as _crc_code
 from .hdlc import hdlc as _hdlc_code
@@ -50,7 +53,27 @@ class CRC(Encap):
 
 
 class Frame(Encap):
-    """Framing (HDLC) defined by config; the FCS is another config, `fcs`, from config/crc"""
+    """Framing (HDLC) defined by config; the FCS is another config, `fcs`, from config/crc
+
+    As an operator: `packet * frame` gives one frame's bits (flags, stuffing, FCS) per call; `bits / frame` the payload bits of
+    the frames whose FCS checks out, however the stream is cut (an open frame waits for its closing flag in the next block)"""
+
+    def _block(self, enc):
+        return 8 if enc else 1
+
+    def _process(self, coder, x, ctx, enc):
+        if enc:
+            if not len(x):
+                return np.zeros(0, dtype=bool)
+            return coder.encode([np.packbits(np.asarray(x, dtype=np.uint8)).tobytes()])
+        key = (self, "held")
+        out, held = coder.decode_stream(x, ctx.pop(key, np.zeros(0, np.uint8)))
+        if ctx.get(FLUSH):
+            rest = coder.decode(held) if len(held) else np.zeros(0, bool)
+            out = np.concatenate((out, rest))
+        else:
+            ctx[key] = held
+        return out
 
     @staticmethod
     def load(name, obj):

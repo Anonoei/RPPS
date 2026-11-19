@@ -2,7 +2,8 @@
 
     FrameSync   symbols: correlate a known preamble (DVB-S2 SOF), give each frame from its preamble to the next one,
                 with the carrier phase the preambles measured taken off
-    Delimiter   bits: find the word that comes before each frame (802.11b SFD), give the bits after it
+    Delimiter   bits: find the word that comes before each frame (802.11b SFD, a CCSDS ASM), give the bits after it (or
+                the frame from its word on), for a fixed or a controlled length, with the polarity put right
 
 Both publish {"frame": k} at each frame start (rp.profile.publish), so a profile can drive the steps after them frame by
 frame (a header that reads the frame's start), and say where each frame came from (rp.profile.anchor).
@@ -171,20 +172,25 @@ class Delimiter(BitStage):
     after it
 
         frames = bits + rp.sync.Delimiter(word=0xF3A0, bits=16, order="lsb")      # 802.11b SFD, sent LSB first
+        frames = bits + rp.sync.Delimiter(0x1ACFFC1D, 32, length=8160, keep=True) # CCSDS: the ASM and its frame, whole
 
-    word: the delimiter's value, `bits` long, sent most (order "msb") or least significant bit first. errors: bit errors
-    a match may have. length (controlled: a header says how long its frame is): after that many bits the frame is over and
-    the search starts again; unknown, the bits pass until the next delimiter. Takes hard bits or LLRs, gives the same.
-    Estimates in stream.est[name]: frames found.
+    word: the delimiter's value, `bits` long, sent most (order "msb") or least significant bit first; or the bits
+    themselves (an array, in the order sent), or a `sequence` definition of type word (rp.sequence.load). errors: bit
+    errors a match may have. length: bits in a frame after the word; after them the frame is over and the search starts
+    again (also a controlled parameter: a header says how long its frame is); unknown, the bits pass until the next
+    delimiter. keep: give each frame from its word on (so a `rp.code.Marker` after it can strip and check the word) rather
+    than from the bit after it. polarity: match the inverted word too, and give such a frame inverted back (LLRs negated),
+    for links whose sense an unknown carrier phase can flip. Takes hard bits or LLRs, gives the same.
+    Estimates in stream.est[name]: frames found, polarity of the last.
     """
     CONTROLS = {"length": "live"}
 
-    def __init__(self, word, bits, order="msb", errors=0, name="delimiter"):
-        v = int(word, 0) if isinstance(word, str) else int(word)
-        idx = np.arange(bits) if order == "lsb" else np.arange(bits - 1, -1, -1)
-        self.word = ((v >> idx) & 1).astype(bool)
-        self.n, self.errors, self.name = int(bits), int(errors), name
-        self.length = None
+    def __init__(self, word, bits=None, order="msb", errors=0, name="delimiter", length=None, keep=False, polarity=False):
+        from ..sequence.word import Word, word_bits
+        self.word = word.bits if isinstance(word, Word) else word_bits(word, bits, order)
+        self.n, self.errors, self.name = len(self.word), int(errors), name
+        self.length = None if length is None else int(length)
+        self.keep, self.polarity = bool(keep), bool(polarity)
 
     def __str__(self):
         return f"Delimiter({self.name})"
@@ -196,7 +202,11 @@ class Delimiter(BitStage):
         return 1.0
 
     def new_state(self, meta):
-        return SimpleNamespace(tail=None, tail_pos=None, cur=None, mode="seek", emitted=0, k=0, seek_from=None)
+        return SimpleNamespace(tail=None, tail_pos=None, cur=None, mode="seek", emitted=0, k=0, seek_from=None, flip=False)
+
+    def _total(self):
+        """Bits a frame gives out: its length, and the word too when kept"""
+        return None if self.length is None else self.length + (self.n if self.keep else 0)
 
     def step(self, x, st, meta):
         from ..profile.control import publish, anchor
@@ -211,23 +221,27 @@ class Delimiter(BitStage):
         cur, out, n_out = st.cur, [], 0
         def emit(a, b):
             nonlocal n_out
-            out.append(buf[a - base:b - base])
+            seg = buf[a - base:b - base]
+            if st.flip:
+                seg = -seg if seg.dtype.kind == "f" else ~seg
+            out.append(seg)
             n_out += b - a
-        while cur < end or (st.mode == "frame" and self.length is not None and st.emitted >= self.length):
-            if st.mode == "frame" and self.length is not None:
-                take = min(self.length - st.emitted, end - cur)
+        total = self._total()
+        while cur < end or (st.mode == "frame" and total is not None and st.emitted >= total):
+            if st.mode == "frame" and total is not None:
+                take = min(total - st.emitted, end - cur)
                 if take > 0:
                     emit(cur, cur + take)
                     st.emitted += take
                     cur += take
-                if st.emitted < self.length:
+                if st.emitted < total:
                     break
                 st.mode, st.seek_from = "seek", cur # The frame is over: look for the next one
                 continue
             frm = max(st.seek_from, cur)
-            nxt = next((s for s in starts if s >= frm), None) # A word starting here or later
+            nxt = next((s for s in starts if s[0] >= frm), None) # A word starting here or later
             if st.mode == "frame": # Length unknown: the bits pass up to the next delimiter, kept back until they can't be one
-                stop = nxt if nxt is not None else (end if meta.flush else end - (n - 1))
+                stop = nxt[0] if nxt is not None else (end if meta.flush else end - (n - 1))
                 if stop > cur:
                     emit(cur, stop)
                     st.emitted += stop - cur
@@ -236,21 +250,27 @@ class Delimiter(BitStage):
                 if st.mode == "seek":
                     cur = max(cur, end - (n - 1)) # What can't start a delimiter is dropped
                 break
-            cur = st.seek_from = nxt + n # A frame starts after the word
+            at, st.flip = nxt
+            cur = at if self.keep else at + n # A frame starts at the word (kept) or after it
+            st.seek_from = at + n
             st.mode, st.emitted = "frame", 0
             publish(meta, self, {"frame": st.k}, at=cur, out=n_out)
             anchor(meta, self, cur, n_out)
             st.k += 1
         keep = max(min(cur, end) - (n - 1), base)
         st.tail, st.tail_pos, st.cur = buf[keep - base:], keep, cur
-        meta.stream.est[self.name] = dict(frames=st.k, mode=st.mode)
+        meta.stream.est[self.name] = dict(frames=st.k, mode=st.mode, polarity=-1 if st.flip else 1)
         return np.concatenate(out) if out else x[:0]
 
     def _starts(self, hard, base):
-        """Absolute positions where the word starts in hard bits whose first one is at `base`"""
+        """(absolute position, inverted) where the word starts in hard bits whose first one is at `base`"""
         n = self.n
         if len(hard) < n:
             return []
         w = np.lib.stride_tricks.sliding_window_view(hard, n)
         bad = np.count_nonzero(w != self.word[None, :], axis=1)
-        return [base + int(j) for j in np.nonzero(bad <= self.errors)[0]]
+        found = {int(j): False for j in np.nonzero(bad <= self.errors)[0]}
+        if self.polarity:
+            for j in np.nonzero((n - bad) <= self.errors)[0]:
+                found.setdefault(int(j), True)
+        return [(base + j, flip) for j, flip in sorted(found.items())]

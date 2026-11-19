@@ -1,0 +1,106 @@
+{
+  "base": "profile",
+  "comment": "Bluetooth LE 1 Mb/s advertising channel (LE 1M uncoded PHY): GFSK, BT 0.5, modulation index 0.5, a 1 the higher frequency. Preamble and access address (the delimiter finds them, the marker step strips and, transmitting, attaches them), then the PDU header, payload and CRC-24, whitened from the header on with the channel's sequence, every field least significant bit first. Out come the advertising PDU payloads whose CRC checks. The capture is one channel at `sps` samples per bit (4 MS/s: 4); the carrier offset must be small against the 250 kHz deviation (a free-running SDR's is) and comes off with the discriminator's mean. Timing is estimated on the stream, so this wants a continuous signal; a burst-by-burst receiver is projects/ble",
+  "ref": "Bluetooth Core 6.0 Vol 6 Part A 3, Part B 2.1, 3.1, 3.2",
+  "params": {
+    "sps": {
+      "default": 4,
+      "comment": "samples per bit (4 MS/s: 4)"
+    },
+    "channel": {
+      "default": 37,
+      "comment": "advertising channel index (37, 38, 39): seeds the whitening"
+    }
+  },
+  "steps": [
+    {
+      "wave": "fm",
+      "h": 0.5,
+      "sps": {
+        "param": "sps"
+      }
+    },
+    {
+      "wave": "shape",
+      "pulse": "gaussian/bt0p5",
+      "sps": {
+        "param": "sps"
+      }
+    },
+    {
+      "sync": "timing"
+    },
+    {
+      "symbol": "constellation",
+      "name": "bpsk",
+      "mapping": "R180"
+    },
+    {
+      "sync": "delimit",
+      "id": "aa",
+      "sequence": "ble_adv_aa",
+      "errors": 2,
+      "keep": true
+    },
+    {
+      "code": "marker",
+      "id": "sync",
+      "sequence": "ble_adv_aa"
+    },
+    {
+      "code": "scramble",
+      "id": "whiten",
+      "name": "additive/ble_whiten",
+      "args": {
+        "channel": {
+          "param": "channel"
+        }
+      }
+    },
+    {
+      "link": "header",
+      "id": "pdu",
+      "name": "ble_adv"
+    }
+  ],
+  "controls": {
+    "aa": {
+      "drive": {
+        "sync": {
+          "frame": "frame"
+        },
+        "whiten": {
+          "frame": "frame"
+        },
+        "pdu": {
+          "frame": "frame"
+        }
+      }
+    },
+    "pdu": {
+      "on": "tx",
+      "default": {
+        "type": 0,
+        "rfu": 0,
+        "chsel": 0,
+        "txadd": 0,
+        "rxadd": 0
+      },
+      "drive": {
+        "pdu": {
+          "type": "type",
+          "rfu": "rfu",
+          "chsel": "chsel",
+          "txadd": "txadd",
+          "rxadd": "rxadd"
+        },
+        "sync": {
+          "frame": "frame_bits"
+        },
+        "whiten": {
+          "frame": "frame_bits"
+        }
+      }
+    }
+  }
+}

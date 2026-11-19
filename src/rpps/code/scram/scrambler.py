@@ -53,15 +53,17 @@ class Scram(base.rpps.Pipe):
 
     # ---- header-driven control (rpps.profile.control)
 
-    CONTROLS = {"length": "live"}
-    SCOPE, SCOPE_NEEDS = FRAME, ("length",) # Restarts at a frame start only when a control gives the frame length
+    CONTROLS = {"length": "live", "frame": "live"}
+    SCOPE, SCOPE_NEEDS = FRAME, ("length", "frame") # Restarts at a frame start only when a control gives one
     length = None # Bits per frame, when a profile controls it: the sequence restarts at every frame start
     _restart = False
 
-    def control(self, length=None):
-        """A frame of `length` bits starts here (DVB-S2: a BBFRAME of Kbch bits): an additive sequence restarts from its
-        seed, here and every `length` bits after. A self-synchronizing scrambler has nothing to restart"""
-        self.length = None if length is None else int(length)
+    def control(self, length=None, frame=None):
+        """A frame starts here: an additive sequence restarts from its seed. With `length` (DVB-S2: a BBFRAME of Kbch bits)
+        also every `length` bits after; with `frame` (what a delimiter or frame sync publishes: Bluetooth whitening restarts
+        after the access address) just here. A self-synchronizing scrambler has nothing to restart"""
+        if length is not None or frame is None:
+            self.length = None if length is None else int(length)
         self._restart = True
 
     def _frame_start(self, ctx, key):
