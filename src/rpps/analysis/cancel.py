@@ -20,6 +20,8 @@ found: the strong one taken off, survey the rest.
 """
 import numpy as np
 
+from .cyclic import noise_floor
+
 class Cancelled:
     """Result of `cancel`. residual: x less the regenerated signal; model: the regenerated signal; excess_db: residual
     density in band over the floor outside (None without an outside); snr_cancel_db: signal over residual in band;
@@ -141,7 +143,7 @@ def cancel(x, Fs, symbols, sps, tau=0.0, span=6, block=256, widely=False, cfo=No
     # In-band against out-of-band densities
     nfft = int(min(nfft, 2**int(np.log2(max(n//8, 16)))))
     Px, Pr, Pm = _psd(x, nfft), _psd(r, nfft)*dof, _psd(model, nfft)
-    floor = np.percentile(Px, 10)
+    floor = noise_floor(Px)
     band = Pm > 2*floor # where the signal stands over the floor
     out = ~band & (Px < 3*floor)
     bw = Fs*np.count_nonzero(band)/nfft
