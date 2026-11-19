@@ -7,8 +7,9 @@
 
 A DSSS signal spreads each data symbol over a code of N chips: under the noise, its spectrum shows nothing. Its
 autocorrelation over a window R(tau) = sum x(t) x*(t + tau) has, at lags of a whole code period, a part from the code
-repeating, signed by the data: averaged it cancels, but its square does not. So the mean of |R_w(tau)|^2 over many short
-windows w (Burel's fluctuation method) peaks at multiples of the period, while noise alone gives it flat.
+repeating, signed by the data: averaged it cancels, but its square does not. So the variance of R_w(tau) over many short
+windows w (Burel's fluctuation method, the deterministic part taken off: a pulse's own correlation and its ringing are
+the same in every window) peaks at multiples of the period, while noise alone gives it flat.
 
 With the chip rate (rpps.analysis.cyclic: chips are symbols to it) the signal is taken at one sample a chip; cut into
 windows of the period, the windows are +-code (a symbol each) plus noise when they start at a symbol boundary: their
@@ -40,18 +41,23 @@ class Period:
     __repr__ = __str__
 
 def fluctuations(x, max_lag, window):
-    """Mean over windows of |R_w(tau)|^2, tau = 0 .. max_lag (R_w the autocorrelation of window w)"""
+    """Variance over windows of R_w(tau), tau = 0 .. max_lag (R_w the autocorrelation of window w): E|R_w|^2 - |E R_w|^2.
+    A spread code's part is signed by the data, so its mean is 0 and it is all variance; a signal's own correlation (the
+    pulse, its ringing) is the same in every window: all mean, taken off"""
     x = np.asarray(x, dtype=np.complex128)
     nw = (len(x) - max_lag)//window
-    out = np.zeros(max_lag + 1)
+    p2 = np.zeros(max_lag + 1)
+    m = np.zeros(max_lag + 1, dtype=np.complex128)
     N = 1 << int(np.ceil(np.log2(window + max_lag)))
     for i in range(nw):
         seg = x[i*window:i*window + window + max_lag]
         a = np.fft.fft(seg[:window], N)
         b = np.fft.fft(seg, N)
         r = np.fft.ifft(np.conj(a)*b)[:max_lag + 1] # sum_t x*(t) x(t + tau) over the window
-        out += np.abs(r)**2
-    return out/max(nw, 1)
+        p2 += np.abs(r)**2
+        m += r
+    nw = max(nw, 1)
+    return p2/nw - np.abs(m/nw)**2
 
 def period(x, Fs, max_period=None, window=None, chip_rate=None, min_lag=None, z_min=6.0):
     """The code period of a DSSS signal from autocorrelation fluctuations (see the module). max_period: longest tried
@@ -73,6 +79,14 @@ def period(x, Fs, max_period=None, window=None, chip_rate=None, min_lag=None, z_
     G = F/base
     G[:min_lag] = 0
     z = (G - 1)*np.sqrt(max(nw, 1))
+    # A code period is a peak standing clear of the lags around it; a signal's own correlation decays from lag 0
+    _, bw_, _ = cyclic.occupied(x, Fs)
+    d = int(max(2, 2*np.ceil(Fs/max(bw_, Fs/8))))
+    left = np.concatenate((np.full(d, np.inf), F[:-d]))
+    right = np.concatenate((F[d:], np.full(d, np.inf)))
+    peak = F > 1.5*np.minimum(left, right) # above at least one side by half again: not on a slope from lag 0
+    peak &= F >= np.maximum(np.concatenate(([0], F[:-1])), np.concatenate((F[1:], [0])))
+    z = np.where(peak, z, 0.0)
     top = z.max()
     lag = int(np.flatnonzero(z >= 0.7*top)[0]) if top > 0 else 0 # the first lag standing out: its multiples do too
     chips = int(round(lag/Fs*chip_rate)) if chip_rate else None
