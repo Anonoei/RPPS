@@ -113,9 +113,7 @@ def test_big_linear_code_falls_back():
         Trellis.syndrome(np.zeros((17, 40), dtype=np.uint8))
 
 TERMINATED = {
-    "base": "conv", "type": "split",
-    "encode": {"type": "conv", "num": 1, "den": 2, "generator": [[1, 0, 1], [1, 1, 1]], "constraint": 3, "terminated": True},
-    "decode": {"type": "viterbi", "num": 1, "den": 2, "generator": [[1, 0, 1], [1, 1, 1]], "constraint": 3, "terminated": True},
+    "base": "conv", "generator": [[1, 0, 1], [1, 1, 1]], "constraint": 3, "termination": "zero",
 }
 
 @pytest.mark.parametrize("maxlog", [False, True])

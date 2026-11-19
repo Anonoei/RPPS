@@ -78,7 +78,7 @@ def test_soft_values_feed_a_decoder():
     """The product detector weights each symbol by its reliability: DQPSK into a K=7 Viterbi decoder at Eb/N0 7 dB decodes
     to about 1e-5 (dividing by the previous symbol gave 5e-3)"""
     rng = np.random.default_rng(5)
-    c, v = rp.symbol.load("dpsk/qpsk_axes"), rp.code.load("conv/k7_133_171/1_2")
+    c, v = rp.symbol.load("psk/qpsk_axes"), rp.code.load("conv/k7_133_171/1_2")
     m = rng.integers(0, 2, 40000).astype(bool)
     s = np.asarray((rp.Data(v.encoder.encode(m)) * c * Differential()).data)
     var = 10**(-7.0/10)

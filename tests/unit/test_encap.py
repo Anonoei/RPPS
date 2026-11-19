@@ -87,7 +87,7 @@ def test_crc_ble_against_spec_lfsr(rng):
         assert list(crc.encode(msg)[n:].astype(int)) == spec(msg)
 
 def test_crc_mode_s_frame():
-    crc = rp.link.load("crc/adsb").encoder
+    crc = rp.link.load("crc/crc24_mode_s").encoder
     frame = np.unpackbits(np.frombuffer(bytes.fromhex("8D4840D6202CC371C32CE0576098"), np.uint8)) # DF17, KLM1023
     assert crc.syndrome(frame) == 0
     crc.decode(frame)

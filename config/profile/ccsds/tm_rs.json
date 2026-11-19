@@ -2,6 +2,7 @@
   "base": "profile",
   "comment": "CCSDS telemetry, Reed-Solomon only: BPSK, each transfer frame of `depth` interleaved RS(255,223) codewords behind the 32-bit attached sync marker, the frame randomized (restarting at each marker). Timing and carrier from block estimators (the carrier by the 2nd power: the delimiter puts the 180 degree ambiguity right by the marker's sense). The RS code works in the conventional basis: a spacecraft's dual-basis symbols need the conversion before and after. Out come the 223 x depth bytes of each frame",
   "ref": "CCSDS 131.0-B-4 4, 8, 10",
+  "tags": ["ccsds"],
   "params": {
     "sps": {
       "default": 4,

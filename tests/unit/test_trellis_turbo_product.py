@@ -142,6 +142,6 @@ def test_dmr_bptc_corrects(rng):
     assert bptc.errors[0] == -1
 
 def test_dmr_crc_mask(rng):
-    crc = rp.link.load("crc/dmr_ccitt").encoder
+    crc = rp.link.load("crc/crc16_ccitt_false").encoder
     sent = crc.encode(bits(rng, 80), mask=0xA5A5) # CSBK
     assert crc.syndrome(sent) == 0xA5A5

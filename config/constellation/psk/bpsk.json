@@ -1,9 +1,8 @@
 {
   "base": "constellation",
-  "comment": "BPSK",
-  "points": [
-    {"mag": 1, "pha": 0},
-    {"mag": 1, "pha": 180}
+  "comment": "BPSK: +1 and -1",
+  "rings": [
+    {"n": 2, "pha": 0}
   ],
   "maps": [
     {

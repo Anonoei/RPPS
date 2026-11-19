@@ -2,6 +2,7 @@
   "base": "sequence",
   "type": "recurrence",
   "comment": "P25 phase 2 outbound scrambling (TIA-102.BBAC): 44-bit LFSR x^44 + x^40 + x^35 + x^29 + x^24 + x^10 + 1 seeded with WACN 2^24 + system ID 2^12 + colour code (all ones if that is 0), most significant bit sent first, restarted every superframe (12 slots of 360 bits; slot k uses bits 360k ..)",
+  "tags": ["p25-phase2"],
   "params": {
     "wacn": {
       "example": 781824

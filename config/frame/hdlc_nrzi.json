@@ -2,6 +2,7 @@
   "base": "frame",
   "type": "hdlc",
   "comment": "HDLC with NRZI (AX.25 / 1200 baud packet style)",
+  "tags": ["hdlc"],
   "flag": "0x7E",
   "stuff": 5,
   "nrzi": true,

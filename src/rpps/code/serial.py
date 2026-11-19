@@ -99,6 +99,18 @@ def locate(ref: str, path=None):
         raise FileNotFoundError(f"{ref}: no code definition (give <kind>/<name>, kind one of {KINDS}), see rp.code.ls()")
     return hits[0]
 
+def mother(generator, constraint=None):
+    """The configured mother code (fec/conv/<mother>.json) with these generators, as "k7_171_133", or None: what a found
+    punctured code extends"""
+    from .types.conv import generators_of
+    want = generators_of({"generator": generator, "constraint": constraint}).astype(int).tolist()
+    for root in _config.layers("fec"):
+        for f in sorted((root / "conv").glob("*.json")):
+            obj = _config.read_raw(f)
+            if "generator" in obj and generators_of(obj).astype(int).tolist() == want:
+                return f.stem
+    return None
+
 def find(ref: str, path=None) -> Path:
     """File of a definition (see `locate`)"""
     return locate(ref, path)[0]

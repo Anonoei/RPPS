@@ -2,6 +2,7 @@
   "base": "crc",
   "type": "crc",
   "comment": "CRC-16/CCITT-FALSE (e.g. DVB-S2 GSE? no: generic)",
+  "tags": ["p25", "dmr"],
   "width": 16,
   "poly": "0x1021",
   "init": "0xffff",

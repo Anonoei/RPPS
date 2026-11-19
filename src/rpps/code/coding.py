@@ -277,25 +277,16 @@ class Convolutional(Coding):
         """{"base": "conv", "constraint": K, "generator": [...], "puncture": [...], "decoder": "viterbi"}: one set of keys
         builds the encoder and its decoder. decoder: use this decoder type (viterbi, bcjr) instead of the definition's"""
         log = Logger().Child("Coding", _config.LOG_CODING).Child(name)
-        if "encode" not in obj:
-            if "generator" not in obj:
-                raise ConfigError(f"{name}: a convolutional code needs 'generator' (and 'constraint')")
-            keys = {k: v for k, v in obj.items() if k not in ("base", "type", "comment", "ref", "tags", "params", "decoder")}
-            keys.setdefault("num", 1)
-            keys.setdefault("den", len(obj["generator"]))
-            e = {**keys, "type": "conv"}
-            d = {**keys, "type": decoder or obj.get("decoder", "viterbi")}
-            return _impl(Convolutional, name)(_code_of(e).from_config(log, e), _code_of(d).from_config(log, d))
-        if obj.get("type") != "split":
-            raise ConfigError(f"{name}: a convolutional definition is type 'split' (encode + decode), not {obj.get('type')!r}")
-        e, d = dict(obj["encode"]), dict(obj["decode"])
-        if decoder is not None:
-            d["type"] = decoder
-        for side in (e, d): # puncture / termination / constraint are shared between both sides
-            side.setdefault("puncture", obj["encode"].get("puncture"))
-            for k in ("termination", "terminated", "constraint"):
-                if k in obj["encode"]:
-                    side.setdefault(k, obj["encode"][k])
+        if "encode" in obj or "decode" in obj:
+            raise ConfigError(f"{name}: a convolutional code is one set of keys (constraint, generator, puncture, decoder), "
+                              "not separate encode / decode blocks")
+        if "generator" not in obj:
+            raise ConfigError(f"{name}: a convolutional code needs 'generator' (and 'constraint')")
+        keys = {k: v for k, v in obj.items() if k not in ("base", "type", "comment", "ref", "tags", "params", "decoder")}
+        keys.setdefault("num", 1)
+        keys.setdefault("den", len(obj["generator"]))
+        e = {**keys, "type": "conv"}
+        d = {**keys, "type": decoder or obj.get("decoder", "viterbi")}
         return _impl(Convolutional, name)(_code_of(e).from_config(log, e), _code_of(d).from_config(log, d))
 
     def _block(self, enc):

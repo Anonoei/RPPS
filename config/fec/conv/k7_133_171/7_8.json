@@ -1,34 +1,11 @@
 {
   "base": "conv",
-  "type": "split",
+  "extends": "k7_133_171",
   "comment": "Intelsat IESS-308/309 rate 7/8: K=7 G0=133 G1=171 punctured G0: 1 1 1 1 0 1 0, G1: 1 0 0 0 1 0 1 (the DVB-S 7/8 code with its outputs in the other order)",
   "ref": "IESS-308/309, as Comblock COM-1009/1010 give them",
-  "encode": {
-    "type": "conv",
-    "num": 1,
-    "den": 2,
-    "constraint": 7,
-    "generator": [
-      [1, 0, 1, 1, 0, 1, 1],
-      [1, 1, 1, 1, 0, 0, 1]
-    ],
-    "puncture": [
-      [1, 1, 1, 1, 0, 1, 0],
-      [1, 0, 0, 0, 1, 0, 1]
-    ]
-  },
-  "decode": {
-    "type": "viterbi",
-    "num": 1,
-    "den": 2,
-    "constraint": 7,
-    "generator": [
-      [1, 0, 1, 1, 0, 1, 1],
-      [1, 1, 1, 1, 0, 0, 1]
-    ],
-    "puncture": [
-      [1, 1, 1, 1, 0, 1, 0],
-      [1, 0, 0, 0, 1, 0, 1]
-    ]
-  }
+  "tags": ["iess-308"],
+  "puncture": [
+    [1, 1, 1, 1, 0, 1, 0],
+    [1, 0, 0, 0, 1, 0, 1]
+  ]
 }

@@ -117,7 +117,7 @@ def _describe(spec, fec, c):
     """(kind, words) for one profile step spec, past the timing and carrier"""
     if "symbol" in spec:
         if spec["symbol"] == "constellation":
-            return "demap", f"{spec['name']} map {spec.get('mapping') or c.maps[0].comment} -> LLRs"
+            return "demap", f"{spec.get('name') or spec.get('shape')} map {spec.get('mapping') or c.maps[0].comment} -> LLRs"
         if spec["symbol"] == "differential":
             return "differential", "phase change from the symbol before"
         return spec["symbol"], json.dumps({k: v for k, v in spec.items() if k != "symbol"})

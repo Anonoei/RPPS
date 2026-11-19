@@ -185,7 +185,8 @@ def test_unknown_puncture_pattern_on_a_known_mother_code():
     s = q.modulate(bits[:len(bits)//2*2])*1j
     s = s + 0.15*(rng.standard_normal(len(s)) + 1j*rng.standard_normal(len(s)))
     v, guess = PU.best(*PU.search(F.bit_streams(s[:8000], q, differential=False)))
-    found = np.array(guess.definition["encode"]["puncture"], dtype=bool)
+    assert guess.definition["extends"] == rp.code.serial.mother(g, 7) == "k7_133_171" # a child of the mother code it found
+    found = np.array(guess.definition["puncture"], dtype=bool)
     assert any(np.array_equal(found, np.roll(np.array(pat, dtype=bool), sh, axis=1)) for sh in range(6)) # (up to a turn)
     assert v.params["mismatch"] < 0.01
     q2 = q.points[rng.integers(0, 4, 8000)] + 0.1*(rng.standard_normal(8000) + 1j*rng.standard_normal(8000))

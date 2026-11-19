@@ -1,13 +1,8 @@
 {
   "base": "block",
-  "type": "ldpc",
+  "extends": "dvbs2_64800",
   "comment": "DVB-S2 normal frame LDPC rate 5/6: parity address table B.9 of EN 302 307",
-  "n": 64800,
   "k": 54000,
-  "group": 360,
-  "systematic": "head",
-  "iters": 50,
-  "alpha": 0.8,
   "table": [
     [0, 4362, 416, 8909, 4156, 3216, 3112, 2560, 2912, 6405, 8593, 4969, 6723],
     [1, 2479, 1786, 8978, 3011, 4339, 9313, 6397, 2957, 7288, 5484, 6031, 10217],

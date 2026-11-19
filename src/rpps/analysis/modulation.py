@@ -51,8 +51,9 @@ def symmetry(points, tol=1e-3, max_order=16):
 def candidates(names=None):
     """Load candidate constellations from config/constellation: {name: unit-rms points}"""
     from .. import symbol  # Late: symbol imports after sync/analysis
-    if names is None:
-        names = [n for cat, stems in symbol.ls().items() if cat == "psk" for n in stems if not n.startswith("dvbs2_")] # The PSK family (differential alphabets are another folder); labelling variants are not separate modulations
+    if names is None: # The PSK family's own point sets: a child (a labelling or a rotation of a parent) is not another modulation
+        from .. import _config
+        names = [n for n in symbol.ls().get("psk", []) if "extends" not in _config.read_raw(_config.find("constellation", f"psk/{n}"))]
     out = {}
     for name in names:
         pts = np.asarray(symbol.load_or_generate(name).points, dtype=np.complex128)

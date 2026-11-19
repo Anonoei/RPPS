@@ -1,0 +1,15 @@
+{
+  "base": "conv",
+  "abstract": true,
+  "comment": "Mother code K=9, generators 557, 663, 711 octal, its rates are in k9_557_663_711/",
+  "ref": "3GPP TS 25.212 4.2.3.1, figure 3",
+  "tags": ["3gpp-umts"],
+  "constraint": 9,
+  "generator": [
+    [1, 0, 1, 1, 0, 1, 1, 1, 1],
+    [1, 1, 0, 1, 1, 0, 0, 1, 1],
+    [1, 1, 1, 0, 0, 1, 0, 0, 1]
+  ],
+  "termination": "zero",
+  "decoder": "viterbi"
+}

@@ -1,0 +1,12 @@
+{
+  "base": "block",
+  "abstract": true,
+  "type": "rs",
+  "comment": "P25 phase 2 Reed-Solomon codes over GF(64) (x^6 + x + 1)",
+  "ref": "TIA-102.BBAC",
+  "tags": ["p25-phase2", "p25"],
+  "m": 6,
+  "poly": 67,
+  "fcr": 1,
+  "prim": 1
+}

@@ -103,8 +103,9 @@ def best(hyps, trials):
     if v is None:
         return None, None
     p = v.params
-    enc = {"type": "conv", "num": 1, "den": 2, "constraint": p["K"], "generator": p["generator"], "puncture": p["puncture"]}
-    dec = {k: v2 for k, v2 in enc.items() if k != "puncture"}
-    dec["type"] = "viterbi"
-    return v, Guess("conv", {"base": "conv", "type": "split", "comment": f"found by rpps.analysis.puncture: {v.name}",
-                             "encode": enc, "decode": dec}, {"z": v.z, "offset": p["offset"], "mismatch": p["mismatch"]})
+    from ..code.serial import mother
+    m = mother(p["generator"], p["K"])
+    head = {"base": "conv", "extends": m} if m else {"base": "conv"}
+    body = {"puncture": p["puncture"]} if m else {"constraint": p["K"], "generator": p["generator"], "puncture": p["puncture"]}
+    return v, Guess("conv", {**head, "comment": f"found by rpps.analysis.puncture: {v.name}", **body},
+                    {"z": v.z, "offset": p["offset"], "mismatch": p["mismatch"]})

@@ -51,7 +51,8 @@ CONST = [n for cat, n in defs("constellation")] + ["16QAM", "64QAM", "16APSK", "
 
 @pytest.mark.parametrize("name", CONST)
 def test_symbol_contract(name):
-    c = rp.symbol.load_or_generate(name)
+    f = _config.find("constellation", name)
+    c = rp.symbol.load(name, **_config.examples(_config.read(f))) if f else rp.symbol.generate(name)
     syms = data_bits(c.bits_per_symbol*16) * c
     assert syms.REP == Rep.SYMBOLS and syms.CAT == Category.SYMBOL
     llr = rp.Data(syms.data, sps=1) / c

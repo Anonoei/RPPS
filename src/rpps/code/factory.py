@@ -18,7 +18,7 @@ def Hamming(n=7, k=4, decoder=None):
         raise ValueError(f"Hamming({n}, {k}) isn't a Hamming code or a shortened one: need n <= 2**(n-k) - 1")
     cols = [v for v in range(1, 2**r) if bin(v).count("1") >= 2][:k] # Parity checks of the data bits: not a unit vector
     p = [[(v >> (r - 1 - b)) & 1 for b in range(r)] for v in cols]
-    return _make(f"hamming{n}_{k}", {"type": "linear", "code": [n, k], "p": p}, decoder)
+    return _make(f"hamming{n}_{k}", {"type": "linear", "n": n, "k": k, "p": p}, decoder)
 
 def Repetition(count=3, decoder=None):
     """Each bit sent `count` times, decoded by majority (or by summing LLRs)"""
@@ -68,10 +68,8 @@ def Conv(generators, constraint=None, puncture=None, terminated=False, decoder="
         generators = [[(g >> (constraint - 1 - i)) & 1 for i in range(constraint)] for g in generators]
     generators = [list(map(int, g)) for g in generators]
     constraint = len(generators[0])
-    side = {"num": 1, "den": len(generators), "constraint": constraint, "generator": generators,
-            "termination": termination or ("zero" if terminated else "truncated")}
-    enc = {"type": "conv", **side}
+    obj = {"base": "conv", "constraint": constraint, "generator": generators,
+           "termination": termination or ("zero" if terminated else "truncated"), "decoder": decoder}
     if puncture is not None:
-        enc["puncture"] = [list(map(int, row)) for row in puncture]
-    return serial.init(f"conv{len(generators)}_{constraint}", {"base": "conv", "type": "split",
-                       "encode": enc, "decode": {"type": decoder, **side}})
+        obj["puncture"] = [list(map(int, row)) for row in puncture]
+    return serial.init(f"conv{len(generators)}_{constraint}", obj)

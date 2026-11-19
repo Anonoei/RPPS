@@ -93,10 +93,6 @@
       "comment": "APCO Project 25 phase 2 TDMA",
       "ref": "TIA-102.BBAC"
     },
-    "tetra": {
-      "comment": "TETRA",
-      "ref": "ETSI EN 300 392-2"
-    },
     "v.35": {
       "comment": "ITU-T V.35 / V.38 scrambler family",
       "ref": "ITU-T V.35"

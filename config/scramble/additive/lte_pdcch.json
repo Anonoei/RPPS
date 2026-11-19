@@ -2,6 +2,7 @@
   "base": "scramble",
   "type": "additive",
   "comment": "LTE PDCCH scrambling (36.211 6.8.2): c_init = floor(ns/2) 2^9 + N_ID^cell",
+  "tags": ["lte"],
   "params": {
     "pci": {
       "comment": "physical cell id",

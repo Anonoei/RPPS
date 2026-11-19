@@ -3,6 +3,7 @@
   "type": "rs",
   "comment": "CCSDS Reed-Solomon (255,223), E=16: field polynomial x^8+x^7+x^2+x+1 (0x187), generator roots alpha^(11 j) for j = 112..143. CCSDS sends the symbols in the dual (Berlekamp) basis; this code works in the conventional basis, so on-air data needs the basis conversion before and after it",
   "ref": "CCSDS 131.0-B-4 4.2, 4.3",
+  "tags": ["ccsds"],
   "n": 255,
   "k": 223,
   "m": 8,

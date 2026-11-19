@@ -1,14 +1,9 @@
 {
   "base": "block",
-  "type": "ldpc",
+  "extends": "dvbs2_16200",
   "comment": "DVB-S2 short frame LDPC rate 2/3 (kldpc=10800): parity address table C.6 of EN 302 307",
   "ref": "EN 302 307-1 V1.2.1 annex C, tables 5b, 7b",
-  "n": 16200,
   "k": 10800,
-  "group": 360,
-  "systematic": "head",
-  "iters": 50,
-  "alpha": 0.8,
   "table": [
     [0, 2084, 1613, 1548, 1286, 1460, 3196, 4297, 2481, 3369, 3451, 4620, 2622],
     [1, 122, 1516, 3448, 2880, 1407, 1847, 3799, 3529, 373, 971, 4358, 3108],

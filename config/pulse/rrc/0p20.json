@@ -3,6 +3,7 @@
   "type": "rrc",
   "comment": "Root-raised-cosine, roll-off 0.20 (DVB-S2)",
   "ref": "EN 302 307",
+  "tags": ["dvb-s2"],
   "kind": "symbol",
   "beta": 0.2
 }
