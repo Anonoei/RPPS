@@ -6,7 +6,7 @@ the resource and its `type` the implementation; the keys each accepts are in the
 
 | Resource | Holds | Example | Load | Keys |
 |---|---|---|---|---|
-| `constellation` | point sets and their bit maps | `psk/qpsk` | `rp.symbol.load("QPSK")` | [symbol/constellation.py](../src/rpps/symbol/constellation.py) |
+| `constellation` | point sets (or PSK/APSK rings) and their bit maps; shapes by name (16QAM) come from `rp.symbol.generate` | `psk/qpsk` | `rp.symbol.load("psk/qpsk")` | [symbol/constellation.py](../src/rpps/symbol/constellation.py) |
 | `pulse` | symbol and frequency pulses (`"kind"`): `rrc`, `rc`, `halfsine`, `gaussian`, `rect/symbol`, `rect/frequency` | `rrc/0p35` | `rp.signal.filters.load("pulse/rrc/0p35")` | [signal/filters/serial.py](../src/rpps/signal/filters/serial.py) |
 | `filter` | FIR, IIR, windows | `fir/windowed/lowpass_0p1_60db` | `rp.signal.filters.load("fir/windowed/lowpass_0p1_60db")` | [signal/filters/serial.py](../src/rpps/signal/filters/serial.py) |
 | `sequence` | bit sequences (recurrences, Gold), chip codes (Barker, PN sets, GPS C/A) and fixed words (sync markers, access addresses: `word/ccsds_asm`) | `recurrence/lte_gold` | `rp.sequence.load("lte_gold", c_init=77)` | [sequence/\_\_init\_\_.py](../src/rpps/sequence/__init__.py) |
@@ -32,15 +32,52 @@ A definition is referenced by its path below the category, without `.json`, case
 - Definitions that use others (profiles above all) write the path, so the reader sees what each is: `"additive/dvb_energy"`
   (a sequence XOR'd in: it must start on a frame boundary), `"feedthrough/ieee80211b"` (self-synchronizing: each channel
   error comes out once per tap), `"rs/204_188"`. Bare names are for typing at a prompt: `rp.code.scram.load("v35")`.
-- `"aliases": [...]` gives a file the other names it goes by: the system and parameters it is known for (`"dvbs.3_4_7"`,
-  `"iess308.1_2_7"`: system.rate_constraint), or a standard's own name (`"adsb"`, `"gcrc24a"`). They resolve like the file's
-  name. A dotted name resolves only as a declared alias: `rs.204_188` is not read as `rs/204_188`.
+- Other names are not kept: what used to be an alias (`dvbs.3_4_7`, `adsb`) is a tag now, see below.
+
+## Parents and children
+A definition can be another one with a few keys changed: `"extends"` names it, in the same resource (looked up below the
+child's own category first, so `"extends": "rs/p25"` in fec/block works). The child holds only what differs:
+```json
+{"base": "constellation", "extends": "apsk/dvbs2_16apsk", "comment": "DVB-S2 16APSK for code rate 3/4: gamma = 2.85",
+ "params": {"gamma": 2.85}}
+```
+- Dicts merge key by key, lists and values replace, `null` deletes a key the parent has.
+- `comment` and `ref` are each file's own; `tags` add to the parent's; `params` merge by name, and a bare value pins the
+  parent's default (`"params": {"code": "k7_171_133/3_4"}`).
+- `"abstract": true` marks a parent that is not a definition on its own (a family's shared fields: the mother codes
+  `conv/k7_171_133`..., `ldpc/dvbs2_64800`, `bch/dvbs2_normal`, `rs/p25`). `ls` hides it (`python -m rpps ls --all` shows it) and loading it is an error.
+- Chains are fine; a loop, or a parent in another resource, is an error.
+- `python -m rpps show <resource>/<ref>` prints a definition with its parents applied.
+
+**Param or child?** A choice made when loading (samples per symbol, a cell id, which punctured rate a DVB-S receiver
+runs) is a param. A variant a standard or a table names (16APSK for rate 3/4, the code of MODCOD 7) is a child, so the
+name keeps working. A child that overrides most of its parent is probably not one.
+
+Families written this way: `constellation/psk` (QPSK, 8PSK as rings; the DVB-S2 labellings and `qpsk_axes` are children),
+`constellation/apsk` (16/32APSK with the radii as params, one child per code rate), `fec/conv/<mother>.json` (the
+generators; every rate in `<mother>/`, the unpunctured 1/n too, is a child adding its `puncture`), `fec/block/ldpc`, `bch`, `rs/p25*`,
+`interleave/block/dvbs2_8psk_210`, `profile/dvbs/qpsk` (the rate a `code` param, a child per rate).
+
+## Tags
+`"tags": ["dvb-s2"]` says which standards or systems use a definition. The folders say what a thing is; tags say who uses
+it; `ref` cites the clause. Tags come from [tags.json](tags.json) (a tag not listed there fails the tests), and children
+inherit their parent's.
+```
+python -m rpps ls --tags              # every tag and how many definitions carry it
+python -m rpps ls --tag dvb-s2        # constellations, codes, interleavers, header, table and profile of DVB-S2
+rp.tagged("ccsds")                    # {resource: [refs]}
+```
+
+## Differential modulation
+There is no DPSK definition: a differential step chains with a plain constellation, whose points are then the phase
+changes. pi/4-DQPSK is `psk/qpsk` after `{"symbol": "differential"}`; 802.11b DQPSK is `psk/qpsk_axes`; DBPSK is
+`psk/bpsk`. Bit-level differential coding (NRZ-M, NRZ-I) is `{"code": "line"}`.
 
 ## File header
-Every file starts with `base` (the category, picks the loader), `type` (the implementation, where there are several), `comment`, and optionally `ref` (the spec) and `aliases`. `python -m rpps fmt` puts files in the canonical style (`--check` only lists differences).
+Every file starts with `base` (the category, picks the loader), then `extends` and `abstract` where it has them, `type` (the implementation, where there are several), `comment`, and optionally `ref` (the spec) and `tags`. `python -m rpps fmt` puts files in the canonical style (`--check` only lists differences).
 
 ## Adding
-- **A definition**: drop a JSON in the right folder.
+- **A definition**: drop a JSON in the right folder. A variant of one that exists: a child that `extends` it. A tag it needs: add it to [tags.json](tags.json).
 - **Your own**: keep a folder laid out like this one and call `rp.add_config_path(dir)` or set `$RPPS_CONFIG`. It is searched first, so it can also override shipped definitions.
 - **A category**: add the folder and `_config.register_domain("<domain>").register("<category>", loader)`, where `loader(name, obj)` builds the object.
 - **A resource**: `_config.register_domain("<name>", {"<base>": loader})`; `_config.ls / find / load` then work on it. [link/serial.py](../src/rpps/link/serial.py) is the smallest example.
@@ -61,10 +98,10 @@ Without `name` they return the dict. Arrays in memory go through `fir_def`, `sos
 | `fec` LDPC `.alist` | `import_alist` |
 | `digital.crc`, reveng entries | `crc`: reveng's fields; `check` is verified on load |
 | `additive_scrambler`, CCSDS, DVB | `sequence/recurrence` (the register as a recurrence: `taps`, `init`) and `scramble/additive` naming it (`frame` = restart structure, `period`) |
-| `scrambler_bb`, G3RUH, V.35 | `scramble/feedthrough` (`register`, `poly` = feedback taps, `seed`) |
-| `cc_encoder_def(polys, k, rate)` | `rp.code.Conv(...)` or `conv/k<K>_<g1>_<g2>/<rate>`; generators are bit lists (`0o171` is `[1,1,1,1,0,0,1]`) |
+| `scrambler_bb`, G3RUH, V.35 | `scramble/feedthrough` (`register`: fibonacci, galois_left or galois_right; `poly` = the polynomial's exponents, 1 + x^14 + x^17 is [14, 17], as the standards write it; `seed`). A recurrence's `taps` are positions in its window instead, from 0 |
+| `cc_encoder_def(polys, k, rate)` | `rp.code.Conv(...)`, or the mother code `conv/k<K>_<g1>_<g2>` and its punctured rates `conv/k<K>_<g1>_<g2>/<rate>`; generators are bit lists (`0o171` is `[1,1,1,1,0,0,1]`), the first bit multiplying the current input |
 | `firdes.low_pass(gain, Fs, cutoff, transition, window)` | `fir` `windowed`: `cutoff`, `transition`, `atten_db`, `units: "hz"`, `gain` |
-| `firdes.root_raised_cosine` | `shaping/rrc/<alpha>` |
+| `firdes.root_raised_cosine` | `pulse/rrc/<alpha>` |
 | `fir_filter_ccf` | `fir` `taps` (complex: `taps_imag`) |
 | `iir_filter_ffd(fftaps, fbtaps)` | `ba_def(fftaps, fbtaps, convention="gnuradio")`. Default `oldstyle=True` adds the feedback terms, so `a = [1, -fbtaps[1:]]`; `oldstyle=False` is scipy's |
 | `single_pole_iir_filter_ff` | `iir` `single_pole` |
