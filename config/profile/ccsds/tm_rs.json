@@ -59,8 +59,7 @@
       }
     },
     {
-      "code": "fec",
-      "type": "interleave",
+      "code": "interleave",
       "name": "block/ccsds_rs",
       "args": {
         "depth": {
@@ -69,8 +68,7 @@
       }
     },
     {
-      "code": "fec",
-      "type": "block",
+      "code": "block",
       "name": "rs/ccsds_255_223"
     }
   ]

@@ -36,13 +36,12 @@
     },
     {
       "sync": "puncture",
-      "fec": {
+      "conv": {
         "param": "code"
       }
     },
     {
-      "code": "fec",
-      "type": "conv",
+      "code": "conv",
       "name": {
         "param": "code"
       }
@@ -54,13 +53,11 @@
       "name": "packets"
     },
     {
-      "code": "fec",
-      "type": "interleave",
+      "code": "interleave",
       "name": "forney/12_17"
     },
     {
-      "code": "fec",
-      "type": "block",
+      "code": "block",
       "name": "rs/204_188"
     },
     {

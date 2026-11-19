@@ -114,7 +114,7 @@ def test_errors():
     with pytest.raises(ConfigError):
         rp.profile.load("ieee80211b/1m", sync={"timing": {"method": "telepathy"}})
     with pytest.raises(ConfigError):
-        rp.profile.Profile("bad", {"steps": [{"symbol": "constellation", "code": "fec"}]})
+        rp.profile.Profile("bad", {"steps": [{"symbol": "constellation", "code": "conv"}]})
     with pytest.raises(ConfigError):
         rp.profile.Profile("bad", {"steps": [{"wave": "warp"}]})
     with pytest.raises(ConfigError):

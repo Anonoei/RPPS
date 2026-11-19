@@ -73,21 +73,18 @@
       "name": "dvbs2_qpsk"
     },
     {
-      "code": "fec",
+      "code": "interleave",
       "id": "bitil",
-      "type": "interleave",
       "name": null
     },
     {
-      "code": "fec",
+      "code": "block",
       "id": "ldpc",
-      "type": "block",
       "name": "ldpc/dvbs2_64800_1_2"
     },
     {
-      "code": "fec",
+      "code": "block",
       "id": "bch",
-      "type": "block",
       "name": "bch/dvbs2_1_2"
     },
     {

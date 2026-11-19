@@ -124,15 +124,14 @@ def _describe(spec, fec, c):
     if "sync" in spec:
         kind = spec["sync"]
         if kind == "puncture":
-            return "puncture", f"align on {spec['fec']}'s puncture period (found at bit {fec.offset} of {fec.period})"
+            return "puncture", f"align on {spec['conv']}'s puncture period (found at bit {fec.offset} of {fec.period})"
         if kind == "align":
             pat = " ".join(f"{v:02X}" if isinstance(v, int) else str(v) for v in spec.get("pattern", spec.get("markers", [])))
             return "align", f"{spec.get('name', 'align')}: every {spec['period']} bytes starts with {pat}, polarity resolved"
         return kind, json.dumps({k: v for k, v in spec.items() if k != "sync"})
     if "code" in spec:
-        if spec["code"] == "fec":
-            kinds = {"conv": "fec", "block": "fec", "interleave": "deinterleave"}
-            return kinds.get(spec["type"], spec["type"]), f"{spec['type']} {spec['name']}"
+        if spec["code"] in ("conv", "block", "interleave"):
+            return {"interleave": "deinterleave"}.get(spec["code"], "fec"), f"{spec['code']} {spec['name']}"
         if spec["code"] == "scramble":
             return "descramble", spec["name"]
         return spec["code"], json.dumps({k: v for k, v in spec.items() if k != "code"})
@@ -154,7 +153,7 @@ def _code_steps(p, fec, c):
             continue
         kind, what = _describe(spec, fec, c)
         detail = {}
-        if spec.get("code") == "fec" and spec.get("type") == "conv" and fec.mismatch is not None:
+        if spec.get("code") == "conv" and fec.mismatch is not None:
             detail = {"mismatch": fec.mismatch, "baseline": fec.baseline, "z": fec.z}
             what += f"  (re-encodes with {fec.mismatch*100:.2f}% mismatch, a wrong code {fec.baseline*100:.1f}%)"
         p.add(kind, what, detail=detail)

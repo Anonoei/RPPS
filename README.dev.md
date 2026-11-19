@@ -323,6 +323,10 @@ rp.profile.load("ieee80211b/1m")             -> p.rx(), p.tx(): runners, `out = 
 Profiles take parameters like any definition (`params`, `{"param": ...}`, `{"expr": ...}`): a modulation and coding
 choice, a satellite PRN, a cell ID. Each step references resources by name (see [Config resources](#config-resources)),
 so a profile adds no new operator code. `defaults` holds method choices and loop parameters for sync steps that need them.
+A step that loads a definition names its kind and its reference, the way the loaders take them: `{"code": "conv",
+"name": "k7_171_133/3_4"}`, `{"code": "block", "name": "rs/204_188"}`, `{"code": "interleave", "name": "forney/12_17"}`,
+`{"sync": "puncture", "conv": "k7_171_133/3_4"}`, `{"signal": "filter", "name": "fir/windowed/lowpass_0p1_60db"}`,
+`{"symbol": "constellation", "name": "psk/qpsk"}` (or `"shape": "16QAM"`). `python -m rpps steps` lists them all.
 
 #### Example: IEEE 802.15.4, 2.4 GHz
 
