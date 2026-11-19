@@ -12,7 +12,9 @@ windows w (Burel's fluctuation method) peaks at multiples of the period, while n
 
 With the chip rate (rpps.analysis.cyclic: chips are symbols to it) the signal is taken at one sample a chip; cut into
 windows of the period, the windows are +-code (a symbol each) plus noise when they start at a symbol boundary: their
-covariance's leading eigenvector is the code (Bouder & Burel). Not aligned, it splits into two eigenvectors, each the code
+covariance's leading eigenvector is the code (Bouder & Burel). Detection goes further under the noise than recovery: the
+period's fluctuation peak gains with the record, the chip rate needs the |x|^2 line (searched for in a narrow window once
+the period is known, still a few dB short: a 127-chip code over 600k samples is detected at -13 dB, recovered at -11). Not aligned, it splits into two eigenvectors, each the code
 over part of the window and zero elsewhere: the leading one's support gives the misalignment, and windows from there give
 the code.
 """
@@ -21,9 +23,10 @@ import numpy as np
 from . import cyclic
 
 class Period:
-    """Result of `period`: lag (samples), seconds, chips (when chip_rate is given), contrast (the peak over the
+    """Result of `period`: lag (samples), fine (the lag between samples, from the peak's shape), seconds, chips (when
+    chip_rate is given), contrast (the peak over the
     fluctuations' median at other lags: noise alone stays near 1 + a few sigma), significant"""
-    __slots__ = ("lag", "seconds", "chips", "contrast", "significant", "fluct", "z")
+    __slots__ = ("lag", "fine", "seconds", "chips", "contrast", "significant", "fluct", "z")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
@@ -60,9 +63,10 @@ def period(x, Fs, max_period=None, window=None, chip_rate=None, min_lag=None, z_
     x = np.asarray(x, dtype=np.complex128)
     max_period = int(max_period or len(x)//64)
     window = int(window or 2*max_period)
-    if min_lag is None: # the pulse's own correlation lasts a few times Fs / bandwidth
+    if min_lag is None: # the pulse's own correlation lasts a few times Fs / bandwidth (under the noise: unknown, 8)
         _, bw, _ = cyclic.occupied(x, Fs)
-        min_lag = int(max(8, 4*Fs/max(bw, Fs/len(x))))
+        min_lag = int(max(8, 4*Fs/bw)) if bw > Fs/64 else 8
+        min_lag = min(min_lag, max_period//4)
     F = fluctuations(x, max_period, window)
     nw = (len(x) - max_period)//window
     base = np.median(F[min_lag:])
@@ -72,7 +76,13 @@ def period(x, Fs, max_period=None, window=None, chip_rate=None, min_lag=None, z_
     top = z.max()
     lag = int(np.flatnonzero(z >= 0.7*top)[0]) if top > 0 else 0 # the first lag standing out: its multiples do too
     chips = int(round(lag/Fs*chip_rate)) if chip_rate else None
-    return Period(lag=lag, seconds=lag/Fs, chips=chips, contrast=float(G[lag]), significant=bool(z[lag] > z_min), z=float(z[lag]),
+    if 0 < lag < len(F) - 1: # the peak between samples: a parabola through it and its neighbours
+        a, b, c = F[lag - 1], F[lag], F[lag + 1]
+        den = a - 2*b + c
+        frac = float(lag + 0.5*(a - c)/den) if abs(den) > 1e-300 else float(lag)
+    else:
+        frac = float(lag)
+    return Period(lag=lag, fine=frac, seconds=lag/Fs, chips=chips, contrast=float(G[lag]), significant=bool(z[lag] > z_min), z=float(z[lag]),
                   fluct=F)
 
 class Code:
@@ -131,11 +141,11 @@ def despread(chips_rx, code_):
     n = len(chips_rx)//P
     return (np.asarray(chips_rx)[:n*P].reshape(n, P) @ np.asarray(code_, dtype=float))/P
 
-def chip_rate(x, Fs, lag, min_sps=2.0, pfa=1e-3, fluct=None):
+def chip_rate(x, Fs, lag, min_sps=2.0, pfa=1e-3, fluct=None, fine=None):
     """The chip rate given the code period (lag, samples, maybe a sample off): |x|^2 of a code repeating every period has
     lines at multiples of 1/period; the chip rate is the strongest significant one (the pulse's line) near such a
     multiple, at most Fs / min_sps; without one (far under the noise), from the width of the fluctuation peak (`fluct`,
-    Period.fluct): a chip. Returns (chip rate Hz, chips a period, the period refined: chips / chip rate, s)"""
+    Period.fluct, and `fine`, Period.fine, for the narrow search): a chip. Returns (chip rate Hz, chips a period, the period refined: chips / chip rate, s)"""
     x = np.asarray(x, dtype=np.complex128)
     ls = [l for l in cyclic.lines(np.abs(x)**2, Fs, 2*Fs/lag, Fs/min_sps, pfa, top=16) if l.significant]
     best = None
@@ -168,9 +178,36 @@ def chip_rate(x, Fs, lag, min_sps=2.0, pfa=1e-3, fluct=None):
         bins = np.round(ks*Fs/lag/(Fs/N)).astype(int)
         ok = bins < len(S) - 3
         ks, bins = ks[ok], bins[ok]
-        win = int(np.ceil(1.2*ks.max()*Fs/lag**2/(Fs/N))) + 1 # a sample of lag error moves harmonic k by k Fs/lag^2
+        # a lag error e moves harmonic k by k Fs e / lag^2: e a sample for an integer lag, a quarter for a fine one
+        err = 0.25 if fine else 1.2
+        lag = fine or lag
+        bins = np.round(ks*Fs/lag/(Fs/N)).astype(int)
+        win = int(np.ceil(err*ks.max()*Fs/lag**2/(Fs/N))) + 1
         pw = np.array([S[max(b_ - win, 0):b_ + win + 1].max() for b_ in bins])
-        k = int(ks[int(np.argmax(pw))])
-        return k*Fs/lag, k, lag/Fs
+        # ... and of the strongest few, the one whose code comes out clearest (the leading eigenvalue's lead): at the
+        # wrong chip rate the windows hold no fixed code
+        # The period is known to a sample, so harmonic k only to k Fs/lag^2: a rate that far off slips the chips by
+        # hundreds over the record and no window holds the code. Its line, searched for in that small window only, is
+        # found far under the threshold a whole-band search needs: the rate to a fraction of a bin
+        f_ = np.fft.rfftfreq(N, 1/Fs)
+        best = None
+        for k in ks[np.argsort(-pw)[:5]]:
+            b0 = int(round(k*Fs/lag/(Fs/N)))
+            lo_, hi_ = max(b0 - win, 1), min(b0 + win + 1, len(S) - 1)
+            j = lo_ + int(np.argmax(S[lo_:hi_]))
+            a, b, c = np.log(S[j - 1:j + 2] + 1e-300)
+            d = 0.5*(a - c)/(a - 2*b + c) if abs(a - 2*b + c) > 1e-12 else 0.0
+            R = (j + d)*Fs/N
+            try:
+                g = code(x, Fs, R, int(k)).gain
+            except ValueError:
+                continue
+            if best is None or g > best[0]:
+                best = (g, R, int(k))
+        if best is None:
+            k = int(ks[int(np.argmax(pw))])
+            return k*Fs/lag, k, lag/Fs
+        _, R, k = best
+        return float(R), k, k/R
     R, k = best
     return float(R), int(k), k/R
