@@ -107,7 +107,7 @@ py::tuple cpm_psp(carray<std::complex<double>> r, carray<double> Q, carray<int8_
 }
 
 
-// rpps.analysis.ldpc._eliminate: reduced row echelon form over GF(2) of packed rows A (R, words) in place, pivots in
+// rpps.math.gf2.eliminate_packed: reduced row echelon form over GF(2) of packed rows A (R, words) in place, pivots in
 // the first ncols columns (column i at word i/64, bit 63 - i%64). Method of the Four Russians: up to 32 pivots are
 // found (each candidate's bit read as the block's pivots would leave it), the pivot rows reduced among themselves,
 // and in a single pass (threaded) every other row takes, per group of 8 pivots, one of the 256 combinations of that

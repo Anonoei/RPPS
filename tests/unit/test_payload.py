@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from rpps.analysis import payload as P
+from rpps.math import gf2
 
 def rbits(rng, n):
     return rng.integers(0, 2, n).astype(np.uint8)
@@ -122,4 +123,4 @@ def test_verdicts():
     v = P.verdict(k)
     assert v.kind == "scrambled" and v.lc < 0.1
     assert P.verdict((rng.random(100000) < 0.3).astype(np.uint8)).kind == "structured"
-    assert P.berlekamp_massey(k[:200]) == 15
+    assert gf2.berlekamp_massey(k[:200])[1] == 15

@@ -49,7 +49,8 @@ def IQ(ax, samps):
 
 def IQ3d(ax, samps):
     if ax is None:
-        fig = plt.figure()
+        from ..base import figure
+        fig = figure()
         ax = fig.add_subplot(projection="3d")
 
     amp_max = np.max((-np.min(samps.real), np.max(samps.real), -np.min(samps.imag), np.max(samps.imag)))

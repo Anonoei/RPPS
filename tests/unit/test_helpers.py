@@ -6,7 +6,6 @@ import pytest
 
 import rpps as rp
 from rpps.code import blocker
-from rpps.utils.inth import binary
 
 
 def test_agc_lin_is_linear_agc():
@@ -23,15 +22,15 @@ def test_bits_base2_base10_round_trip():
 def test_hamming_dist():
     assert blocker.hamming_dist(np.array([1, 0, 1, 1]), np.array([0, 0, 1, 0])) == 2
 
-def test_linear_p_inverts_linear():
+def test_parity_block_round_trip():
     P = np.array([[1, 1, 0], [0, 1, 1], [1, 1, 1], [1, 0, 1]])
-    G, H = rp.code.matrix.linear(7, 4, P)
-    assert (rp.code.matrix.linear_p(7, 4, G=G) == P).all()
-    assert (rp.code.matrix.linear_p(7, 4, H=H) == P.T).all()
+    G, H = rp.math.gf2.parity_to_gh(7, 4, P)
+    assert (rp.math.gf2.gh_to_parity(7, 4, G=G) == P).all()
+    assert (rp.math.gf2.gh_to_parity(7, 4, H=H) == P).all()
 
 def test_entropy():
-    assert binary.entropy(np.array([0, 1, 1, 0])) == pytest.approx(1.0)
-    assert binary.entropy(np.zeros(10, dtype=int)) == 0.0
+    assert rp.math.bits.entropy(np.array([0, 1, 1, 0])) == pytest.approx(1.0)
+    assert rp.math.bits.entropy(np.zeros(10, dtype=int)) == 0.0
 
 def test_sos2zpk_round_trip():
     sos = rp.signal.filters.iir.design("butter", 4, "lowpass", 0.2)

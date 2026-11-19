@@ -18,7 +18,6 @@ class Signal:
     baud_est / baud_strength: symbol rate from the |x|^2 line of the channelized signal (None: no clear line)
     holds: how many other signals lie inside it (a band that holds some is a raised floor, a transponder's, not a signal)
     Fs, cf, bin_hz: the capture's rates and the spectrum's resolution
-    baud: an alias of width (older callers)
     """
     def __init__(self, mid, width, bottom, height, snr=None, *, lo=None, hi=None, power=None, peak_freq=None,
                  duty=None, resolved=True, Fs=None, cf=0.0, bin_hz=None, clipped=False):
@@ -42,10 +41,6 @@ class Signal:
     @property
     def freq(self):
         return self.cf + self.mid
-
-    @property
-    def baud(self):
-        return self.width
 
     def channel(self, oversample=4.0, guard=1.3, atten_db=50.0):
         """The filters that bring this signal to baseband at about `oversample` times its width

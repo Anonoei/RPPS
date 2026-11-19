@@ -237,10 +237,11 @@ def _feedthrough(d, taps):
     return y
 
 def test_berlekamp_massey_finds_the_register():
-    from rpps.analysis import scrambler as SC
+    from rpps.math import gf2
     rng = np.random.default_rng(0)
-    assert SC.berlekamp_massey(_lfsr((23, 18), 400, rng)) == (23, (23, 18))
-    L, _ = SC.berlekamp_massey(rng.integers(0, 2, 400).astype(np.uint8))
+    C, L = gf2.berlekamp_massey(_lfsr((23, 18), 400, rng))
+    assert (L, gf2.lfsr_taps(C, L)) == (23, (23, 18))
+    _, L = gf2.berlekamp_massey(rng.integers(0, 2, 400).astype(np.uint8))
     assert 190 <= L <= 210 # Random bits: about half their length
 
 def test_a_prbs_and_an_additive_scrambler_over_idle_data():

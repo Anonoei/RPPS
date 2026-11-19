@@ -24,6 +24,8 @@ import zlib
 
 import numpy as np
 
+from ..math.gf2 import berlekamp_massey
+
 class Found:
     """A signature found: name, period (bits, or None), offset (first bit), hits, expected (by chance), z, detail"""
     __slots__ = ("name", "period", "offset", "hits", "expected", "z", "detail")
@@ -265,24 +267,6 @@ def signatures(bits, z_min=8.0, tests=TESTS, max_bits=2_000_000):
     out = [f for t in tests if (f := t(bits, z_min=z_min)) is not None]
     return sorted(out, key=lambda f: -f.z)
 
-def berlekamp_massey(bits):
-    """Linear complexity of a bit sequence (the shortest LFSR that makes it)"""
-    s = np.asarray(bits, dtype=np.uint8)
-    n = len(s)
-    c = np.zeros(n + 1, np.uint8)
-    b = np.zeros(n + 1, np.uint8)
-    c[0] = b[0] = 1
-    L, m = 0, -1
-    for i in range(n):
-        d = s[i] ^ (np.bitwise_xor.reduce(c[1:L + 1] & s[i - L:i][::-1]) if L else 0)
-        if d:
-            t = c.copy()
-            shift = i - m
-            c[shift:] ^= b[:n + 1 - shift]
-            if L <= i//2:
-                L, m, b = i + 1 - L, i, t
-    return L
-
 class Verdict:
     """Result of `verdict`: kind ("structured", "scrambled", "random-looking"), why, signatures, bias (|mean - 1/2|*2),
     byte_chi (z of the byte distribution, the worst of 8 offsets), lc (linear complexity over windows / their length),
@@ -322,7 +306,7 @@ def verdict(bits, window=512, z_min=8.0, frame=None, max_bits=2_000_000):
         c = np.bincount(B, minlength=256)
         e = len(B)/256
         chi = max(chi, (float(((c - e)**2).sum()/e) - 255)/np.sqrt(510))
-    lcs = [berlekamp_massey(b[a:a + window])/window for a in range(0, len(b) - window + 1, window)][:16]
+    lcs = [berlekamp_massey(b[a:a + window])[1]/window for a in range(0, len(b) - window + 1, window)][:16]
     lc = float(np.median(lcs)) if lcs else 0.5
     raw = np.packbits(b[:len(b)//8*8]).tobytes()
     comp = len(zlib.compress(raw, 9))/max(len(raw), 1)

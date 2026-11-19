@@ -20,7 +20,7 @@ from collections import Counter
 
 import numpy as np
 
-from ..math.gf2 import rank, nullspace, pmod
+from ..math.gf2 import rank, nullspace, pmod, pgcd, porder, berlekamp_massey, lfsr_taps
 from ..math.prob import z_critical
 from .fec import Hypothesis, Guess, recover_dual
 
@@ -85,25 +85,6 @@ def _longer(b, n, off, max_len, extra):
 
 # --- Polynomials over GF(2) as Python ints (bit i: the coefficient of x^i) -----------------------------------------------
 
-def pgcd(a, b):
-    while b:
-        a, b = b, pmod(a, b)
-    return a
-
-def order(g, limit=1 << 17):
-    """Smallest N with x^N = 1 mod g (the full length of the cyclic code g generates), or None"""
-    d = g.bit_length() - 1
-    if d < 1 or not g & 1:
-        return None
-    x = 1
-    for i in range(1, limit + 1):
-        x <<= 1
-        if (x >> d) & 1:
-            x ^= g
-        if x == 1:
-            return i
-    return None
-
 def to_poly(row):
     """Bits, first the highest power, as a polynomial int"""
     row = np.asarray(row, dtype=np.uint8)
@@ -128,13 +109,13 @@ def cyclic_generator(words, r):
 def primitive_polys(m):
     """Primitive polynomials of degree m (x is a generator of GF(2^m))"""
     N = (1 << m) - 1
-    return [p for p in range((1 << m) + 1, 1 << (m + 1), 2) if order(p, N) == N]
+    return [p for p in range((1 << m) + 1, 1 << (m + 1), 2) if porder(p, N) == N]
 
 def bch_of(g, n_sent):
     """The narrow-sense BCH definition with generator g, if it is one: {"type": "bch", ...} or None"""
     from ..logger import Logger
     from ..code.types.bchgf import bchgf
-    N = order(g)
+    N = porder(g)
     r = g.bit_length() - 1
     if N is None:
         return None
@@ -318,14 +299,15 @@ def recurrence(bits, n, windows=4, hold=0.9):
     """(degree, taps, fraction holding) when the bits follow one short linear recurrence (shorter than n: what makes every
     row of n bits short of rank, at every alignment), else None. Berlekamp-Massey on a few clean-looking stretches of
     3n bits; the shortest recurrence found must hold over the whole stream"""
-    from .scrambler import berlekamp_massey, recurrence_holds
+    from .scrambler import recurrence_holds
     b = np.asarray(bits, dtype=np.uint8)
     span = 3*n
     if len(b) < 2*span:
         return None
     best = None
     for s in np.linspace(0, len(b) - span, windows).astype(int):
-        L, taps = berlekamp_massey(b[s:s + span])
+        C, L = berlekamp_massey(b[s:s + span])
+        taps = lfsr_taps(C, L)
         if 0 < L < n and taps and (best is None or L < best[0]):
             best = (L, tuple(taps))
     if best is None:
@@ -391,7 +373,7 @@ def solve_block(bits, n=None, offset=None, llr=None, max_len=None, max_n2=128):
 
     g, frac = cyclic_generator(words[:200], n - k)
     if g is not None and frac > 0.5:
-        N = order(g)
+        N = porder(g)
         if N is not None and N < n: # g divides x^N + 1 for every multiple of its order: the smallest one that holds n bits
             N = -(-n//N)*N
         bch = bch_of(g, n)
