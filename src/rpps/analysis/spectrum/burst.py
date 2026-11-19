@@ -20,7 +20,7 @@ timing, and is too short to train loops on: so each is acquired on its own, data
   4. The burst's symbols, from the preamble to the end of the gate, are taken at that timing and corrected; a second-
      order decision-directed loop follows what is left of the carrier through the data; decisions give bits, and the
      error vector magnitude against them.
-  5. The TDMA structure: the period of the bursts' starts (rpps.analysis.spectrum.waveform.bursts, else `frame`) and the slots,
+  5. The TDMA structure: the period of the bursts' starts (rpps.analysis.spectrum.waveform.on_off, else `frame`) and the slots,
      clusters of the starts within a frame (to within `slot_tol` symbols): each burst's frame and slot.
 Limits: timing is held over the burst (a burst over a few thousand symbols with a clock off by many ppm drifts); a
 burst whose preamble is weaker than the data's noise floor allows is reported with `ok` False and no bits.
@@ -237,7 +237,7 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None,
     slots = []
     ok = [b for b in out if b.ok]
     if frame is None and len(ok) >= 3:
-        from .waveform import bursts as wb
+        from .waveform import on_off as wb
         per = wb(x, Fs)
         frame = per.period if per is not None and per.period else None
     if frame and ok:

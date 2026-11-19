@@ -20,7 +20,7 @@ these say why:
 """
 import numpy as np
 
-from ..spectrum.cyclic import noise_floor
+from ..spectrum.cyclic import spectrum_floor
 
 
 def _decide(y, pts):
@@ -160,7 +160,7 @@ def neighbours(x, Fs, nfft=1024, margin_db=3.0):
     S = np.fft.fftshift(np.mean(np.abs(np.fft.fft(x[:seg*nfft].reshape(seg, nfft)*np.hanning(nfft), axis=1))**2, axis=0))
     S = np.convolve(S, np.ones(5)/5, mode="same")
     f = (np.arange(nfft) - nfft//2)*Fs/nfft
-    N0 = noise_floor(S)
+    N0 = spectrum_floor(S)
     on = S > 4*N0 # bands: 6 dB over the floor (a valley between two that touch stays over the floor)
     runs = []
     i = 0

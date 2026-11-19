@@ -24,7 +24,7 @@ from .block.linear import find_length, sparse_checks
 from ..sequence import recurrence
 from ...code.types.interleave import rowcol
 
-def structure(bits, max_degree=14, n=200000):
+def recurrence_z(bits, max_degree=14, n=200000):
     """How much linear code structure bits have: the z of their strongest recurrence of degree up to max_degree (0: none)"""
     found = recurrence.search(np.asarray(bits, dtype=np.uint8)[:n], max_degree)
     return found[0].z if found else 0.0
@@ -84,7 +84,7 @@ def forney_undo(bits, I, M, symbol=8):
         out[j::I] = np.concatenate((np.zeros((d, symbol), np.uint8), x))[:len(x)]
     return out.reshape(-1)
 
-def forney_search(bits, candidates=None, score=structure, n=200000):
+def forney_search(bits, candidates=None, score=recurrence_z, n=200000):
     """Undo each (I, M, symbol) candidate (default FORNEY) at each start (a branch and a bit within the symbol) and score
     the result. Returns [(score, (I, M, symbol), start bit)], best first"""
     b = np.asarray(bits, dtype=np.uint8)[:n]

@@ -61,9 +61,9 @@ def test_tdd_bursts_and_their_period():
     x = _noise(int(0.05*fs), 20, np.exp(2j*np.pi*RNG.random(int(0.05*fs))))
     t = np.arange(len(x))/fs
     x = x*((t % 5e-3) < 3.7e-3) + 1e-3*(RNG.standard_normal(len(x)))
-    b = W.bursts(x, fs)
+    b = W.on_off(x, fs)
     assert b is not None and abs(b.period - 5e-3) < 0.05e-3 and abs(b.duty - 0.74) < 0.03
-    assert W.bursts(_noise(len(x), 20, np.ones(len(x))), fs) is None # Steady
+    assert W.on_off(_noise(len(x), 20, np.ones(len(x))), fs) is None # Steady
 
 def test_constant_envelope():
     fs = 1e6

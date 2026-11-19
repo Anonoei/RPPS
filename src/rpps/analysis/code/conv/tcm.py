@@ -68,7 +68,7 @@ def labellings(M, own=None):
         out["own"] = np.asarray(own, dtype=np.int64)
     return out
 
-def window_counts(z, m, W):
+def label_windows(z, m, W):
     """Counts of every W-symbol window of m-bit labels z, as an index whose bit (W-1-d) m + i is z^i at delay d"""
     z = np.asarray(z, dtype=np.int64)
     idx = np.zeros(len(z) - W + 1, dtype=np.int64)
@@ -187,7 +187,7 @@ def search(y, M, max_nu=5, own=None, conj=True, labelling=None, pfa=1e-6, top=4,
     for name, lab, r, c in variants:
         kk = (-k if c else k) + r
         z = lab[kk % M]
-        counts, N = window_counts(z, m, W)
+        counts, N = label_windows(z, m, W)
         bias = fwht(counts)
         bias[0] = 0
         zs = bias/np.sqrt(N)

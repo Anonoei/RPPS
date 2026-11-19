@@ -223,7 +223,7 @@ class Bursts:
 
     __repr__ = __str__
 
-def bursts(x, Fs, smooth=2e-6, contrast=10.0, min_off=0.03):
+def on_off(x, Fs, smooth=2e-6, contrast=10.0, min_off=0.03):
     """Whether the power switches on and off: Bursts, or None (steady, or too weak to tell). smooth: the power is averaged
     over this long; contrast: the on level over the off level needed (power ratio); min_off: the least time off"""
     p = np.abs(np.asarray(x))**2
@@ -286,7 +286,7 @@ def classify(x, Fs):
     if len(x) < 256:
         return Waveform()
     t = tones(x, Fs)
-    b = None if t is not None else bursts(x, Fs) # Tones beat: their envelope swings without switching off
+    b = None if t is not None else on_off(x, Fs) # Tones beat: their envelope swings without switching off
     o = None if t is not None else ofdm(x, Fs)
     # A burst's on and off move the envelope statistic: judge it over the on part only
     on = x
