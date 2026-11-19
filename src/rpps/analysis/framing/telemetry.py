@@ -32,7 +32,7 @@ ABOVE = 4.0      # symmetry(): bins this many times the median count as signal
 SYMMETRIC = 0.4  # symmetry(): sidebands that mirror about the carrier, as phase modulation's do
 SIDEBANDS = 0.1  # symmetry(): their power to the carrier's: data in the phase, not a tone in noise
 
-class Frame:
+class TelemetryFrame:
     """period (bits), fixed (bits constant over the frames), frames (how many folded), counters [(bit, width, step)]"""
     __slots__ = ("period", "r", "fixed", "frames", "counters")
     def __init__(self, **kw):
@@ -47,7 +47,7 @@ class Frame:
 class Subcarrier:
     """One subcarrier (or the data on the carrier itself: freq 0): freq, baud (symbol rate), quality (|mean|/std of the
     soft symbols' size), esn0 (dB), manchester, differential, rate (data bits/s), idle (None, or what pattern),
-    bits (data), frame (Frame or None), why (when no symbols split)"""
+    bits (data), frame (TelemetryFrame or None), why (when no symbols split)"""
     __slots__ = ("freq", "baud", "quality", "esn0", "manchester", "differential", "rate", "idle", "bits", "frame", "why")
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -205,12 +205,12 @@ def counters(F, widths=(16, 8), hold=0.9):
     return found
 
 def frame(bits):
-    """Frame of the bits, or None when no period shows"""
+    """TelemetryFrame of the bits, or None when no period shows"""
     L, r, f = period(bits)
     if L is None:
         return None
     F = np.asarray(bits[:len(bits)//L*L], dtype=np.int64).reshape(-1, L)
-    return Frame(period=L, r=r, fixed=int(round(f*L)), frames=len(F), counters=counters(F))
+    return TelemetryFrame(period=L, r=r, fixed=int(round(f*L)), frames=len(F), counters=counters(F))
 
 def line_code(chips):
     """(manchester, differential, data bits) of hard chips: Manchester when nearly every pair is opposite; differential

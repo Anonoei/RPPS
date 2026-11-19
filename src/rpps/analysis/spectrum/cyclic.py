@@ -147,7 +147,7 @@ def lines(z, Fs, lo, hi, pfa=1e-3, top=4, pad=2, width=None, exclude=None):
         rb[np.abs(f[idx] - f[k]) < exclude] = 0
     return out
 
-def noise_floor(S, q=10, stop_db=50.0):
+def spectrum_floor(S, q=10, stop_db=50.0):
     """The noise floor of a power spectrum: its q-th percentile, the bins more than `stop_db` under the median left out
     (a channelizer's stopband, zeros: not noise, and far under it)"""
     S = np.asarray(S, dtype=float)
@@ -162,7 +162,7 @@ def occupied(x, Fs, nfft=1024):
     seg = n//nfft
     S = np.mean(np.abs(np.fft.fft(x[:seg*nfft].reshape(seg, nfft)*np.hanning(nfft), axis=1))**2, axis=0)
     S = np.convolve(np.concatenate((S[-2:], S, S[:2])), np.ones(5)/5, mode="valid") # a little smoothing, circular
-    N0 = noise_floor(S)
+    N0 = spectrum_floor(S)
     sig = np.maximum(S - N0, 0)
     bw = Fs*np.count_nonzero(sig >= N0)/nfft # Bins over 0 dB SNR
     # Wiener gain, never under -20 dB and smoothed over a few bins: a mask with hard zeros or steps makes edges a running

@@ -48,7 +48,7 @@ class Recurrence:
 
     __repr__ = __str__
 
-def window_counts(bits, L):
+def bit_windows(bits, L):
     """Counts of the (L+1)-bit windows of bits, as an index whose bit j is the bit at delay j (bit 0 the newest)"""
     b = np.asarray(bits, dtype=np.int64) & 1
     n = len(b) - L
@@ -82,7 +82,7 @@ def search(bits, max_degree=20, pfa=1e-6, top=8, llr=None, shortlist=256):
     if max_degree > 24:
         raise ValueError("max_degree up to 24 (2^25 counts); a sparse search (rpps.analysis.sequence.scrambler) goes further")
     L = int(max_degree)
-    counts, n = window_counts(bits, L)
+    counts, n = bit_windows(bits, L)
     w = fwht(counts)
     w[0] = 0
     w[::2] = 0 # No constant term: a shift of a smaller check (or nothing)
