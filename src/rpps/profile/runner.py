@@ -24,6 +24,7 @@ import numpy as np
 
 from ..base.rpps import FLUSH, failed_of
 from . import control as _ctl
+from ..base import control as _control
 from .steps import STAGE, DECODE
 
 MIN_SEGMENT = 1024 # Items at the re-run span's first step per piece, at least
@@ -144,7 +145,7 @@ class Runner:
     def __call__(self, data, fields=None):
         self._call += 1
         self._stream = data.meta.stream
-        _ctl.of(self._stream)
+        _control.of(self._stream)
         if self.ctx is not None:
             ctx = dict(self.ctx)
             ctx[FLUSH] = data.ctx.get(FLUSH, False)
@@ -298,7 +299,7 @@ class Runner:
         self._keys.add(key)
         entry_log = {"step": step, "fields": dict(fields), "at": int(at)}
         self._logent[key] = (origin, entry_log)
-        _ctl.of(self._stream).log.append(entry_log)
+        _control.of(self._stream).log.append(entry_log)
         entry = self.entries.get(step) if origin >= 0 else self.framer
         if entry is None:
             return
@@ -406,7 +407,7 @@ class Runner:
 
     def _report(self, what, **kw):
         if self._stream is not None:
-            _ctl.of(self._stream).reports.append({"what": what, **kw})
+            _control.of(self._stream).reports.append({"what": what, **kw})
 
     # ---- transmit: the fields of each frame
 
@@ -475,7 +476,7 @@ class Runner:
         c.changes = [ch.copy() for ch in self.changes]
         c.keys = set(self._keys)
         c.est = copy.deepcopy(st.est)
-        c.log = len(_ctl.of(st).log)
+        c.log = len(_control.of(st).log)
         self.ckpts.append(c)
 
     def _restore(self, c):
@@ -497,13 +498,13 @@ class Runner:
         st.est.clear()
         st.est.update(copy.deepcopy(c.est))
         # What the span published after the checkpoint is published again by the re-run (or was wrong)
-        ctl = _ctl.of(st)
+        ctl = _control.of(st)
         span_ids = {id(e) for o, e in self._logent.values() if o >= self.span}
         ctl.log = ctl.log[:c.log] + [e for e in ctl.log[c.log:] if id(e) not in span_ids]
 
     def _rewind(self, late):
         """Back to the last checkpoint before the earliest late change; None when re-running is given up"""
-        ctl = _ctl.of(self._stream)
+        ctl = _control.of(self._stream)
         p = min(ch.s0 if ch.s0 is not None else min(ch.back.values()) for ch in late)
         fit = [c for c in self.ckpts if c.pos <= p]
         if fit:
@@ -580,7 +581,7 @@ class Runner:
             out = type(out)(np.asarray(out.data)[cut:], out.CAT, out.DT, out.ctx, meta, out.REP)
             out.failed = None if f is None else f[cut:]
         self.emitted = out.meta.pos + len(out)
-        _ctl.of(self._stream).buffer = sum(len(d) for d in self.buf)
+        _control.of(self._stream).buffer = sum(len(d) for d in self.buf)
         return out
 
     def _piece(self, a, b, ctx, flush, D):

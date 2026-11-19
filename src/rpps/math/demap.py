@@ -1,6 +1,6 @@
 """Soft demapping of symbols to bit LLRs, for rows of symbols at once (one frame a row), on any array module `xp`
 
-`rpps.symbol.Constellation.llr` is this on one row, and `rpps.parallel.kernels.Demap` on a batch of them: one implementation,
+`rpps.symbol.Constellation.llr` is this on one row, and `rpps.symbol.kernels.Demap` on a batch of them: one implementation,
 so a frame comes out the same alone or in a batch. Each row has its own noise level, estimated from its own symbols by EM over the
 points (`mixture_variance` for the one-row case), and every sum over points keeps the nearest point's distance out of the
 exponentials, so they stay in range.

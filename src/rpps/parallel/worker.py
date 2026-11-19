@@ -8,8 +8,8 @@ thread at a time (`per_thread` makes another).
 """
 import numpy as np
 
-from .frame import Frame, Form, Result
-from .kernel import Batch
+from ..base.kernel import Form, Batch
+from .frame import Frame, Result
 from .plan import compile
 
 class RegionSteps:

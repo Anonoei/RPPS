@@ -12,6 +12,7 @@ from .. import _config
 from ..base import Mod, Digital, dtype
 from ..base.types import Category, Rep
 from ..base.rpps import align, FLUSH, FRAME, STREAM, failed_of
+from ..base.control import of, anchor
 
 from . import types as types
 
@@ -93,7 +94,6 @@ class Coding(base.rpps.Pipe):
         """At a frame start, drop the part of a codeword the last frame left (a frame cut short), and report it"""
         if not self._restart:
             return
-        from ..profile.control import of, anchor
         self._restart = False
         held = ctx.pop((self, enc), None)
         if held is not None and len(held):
@@ -240,7 +240,7 @@ def _block_kernel(self, params, how):
         self.control(**params)
     if self.decoder is None or (self.folder == "interleave" and not hasattr(self.decoder, "block_bits")):
         return None
-    from ..parallel.kernels import BlockDecode
+    from .kernels import BlockDecode
     return BlockDecode(self.decoder, self._block(False), self.decision == Decision.SOFT, self.CATEGORY, self.DECODE_GIVES, str(self.name))
 
 class Block(Coding):

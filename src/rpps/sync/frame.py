@@ -5,8 +5,8 @@
     Delimiter   bits: find the word that comes before each frame (802.11b SFD, a CCSDS ASM), give the bits after it (or
                 the frame from its word on), for a fixed or a controlled length, with the polarity put right
 
-Both publish {"frame": k} at each frame start (rp.profile.publish), so a profile can drive the steps after them frame by
-frame (a header that reads the frame's start), and say where each frame came from (rp.profile.anchor).
+Both publish {"frame": k} at each frame start (rp.base.control.publish), so a profile can drive the steps after them frame by
+frame (a header that reads the frame's start), and say where each frame came from (rp.base.control.anchor).
 """
 from types import SimpleNamespace
 
@@ -15,6 +15,7 @@ import numpy as np
 from .. import _accel
 from ..base import Stage, BitStage
 from ..signal.filters.convolve import convolve
+from ..base.control import publish, anchor
 from . import track
 
 NATIVE_CORRELATION = 256 # Longest preamble (symbols) correlated directly in C++; longer ones go through the FFT
@@ -117,7 +118,6 @@ class FrameSync(Stage):
         return out
 
     def step(self, x, st, meta):
-        from ..profile.control import publish, anchor
         if st.base is None:
             st.base = meta.pos
             st.searched = meta.pos
@@ -209,7 +209,6 @@ class Delimiter(BitStage):
         return None if self.length is None else self.length + (self.n if self.keep else 0)
 
     def step(self, x, st, meta):
-        from ..profile.control import publish, anchor
         x = np.asarray(x)
         n = self.n
         if st.tail is None:

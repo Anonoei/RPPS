@@ -209,7 +209,7 @@ class Additive(Scram):
             self.control(**params)
         if not self.length or self.frame is not None or self.period is not None:
             return None
-        from ...parallel.kernels import XorMask
+        from ..kernels import XorMask
         return XorMask(self.seq.bits(self.length), Category.CODE, Rep.CHANNEL if how == "*" else Rep.DATA, self.seq.name)
 
     def _stream(self, ctx, key, bits, enc):

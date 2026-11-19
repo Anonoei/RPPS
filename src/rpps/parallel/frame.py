@@ -4,14 +4,11 @@ A `Frame` holds everything needed to process it, and nothing shared: no Stream, 
 shared memory or sent to a device. `params` are the controlled parameters the serial front already resolved for it
 (`{step id: {parameter: value}}`), so a worker never reads a header or a table.
 """
-from collections import namedtuple
 from dataclasses import dataclass, field
 
 import numpy as np
 
-# What a block of data is: the class and tags of rpps.Data (CAT, DT, REP) and the rates and delay it carries. A tuple, so it
-# is picklable and hashable
-Form = namedtuple("Form", "cls cat dt rep Fs sps cf delay")
+from ..base.kernel import Form
 
 OK, DROPPED = "ok", "dropped"
 

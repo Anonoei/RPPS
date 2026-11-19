@@ -17,6 +17,7 @@ from ..base import Mod, Digital, dtype
 from ..base.rpps import Pipe, align
 from ..base.types import Category, Rep
 from ..sequence.word import word_bits
+from ..base.control import anchor
 
 class Marker(Pipe):
     CATEGORY = Category.CODE
@@ -51,7 +52,6 @@ class Marker(Pipe):
         x = np.asarray(data.bits()).astype(bool)
         if self.length is None: # One frame per call (from a frame start): the word, then the bits (none yet: the word waits)
             if len(x) and self._start:
-                from ..profile.control import anchor
                 self._start = False
                 anchor(data.meta, self, data.meta.pos, self.n) # The frame's first bit follows the word
                 x = np.concatenate((self.word, x))
@@ -78,7 +78,6 @@ class Marker(Pipe):
                     ctx[key] = head
                     y = x[:0]
                 else:
-                    from ..profile.control import anchor
                     w = head[:self.n]
                     hard = w < 0 if soft else w.astype(bool)
                     self.errors = np.array([int(np.count_nonzero(hard != self.word[:len(hard)]))])

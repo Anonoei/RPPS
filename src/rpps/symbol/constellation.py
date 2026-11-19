@@ -81,10 +81,10 @@ class Constellation(Modulation):
         """The batch demapper, for the constellation as `params` (live parameters) make it; encoding has none yet"""
         if how != "/":
             return None
-        from ..parallel.kernels import Demap
+        from .kernels import Demap
         if params:
             self.control(**params)
-        return Demap(self.points.copy(), self.labels().astype(bool), _effort.maxlog(self.maxlog), self.name) # (the level when the region is built)
+        return Demap(self.points.copy(), self.labels().astype(bool), _effort.maxlog(self.maxlog), self.name, floor=_MIN_VAR) # (the level when the region is built)
 
     def pos_rate(self, decode):
         """Bits per symbol decoding, symbols per bit encoding (rpps.profile positions)"""

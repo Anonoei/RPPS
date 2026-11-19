@@ -270,14 +270,15 @@ def test_a_batch_holds_one_key():
 
 def test_a_failing_row_is_dropped_and_the_rest_go_on(s2):
     """Frames of one batch share a plan; one that cannot be processed is a gap, the others come out as they would alone"""
-    from rpps.parallel.kernel import Batch, Kernel, LoopKernel
+    from rpps.base.kernel import Batch, Kernel, Form
+    from rpps.parallel.kernel import LoopKernel
     class Picky(Kernel):
         name = "picky"
         def run(self, xp, b):
             b.fail(1, "bad row")
             return b
     plan = rp.parallel.BatchPlan([Picky()])
-    b = Batch(np.zeros((3, 4), np.float32), rp.parallel.Form(rp.Data, rp.Category.UNK, rp.dtype.LLR, rp.Rep.CHANNEL, 1, 1, 0, 0), [0, 4, 8], 4)
+    b = Batch(np.zeros((3, 4), np.float32), Form(rp.Data, rp.Category.UNK, rp.dtype.LLR, rp.Rep.CHANNEL, 1, 1, 0, 0), [0, 4, 8], 4)
     b = plan.run(np, b)
     assert list(b.bad) == [False, True, False] and b.why == {1: "bad row"}
     assert plan.spent["picky"] >= 0 and plan.batches == 1

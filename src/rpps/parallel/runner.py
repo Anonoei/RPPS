@@ -21,7 +21,6 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..base.rpps import FLUSH
-from ..profile import control as _ctl
 from ..profile.runner import Runner
 from .frame import Frame, Result, DROPPED
 from .scheduler import Scheduler
