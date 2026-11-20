@@ -173,10 +173,15 @@ class ldpc(_code):
             A[rows] ^= A[c]
         return ((A[:, K:] @ G) % 2).astype(bool)
 
-    def syndrome(self, words):
-        """Parity check failures for words (B, N), without a dense H"""
+    def syndrome(self, words, checks=None):
+        """Parity check failures for words (B, N), without a dense H: (B, M), or (B, checks) for only the first `checks`"""
         w = np.asarray(words, dtype=np.uint8)
-        return (np.add.reduceat(w[:, self.var], self.cstart, axis=1) % 2).astype(np.uint8)
+        if checks is None or checks >= self.M:
+            var, start = self.var, self.cstart
+        else:
+            start = self.cstart[:checks]
+            var = self.var[:int(self.cstart[checks])]
+        return (np.add.reduceat(w[:, var], start, axis=1) % 2).astype(np.uint8)
 
     def decode_codewords(self, llr):
         """Min-sum on (B, N) LLRs. Returns hard decisions (B, N); `converged` says which codewords satisfied every check"""

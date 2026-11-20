@@ -209,6 +209,17 @@ def mismatch(code, hard):
     n = min(len(e), len(hard))
     return int(np.count_nonzero(e[:n] != hard[:n].astype(bool))), n
 
+def mismatch_batch(code, hard):
+    """mismatch() of each row of hard (W, L), decoded together (decode_batch where the decoder has it): (differing
+    bits (W,), bits compared)"""
+    hard = np.asarray(hard).astype(np.uint8)
+    dec = code.decoder
+    u = dec.decode_batch(hard) if hasattr(dec, "decode_batch") else np.array([dec.decode(h) for h in hard])
+    enc = code.encoder
+    e = enc.encode_batch(u) if hasattr(enc, "encode_batch") else np.array([enc.encode(np.asarray(x).astype(bool)) for x in u])
+    n = min(e.shape[1], hard.shape[1])
+    return np.count_nonzero(e[:, :n] != hard[:, :n].astype(bool), axis=1).astype(np.int64), n
+
 @functools.lru_cache(maxsize=None)
 def cached(ref):
     """A definition loaded once per process and shared (a DVB-S2 LDPC code takes a moment to build): what `control`

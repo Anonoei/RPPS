@@ -93,21 +93,20 @@ def repeat_check(count):
     return H
 
 
-def scan_block(bits, syndrome, n, name, tag=None, max_offsets=None):
+def scan_block(bits, fails, r, n, name, tag=None, max_offsets=None):
     """Fraction of words satisfying every parity check, at each word alignment. Returns (hypotheses, trials)
 
-    syndrome: words (W, n) -> parity check failures (W, r)
+    fails: words (W, n) -> (W,) bool, the words that fail some check (`config_blocks` builds these); r: number of checks
     """
     bits = np.asarray(bits, dtype=np.uint8)
     hyps, trials = [], 0
-    r = syndrome(np.zeros((1, n), dtype=np.uint8)).shape[1]
     p0 = 2.0**-r
     for off in range(n if max_offsets is None else min(n, max_offsets)):
         w = len(bits[off:])//n
         if w < 50:
             break
         words = bits[off:off+w*n].reshape(w, n)
-        zero = int((~syndrome(words).any(axis=1)).sum())
+        zero = int((~fails(words)).sum())
         trials += 1
         z = float(deviance_z(zero, w, p0))
         # A real code at a sane error rate passes most words; a high baseline (few checks) passes some by chance
@@ -119,8 +118,25 @@ def scan_block(bits, syndrome, n, name, tag=None, max_offsets=None):
 _BLOCKS = None
 
 
+FIRST_CHECKS = 8 # Checks tried on every word before the rest: a word not of the code fails one of them but for 2^-8
+
+
+def _fails(partial, full, r):
+    """words -> which fail some check, from partial(words, m) (the first m checks) and full(words): the first
+    FIRST_CHECKS on every word, all of them only on the words that pass those (on bits not of the code, about 2^-8 of them)"""
+    def fails(words):
+        if r <= 2*FIRST_CHECKS:
+            return full(words).any(axis=1)
+        out = partial(words, FIRST_CHECKS).any(axis=1)
+        rest = np.flatnonzero(~out)
+        if len(rest):
+            out[rest] = full(words[rest]).any(axis=1)
+        return out
+    return fails
+
+
 def config_blocks():
-    """(name, folder, config name, n, syndrome function) for the block codes in config/fec (loaded once)"""
+    """(name, folder, config name, n, r checks, fails function) for the block codes in config/fec (loaded once)"""
     global _BLOCKS
     if _BLOCKS is None:
         _BLOCKS = _load_blocks()
@@ -136,17 +152,20 @@ def _load_blocks():
                 enc = coding.load(f"{folder}/{name}").encoder
             except Exception: # A config that doesn't load can't be a hypothesis
                 continue
-            if hasattr(enc, "syndrome"):
-                syn = enc.syndrome
+            if hasattr(enc, "syndrome"): # LDPC: sparse checks
+                r = enc.M
+                fails = _fails(enc.syndrome, enc.syndrome, r)
             elif hasattr(enc, "check"): # linear: check is H transposed
                 chk = np.asarray(enc.check, dtype=np.uint8)
-                syn = lambda w, chk=chk: (w.astype(np.uint8) @ chk) % 2
+                r = chk.shape[1]
+                fails = _fails(lambda w, m, chk=chk: (w.astype(np.uint8) @ chk[:, :m]) % 2, lambda w, chk=chk: (w.astype(np.uint8) @ chk) % 2, r)
             elif enc.num == 1: # repetition: all bits of the word equal
                 H = repeat_check(enc.den).astype(np.uint8)
-                syn = lambda w, H=H: (w.astype(np.uint8) @ H.T) % 2
+                r = H.shape[0]
+                fails = _fails(lambda w, m, H=H: (w.astype(np.uint8) @ H[:m].T) % 2, lambda w, H=H: (w.astype(np.uint8) @ H.T) % 2, r)
             else:
                 continue
-            out.append((name.partition("/")[0], folder, name, enc.den, syn))
+            out.append((name.partition("/")[0], folder, name, enc.den, r, fails))
     return out
 
 # --- Whiteness -----------------------------------------------------------------------------------
@@ -188,8 +207,8 @@ def detect_fec(streams, ks=range(3, 8), rates=(2, 3), periods=(), blocks=True, d
             h, n = scan_conv(b, ks, rates, periods, t)
             hyps += h
             trials += n
-            for name, folder, cfg, bn, syn in block_codes:
-                h, n = scan_block(b, syn, bn, name, t, max_offsets)
+            for name, folder, cfg, bn, r, fails in block_codes:
+                h, n = scan_block(b, fails, r, bn, name, t, max_offsets)
                 for hh in h:
                     hh.coding = (folder, cfg)
                 hyps += h
@@ -226,9 +245,15 @@ def _rs_zero(code, seg, n, phases, words):
     The last ones: the start of a window is where the sync before it was still settling"""
     first = (len(seg) - max(phases) - 1)//n - words # Codewords from each phase that fit, less those used
     rows = np.stack([seg[p + first*n:p + (first + words)*n].reshape(words, n) for p in phases])
-    S = code.syndromes(rows.reshape(-1, n)).reshape(len(phases), words, -1)
+    flat_rows = rows.reshape(-1, n)
+    # S_1 of every word first: a word not of the code has it nonzero but for 1/256; all of them only for the rest
+    zero = code.syndromes(flat_rows, 1)[:, 0] == 0
+    rest = np.flatnonzero(zero)
+    if len(rest):
+        zero[rest] = ~code.syndromes(flat_rows[rest]).any(axis=1)
+    zero = zero.reshape(len(phases), words)
     flat = (rows == rows[:, :, :1]).all(axis=2) # One value repeated (idle, a dead carrier) is a codeword of any RS code
-    return (~S.any(axis=2) & ~flat).sum(axis=1)
+    return (zero & ~flat).sum(axis=1)
 
 
 def decode_tail(bits, code, fraction=0.5, probe=4000):
@@ -574,8 +599,8 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
     hyps, trials = [], 0
     blocks = config_blocks()
     for key, bits in head.items():
-        for name, folder, cfg, bn, syn in blocks:
-            h, t = scan_block(bits, syn, bn, name, key, max_offsets=bn)
+        for name, folder, cfg, bn, r, fails in blocks:
+            h, t = scan_block(bits, fails, r, bn, name, key, max_offsets=bn)
             for hh in h:
                 hh.coding = (folder, cfg)
             hyps += h

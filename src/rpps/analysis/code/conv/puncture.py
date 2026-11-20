@@ -8,16 +8,18 @@ right one lets the Viterbi decoder reproduce what was received (only channel err
 
 Mother codes are those in config/fec/conv (both generator orders: which of the two outputs goes first is not known).
 """
+import functools
 import itertools
 
 import numpy as np
 
 from ...result import Hypothesis, Guess, Report, pick
 from ....math.prob import deviance_z
-from ....code.coding import mismatch
+from ....code.coding import mismatch, mismatch_batch
 
+@functools.lru_cache(maxsize=None)
 def patterns(P):
-    """Rate P/(P+1) puncture patterns (2, P), one per turn"""
+    """Rate P/(P+1) puncture patterns (2, P), one per turn (built once per P; read only)"""
     seen, out = set(), []
     for both in range(P):
         for choice in itertools.product((0, 1), repeat=P - 1):
@@ -72,26 +74,27 @@ def search(streams, periods=range(2, 8), steps=400, confirm=4, codes=None):
                     return base[per]
                 for tag, bits in streams.items():
                     start = len(bits)//10
-                    for off in range(m):
-                        per = steps//P
-                        seg = np.asarray(bits[start + off:start + off + per*m], dtype=np.uint8)
-                        if len(seg) < per*m:
+                    per = steps//P
+                    offs = [off for off in range(m) if len(bits[start + off:start + off + per*m]) == per*m]
+                    if not offs: # Screened together: every offset in one batch
+                        continue
+                    ks, n = mismatch_batch(code, np.array([np.asarray(bits[start + off:start + off + per*m], dtype=np.uint8) for off in offs]))
+                    trials += len(offs)
+                    b0 = baseline(per)
+                    for off, k in zip(offs, ks):
+                        if k/n >= 0.5*b0:
                             continue
-                        k, n = mismatch(code, seg)
-                        trials += 1
-                        if k/n >= 0.5*baseline(per):
+                        per_c = confirm*steps//P # Confirmed on a longer stretch
+                        seg = np.asarray(bits[start + off:start + off + per_c*m], dtype=np.uint8)
+                        if len(seg) < per_c*m:
                             continue
-                        per = confirm*steps//P
-                        seg = np.asarray(bits[start + off:start + off + per*m], dtype=np.uint8)
-                        if len(seg) < per*m:
-                            continue
-                        k, n = mismatch(code, seg)
-                        b = baseline(per)
-                        z = float(-deviance_z(k, n, b))
-                        if z > 3.0 and k/n < 0.3*b:
+                        kc, nc = mismatch(code, seg)
+                        b = baseline(per_c)
+                        z = float(-deviance_z(kc, nc, b))
+                        if z > 3.0 and kc/nc < 0.3*b:
                             hyps.append(Hypothesis("conv-punctured", f"K={K} {mname} rate {P}/{m} {pat.astype(int).tolist()}", z,
                                 {"K": K, "generator": gen_list, "puncture": pat.astype(int).tolist(),
-                                 "offset": (start + off) % m, "mismatch": k/n, "baseline": b, "stream": tag},
+                                 "offset": (start + off) % m, "mismatch": kc/nc, "baseline": b, "stream": tag},
                                 ("conv-punctured", f"{mname}|{pat.astype(int).tolist()}")))
     return hyps, trials
 

@@ -100,3 +100,23 @@ class conv(_code):
         encoded = encoded.reshape(-1).astype(bool)
         self.log.trace(f"encoded {len(encoded)}")
         return encoded
+
+    def encode_batch(self, bits):
+        """Rows of bits (W, L), each a frame of its own, as encode() without `state` gives it: (W, coded bits)"""
+        b = np.asarray(bits).astype(np.uint8)
+        if self.termination == "tailbiting" or self.num != 1 or b.ndim != 2:
+            return np.array([self.encode(r) for r in b], dtype=bool).reshape(len(b), -1)
+        W, K = len(b), self.con
+        if self.terminated:
+            b = np.concatenate((b, np.zeros((W, K - 1), dtype=np.uint8)), axis=1)
+        ext = np.concatenate((np.zeros((W, K - 1), dtype=np.uint8), b), axis=1) # The zero register, then the input
+        win = np.lib.stride_tricks.sliding_window_view(ext, K, axis=1)[:, :, ::-1] # win[w, i, k] = u[w, i-k]
+        encoded = (win.astype(np.int64) @ self.generator.T.astype(np.int64)) & 1 # (W, L, n)
+        if self.invert is not None:
+            encoded = encoded ^ self.invert[None, None, :]
+        if self.puncture is not None:
+            P = self.puncture.shape[1]
+            full = encoded.shape[1]//P*P
+            mask = np.tile(self.puncture.T, (full//P, 1))
+            encoded = encoded[:, :full][:, mask]
+        return encoded.reshape(W, -1).astype(bool)

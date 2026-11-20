@@ -7,7 +7,7 @@ import itertools
 import numpy as np
 
 from ....math.prob import deviance_z
-from ....code.coding import puncture_period, mismatch
+from ....code.coding import puncture_period, mismatch, mismatch_batch, cached
 from ...result import Hypothesis, Guess
 
 def _polys(K):
@@ -103,7 +103,7 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
     hyps, trials = [], 0
     rng = np.random.default_rng(0)
     for name in names:
-        code = coding.load(f"conv/{name}")
+        code = cached(f"conv/{name}")
         enc = code.encoder
         pat = enc.puncture if enc.puncture is not None else np.ones((enc.den, 1), dtype=bool)
         L = pat.shape[1]
@@ -116,18 +116,19 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
             starts = sorted({int(len(bits)*f) for f in segments if int(len(bits)*f) + nb + per*nb <= len(bits)})
             if not starts and len(bits) >= int(len(bits)*skip) + nb + per*nb:
                 starts = [int(len(bits)*skip)]
-            for si, start in enumerate(starts):
-                for off in range(nb):
-                    seg = np.asarray(bits[start+off:start+off+per*nb], dtype=np.uint8)
-                    if len(seg) < per*nb:
-                        continue
-                    k, n = mismatch(code, seg)
-                    trials += 1
-                    z = float(-deviance_z(k, n, base)) # Fewer mismatches than a wrong code gives
-                    if z > 3.0 and k/n < 0.5*base: # And clearly fewer, not a marginal difference on a short code
-                        hyps.append(Hypothesis("conv-config", name, z, # offset: from the start of the stream, not of the segment
-                            {"offset": (start + off) % nb, "mismatch": k/n, "baseline": base, "stream": tag, "segment": si},
-                            ("conv", name)))
+            jobs = [(si, start, off) for si, start in enumerate(starts) for off in range(nb)
+                    if len(bits[start+off:start+off+per*nb]) == per*nb] # Every segment and alignment, decoded together
+            if not jobs:
+                continue
+            ks, n = mismatch_batch(code, np.array([np.asarray(bits[start+off:start+off+per*nb], dtype=np.uint8) for _, start, off in jobs]))
+            trials += len(jobs)
+            for (si, start, off), k in zip(jobs, ks):
+                k = int(k)
+                z = float(-deviance_z(k, n, base)) # Fewer mismatches than a wrong code gives
+                if z > 3.0 and k/n < 0.5*base: # And clearly fewer, not a marginal difference on a short code
+                    hyps.append(Hypothesis("conv-config", name, z, # offset: from the start of the stream, not of the segment
+                        {"offset": (start + off) % nb, "mismatch": k/n, "baseline": base, "stream": tag, "segment": si},
+                        ("conv", name)))
     return hyps, trials
 
 def decode_conv(bits, hyp):
