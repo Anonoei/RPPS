@@ -93,15 +93,16 @@ class rs(_code):
             s = self._to_dual[s]
         return ((s[:, None] >> np.arange(self.m-1, -1, -1)) & 1).astype(bool).reshape(-1)
 
-    def syndromes(self, words):
-        """Syndromes (W, nroots) of full-length codewords (W, n): S_i = r(alpha^((fcr+i)*prim))"""
+    def syndromes(self, words, count=None):
+        """Syndromes (W, nroots) of full-length codewords (W, n): S_i = r(alpha^((fcr+i)*prim)); only the first `count`"""
         words = np.asarray(words)
+        count = self.nroots if count is None else min(int(count), self.nroots)
         if _accel.native is not None:
             return _accel.native.gf_syndromes(np.ascontiguousarray(words, dtype=np.int64), self.gf.exp, self.gf.log,
-                                              self.nroots, self.fcr, self.prim)
+                                              count, self.fcr, self.prim)
         e = np.arange(words.shape[1] - 1, -1, -1) # Power of x at each position
-        S = np.zeros((len(words), self.nroots), dtype=np.int64)
-        for i in range(self.nroots):
+        S = np.zeros((len(words), count), dtype=np.int64)
+        for i in range(count):
             S[:, i] = self.gf.evaluate(words, e*(self.fcr + i)*self.prim)
         return S
 

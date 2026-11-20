@@ -1,5 +1,6 @@
 import os
 import sys
+import functools
 import json
 import logging
 from pathlib import Path
@@ -428,10 +429,16 @@ def evaluate(expr, values, name="expression"):
             return _FUNCS[n.func.id](*[ev(a) for a in n.args])
         raise ConfigError(f"{name}: {expr!r}: {type(n).__name__} is not allowed in a definition expression")
     try:
-        tree = ast.parse(str(expr), mode="eval")
+        tree = _parse(str(expr))
     except SyntaxError as e:
         raise ConfigError(f"{name}: can't parse {expr!r}: {e.msg}") from None
     return ev(tree)
+
+@functools.lru_cache(maxsize=1024)
+def _parse(expr):
+    """The parsed expression, once per text (an "each" list evaluates the same one at every i); the tree is only read"""
+    import ast
+    return ast.parse(expr, mode="eval")
 
 # ---- Writing definitions
 

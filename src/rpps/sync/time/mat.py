@@ -15,10 +15,28 @@ def matrix_mf(x, centres, sps, beta=0.2, span=8):
     """
     S = span * sps
     j0 = np.ceil(centres - S).astype(np.int64)
-    idx = j0[:, None] + np.arange(int(np.ceil(2*S)) + 2)
-    w = rrc_pulse((idx - centres[:, None]) / sps, beta)
+    lags = np.arange(int(np.ceil(2*S)) + 2)
+    idx = j0[:, None] + lags
+    w = _rrc_rows(j0 - np.asarray(centres, dtype=np.float64), lags, sps, beta)
     w /= np.sqrt(np.sum(w**2, axis=1, keepdims=True))
     return np.sum(w * x[idx], axis=1)
+
+def _rrc_rows(off, lags, sps, beta):
+    """rrc_pulse((off[:, None] + lags) / sps, beta), with the sines and cosines of the rows (N) and of the lags (L)
+    combined by angle addition instead of N L of each: the same values to rounding. The two limits of the formula
+    (t = 0, |t| = 1/(4 beta)) are left to rrc_pulse where a point falls on them"""
+    t = (off[:, None] + lags)/sps
+    if beta == 0:
+        return rrc_pulse(t, beta)
+    a, b = np.pi*(1 - beta)/sps, np.pi*(1 + beta)/sps
+    sa = (np.sin(a*off)[:, None]*np.cos(a*lags) + np.cos(a*off)[:, None]*np.sin(a*lags)) # sin(pi (1 - beta) t)
+    cb = (np.cos(b*off)[:, None]*np.cos(b*lags) - np.sin(b*off)[:, None]*np.sin(b*lags)) # cos(pi (1 + beta) t)
+    edge = (np.abs(t) < 1e-9) | (np.abs(np.abs(t) - 1/(4*beta)) < 1e-9)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        w = (sa + 4*beta*t*cb)/(np.pi*t*(1 - (4*beta*t)**2))
+    if edge.any():
+        w[edge] = rrc_pulse(t[edge], beta)
+    return w
 
 def centres_in(n, t0, sps, span=8):
     """Symbol centres t0 + k*sps whose whole support fits in n samples"""
