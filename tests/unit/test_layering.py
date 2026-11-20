@@ -21,7 +21,7 @@ def _imports(path):
     """(package below rpps it names, whether at module level) for each import of rpps in a file"""
     rel = path.relative_to(SRC)
     depth = len(rel.parts) - 1 # Packages between rpps and the file
-    tree = ast.parse(path.read_text())
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     top = {id(n) for n in tree.body}
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
@@ -46,9 +46,9 @@ def _imports(path):
 
 FILES = sorted(p for pkg in LOWER for p in (SRC/pkg).rglob("*.py"))
 
-@pytest.mark.parametrize("path", FILES, ids=lambda p: str(p.relative_to(SRC)))
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.relative_to(SRC).as_posix())
 def test_lower_packages_do_not_import_upward(path):
-    rel = str(path.relative_to(SRC))
+    rel = path.relative_to(SRC).as_posix() # "/" on every OS, as LAZY_ALLOWED is written
     bad = [(name, top) for name, top in _imports(path) if name in UPPER and not (not top and (rel, name) in LAZY_ALLOWED)]
     assert not bad, f"{rel} imports {', '.join(sorted({n for n, _ in bad}))} (analysis, profile and parallel are built on it)"
 
