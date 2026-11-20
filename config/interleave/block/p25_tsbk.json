@@ -1,7 +1,7 @@
 {
   "base": "interleave",
   "type": "block",
-  "comment": "P25 phase 1 data / TSBK block interleave (TIA-102.BAAA): 98 dibits; dibit pairs of the coded block are sent from four columns starting at dibits 0, 26, 50, 74, the last pair at 24, 25",
+  "comment": "P25 phase 1 data / TSBK block interleave (TIA-102.BAAA-A Table 7-4): 98 dibits; dibit pairs of the coded block are sent from four columns starting at dibits 0, 26, 50, 74, the last pair at 24, 25",
   "tags": ["p25"],
   "symbol": 2,
   "map": "to",
