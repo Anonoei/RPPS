@@ -87,4 +87,5 @@ pythonpath = ["src"]
 markers = [
     "slow: takes more than a few seconds",
     "kernels: over a minute with the C++ kernels off (the no-kernel CI pass leaves it out; it runs in the others)",
+    "oracle: compares against scipy (pytest.importorskip); CI runs these again with scipy installed",
 ]

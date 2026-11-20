@@ -48,12 +48,12 @@ jobs:
         run: python -m pytest -q -m "not slow" --durations=10
 
       - name: Oracle tests against scipy
-        # scipy is not a dependency; tests that compare against it use pytest.importorskip, so they only run here.
-        # A second full pass: Linux only (the comparisons do not depend on the OS, and Windows would run past its limit)
-        if: matrix.python-version == '3.12' && runner.os == 'Linux'
+        # scipy is not a dependency; the tests that compare against it (marked `oracle`) use pytest.importorskip, so
+        # they skip above and run here
+        if: matrix.python-version == '3.12'
         run: |
           python -m pip install -e ".[oracle]"
-          python -m pytest -q -m "not slow"
+          python -m pytest -q -m oracle -rs
 
   no-native:
     # The fast tests with the C++ kernels off (the Python loops they replace): several times slower, so a job of its own.

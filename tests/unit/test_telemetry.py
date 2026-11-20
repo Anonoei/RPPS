@@ -86,6 +86,7 @@ def test_phase_modulation_mirrors_about_its_carrier_and_a_tone_beside_a_carrier_
     tone = np.exp(2j*np.pi*3e3/FS*t) + 0.1*(rng.standard_normal(n) + 1j*rng.standard_normal(n)) # A tone in noise
     assert T.symmetry(tone, FS, 3e3)[1] < T.SIDEBANDS
 
+@pytest.mark.oracle
 def test_a_tone_in_band_limited_noise_has_no_sidebands():
     # A channel filtered to its band: the noise is flat inside and down in the stopband, so against the median bin it
     # would stand clear on both sides of a centred tone, and mirror

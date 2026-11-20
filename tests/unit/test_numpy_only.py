@@ -55,6 +55,7 @@ def test_resample_poly_dtypes_and_identity(rng):
     with pytest.raises(ValueError):
         rp.signal.sample.resample_poly(x, 0, 4)
 
+@pytest.mark.oracle
 @pytest.mark.parametrize("up,down", RATES)
 @pytest.mark.parametrize("cplx", [False, True])
 def test_resample_poly_matches_scipy(up, down, cplx, rng):
@@ -81,6 +82,7 @@ def test_convolve_single_precision_and_errors(rng):
     with pytest.raises(ValueError):
         rp.signal.filters.convolve(x, h, "nope")
 
+@pytest.mark.oracle
 def test_convolve_matches_scipy(rng):
     ss = pytest.importorskip("scipy.signal")
     x = rng.standard_normal(100000); h = rng.standard_normal(401)
@@ -108,6 +110,7 @@ def test_percentile_filter_short_input_and_errors(rng):
         with pytest.raises(ValueError):
             rp.math.percentile_filter(x, **bad)
 
+@pytest.mark.oracle
 def test_percentile_filter_matches_scipy(rng):
     nd = pytest.importorskip("scipy.ndimage")
     x = rng.standard_normal(5000)
@@ -140,6 +143,7 @@ def test_least_squares_analytic_jacobian():
     r = rp.math.least_squares(lambda p: p[0]*t + p[1] - y, [0., 0.], jac=lambda p: np.stack([t, np.ones_like(t)], 1))
     assert np.allclose(r.x, [3, 1], atol=1e-8)
 
+@pytest.mark.oracle
 def test_least_squares_matches_scipy():
     so = pytest.importorskip("scipy.optimize")
     res, _ = _fix_problem()

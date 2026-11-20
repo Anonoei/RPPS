@@ -69,12 +69,14 @@ def test_bad_specs():
 
 # ---- Against scipy, when it is there
 
+@pytest.mark.oracle
 @pytest.mark.parametrize("n,bands,desired,weight", CASES)
 def test_matches_scipy(n, bands, desired, weight):
     ss = pytest.importorskip("scipy.signal")
     ref = ss.remez(n, bands, desired, weight=weight, fs=1.0)
     assert np.abs(remez(n, bands, desired, weight) - ref).max() < 1e-3*np.abs(ref).max()
 
+@pytest.mark.oracle
 @pytest.mark.parametrize("kind,n", [("hilbert", 41), ("hilbert", 40), ("differentiator", 41), ("differentiator", 40)])
 def test_odd_types_match_scipy(kind, n):
     ss = pytest.importorskip("scipy.signal")
