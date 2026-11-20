@@ -45,7 +45,7 @@ jobs:
           python -m pip install -e ".[viz,test]"
 
       - name: Fast tests
-        run: python -m pytest -q -m "not slow" --durations=10
+        run: python -m pytest -q -n auto -m "not slow" --durations=10
 
       - name: Oracle tests against scipy
         # scipy is not a dependency; the tests that compare against it (marked `oracle`) use pytest.importorskip, so
@@ -75,7 +75,7 @@ jobs:
       - name: Fast tests without the kernels
         env:
           RPPS_NO_NATIVE: "1"
-        run: python -m pytest -q -m "not slow and not kernels" --durations=20
+        run: python -m pytest -q -n auto -m "not slow and not kernels" --durations=20
 
   package:
     # The built wheel has to carry config/ and run the README example from a clean environment
