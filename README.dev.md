@@ -1,335 +1,262 @@
 # RPPS development guide
 
-How the project is designed, organized and implemented, and how to add to it. [README.md](README.md) is for users.
+How RPPS is designed and built, and how to add to it. [README.md](README.md) is for users; [config/README.md](config/README.md)
+covers definition files.
 
-- [RPPS development guide](#rpps-development-guide)
-  - [Setup and workflow](#setup-and-workflow)
-  - [Repository layout](#repository-layout)
-  - [Design](#design)
-    - [The model](#the-model)
-    - [The rule](#the-rule)
-    - [Categories](#categories)
-      - [Two kinds of framing](#two-kinds-of-framing)
-      - [A receive chain, in order](#a-receive-chain-in-order)
-      - [Contracts](#contracts)
-    - [Sync methods](#sync-methods)
-    - [Profiles](#profiles)
-      - [Example: IEEE 802.15.4, 2.4 GHz](#example-ieee-802154-24-ghz)
-      - [Wave pairs](#wave-pairs)
-      - [Header-driven control](#header-driven-control)
-      - [Sources that start later in the chain](#sources-that-start-later-in-the-chain)
-      - [Parallelism](#parallelism)
-    - [Grey areas](#grey-areas)
-    - [Where things are](#where-things-are)
-    - [Config resources](#config-resources)
-    - [Type tags](#type-tags)
-    - [Status](#status)
-  - [Core abstractions](#core-abstractions)
-  - [Streaming rules](#streaming-rules)
-  - [Definitions (config)](#definitions-config)
-  - [Native kernels](#native-kernels)
-  - [Parallel runner](#parallel-runner)
-  - [Testing](#testing)
-  - [Adding things](#adding-things)
-  - [CI and releases](#ci-and-releases)
-  - [Conventions](#conventions)
+- [Setup and workflow](#setup-and-workflow) · [Repository layout](#repository-layout)
+- [Design](#design): [the model](#the-model), [the rule](#the-rule), [categories](#categories), [contracts](#contracts),
+  [grey areas](#grey-areas), [type tags](#type-tags), [where things are](#where-things-are)
+- [Sync methods](#sync-methods) · [Profiles](#profiles) · [Parallelism](#parallelism)
+- [Core abstractions and streaming rules](#core-abstractions-and-streaming-rules) · [Definitions](#definitions-config) ·
+  [Effort](#effort) · [Native kernels](#native-kernels)
+- [Testing](#testing) · [Adding things](#adding-things) · [CI and releases](#ci-and-releases) · [Conventions](#conventions)
+- [Not yet built](#not-yet-built) · [Blind analysis](#blind-analysis-rppsanalysis)
 
 ## Setup and workflow
 
 ```
 git clone https://github.com/Anonoei/RPPS && cd RPPS
-python builder.py -s        # pip install -e ".[dev]": the package, its extras and the dev tools
-python builder.py -c        # build the C++ kernels in place (needs a C++17 compiler)
+python builder.py -s        # pip install -e ".[dev]"
+python builder.py -c        # build the C++ kernels in place (C++17 compiler)
 python builder.py -t        # pytest
 ```
 
-`pyproject.toml` is the one place that lists dependencies and versions. Nothing else (CI included) names a package.
+`builder.py -h` lists the rest: `-d` docs, `-b` sdist and wheel (then `twine check`), `-l` local install, `-v M|m|p` version
+bump and `-u` upload (both dry runs without `-r`; upload goes to TestPyPI without it).
 
-| Where | What |
-|---|---|
-| `[build-system].requires` | setuptools, numpy, pybind11: what building needs (pip installs them in an isolated environment) |
-| `dependencies` | what running needs: numpy, pysdrlib |
-| `[project.optional-dependencies]` | `viz` (matplotlib), `test` (pytest), `oracle` (scipy), `docs` (pdoc3), `dev` (all of those plus twine, build, bumpver) |
-| `[tool.cibuildwheel]` | wheel targets and the wheel smoke test |
-| `[tool.bumpver]` | version bump (`tag = false`: tags come from GitHub releases) |
-| `[tool.pytest.ini_options]` | test paths and markers |
+`pyproject.toml` is the only place that names a dependency, CI included: `[build-system]` (setuptools, numpy, pybind11),
+`dependencies` (numpy, pysdrlib), extras `viz` (matplotlib), `test` (pytest, pytest-xdist), `oracle` (scipy), `docs` (pdoc3),
+`dev` (all of them plus twine, build, bumpver). It also holds `[tool.cibuildwheel]`, `[tool.bumpver]` and the pytest markers.
 
-`builder.py` runs the common steps (`-h` lists them): `-s` setup, `-c` compile, `-t` test, `-d` docs, `-b` build sdist and wheel
-(then `twine check`), `-l` install locally, `-v M|m|p` bump the version (a dry run without `-r`), `-u` upload (TestPyPI
-without `-r`).
-
-Work on a feature branch and merge into `dev`; `main` is released. Scratch and analysis scripts go in `tests/dev` (or
-`projects/` when they should reuse RPPS components and might be upstreamed).
+Branch from `dev`, merge back into it; `main` is released. Scratch scripts go in `tests/dev`; worked examples that reuse
+RPPS and may be upstreamed go in `projects/`.
 
 ## Repository layout
 
 ```
-src/rpps/            the package (one sub-package per category, below)
+src/rpps/            the package: one sub-package per category (Where things are)
 csrc/rpps_native/    C++ kernels, built as rpps._native (optional)
-config/              JSON definitions, shipped inside the wheel (rpps/config)
-pdoc_templates/      the docs theme
-tests/unit/          the test suite (pytest)
-tests/dev/, prop/    exploratory scripts and property experiments, not run by CI
-tests/*.py           examples and benchmarks (example.py, bench_stages.py, parallel_bench.py)
-projects/            worked examples on real signals (FM, ADS-B, ATSC, LTE, P25...), each with its own README
-data/                captures used by tests/dev and projects (git-ignored)
-builder.py           local build helper
-setup.py             builds the native module and copies config/ into the wheel
+config/              JSON definitions, copied into the wheel as rpps/config
+tests/unit/          the test suite
+tests/dev/, prop/    exploratory scripts, not run by CI
+tests/*.py           examples and benchmarks (example.py, bench_stages.py, parallel_bench.py, tpc_ber.py)
+projects/            worked examples on real signals (FM, ADS-B, ATSC, LTE, P25 ...), each with a README
+data/                captures (git-ignored)
+builder.py, setup.py local build helper; setup.py builds the native module and copies config/
 ```
 
-What each package holds, by category, is in [Where things are](#where-things-are).
-
-`python -m rpps ls` lists every definition, `python -m rpps show fec/block/rs/204_188` prints one, `python -m rpps rx <profile>
-<capture> --fs <Hz>` receives a file, and `python -m rpps fmt` rewrites config files in the canonical style. In code,
+`python -m rpps` has `ls`, `show <ref>`, `steps`, `rx`, `tx`, `survey`, `profile`, `solve` and `fmt`. In code,
 `rp.load("<resource>/<name>", **params)` loads any definition.
 
 ## Design
 
-RPPS is meant to stay signal agnostic: any implementation of any function should fit, and a new kind of signal should be new
-configs plus existing operators. This document defines the categories that make that possible, says where every current
-module belongs. The [Status](#status) section says what is built.
+RPPS stays signal agnostic: a new kind of signal should be new definitions plus existing operators.
 
 ### The model
-
-A receiver moves data through a fixed series of **representations**:
 
 ```
 samples  ->  symbols  ->  channel bits  ->  data bits  ->  packets / messages
 ```
 
-- **Channel bits** are the bits as they go over the channel: after FEC, interleaving and scrambling, with any sync markers.
-  On receive they are LLRs until the code transform decides them.
-- **Data bits** are what the link layer carries: decoded, descrambled, aligned.
+Channel bits are what crosses the channel (after FEC, interleaving, scrambling, sync markers); on receive they are LLRs until
+the code transform decides them. Data bits are what the link layer carries.
 
-Three kinds of operation act on them:
+- **Transforms** turn one representation into the next, as an invertible transmit/receive pair: wave, symbol, code, link.
+- **Conditioning** (`signal`) changes samples without knowing what they carry.
+- **Sync** estimates something unknown and corrects or aligns the data with it, at **any** representation: carrier and timing on
+  samples, phase on symbols, codeword boundaries on channel bits, packet starts on data bits. A receiver uses it many times.
 
-1. **Transforms** turn one representation into the next, and come as an invertible pair (transmit and receive). There is one
-   transform per step: wave, symbol, code and link.
-2. **Conditioning** (`signal`) changes samples without needing to know what signal they carry.
-3. **Sync** estimates something unknown about the data and corrects or aligns it. It can sit at **any** representation:
-   carrier and timing on samples, phase on symbols, codeword boundaries on symbols or channel bits, packet starts on data bits.
-
-Sync is not one rung of a ladder. A receiver uses it again and again, each time at the point where the thing it corrects
-can still be separated from everything else.
-
-A **profile** puts these together into one signal: the transforms, the sync steps between them, and their parameters,
-for both directions.
-
-Data flows down the chain; **control** flows back up it. A header decoded late in the receive chain (a link header, a
-physical header) can change the parameters of steps earlier in the chain, such as the code rate or the modulation, from a
-known position in the stream onward, without losing lock (see [Header-driven control](#header-driven-control)).
+A **profile** puts these together for one signal, both directions. Data flows down the chain; **control** flows back up it: a
+header decoded late can change earlier steps' parameters from a known position onward, without losing lock
+([Header-driven control](#header-driven-control)).
 
 ### The rule
 
 A function belongs to the category named by **what it takes and what it gives**, not by what a standard calls it.
 
-- If it changes the representation, it is the transform for that step.
-- If it estimates something unknown and corrects or aligns the data with it, it is sync, whatever representation it works on.
-- If it changes samples and needs no knowledge of the signal, it is signal.
-- Inserting or removing known structure belongs to the transform of the representation where that structure lives: pilots
-  and physical headers among symbols (symbol), sync markers among channel bits (code), headers and CRC among data bits
-  (link). Finding where the structure starts is sync.
+- Changes the representation: the transform for that step.
+- Estimates an unknown and corrects or aligns with it: sync, at whatever representation.
+- Changes samples without knowledge of the signal: signal.
+- Inserting or removing known structure belongs to the transform where the structure lives: pilots and physical headers among
+  symbols (symbol), sync markers among channel bits (code), headers and CRCs among data bits (link). Finding where it starts is sync.
 
-Two implementations of the same function share a signature, so they always land in the same category. Anything that obeys
-a category's contract is a valid implementation, whatever standard it comes from.
+Two implementations of one function share a signature, so they land in the same category.
 
 ### Categories
 
-Receive direction. Transmit runs the transforms in reverse; sync has no transmit side.
+Receive direction; transmit runs the transforms in reverse, and sync has no transmit side.
 
 | Category | Package | Takes → gives | Operator |
 |---|---|---|---|
-| Source | `source` | outside world ↔ samples | `Source(n)`, `block >> sink` |
-| Conditioning | `signal` | samples → samples | Stage, `+` |
-| Sync | `sync` | samples, symbols or bits → the same, corrected or aligned. Timing recovery also takes samples to symbols | Stage, `+`, one-way |
-| Wave transform | `wave` | samples ↔ symbols | Stage pairs |
-| Symbol transform | `symbol` | symbols ↔ channel bits (LLRs on receive) | Pipe, `*` and `/` |
-| Code transform | `code` | channel bits ↔ data bits | Pipe, `*` and `/` |
-| Link transform | `link` | data bits ↔ packets and messages | Pipe, `*` and `/` |
-| Profile | `profile` | one whole signal, both directions | builds the pipelines above |
-| Parallel | `parallel` | the frame-parallel region of a profile: frames → batches → results in order | `profile.rx(parallel=...)` |
+| Source | `source` | outside world ↔ any representation | `Source(n)`, `block >> sink` |
+| Conditioning | `signal` | samples → samples | `Stage`, `+` |
+| Sync | `sync` | any representation → the same, corrected or aligned; timing recovery takes samples to symbols | `Stage`, `+`, one-way |
+| Wave | `wave` | samples ↔ symbols | `Stage` pairs |
+| Symbol | `symbol` | symbols ↔ channel bits (LLRs on receive) | `Pipe`, `*` and `/` |
+| Code | `code` | channel bits ↔ data bits | `Pipe`, `*` and `/` |
+| Link | `link` | data bits ↔ packets | `Pipe`, `*` and `/` |
+| Profile | `profile` | one whole signal, both directions | builds the above |
+| Parallel | `parallel` | a profile's frame-parallel region | `profile.rx(parallel=...)` |
 
-#### Two kinds of framing
+"Framing" is two things on opposite sides of the decoder: **sync markers** (CCSDS ASM, DVB-S sync bytes, DVB-S2 SOF, 802.15.4
+SHR) live among symbols or channel bits, are found by sync and inserted by symbol or code; **link framing** (HDLC, headers,
+lengths, CRCs) lives among data bits and belongs to link.
 
-What standards call "framing" is two different things, and they sit on opposite sides of the FEC decoder:
+A DVB-S2 receiver in order: channelize, decimate (signal) → AGC, coarse frequency (sync) → matched filter (wave) → timing
+(sync, gives symbols) → SOF, fine frequency and phase from pilots (sync) → PL descrambling, header and pilot removal,
+demapping (symbol, gives LLRs) → deinterleaving, LDPC, BCH, BB descrambling (code) → BBHEADER, packets (link). DVB-S puts
+sync between two code steps: Viterbi (code) → byte alignment and polarity from the sync bytes (sync) → Forney
+deinterleaving, Reed-Solomon, energy dispersal (code).
 
-| | Lives among | Purpose | Found by | Inserted / removed by |
-|---|---|---|---|---|
-| Sync markers, preambles, start-of-frame words (CCSDS ASM, DVB-S sync bytes, DVB-S2 SOF, 802.15.4 SHR) | symbols or channel bits, before decoding | let the receiver find codeword and frame boundaries | `sync` | `symbol` (among symbols) or `code` (among channel bits) |
-| Link framing (HDLC flags and stuffing, headers, length fields, CRC, packets) | data bits, after decoding | carry the payload | `sync` when the stream is unaligned (HDLC flags), otherwise implied by the code's blocks | `link` |
+### Contracts
 
-#### A receive chain, in order
+- **source**: produces blocks at any representation and says which, and which sync was already applied (for example timed,
+  carrier not removed). Sets the rates it knows (`Fs`, `cf`, symbol rate) and each block's absolute position. Files,
+  sockets, radios through pysdrlib. Sinks take any representation.
+- **signal**: `SAMPLES` or `REAL` in, the same out. May change `Fs`, never needs `sps`, same in both directions. Includes
+  `signal.channel`, the simulated medium tests use as the counterpart of sync.
+- **sync**: any representation in, the same out, corrected or aligned. The one exception is **timing recovery**, the sampler
+  (`SAMPLES` at `sps` > 1 → `SYMBOLS`); the matched filter before it is wave. Estimates (offset, timing, lock, SNR, detection,
+  frame start, polarity) go to `meta.stream`, never into the data. No inverse.
+- **wave**: transmit takes `SYMBOLS` and raises `sps` (shaping, FM/CPM, stagger, IFFT + CP); receive prepares samples for the
+  sampler (matched filter, discriminator, rail realignment, CP removal + FFT) without choosing the instant. Comes in
+  [pairs](#wave-pairs).
+- **symbol**: encode takes channel bits, gives symbols. Decode gives `SYMBOLS` (differential, despreading, removing pilots and
+  headers, descrambling) or `LLR` (demapping); the last symbol step always gives soft output.
+- **code**: encode data bits → channel bits; decode channel bits (LLRs or hard) → data bits, LLRs when it can. FEC,
+  interleaving, rate matching, puncturing, scrambling, line codes, sync markers; all invertible. Needs codeword boundaries
+  known (finding them is sync).
+- **link**: decode aligned data bits into packets (split at lengths or flags, check CRCs, strip headers and stuffing; status in
+  `ctx`); encode builds them.
 
-Sync appears between the transforms, not in one place. DVB-S2:
+### Grey areas
 
-| Step | Category | Representation after it |
+Each settled by the rule.
+
+| Function | Category | Why |
 |---|---|---|
-| channelize, decimate | signal | samples |
-| AGC, coarse frequency | sync | samples |
-| matched filter | wave | samples |
-| timing recovery (picks one sample per symbol) | sync | symbols |
-| start of frame (SOF correlation), fine frequency and phase from pilots | sync | symbols |
-| PL descrambling, header and pilot removal, demapping | symbol | channel bits (LLRs) |
-| bit deinterleaving, LDPC, BCH, BB descrambling | code | data bits |
-| BBHEADER, user packets | link | packets |
+| Matched filter | wave | prepares samples; does not decide when to sample |
+| Timing recovery (`MM`, `Mat`, `TLL`, `OerderMeyr`) | sync | estimates the instant; the one sync step that changes representation |
+| Differential coding on symbols / on bits (NRZI) | symbol / code | symbols ↔ symbols / bits ↔ bits |
+| Manchester as a pulse / as 0 → 01, 1 → 10 | wave / code | symbols ↔ samples / bits ↔ bits |
+| Spreading at one sample per chip (`Spread`), `Despread` at `sps` with a known code phase | symbol | chips are symbols |
+| Code-phase and Doppler search, preamble correlation, sync-marker and HDLC-flag search, phase ambiguity | sync | find a start or estimate an unknown |
+| Attaching a sync marker | code | known structure among channel bits |
+| Pilots, physical headers, padding, OFDM carrier allocation | symbol | known structure among symbols |
+| Reading a physical header's fields (DVB-S2 PLS) | symbol | `symbol.Header` decodes its short code into fields |
+| Equalizer, OFDM pilot equalization, squelch | sync | estimate the channel / presence |
+| OFDM IFFT/FFT and CP; `FMDemod`, `AMDemod`, `SSBDemod` | wave | symbols ↔ samples, carrier ↔ baseband |
+| De-emphasis, DC block; channel impairments | signal | samples → samples |
+| CRC guarding a packet / inside FEC (LTE code-block CRC) | link / code | resources are shared across categories |
 
-DVB-S shows sync acting on channel bits, between two parts of the code transform:
+**Soft information only flows down the receive chain:** symbol gives LLRs, code takes and gives them, link takes hard bits and
+their reliability, and sync on channel bits passes LLRs through. **Order matters inside sync:** a step sits where what it
+corrects can still be separated (coarse frequency before the matched filter, fine phase after timing, a staggered signal's
+carrier before its rails are realigned).
 
-| Step | Category | Representation after it |
+### Type tags
+
+Every block carries a **form** (`dtype`: SAMPLES, REAL, SYMBOLS, LLR, BITS, BYTES, MSG; how values are stored) and a
+**representation** (`Rep`: SAMPLES, SYMBOLS, CHANNEL, DATA, PACKETS; where in the chain). Forms cross representations: LLRs
+exist before the decoder and after a soft-output one. Each operator declares `takes(encode)` and checks it before working, so a
+link decoder refuses channel bits and a constellation refuses samples; `CATEGORY` says which category it is.
+
+| Category | Accepts | Gives |
 |---|---|---|
-| ... timing and carrier ... | sync | symbols |
-| demapping | symbol | channel bits |
-| Viterbi | code | partly decoded bits |
-| byte alignment from repeating sync bytes, polarity | sync | aligned bits |
-| Forney deinterleaving, Reed-Solomon, energy dispersal | code | data bits |
-| MPEG-TS packets | link | packets |
+| signal | SAMPLES (form SAMPLES or REAL) | the same |
+| sync | any | the same; timing gives SYMBOLS from SAMPLES |
+| wave | SYMBOLS (tx), SAMPLES (rx) | SAMPLES |
+| symbol | CHANNEL (encode), SYMBOLS (decode) | SYMBOLS; SYMBOLS or CHANNEL as LLR |
+| code | DATA or CHANNEL (both ways) | CHANNEL; DATA as LLR or BITS |
+| link | PACKETS (encode), DATA (decode) | DATA; PACKETS (BYTES or MSG) |
 
-#### Contracts
+A code transform is often several steps, so code steps take channel and data bits alike; the enforced boundary is the link's.
+`rp.code.Uncoded()` is the code step of a link with no FEC. `rp.Data(x)` on a complex array is SAMPLES, `rp.Data(x, sps=1)` is
+SYMBOLS; `BitStage` takes channel or data bits and keeps their form.
 
-**source**
-- Produces blocks at **any representation**, and says which: samples from a radio or a capture, timed symbols from another
-  demodulator's ring or a symbol file, data bits, packets. It also says which sync has already been applied to them (for
-  example: timed, carrier not removed). Sinks consume any representation (`>> sink`).
-- Sets the rates it knows (`Fs`, `cf`, symbol rate) and the absolute position of each block.
-- Files, sockets and radios (through pysdrlib) are implementations.
+### Where things are
 
-**signal**
-- Takes `SAMPLES` or `REAL`, gives the same kind.
-- May change `Fs` (resampling, decimation); never needs `sps`.
-- Has no transmit/receive distinction: the same filter works both ways.
-- Includes `signal.channel`, the simulated medium (AWGN, frequency and timing offsets, multipath, fading), which tests use
-  as the transmit-side counterpart of sync.
+| Package | What is in it |
+|---|---|
+| `source` | files and their formats, WAV, SigMF, sockets, radios through pysdrlib (imported only when used); sinks |
+| `signal` | `filters` (FIR, IIR, windows, pulses, fractional delay, polyphase channelizer), `sample` (resampling), `channelize`, `DCBlock`, `Deemphasis`, `Conjugate`, `channel` (the simulated medium) |
+| `sync` | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `AcquireFEC`, `acquire_code`, `Squelch`, `PeakAGC`. Second class: `time.MM` (Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `CMA` |
+| `wave` | `Shape`/`Matched`, `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod` |
+| `symbol` | `Constellation` (PSK, QAM, APSK, ASK), `Differential`, `Spread`/`Despread`, `Carriers`, `Header`, `Pilots`, `PhaseScramble` |
+| `code` | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), `Line`, `Marker`, `Uncoded` |
+| `link` | CRCs, HDLC, `Header` (fields, CRC, payload length) |
+| `profile` | loading, steps, header-driven control, runners |
+| `parallel` | the frame-parallel region (see [Parallelism](#parallelism)) |
+| `sequence` | recurrences, Gold sequences, chip codes, words: what scramblers, spreaders and searches share |
+| `analysis` | outside the data path: spectra, rates, surveys, blind analysis; can write definitions |
+| `base`, `math`, `utils`, `viz` | `Data`, `Stage`, `Pipe`, `Stream`, type tags, control, kernels; finite fields and GF(2); helpers; plots |
 
-**sync**
-- Takes samples, symbols, channel bits or data bits, and gives the same representation corrected (frequency, phase, gain,
-  channel) or aligned (to the symbol clock, a codeword or a packet).
-- One exception changes representation: **timing recovery** is the sampler, taking `SAMPLES` at `sps` > 1 to `SYMBOLS`.
-  The matched filter before it is wave; deciding the sampling instant is sync.
-- Its estimates (frequency offset, timing, lock, SNR, detected modulation, frame start, polarity) go to the stream
-  (`meta.stream`, `det`), never into the data.
-- Has no inverse and no transmit side.
-- See [Sync methods](#sync-methods) for how it estimates.
+Imports run down this list: nothing in the data path imports `analysis`, `profile` or `parallel` (`test_layering.py`; the one
+exception is `AcquireFEC`, which imports `analysis.identify` inside the call).
 
-**wave**
-- Transmit takes `SYMBOLS` and raises `sps` (pulse shaping, FM/CPM, stagger, IFFT plus cyclic prefix).
-- Receive brings samples back to the form the sampler needs (matched filter, FM discriminator, rail realignment, cyclic prefix
-  removal plus FFT). It does not choose the sampling instant.
-- Pieces come in pairs: shaping and matched filter, `Stagger("q")` and `Stagger("i")`, `FM` and `FMDemod`. A profile names
-  the pair, and the profile loader builds each half (see [Wave pairs](#wave-pairs)).
+### Config resources
 
-**symbol**
-- Encode takes channel bits and gives symbols.
-- Decode takes `SYMBOLS` and gives `SYMBOLS` (differential decoding, despreading, removing pilots and headers, symbol
-  descrambling) or `LLR` (demapping). The last symbol step of a receiver always gives soft output.
-- Includes the structure among symbols: pilot and header insertion and removal, OFDM carrier allocation.
+Definitions are organized by **what they define**, not by the package that loads them; any operator references a resource by
+name, and a file's `base` and `type` pick the implementation.
 
-**code**
-- Encode takes data bits and gives channel bits. Decode takes **channel** bits (LLRs or hard) and gives **data** bits,
-  LLRs when it can.
-- Every transform is invertible: FEC, interleaving, rate matching, puncturing, scrambling, line codes such as NRZI, and
-  attaching sync markers.
-- Needs codeword boundaries to be known; finding them is sync.
+| Resource | Holds | Used by |
+|---|---|---|
+| `constellation` | point sets | symbol |
+| `pulse` | shaping pulses, each `"kind": "symbol"` or `"frequency"` | wave |
+| `filter` | `fir`, `iir`, `window` | signal |
+| `sequence` | `recurrence`, `gold`, `chips`, `set`, `word` (LFSRs, Gold codes, Barker and GPS C/A chips, the CCSDS ASM ...) | code, symbol, sync |
+| `scramble` | `additive` (a sequence and its restart) or `feedthrough` (self-synchronising) | code |
+| `fec`, `interleave` | `block`, `conv`; `block`, `forney` | code |
+| `crc`, `frame` | CRCs; frame formats such as HDLC | link (and code that carries a CRC) |
+| `header` | `physical` (known symbols and a short code), `link` (fields, CRC, length) | symbol, link, sync |
+| `table` | rows of parameters looked up by header fields (DVB-S2 MODCODs, 802.11b rates) | profile controls |
+| `profile` | whole signals | |
 
-**link**
-- Decode takes aligned **data** bits and gives packets and messages: it splits at length fields or flags, checks integrity
-  (CRC, FCS), strips headers and stuffing. Status (CRC result) goes in `ctx`.
-- Encode builds the packets.
+One sequence serves everything that needs it: `scramble/additive/lte_pdsch` names `lte_gold` with
+`{"c_init": {"expr": "(rnti << 14) + ..."}}`, and `rp.sequence.load("lte_gold", c_init=...)` gives the same sequence to a
+spreader or a search.
 
-### Sync methods
+## Sync methods
 
 **Block estimation and block-rate tracking are first class; per-sample loops are second class.**
 
-- **First class, estimation:** estimate a parameter from a window of data with block operations: FFTs, correlations, least
-  squares, matrix solves. Examples: the M-th power FFT for carrier frequency, square-law (Oerder-Meyr) timing plus
-  interpolation, least squares on preambles and pilots, code-phase search by FFT correlation (`sync.acquire_code`), a block
-  LS/MMSE equalizer. Existing pieces already work this way: `sync/phase/ff.py`, the `Acquire` estimators, `sync.acquire_code`,
-  the DVB-S2 pilot phase fit.
-- **First class, tracking:** a slow loop that runs **once per window** over the window estimates, carrying phase and rate
-  from one window to the next and gating outliers. It is part of the estimator, not a separate stage.
-- **Second class:** per-sample loops: Costas, PLL, Mueller & Muller, Gardner and TLL timing loops, LMS and CMA equalizers,
-  decision-directed trackers. They stay available for signals and conditions where block estimation is not enough.
+- **First class:** estimate from a window with block operations (FFTs, correlation, least squares), then a slow loop run
+  **once per window** carries phase and rate across windows and gates outliers. `OerderMeyr` (square-law timing, cubic
+  interpolation; follows a clock 200 ppm off), `MPower` (M-th power: FFT acquisition, then per-window phase), `BlockLS`
+  (least squares per window against decisions), `CPSync` (OFDM timing and frequency from the cyclic prefix), all tracked by
+  `track` (a critically damped second-order loop, wide while it pulls in, coasting through gated windows).
+- **Second class:** Costas, PLL, M&M, Gardner, TLL, LMS, CMA, decision-directed loops, for signals where blocks are not enough.
 
-A profile's sync steps name **what** is estimated (`carrier`, `timing`, `frame`), not how. The receiver uses the first-class
-method. When a signal needs a loop, the profile says so in `defaults`:
+A profile's sync steps name **what** is estimated (`carrier`, `timing`, `equalize`, `frame`) and get the first-class method
+(`timing: oerder_meyr`, `carrier: mpower`, `equalize: ls`); a loop is chosen by name in `defaults`:
+`{"timing": {"method": "gardner", "alpha": 0.3}}`.
 
-```json
-"defaults": {"timing": {"method": "gardner", "alpha": 0.3}}
-```
+Rules for feedforward estimators:
 
-**Rules for feedforward estimators:**
+1. **Windows sit at absolute stream positions** (`[k*W, k*W + L)`, history carried between blocks), so output does not depend
+   on how the stream is cut.
+2. **Drifting parameters are tracked across windows**, not held per window (a free-running SDR is 10-20 ppm off and wanders),
+   and the correction is evaluated per sample.
+3. **Windows are set in time, not symbols**: oscillator phase wanders in time (cycle slips at 8 ms windows, none at 2 ms).
+4. **Latency is declared** in `stream.est[name]["latency"]` (seconds), not added to `meta.delay`, the group delay.
 
-1. **Windows sit at absolute stream positions,** not at block boundaries. A window covers stream samples
-   `[k*W, k*W + L)` whatever blocks they arrived in, and history is carried between blocks, so the output does not depend on
-   how the stream was cut. That is the same "any block length" contract every stage has today. It needs `Meta` to carry the
-   absolute position of each block (see [Status](#status)).
-2. **Parameters that drift are tracked across windows,** not held constant per window. A constant estimate per window is a
-   staircase when the clock or carrier drifts (a free-running SDR oscillator is 10 to 20 ppm off and wanders). The
-   block-rate tracker carries phase and rate from window to window, and the correction is evaluated per sample.
-3. **Window length is set in time,** not in symbols. Oscillator phase wanders in time: `viterbirx` measured cycle slips
-   with 8 ms blocks and none with about 2 ms, whatever the symbol rate. A window is as long as the noise needs, and no
-   longer than the oscillators allow.
-4. **Latency is declared.** Output waits for its window; the stage says how long in its estimates
-   (`stream.est[name]["latency"]`, seconds). It is not added to `meta.delay`, which is the signal's group delay (what
-   `meta.time_of` takes off): holding a window back does not move where a symbol was in time.
+**`AcquireFEC`** does for the code what `Acquire` does for the modulation: on timed, carrier-corrected symbols it finds the
+configured code, bit map and alignment (`analysis.identify`: convolutional codes, RS behind a Forney interleaver, HDLC, block
+codes), names the profile that decodes it, then tracks by re-encoding once per window and putting carrier turns and symbol
+slips right. With `blind=True` the [blind tools](#blind-analysis-rppsanalysis) run when no definition fits; what they find
+is a `Guess`, a definition that decodes once saved.
 
-What there is (`rpps.sync`): `track` (the block-rate loop: a critically damped second-order loop over window estimates,
-wrapped to the parameter's period, wide for the first windows while it pulls in, coasting through gated-out windows);
-`CPSync` (OFDM symbol timing and fractional frequency from the cyclic prefix, van de Beek, tracked the same way; `{"sync": "ofdm"}` in a profile); `time.OerderMeyr` (square-law timing, the symbol instants from the tracked line, cubic interpolation; follows a clock
-200 ppm off); `phase.MPower` (M-th power of the phase alone: FFT acquisition of the frequency, then the residual phase
-per window; the acquisition gate allows for the FFT's search, so noise is never acquired); `equalize.BlockLS` (least
-squares per window against decisions, the taps carried from window to window). Profiles get them by default
-(`timing: oerder_meyr`, `carrier: mpower`, `equalize: ls`); the loops are methods by name (`mm`, `gardner`, `costas`,
-`lms`, `cma`).
+## Profiles
 
-`AcquireFEC` does for the channel code what `Acquire` does for the modulation: on timed, carrier-corrected symbols it
-finds which configured code they carry, under which bit map and alignment (`analysis.identify.identify`: convolutional codes,
-Reed-Solomon and a Forney interleaver behind them, HDLC, block codes), turns the symbols to the map the decoder uses, and
-names the profile that decodes them (a shipped one with the same steps, or one built from what was found). After that the
-code itself is the tracker: once per window the symbols are re-encoded, and a carrier turn or a symbol slip is put right.
+A profile is a definition of one signal: operators, order, parameters. `config/profile/<family>/<mode>.json`;
+`rp.profile.load("ieee80211b/1m")` gives `p.rx()` and `p.tx()` runners (`out = runner(block)`, transmit
+`runner(block, fields=...)`).
 
-For what no definition covers there are blind tools in `analysis`, which find structure but never decode: what they find is
-a `Guess`, a definition that decodes once it is saved (`Guess.save`, then loaded like any other).
-
-| Finds | Tool | How |
-|---|---|---|
-| self-synchronising scrambler | `sequence.scrambler.search` | descramble with every polynomial; keep the one whose output stops looking random (idle ones, flags, headers, frames) |
-| Reed-Solomon code over GF(256) | `code.block.rs.search` | the roots every codeword shares, by a Galois-field Fourier transform at every byte phase: length, field, generator, alignment |
-| binary block code | `code.block.linear.solve_block` | length and alignment from rank deficiency, checks from the null space; then its kind: cyclic / BCH (generator = gcd of codewords), product (rows and columns are codewords), LDPC (low-weight checks, soft values pick the cleanest words) |
-| puncture pattern of a known mother code | `code.conv.puncture.search` | every rate P/(P+1) pattern, re-encoded through the Viterbi decoder |
-
-`identify.solve` peels such layers off a decoder's output in turn; `identify(..., blind=True)` (or `AcquireFEC(blind=True)`) runs
-the puncture and block searches on channel bits when no definition fits, and `solve` inside a convolutional code with
-nothing configured behind it. Structure that holds at every alignment (constant bits, idle words of one value) is not taken
-for a code. The rank methods need about n + 48 words of n bits with few errors: lengths up to about the square root of the
-bits there are, and a bit error rate well under 1/n^2 for the length; the sparse check search works on known lengths up to
-about 1% bit errors with soft values. Strong codes at low SNR (LDPC, turbo) are beyond them on channel bits.
-
-### Profiles
-
-A profile is a config file that defines one signal: which operators, in what order, with what parameters. It replaces
-`chain`, which only covered FEC and needed its own special cases (Viterbi puncture-phase search, polarity, byte alignment);
-those become ordinary sync and code steps.
-
-```
-config/profile/<family>/<mode>.json          config/profile/dvbs/qpsk_3_4.json, config/profile/ieee80211b/1m.json
-rp.profile.load("ieee80211b/1m")             -> p.rx(), p.tx(): runners, `out = runner(block)`
-                                                transmitting, `runner(block, fields=...)`: the fields of its frames
-```
-
-**One list of steps, in receive order.**
-- A transform step names a transmit/receive pair. It runs as written on receive and inverted, in reverse order, on transmit.
-- A sync step is receive-only and is skipped on transmit.
-- So one file gives both directions, and sync sits exactly where it belongs.
-
-Profiles take parameters like any definition (`params`, `{"param": ...}`, `{"expr": ...}`): a modulation and coding
-choice, a satellite PRN, a cell ID. Each step references resources by name (see [Config resources](#config-resources)),
-so a profile adds no new operator code. `defaults` holds method choices and loop parameters for sync steps that need them.
-A step that loads a definition names its kind and its reference, the way the loaders take them: `{"code": "conv",
-"name": "k7_171_133/3_4"}`, `{"code": "block", "name": "rs/204_188"}`, `{"code": "interleave", "name": "forney/12_17"}`,
-`{"sync": "puncture", "conv": "k7_171_133/3_4"}`, `{"signal": "filter", "name": "fir/windowed/lowpass_0p1_60db"}`,
-`{"symbol": "constellation", "name": "psk/qpsk"}` (or `"shape": "16QAM"`). `python -m rpps steps` lists them all.
-
-#### Example: IEEE 802.15.4, 2.4 GHz
+**One list of steps, in receive order.** A transform step names a pair, runs as written on receive and inverted, in reverse, on
+transmit; a sync step is skipped on transmit. Profiles take `params` like any definition; `defaults` holds sync methods and
+loop settings. A step that loads a definition names its kind and reference as the loaders take them: `{"code": "conv",
+"name": "k7_171_133/3_4"}`, `{"code": "interleave", "name": "forney/12_17"}`, `{"sync": "puncture", "conv": "..."}`,
+`{"symbol": "constellation", "name": "psk/qpsk"}`. `python -m rpps steps` lists every kind.
 
 ```json
 {"base": "profile", "comment": "IEEE 802.15.4 2.4 GHz O-QPSK", "ref": "IEEE 802.15.4-2020 12",
@@ -344,686 +271,324 @@ A step that loads a definition names its kind and its reference, the way the loa
  ]}
 ```
 
-What the loader builds:
+builds `rx = carrier + Stagger("i") + halfsine matched + timing + Spread decode` and `tx = Spread encode + Shape(4, halfsine)
++ Stagger("q")`. The carrier comes before `Stagger("i")`: a phase offset mixes I into Q while Q is half a symbol late.
 
-```
-rx = carrier sync + Stagger("i") + halfsine (matched) + timing sync + Spread(pair) decode
-tx = Spread(pair) encode + Shape(4, halfsine) + Stagger("q")
-```
+**Sources that start later in the chain:** the runner skips every receive step before what the source gives (`Source.REP`,
+`APPLIED`): timed symbols with the carrier on skip signal, wave and timing; a BBFRAME stream skips everything through code.
 
-Transmit is the transforms in reverse, without the sync steps. The carrier is corrected before `Stagger("i")`, because a
-phase offset mixes I into Q while Q is still half a symbol late.
+### Wave pairs
 
-#### Wave pairs
-
-The profile loader knows how each wave step pairs:
-
-| Step kind | Receive (as written) | Transmit (inverted) |
+| Step | Receive (as written) | Transmit (inverted) |
 |---|---|---|
-| `shape` with a **symbol** pulse (rrc, rc, halfsine, rect) | `wave.Matched(pulse)`: the pulse time-reversed and conjugated (the same taps for symmetric real pulses), unit gain at the instants | `wave.Shape(sps, pulse)` (zero stuffing and the pulse in polyphase form) |
-| `shape` with a **frequency** pulse (gaussian, rect for FSK) | none: the discriminator in the `fm` step handles it | `wave.Shape(sps, pulse)` |
+| `shape`, symbol pulse (rrc, rc, halfsine, rect) | `wave.Matched(pulse)`, unit gain at the instants | `wave.Shape(sps, pulse)`, polyphase |
+| `shape`, frequency pulse (gaussian, FSK rect) | none (the `fm` discriminator) | `wave.Shape(sps, pulse)` |
 | `stagger` | `Stagger("i", delay)` | `Stagger("q", delay)` |
-| `fm` | `FMDemod(fm_gain(h, sps, step))` + integrate over the symbol | `FM(h, step)` |
-| `ofdm` | remove cyclic prefix + FFT | IFFT + cyclic prefix |
+| `fm` | `FMDemod` + integrate over the symbol | `FM(h, step)` |
+| `ofdm` | remove CP + FFT | IFFT + CP |
 
-Whether a pulse is a symbol pulse or a frequency pulse is a property of the `pulse` resource (`"kind": "symbol"` or
-`"frequency"`), not of the profile.
+Whether a pulse is a symbol or a frequency pulse is the pulse definition's `kind`, not the profile's.
 
-#### Header-driven control
+### Header-driven control
 
-Most standards decode a header that sets the format of what follows:
+Headers set what follows: DVB-S2 PLS (modulation, LDPC rate, pilots, frame length, per frame), the 802.11b PLCP (payload
+rate, mid-packet), length fields (802.15.4, BLE, ADS-B), the P25 NID, adaptive links. The change has to land at the right
+place without losing lock, so a **control path** runs back up the chain (`rpps.base.control`, `rpps.profile.control`,
+`rpps.profile.runner`):
 
-| Standard | Header | What it changes |
-|---|---|---|
-| DVB-S2 (VCM, ACM) | PLS, in every PLFRAME | modulation, LDPC rate, pilots, frame length, frame by frame |
-| IEEE 802.11b | PLCP header, sent at 1 Mb/s | the payload's rate and modulation, mid-packet |
-| IEEE 802.15.4, BLE, ADS-B | length or type field | packet length |
-| P25 | NID (DUID) | frame type and length |
-| Adaptive links | link-layer control message | code rate or modulation from a later point |
+1. **Publish with a position.** A step calls `rp.base.control.publish(meta, op, fields, at=, out=, span=)`: `at` is the
+   absolute input position the fields apply from, `out` where that falls in this call's output, `span` how long they hold. A
+   frame sync publishes `{"frame": k}` at each start. A step that drops or inserts items reports
+   `rp.base.control.anchor(meta, op, at, out)`. Everything lands in `stream.control` (`log`, `fields(step)`, `reports`,
+   `rerun`, `buffer`).
+2. **Map fields to parameters.** `controls`, keyed by the publishing step's id, says which steps take which parameters, usually
+   through a table:
 
-The receiver has to make the change at the right place and keep lock through it. So the architecture has a **control
-path** that runs back up the chain:
+   ```json
+   "controls": {
+     "frame": {"drive": {"pls": {"frame": "frame"}}},
+     "pls": {"table": "dvbs2/modcod", "key": ["modcod", "short"],
+             "default": {"modcod": {"param": "modcod"}, "short": 0, "pilots": {"param": "pilots"}},
+             "frame": {"calc": "kbch - 80"},
+             "drive": {"map": {"name": "constellation"}, "ldpc": {"name": "ldpc"}, "pilots": {"slots": "slots", "pilots": "pilots"},
+                       "plscram": {"length": {"calc": "slots*90 + pilots*((slots - 1)//16)*36"}}}}}
+   ```
 
-1. **Fields are published, with a position.** A header step (code or link) publishes the fields it decoded, each with
-   the absolute stream position from which it applies: the rest of this frame, the next frame, or a stated later frame.
-   They go on the stream (`meta.stream`), like sync's estimates.
-2. **The profile maps fields to parameters.** A `controls` section says which steps take which parameters from which
-   fields, usually through a table resource. For DVB-S2, a `modcod` table maps the PLS value to a constellation, an LDPC
-   rate, pilots on or off, and a frame length.
-3. **Steps change parameters at a position.** Parameters are **fixed unless controlled**, and the declaration comes from
-   where the change comes from: the header step's entry in `controls` names the parameters it drives, and only those can
-   change. How a step takes the change is a property of the step: each parameter it can be controlled on is one of
+   A source is a field, a column of the row, or `{"calc": ...}` (worked out when the fields arrive; `{"expr": ...}` is load
+   time). The loader refuses unknown steps or parameters, ambiguous ids, and parameters a step does not declare.
+3. **Change at a position.** Parameters are fixed unless controlled. Operators declare `CONTROLS` per parameter: **live**
+   (changed in place, state kept: constellation, puncturing, LDPC rate, frame length; taken through `control(**params)`),
+   **restart** (rebuilt from the position, what was in flight dropped and reported: interleaver depth, a Viterbi's
+   constraint length, FFT size), or not controllable (a tracker's own estimates). A live change keeps lock: QPSK to BPSK
+   changes the constellation and the carrier estimator's power, not the timing. A change is a frame start for the step; what
+   the last frame left in it is dropped and reported, never joined to the next.
+4. **Positions translate** between representations through each step's rate and delay; that is why every block carries
+   its absolute position. A change for a later step travels with the data like a tag (input split at the position).
+5. **Late changes re-run.** A change for a step before its publisher (a link header changing its own payload's decoding)
+   is carried back through the position maps, and the runner re-runs from the earliest such step out of a re-run buffer,
+   in pieces checkpointed at least the controls' `reach` apart. The buffer follows the current frame length and rates. A
+   change whose data has left the buffer is not applied backwards: the frames are dropped and reported, and processing
+   continues with the change. Standards that announce ahead (DVB-S2) never re-run.
 
-   | Behaviour | What happens at the position | Typical parameters |
-   |---|---|---|
-   | **live** | changes in place; the step keeps its state | constellation, puncturing pattern, LDPC rate, frame length, the carrier estimator's power |
-   | **restart** | the step is rebuilt from the position; what was in flight inside it is discarded and reported, as in the drop-and-report rule below | interleaver depth (its delay lines hold data interleaved the old way), Viterbi constraint length (its path metrics belong to the old trellis), FFT size, swapping a code for another |
-   | **none** | cannot be controlled: the loader refuses a profile that tries | a sync tracker's own estimates, which a header should never overwrite |
+**Transmit:** each frame's fields come from the caller (`fields=`, one dict or one per frame), else the entry's `schedule`,
+else its defaults; `frame` gives the items one frame takes. A header step that publishes drives the steps after it (the
+802.11b PLCP builder switches the rate where its payload starts).
 
-   A **live** change keeps everything else going: the timing and carrier trackers keep their lock, and only what depends
-   on the parameter changes (QPSK to BPSK changes the constellation and the carrier estimator's power, not the timing).
-   Most header-driven changes are live at almost no cost, because the steps after frame sync already work frame by
-   frame, so each frame simply uses its own parameters. A **restart** is what standards do anyway where state can't carry
-   over: they define a boundary and start fresh there, and a decoder whose frames are terminated loses nothing.
-4. **Positions translate between representations.** A position given in data bits is turned into the matching symbol and
-   sample position through each step's rate and delay. This is why every block carries its absolute position (see
-   [Status](#status)).
-5. **A change can arrive late.** When a field applies to data that upstream steps have already processed (a link header
-   that announces a change for its own payload, after the payload has gone through the decoder), the runner re-runs that
-   span from a re-run buffer kept for the purpose. Standards that announce changes ahead (DVB-S2's header comes before
-   its payload) never need it.
-   - **The buffer is sized from the signal and adjusts with it.** It holds the longest span a header can reach back over:
-     from the start of the data a field can apply to, to the point where that field is decoded. That span follows the
-     current frame length and rates, so it grows and shrinks when a header changes them (a longer frame or a lower
-     symbol rate needs more).
-   - **Too late is dropped and reported.** A change whose data has already left the buffer is not applied backwards: the
-     affected frames are dropped, and the drop is counted and reported on the stream (which change, which positions, how
-     many frames), the way `dvbs2rx` records a refused frame as a gap. Processing continues with the change applied from
-     the first position still in the buffer.
+## Parallelism
 
-Frame-scoped steps are what make this practical: once frame sync has found a frame, the steps after it process frame by
-frame, and each frame carries the parameters announced for it.
+Real time needs more than one core, and later a GPU or FPGA. Once frame sync has found a frame and its header has set the
+parameters, the rest is per-frame work with no state across frames. A profile marks where that region starts
+(`"parallel": "<step id>"`); `rpps.profile.parallel` refuses a region with stream-scoped steps (`SCOPE = STREAM`), a
+publishing header or a late change.
 
-How it is done (`rpps.profile.control`, `rpps.profile.runner`):
-
-- **Publishing.** A step calls `rp.base.control.publish(meta, op, fields, at=..., out=..., span=...)`: `at` is the absolute
-  position in its input from which the fields apply, `out` where that falls in what it gives in this call (`None`: none of
-  its output is affected), `span` how many input items they hold for before the controls' defaults apply again (an 802.11b
-  rate holds for its payload). A frame sync publishes `{"frame": k}` at each frame start. A step that drops or inserts
-  items reports `rp.base.control.anchor(meta, op, at, out)`, so positions carry through it exactly. What was published goes to
-  `stream.control`: `log`, `fields(step)`, `reports` (late, dropped, restarted, no table row), `rerun`, `buffer`.
-- **The controls section**, keyed by the publishing step's id (a step's `"id"`, else its kind):
-
-  ```json
-  "controls": {
-    "frame": {"drive": {"pls": {"frame": "frame"}}},
-    "pls": {"table": "dvbs2/modcod", "key": ["modcod", "short"],
-            "default": {"modcod": {"param": "modcod"}, "short": 0, "pilots": {"param": "pilots"}},
-            "frame": {"calc": "kbch - 80"},
-            "drive": {"map": {"name": "constellation"}, "ldpc": {"name": "ldpc"}, "pilots": {"slots": "slots", "pilots": "pilots"},
-                      "plscram": {"length": {"calc": "slots*90 + pilots*((slots - 1)//16)*36"}}}}}
-  ```
-
-  A source is a field, a column of the key's row, or `{"calc": ...}` over both, worked out when the fields arrive (an
-  `{"expr": ...}` is worked out at load time, from the profile's parameters). The loader refuses a step or parameter that
-  does not exist, an ambiguous id, and a parameter the step does not declare live or restart.
-- **Steps** declare `CONTROLS` on their operators (`{"name": "live"}` on a constellation or a block code, `"restart"` on a
-  convolutional code or a Forney interleaver) and take a live change through `control(**params)`. A change applied to a step
-  is a frame start for it: frame-scoped steps (a header, pilot blocks, PL scrambling, a BBFRAME) restart their frame there.
-  What the last frame left in a step (part of a codeword, when a timing slip cut that frame short) is dropped and
-  reported, never joined to the next frame, and the step anchors the frame start, so positions after it stay exact.
-  Each runner builds its own operators, since control changes them.
-- **Ahead and late.** A change for a step after its publisher travels with the data like a tag: before a step runs, its
-  input is split at the change's position and the change applied in between; after it ran, the position is carried to its
-  output through the step's position map (anchors at its first run, at each change, and where it reported one). A change
-  for a step before its publisher is carried back through the maps, and the runner re-runs from the earliest such step
-  (the re-run span), which it runs in pieces with a checkpoint of their state at the start of each. The pieces are at least
-  the `reach` the controls declare, carried into the span's units through the current rates, so a field never reaches
-  further back than the last two checkpoints. Publications from one header share a `group`; a re-run keeps the earliest
-  group and lets the re-run publish the rest again, since they came from data that was processed wrongly. Positions after
-  a late change are carried back through what the change makes of the steps between (their maps are cut at the change),
-  not through the pass that is being redone.
-- **Transmit.** The runner publishes each frame's fields at the first step: the caller's (`fields=`, one dict or a list,
-  one per frame), else the entry's `schedule` in turn, else its defaults; `frame` gives the items one frame takes at the
-  first step (none: one frame per call). Those drive the steps up to the header step; a header step that publishes in turn
-  drives the steps after it (the 802.11b PLCP builder knows where its payload starts, so the rate switches there).
-
-On transmit the same fields are inputs, from two places:
-
-- **A schedule in the profile**, such as cycling through MODCODs for a test signal, or a fixed sequence of packet types.
-- **The caller, per frame**, for adaptive links or anything driven from outside.
-
-A field the caller sets for a frame overrides the schedule for that frame. The profile builds the headers and switches the
-steps to match.
-
-#### Sources that start later in the chain
-
-A source says which representation it produces and which sync it has applied. The profile runner skips every receive
-step before that point:
-
-- a radio or a capture gives samples: nothing is skipped;
-- `gpu-demod`'s ring or `python-demod`'s symbol files give timed symbols at one sample per symbol with the carrier not
-  removed: the signal, wave and timing steps are skipped, and carrier sync on symbols runs;
-- a BBFRAME stream gives data bits: everything up to and including the code steps is skipped.
-
-#### Parallelism
-
-The goal is real-time processing, on CPU first and on a GPU or an FPGA later. Once frame sync has found a frame and its header
-has set its parameters, everything after is per-frame work on a whole frame, with no state across frames, as `dvbs2rx` does.
-A profile marks where that region starts (`"parallel": "<step id>"`); the loader checks that it holds (`rpps.profile.parallel`; internals in [Parallel runner](#parallel-runner)).
-
-The unit is **batch**, not thread: what pays on every target is running N frames through one program.
+The unit is the **batch**, not the thread: N frames through one program pays on every target.
 
 ```
-Scheduler   frames -> batches of one key -> executor -> results in order
-Executor    where a plan runs: inline, threads (a batch split by rows), processes, GPU, FPGA
-BatchPlan   one per key (the parameters the header gave, the frame's shape): the region's kernels, shapes checked, `describe()`
-Kernel      a pure function over [N, L] arrays, one frame per row, with its constants made once: `run(xp, batch)`
+profile.rx(parallel=rp.parallel.Parallel("thread", workers=4))   -> ParallelRunner
+  front       the ordinary Runner, stopped at the region; the changes it resolved cut the input at frame starts
+  Scheduler   frames -> batches of one key -> Executor (inline, threads by rows, processes, later GPU / FPGA) -> results in order
+  BatchPlan   per key (the header's parameters, the frame's shape): the region's kernels, shapes checked, describe()
+  Kernel      a pure function over [N, L] arrays, run(xp, batch); LoopKernel runs frame by frame through the operators
 ```
 
-- An operator gives its kernel with `op.kernel(params, how)`; the operator-first API is unchanged. A step with no kernel runs
-  frame by frame through its operators (`LoopKernel`), which is also the oracle every kernel is checked against. Regions can
-  mix both.
-- Kernels belong to generic operators (a constellation's demapper), never to a protocol. They use only what numpy and cupy
-  share (`xp`), hold their constants (keystreams, permutations, a code's graph) so those can live on a device, and keep shapes
-  fixed per key; a row that fails is marked, not raised.
-- `BatchPlan.describe()` is data (kernel, lengths, constants): what a device kernel library or an HLS generator builds from. The
-  JSON resources (LDPC address tables, BCH polynomials, interleavers) are already the constants.
-- Per-sample loops stay serial and in the front (second class, above).
+- An operator gives its kernel with `op.kernel(params, how)`; a step without one runs through `LoopKernel`, which is also the
+  oracle every kernel is checked against (`test_batch_kernels.py`). Kernels: `symbol.kernels` (`Demap`, `Rotate`, `Gather`),
+  `code.kernels` (`BlockDecode`, `XorMask`), `sync.kernels` (`PilotLine`); the protocol is `base.kernel`.
+- Kernels belong to generic operators, never a protocol; they use only what numpy and cupy share (`xp`), hold their
+  constants, keep shapes fixed per key, and mark a failed row instead of raising. `BatchPlan.describe()` is data, what a
+  device library or HLS generator would build from.
+- Processes use `fork` where available, else `spawn` (scripts need a `__main__` guard); each builds its region from a
+  picklable `RegionSteps`.
+- On `dvbs2/normal` the output equals the serial runner's bit for bit, for any block cut, worker count and batch size.
+  Measure with `python tests/parallel_bench.py 64 4`.
 
-### Grey areas
+## Core abstractions and streaming rules
 
-Each is settled by the rule.
-
-| Function | Category | Why |
-|---|---|---|
-| Matched filter | wave | prepares samples for sampling; does not decide when |
-| Timing recovery (`MM`, `Mat`, `TLL`) | sync | estimates the sampling instant; the one sync step that changes representation |
-| Differential coding on complex symbols (`Differential`) | symbol | symbols ↔ symbols |
-| Differential coding on bits (NRZI) | code | bits ↔ bits |
-| Manchester / biphase as a pulse (`pulse/biphase` through `wave.Shape`) | wave | symbols ↔ samples |
-| Manchester as 0 → 01, 1 → 10 | code | bits ↔ bits |
-| Spreading and despreading at one sample per chip (`Spread`) | symbol | chips are symbols |
-| `Despread` at `sps` samples per chip, with a known code phase | symbol | the stage form of `Spread.decode` |
-| Code-phase and Doppler search (`sync.acquire_code`) | sync | estimates timing and frequency |
-| Correlating a known preamble in samples or symbols (DVB-S2 SOF, 802.15.4 SHR) | sync | finds the frame start |
-| Searching for sync markers or sync bytes in channel bits (CCSDS ASM, DVB-S byte alignment) | sync | finds a codeword start |
-| Attaching a sync marker on transmit | code | known structure among channel bits |
-| Searching for HDLC flags in an unaligned data-bit stream | sync | finds a packet start |
-| Resolving a phase ambiguity from the data (polarity, which rotation of the bit map) | sync | estimates an unknown |
-| Inserting or removing pilots, physical headers, padding | symbol | known structure among symbols |
-| Reading a physical header's fields (DVB-S2 PLS: modulation and code) | symbol | `symbol.Header` removes the header and decodes its short code (every word tried) into fields; the code and fields are a `header` definition |
-| Equalizer | sync | estimates and removes the channel |
-| OFDM IFFT/FFT and cyclic prefix | wave | symbols ↔ samples |
-| OFDM carrier allocation and pilots | symbol | known structure among symbols |
-| OFDM per-carrier pilot equalization | sync | estimates the channel |
-| CRC guarding a packet | link | integrity of a packet |
-| CRC inside FEC (LTE code-block CRC) | code, using the `crc` resource | resources are shared across categories |
-| Analog demodulation: `FMDemod`, `AMDemod`, `SSBDemod` | wave | carrier modulation → baseband |
-| Audio processing after it: de-emphasis, DC block | signal | samples → samples |
-| Squelch | sync | detects that a signal is present |
-| Channel impairments (AWGN, offsets, multipath) | signal (`signal.channel`) | samples → samples, signal agnostic |
-
-**Soft information only flows down the receive chain.** The symbol transform gives LLRs, code transforms take and give
-LLRs, the link transform takes hard bits plus their reliability. Sync on channel bits must pass LLRs through when it has them.
-
-**Order matters inside sync.** A sync step belongs at the point where what it corrects can still be separated. Coarse
-frequency usually comes before the matched filter, fine phase after timing, and a staggered signal's carrier before its
-rails are realigned.
-
-### Where things are
-
-Each category is a package (`src/rpps/<package>`).
-
-| Package | Category | What is in it |
-|---|---|---|
-| `source` | source | sources and sinks of blocks: files and their formats, sockets, radios through pysdrlib |
-| `signal` | signal | filters (`signal.filters`: FIR, IIR, windows, pulse shapes, fractional delay, polyphase channelizer), resampling (`signal.sample`), `channelize` / `Channelize`, conditioning (`DCBlock`, `Deemphasis`, `Conjugate`), and `signal.channel`, the simulated medium |
-| `sync` | sync | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, all tracked by `track`; frame sync (`FrameSync`, `Delimiter`), pilots (`PilotPhase`, `PilotEqualizer`), alignment on bits (`Align`, `Puncture`), `Acquire`, `acquire_code`, `Squelch`, `PeakAGC`. Second class, by name: `time.MM` (and Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `equalize.CMA` |
-| `wave` | wave | `Shape`/`Matched` (applying a `pulse` definition: the pulses themselves are `signal.filters` designs), `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod` |
-| `symbol` | symbol | `Constellation` (and the PSK, QAM, APSK, ASK generators), `Differential`, `Spread`/`Despread`, `Carriers`, and frame structure: `Header`, `Pilots`, `PhaseScramble` |
-| `code` | code | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), line codes (`Line`), sync markers (`Marker`), `Uncoded` |
-| `link` | link | CRCs, HDLC framing, `Header` (fields, CRC, payload length) |
-| `profile` | profile | loading (`profile`), the steps (`steps`), header-driven control (`control`), runners (`runner`) |
-| `parallel` | (runs profiles) | the frame-parallel region: `Scheduler`, executors (inline, threads, processes), `BatchPlan`, the batch kernels |
-| `sequence` | (a resource engine) | recurrences and Gold sequences, chip codes, LFSR registers: what scramblers, spreaders and searches share |
-| `analysis` | (outside the data path) | spectra, rate estimation, survey, blind analysis of modulation and FEC; can write definitions |
-| `base`, `math`, `utils`, `viz` | (cross-cutting) | `Data`, `Stage`, `Pipe`, `Stream` and the type tags; finite fields and GF(2); helpers; plots |
-
-### Config resources
-
-Configs are organized by **the kind of thing they define**, not by the package that loads them. An operator in any category
-references a resource by name. The loader picks the implementation from the file's `base` and `type`, so a new
-implementation of a function is a new loader, and a new instance of it is a new file.
-
-| Resource | Where | Used by |
-|---|---|---|
-| `constellation` | `config/constellation` | symbol |
-| `pulse` | `config/pulse` | wave (shaping, matched filters). Each pulse says `"kind": "symbol"` or `"frequency"` |
-| `filter` | `config/filter/{fir,iir,window}` | signal |
-| `sequence` | `config/sequence/{recurrence,chips,set,gold,word}`: LFSRs and Gold sequences (LTE, DVB-S2 PL, P25, 802.11a, BLE, the LFSRs of CCSDS and DVB), chip codes (Barker, 802.15.4, GPS C/A), fixed words (the CCSDS ASM, the BLE access address, the Mode S preamble) | code (scramble, marker), symbol (spread, PL scramble), sync (code-phase search, delimiter) |
-| `scramble` | `config/scramble/{additive,feedthrough}` | code: how a sequence is applied, additive (naming a sequence, with a frame or period restart) or self-synchronizing (its own register, since the data runs through it) |
-| `fec` | `config/fec/{block,conv}` | code |
-| `interleave` | `config/interleave/{block,forney}` | code |
-| `crc` | `config/crc` | link, and code operators that carry one |
-| `frame` | `config/frame` | link: frame formats such as HDLC |
-| `header` | `config/header/physical` (known symbols and a short code carrying fields), `config/header/link` (fields, CRC, payload length) | symbol, link, and sync (a frame sync correlates a header's preamble, a delimiter search a link header's word) |
-| `table` | `config/table` | profile controls: rows of parameters looked up by header fields (DVB-S2 MODCODs, 802.11b rates) |
-| `profile` | `config/profile` | whole signals |
-
-Example: `scramble/additive/lte_pdsch.json` is a scrambler that names the LTE Gold sequence and works out its seed:
-
-```json
-{"base": "scramble", "type": "additive", "params": {"pci": ..., "ns": ..., "rnti": ..., "q": ...},
- "sequence": {"name": "lte_gold", "args": {"c_init": {"expr": "(rnti << 14) + (q << 13) + ((ns//2) << 9) + pci"}}}}
-```
-
-The same `lte_gold` sequence (`rp.sequence.load("lte_gold", c_init=...)`) is available to any other operator. A spreading code, a scrambler, a preamble detector
-and a sync-marker search share one sequence engine.
-
-### Type tags
-
-Every block of data carries two tags:
-
-- **Form**, `dtype` in `base/types.py`: SAMPLES, REAL, SYMBOLS, LLR, BITS, BYTES, MSG. How the values are stored.
-- **Representation**, new: SAMPLES, SYMBOLS, CHANNEL, DATA, PACKETS. Where in the chain the data is.
-
-Two tags because the forms cross representations: LLRs exist both before the decoder (channel bits) and after it (data bits,
-from a soft-output LDPC or turbo decoder), and so do hard bits.
-
-`pproc` (SERIAL, FILTER, SYNC, MOD, MAP, CODING, SCRAM) records the last operation. It becomes a `Category` enum: SOURCE,
-SIGNAL, SYNC, WAVE, SYMBOL, CODE, LINK.
-
-| Category | Accepts | Gives |
-|---|---|---|
-| signal | SAMPLES (form SAMPLES or REAL) | the same |
-| sync | any representation | the same representation; timing recovery gives SYMBOLS from SAMPLES |
-| wave | SYMBOLS (TX), SAMPLES (RX) | SAMPLES (TX), SAMPLES (RX, for the sampler) |
-| symbol | CHANNEL (encode); SYMBOLS (decode) | SYMBOLS; SYMBOLS or CHANNEL (form LLR) |
-| code | DATA or CHANNEL (encode); CHANNEL or DATA, form LLR or BITS (decode) | CHANNEL; DATA, form LLR or BITS |
-| link | PACKETS (encode); DATA (decode) | DATA; PACKETS (form BYTES or MSG) |
-
-Each operator declares what it takes (`takes(encode)`), and the operators check it before doing any work, so a link decoder
-refuses channel bits and a constellation refuses samples.
-
-- **A code transform is often several steps** (Viterbi, deinterleave, Reed-Solomon, descramble), so each code step takes
-  both channel and data bits; the boundary that is enforced is the link's.
-- **An uncoded link says so:** `rp.code.Uncoded()` is the code step of a link with no FEC (ADS-B, many packet radios).
-  It turns channel bits into data bits, LLRs staying LLRs.
-- **A complex array is samples unless it says otherwise:** `rp.Data(x)` is SAMPLES, `rp.Data(x, sps=1)` is SYMBOLS.
-- **Stages take samples and symbols;** `BitStage` takes channel and data bits and gives the same form back.
-
-### Status
-
-Everything above is implemented, apart from the items listed under Not yet. How the code is built (streaming rules, native
-kernels, the parallel runner's internals, how to add things) is in the sections that follow.
-
-| Area | State |
-|---|---|
-| Contracts | Every operator declares what it takes (`Rep`, `Category`) and checks it before working (`tests/unit/test_contracts.py`) |
-| Stream position | `meta.pos` is the absolute position of a block's first item at its own rate; `meta.time_of(k)` gives source time |
-| Streaming on bits | `BitStage` and `sync.Align` (bit offset, pattern phase, polarity, tracking) |
-| Packages | One per category (see [Where things are](#where-things-are)); no aliases for the old names |
-| Mixed modules split | `AMDemod`/`SSBDemod` in `wave`, `Squelch` in `sync`, `DCBlock`/`Deemphasis` in `signal`, spreading in `symbol`, code-phase search in `sync`, OFDM in three operators (`symbol.Carriers`, `wave.OFDMTx`/`OFDMRx`, `sync.PilotEqualizer`) |
-| Profiles | `ieee802154/2450`, `ieee80211b/{1m,2m,long}`, `dvbs/qpsk_3_4`, `dvbs2/normal`, `ble/adv`, `adsb/mode_s`, `ax25/afsk1200`, `ccsds/tm_rs`; `chain` is gone, its special cases are ordinary sync and code steps |
-| Packet links | Line codes (`code.Line`: NRZI, NRZ-M, Manchester, inversion), sync markers among channel bits (`code.Marker`, found by `sync.Delimiter` with a fixed or header-driven length, the word kept for the marker to strip, polarity resolved), fixed words as `sequence/word`, link headers with a frame check sequence after the payload (`fcs`), additive scramblers restarting at a frame start (`frame`), streaming HDLC (a frame cut by a block boundary waits), a control entry for one direction (`"on": "tx"`) |
-| Signal and wave steps | `conjugate` (spectral inversion), `resample`, `channelize` (designed from the stream's rate), `lowpass` / `bandpass` ... in Hz, `am` and `ssb` demodulation, analog `fm` by deviation, a peak-following AGC for bursts (`agc` method `peak`) |
-| Codes | Quasi-cyclic LDPC from a matrix of shifts (`ldpc/ieee80211n_648_*`), CCSDS RS(255,223) in the conventional basis with its symbol interleaver |
-| Header-driven control | `rpps.profile.control` and `rpps.profile.runner`: publishing, tables, live and restart changes, late changes re-run from checkpoints, drops reported |
-| First-class sync | `sync.time.OerderMeyr`, `sync.phase.MPower`, `sync.equalize.BlockLS`, tracked by `sync.track`; the profile defaults for `timing`, `carrier`, `equalize` |
-| Config by resource | `config/<resource>/`; `sequence` split from `scramble`; `rp.spread` became `rp.sequence` |
-| Parallel runner | Frame-parallel region after the frame boundary: `ParallelRunner`, `Scheduler`, thread and process executors, batch kernels, C++ demapper and front-end kernels. Output equals the serial runner's bit for bit |
-| Extending profiles | Step kinds and sync methods from a registry (`rp.profile.steps.register_step`, `register_sync_method`), any `Stage` by module path; `rp.load(path)` for any definition; `rp.Tee` branches |
-| Sources | `Source.REP` / `APPLIED` (`profile.rx(source=src)`), `Source.ppm` (clock error on Fs and cf), WAV in and out (`Wav`, `write_wav`, `WavSink`), UDP / TCP (`Socket`), SigMF recordings (`SigMF`, `SigMFSink`); `rpps tx` writes a profile's transmission to a file; pysdrlib only imported when a source or sink needs it |
-| Codes added from the review | `polar` (SC, SCL, CRC-aided), `rm` (Reed-Muller: Hadamard transform, majority logic), turbo product codes (`product` with `chase`: Chase-Pyndiah), Reed-Solomon `basis: "dual"` (CCSDS), the multiplexed `turbo` layout (CCSDS rates 1/2 to 1/6, its permutation as `interleave/block/ccsds_turbo`), LDPC `schedule: "flooding"`, trellis-coded modulation as `fsm` with constellation `points`, line codes Bi-phi-M / S and Miller; profile `ccsds/tm_concat` |
-
-**Not yet** (reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liquid-dsp and gr-satellites)
-
-Codes
-- Polar: the 5G NR reliability sequence and rate matching (the code type takes polarization weight or Bhattacharyya
-  constructions, decodes SC, SCL and CRC-aided SCL).
-- LDPC tables: 5G NR base graphs, CCSDS AR4JA / C2, DVB-S2X, DVB-T2, ATSC 3.0 (the QC and table loaders take them once
-  written out).
-- Turbo: UMTS (its PIL interleaver) and DVB-RCS duo-binary (the multiplexed layout takes binary constituents only).
-- Line codes 4B5B, 8b/10b. Checksums (Fletcher, Internet), fountain codes.
-
-Waves and sync
-- Coherent CPM (GMSK, SOQPSK) in the data path: `analysis.modulation.cpm` demodulates by per-survivor Viterbi offline.
-- VSB / PAM waves (ATSC 8VSB is `projects/atsc` only), chirp spread spectrum, space-time coding (Alamouti, SFBC) and
-  multi-channel data.
-- Per-burst timing and carrier acquisition in the data path (a short packet alone, with no stream to track: `ble/adv` wants
-  a continuous signal or known timing; `adsb/mode_s` gets by at one sample per chip). `rpps.analysis.spectrum.burst` does it
-  offline (each burst acquired on the shared preamble, data-aided); a burst stage built the same way would serve BLE,
-  802.15.4, DMR and the TDMA carriers of the surveys.
-- OFDM preamble synchronisation (Schmidl-Cox, 802.11 STF / LTF), LTE cell search (PSS / SSS) and reference-signal channel
-  estimation: written in `projects/wifi` and `projects/lte`, not here.
-- A tone / pilot PLL stage (the FM stereo pilot, the ATSC pilot): `projects/fm_radio` and `projects/atsc` each have one;
-  `sync.pll` holds only the loop filter.
-- A first-class carrier estimator for staggered signals (802.15.4 still needs its carrier taken off first), fractionally
-  spaced block equalization, a decision-feedback equalizer.
-- The DVB-S sync bytes, the 802.11b SFD and the DVB-S2 SOF as `sequence/word` definitions (the CCSDS ASM, the Mode S preamble
-  and the BLE access address are; those three are still written in the steps and headers that use them).
-- Fusing the matched filter with Oerder & Meyr timing (its square-law line needs the filter at every sample). Interpolating
-  its output is at the pulse's own floor (see [Effort](#effort)).
-
-Links, sources, profiles
-- Link layers beyond CRC, HDLC and headers: PPP, KISS, AX.25 addresses, MPEG-TS packets, CCSDS TM / AOS transfer frames
-  and space packets, FX.25, headers protected by a block code (the AX100 Golay length field).
-- Sources: tun/tap, audio devices, transmitting to a radio (pysdrlib's TX side).
-- Profiles for definitions that have none: DMR, P25 (phase 1 and 2), LTE, IEEE 802.11a/g OFDM, 802.11n, ATSC 8VSB, GPS
-  C/A, DAB, UMTS, CCSDS turbo (its longer attached sync markers). `projects/` receives most of these by hand;
-  `projects/ble`, `adsb` and `wifi` do not yet use the `ble/adv`, `adsb/mode_s` and `ieee80211b` profiles that exist.
-- `dvbs2/normal`: dummy frames (their PLS is reported, the frame is not decoded).
-- The parallel runner numbers its output from 0 and a dropped frame leaves no gap (the serial runner keeps positions).
-- Branches inside a profile (`rp.Tee` works on operators and `Blocks`; the profile runner's control and re-run assume one chain).
-- Moving the remaining project DSP up: burst / energy detection gated on the noise floor, symbol level slicers, the FM pilot
-  PLL, one allocation table for the scanners (projects/TODO.md section 2).
-- A GPU backend (`xp = cupy`) and an FPGA backend from `BatchPlan.describe()`. The seams are in; what is missing is kernels
-  for the front's estimators and device-resident constants in `Kernel`.
-
-### Effort
-
-`rp.set_effort("fast" | "balanced" | "max")`, `with rp.effort("max"):` or `RPPS_EFFORT=max` choose speed or recovered SNR
-(`rpps rx --effort max`). Stages and decoders look the level up when they run, so it can change mid-stream; a definition's
-own settings stay the base that a level scales (`rpps._effort.SETTINGS`). `balanced`, the default, is what the definitions say.
-
-| Setting | fast | balanced | max | Measured (max against balanced) |
-|---|---|---|---|---|
-| Decoder iterations (LDPC, turbo) | x0.5 | the definition's | x4 (LDPC stops per codeword; turbo once two iterations agree) | LDPC 1/2 normal frame (layered) at Eb/N0 0.9 dB: FER 3/16 -> 0/16, 2x the time; LTE turbo at 0.2 dB: 6/12 -> 0/12 |
-| Max-log or exact (demapper, BCJR, turbo) | max-log | the operator's | exact (turbo: log-MAP, no extrinsic scaling) | turbo log-MAP 0.1-0.2 dB, 5-7x the time |
-| Timing interpolation (`math.interp.fractional`) | cubic | cubic from 4 samples a symbol, an 8-tap windowed sinc under | 12-tap windowed sinc | EVM floor at 2 sps: cubic -26 dB, 8 taps -48 dB, 12 taps -55 dB (the pulse's own truncation: -56 dB) |
-
-The sinc taps are a Kaiser-windowed table of 32 fractional delays blended linearly (2 short dot products a symbol, in C++:
-`fractional_read`). A Farrow filter of the same accuracy needs order 3 (4 dot products) and measured 1.9x slower.
-
-LDPC decoding is layered normalized min-sum: the checks in layers that share no variable (a greedy colouring, once per code),
-each layer seeing what the ones before found. It converges in about half the iterations of flooding: at Eb/N0 0.9 dB (DVB-S2
-1/2 normal frame, 50 iterations) FER 15/16 flooding against 3/16 layered, about 0.1 dB.
-
-Soft values go as far down the receive chain as something uses them: additive descrambling flips LLR signs (a soft decoder
-after it loses nothing), a Forney deinterleaver moves LLRs, a BCJR decoder hands on its a-posteriori LLRs (Reed-Solomon
-uses them for erasures; a retry keeps two checks to spare, so it never passes a wrong word as corrected), and differential
-decoding is the product detector y conj(y[n-1]) (dividing gave the same hard decisions but over 2 dB worse soft ones).
-
-What a decoder could not decode is known downstream: a code step sets `data.failed` (a mask over its output, from its
-codewords' status; the last code with a verdict decides, so a BCH that corrects what an LDPC left clears it), steps that keep
-the items carry it, the profile runner slices and joins it with the data, and a link header drops a frame that has any
-(`est[...]["fec_failed"]`), whatever its own CRC says. The parallel region drops such rows (`Batch.code_failed`).
-A transmitter's last pulses go out whole: `Interpolate` sends its filter's tail on a flush.
-
-Under 4 samples a symbol Oerder & Meyr takes its square-law line at twice the rate (the half samples by one fixed 12-tap
-FIR): at 2 the line sat at Nyquist, aliased onto its mirror, and cancelled at some timing phases (never acquired).
-
-## Core abstractions
-
-**Data** (`base/data.py`). `rp.Data(x)` wraps an array with its `Meta`. A complex array is samples; `rp.Data(x, sps=1)` is
-symbols; bytes are bits. It carries the sample rate (`Fs`), `sps`, centre frequency, group delay, the stream state and the
-absolute position of its first item (`meta.pos`). Because the data carries all of that, nothing needs setting up or resetting.
-
-**Operators** do everything:
+**Data** (`base/data.py`) wraps an array with its `Meta`: `Fs`, `sps`, centre frequency, group delay, stream state, and
+`meta.pos`, the absolute position of its first item (`meta.time_of(k)` gives source time). Nothing needs setting up or
+resetting.
 
 | Operator | Means | On |
 |---|---|---|
-| `data * pipe` | encode, modulate, scramble | transforms (`Pipe`) |
-| `data / pipe` | the inverse | transforms |
-| `data + stage` | process a signal | `Stage` |
+| `data * pipe`, `data / pipe` | encode / decode | `Pipe` (invertible transform) |
+| `data + stage` | process | `Stage`, `BitStage` |
 | `pipe * pipe`, `stage + stage` | a reusable `Pipeline` | either |
 | `data >> sink` | write out | `Sink` |
 
-**Pipe, Stage, BitStage** (`base/rpps.py`).
-- `Pipe` is an invertible transform: `encode(data)` and `decode(data)`.
-- `Stage` is a DSP stage on a stream of blocks. Settings are constructor arguments; whatever carries from one block to the next
-  lives in a state object from `new_state(meta)`, kept in the stream, so the stage object stays reusable. `step(samples, st,
-  meta)` processes a block and sets `meta.op` (the output rates).
-- `BitStage` is the same on channel or data bits (LLRs positive for 0, or bools), keeping their form.
+A `Stage` keeps its settings on the object and everything that carries between blocks in `new_state(meta)`, held by the
+stream; `step(samples, st, meta)` processes a block and sets `meta.op`. `SCOPE` is `STREAM` (state crosses frames) or `FRAME`.
+`Stream` holds states, estimates (`stream.est[name]`), detections (`det`), control (`stream.control`) and load statistics.
 
-**Type tags** (`base/types.py`): every block has a *form* (`dtype`) and a *representation* (`Rep`), and an operator checks what
-it takes before working (see [Type tags](#type-tags)). `CATEGORY` records which category it is. `SCOPE` is `STREAM` (default:
-state crosses frames) or `FRAME` (nothing held across a frame start), which the parallel runner needs.
+Streaming rules (tested by cutting the same input differently: `test_stream.py`, `test_position.py`, per-stage tests):
 
-**Stream and Meta** (`base/meta.py`). `Stream` holds the per-stage states, estimates (`stream.est[name]`: frequency offset,
-timing, lock, latency), detections (`det`), control publications (`stream.control`) and load statistics (`stream.load()`).
-Estimates go on the stream, never into the data.
-
-## Streaming rules
-
-Every stage and transform must behave the same however the stream is cut. The tests check it (`test_stream.py`,
-`test_position.py`, per-stage block-cut tests).
-
-1. **Any block length, including 0.** Never drop or repeat samples across blocks.
-2. **State lives in the stream state**, not on the object, so one stage can serve several streams.
-3. **Whole blocks:** an operator that works on `n` items at a time uses `rp.base.rpps.align(ctx, key, x, block, pad)`: the
-   leftover waits in `ctx` for the next call, and only a flush pads it (encoding) or drops and reports it (decoding).
-4. **Positions are absolute.** A stage counts its outputs from where its input was when it first ran. A stage that drops or
-   inserts items reports it (`rp.base.control.anchor`), so positions after it stay exact.
-5. **Feedforward estimators work on windows at absolute stream positions**, track drifting parameters across windows, set the
-   window in time not symbols, and declare latency in the estimates (not in `meta.delay`).
-   See [Sync methods](#sync-methods).
-6. **Soft information flows down the receive chain.** Sync on channel bits passes LLRs through.
+1. **Any block length, including 0**; never drop or repeat items across blocks.
+2. **State lives in the stream state**, so one stage can serve several streams.
+3. **Whole blocks** through `rp.base.rpps.align(ctx, key, x, block, pad)`: the leftover waits, a flush pads (encode) or
+   drops and reports (decode).
+4. **Positions are absolute**; a stage that drops or inserts items anchors it.
+5. **Feedforward estimators** follow the rules in [Sync methods](#sync-methods).
+6. **Soft information flows down**; sync on channel bits passes LLRs through.
 
 ## Definitions (config)
 
-Codes, scramblers, constellations, pulses, filters, sequences, headers and profiles are JSON files, not code. A new instance
-of something that exists is a new file; a new kind needs a loader.
+Codes, scramblers, constellations, pulses, filters, sequences, headers, tables and profiles are JSON, not code: a new instance
+is a new file, a new kind is a new loader. Format, naming and the keys each loader takes: [config/README.md](config/README.md).
 
-- Layout: `config/<resource>/[<group>/]<name>.json`. The file's `base` picks the loader within the resource, its `type` the
-  implementation. The resource table, naming rules and file header are in [config/README.md](config/README.md).
-- Search order: directories added with `rp.add_config_path(path)` or in `$RPPS_CONFIG` first, then the shipped `config/`.
-  In a checkout that is `config/` next to `src/`; an installed package carries a copy (`rpps/config`), put there by
-  `setup.py` at build time. So a wheel that lacks `config/` is broken: CI checks the count.
-- Parameters: a definition can declare `params`, and any value can be `{"param": ...}` or `{"expr": ...}` (evaluated at
-  load time). A step's resource arguments go in `"args"`.
-- Parents and children: `"extends"` makes a definition another one with some keys changed (dicts merge, lists replace,
-  null deletes, params merge by name); `"abstract": true` parents hold a family's shared fields and do not load alone.
-  `_config.read` applies the chain, `_config.read_raw` is the file as written. A load-time choice is a param; a variant a
-  standard or table names is a child. Details in [config/README.md](config/README.md#parents-and-children).
-- Tags: `"tags"` (declared in config/tags.json) say which standards use a definition; `rp.tagged("dvb-s2")`,
-  `python -m rpps ls --tag dvb-s2`. There are no aliases: one name per definition.
-- One reference per loader: `rp.code.load("conv/k7_171_133/3_4")`, `rp.link.load("crc/crc32_mpeg2")`,
-  `rp.signal.filters.load("pulse/rrc/0p35")`, `rp.symbol.load("apsk/dvbs2_16apsk", gamma=2.85)`; `rp.load("<resource>/<ref>")`
-  for any of them. `rp.symbol.load` reads definitions only (`rp.symbol.generate` makes shapes by name).
-- Loaders register per resource (`_config.Domain.register(category, loader)`); `ls`, `find` and `load` then work on it.
-  The keys each loader accepts are documented in the header of its module (linked from [config/README.md](config/README.md)).
+- `config/<resource>/[<group>/]<name>.json`; `base` picks the loader, `type` the implementation. Search order:
+  `rp.add_config_path()` and `$RPPS_CONFIG`, then the shipped `config/` (`rpps/config` in a wheel, copied by `setup.py`;
+  CI checks the wheel has it).
+- `params` with `{"param": ...}` and `{"expr": ...}` values, evaluated at load. `"extends"` makes a child (dicts merge, lists
+  replace, null deletes); `"abstract": true` parents do not load alone. A load-time choice is a param; a variant a standard
+  names is a child.
+- `"tags"` (declared in `config/tags.json`) name the standards using a definition: `rp.tagged("dvb-s2")`, `rpps ls --tag`.
+  No aliases: one name per definition, one reference per loader (`rp.code.load("conv/k7_171_133/3_4")`,
+  `rp.link.load("crc/crc32_mpeg2")`).
+- Loaders register per resource (`_config.Domain.register`); `ls`, `find` and `load` then work on it.
+
+## Effort
+
+`rp.set_effort("fast" | "balanced" | "max")`, `with rp.effort(...)`, `RPPS_EFFORT` or `rpps rx --effort` trade speed for
+recovered SNR. Stages look the level up when they run; `balanced` is what the definitions say (`rpps._effort.SETTINGS`).
+
+| Setting | fast | max | Measured (max against balanced) |
+|---|---|---|---|
+| LDPC / turbo iterations | x0.5 | x4, stopping early | LDPC 1/2 at 0.9 dB: FER 3/16 → 0/16 at 2x time; LTE turbo at 0.2 dB: 6/12 → 0/12 |
+| Max-log or exact (demapper, BCJR, turbo) | max-log | exact, no extrinsic scaling | turbo log-MAP 0.1-0.2 dB, 5-7x time |
+| Timing interpolation | cubic | 12-tap windowed sinc (balanced: 8 taps below 4 sps) | EVM floor at 2 sps: cubic -26 dB, 8 taps -48, 12 taps -55 (pulse truncation -56) |
+
+Other decoding behaviour worth knowing:
+
+- LDPC is layered normalized min-sum (checks coloured once per code), about half the iterations of flooding.
+- Soft values go as far as something uses them: additive descrambling flips LLR signs, Forney deinterleaving moves LLRs, BCJR
+  hands on a-posteriori LLRs (RS uses them for erasures, keeping two checks spare), differential decoding is the product
+  detector `y conj(y[n-1])`.
+- A code step sets `data.failed` from its codewords' status (the last code with a verdict decides); later steps carry it, and
+  a link header drops a frame with any failed item whatever its CRC says. The parallel region drops such rows.
+- Under 4 sps Oerder & Meyr takes its square-law line at twice the rate (at 2 sps it aliased onto its mirror).
 
 ## Native kernels
 
-`rpps._native` (C++17, pybind11, `csrc/rpps_native/*.cpp`) holds the per-sample loops and decoders: AGC, Costas, timing,
-equalizers, IIR, Viterbi, trellis, BCJR/turbo, LDPC, Reed-Solomon, BCH, soft demapping, resampling, FIR decimation, the
-carrier estimate and the frame sync, and the slow loops of the blind tools (`analysis.cpp`). They are optional: without
-pybind11 or a compiler the build warns and RPPS runs its Python loops.
+`rpps._native` (C++17, pybind11, `csrc/rpps_native/*.cpp`) holds the per-sample loops and decoders (AGC, Costas, timing,
+equalizers, IIR, Viterbi, BCJR, LDPC, RS, BCH, demapping, resampling, FIR decimation, carrier and frame sync) and the blind
+tools' slow loops (`analysis.cpp`). Without a compiler the build warns and RPPS runs its Python loops.
 
-The blind tools' kernels, with what each changed (best of several runs, one process):
-
-| Kernel | Tool | Before -> after |
-|---|---|---|
-| `gf2_eliminate` (GF(2) Gauss-Jordan, Four Russians: 32 pivots a pass over the matrix) | `rpps.math.gf2.eliminate_packed` (so `rref`; `code.block.ldpc.qc_staircase`, `qc_dual`, `progressive`) | DVB-S2 normal-frame table from frames: 519 s -> 6 s |
-| `ldpc_flood` (flooding min-sum, frames threaded) | `code.block.ldpc.posterior` | 31 ms -> 2.3 ms (40 frames, 60 checks); `progressive` test 12 s -> under 3 s |
-| `gf_syndromes` (exponent table instead of a modulo a symbol, words threaded) | `RS.syndromes`, `identify.scan_rs` | 1632 words of RS(204, 188): 18.8 ms -> 4.6 ms on one thread, 1.3 ms threaded |
-| `cpm_psp` (per-survivor Viterbi) | `modulation.cpm.mlse` | 6 to 18x the vectorised Python |
-
-
-**The Python loop is the reference.** Every kernel has the pure Python version in the stage that calls it, and the tests
-compare the two (`test_native*.py`, `test_parallel.py`, `test_batch_kernels.py`). A kernel changes speed, never results
-beyond rounding.
+**The Python loop is the reference.** Every kernel's Python version stays in the stage that calls it, and tests compare the
+two (`test_native*.py`, `test_parallel.py`, `test_batch_kernels.py`): a kernel changes speed, never results beyond rounding.
+Stages look `rpps._accel.native` up when they run, so tests can switch it off.
 
 | Variable | Effect |
 |---|---|
 | `RPPS_NO_NATIVE=1` | never load the kernels |
-| `RPPS_REQUIRE_NATIVE=1` | a failed native build is an error (CI and wheel builds set it) |
-| `RPPS_THREADS=n` | threads for kernels that spread work over cores |
-| `RPPS_CONFIG` | extra config directories (path-separated) |
+| `RPPS_REQUIRE_NATIVE=1` | a failed native build is an error (CI and wheels) |
+| `RPPS_THREADS=n` | threads for kernels and executors that spread work |
+| `RPPS_CONFIG` | extra config directories |
 
-Stages look `rpps._accel.native` up when they run, so tests can switch it off mid-session.
-
-Adding a kernel:
-1. Write it in `csrc/rpps_native/<name>.cpp` with a `register_<name>(m)` function, declare it in `common.hpp`, call it from
-   `module.cpp`. `setup.py` globs `*.cpp`, so there is nothing to add to the build.
-2. Keep the Python loop in the calling stage as the fallback and reference; guard the call with `_accel.native`.
-3. Release the GIL for anything long, so threads (`.pipelined`, the parallel runner) run it in parallel.
-4. Add a test that compares the kernel to the Python loop on random data, with and without `RPPS_NO_NATIVE`.
+Adding one: write `csrc/rpps_native/<name>.cpp` with `register_<name>(m)`, declare it in `common.hpp`, call it from
+`module.cpp` (`setup.py` globs `*.cpp`); keep the Python fallback behind `_accel.native`; release the GIL for anything long;
+test it against the Python loop.
 
 Pitfalls found the hard way:
-- **Use `long long` for loop and tap indices.** CPython's build flags include `-fno-strict-overflow`, so `int` indices are not
-  widened and a kernel that was fast alone ran 3x slower inside the module.
-- **Clone for AVX2 only:** `target_clones("avx2", "default")`. `"avx2,fma"` makes separate clones, and `"arch=haswell"` (both)
-  made the 4-accumulator dot product of `firdec.cpp` about 40% slower: FMA lengthens the accumulator chain. Add FMA only with
-  more accumulators and a benchmark (`tests/bench_stages.py --blocks`).
-- **Size chunks by work, not items:** `parallel_for` hands chunks to a persistent pool (`parallel.hpp`; no thread start per call,
-  reset after a fork). A fixed 2048-output chunk left a 4k block of a 1025-tap filter on two threads; chunks of about 128k
-  multiply-adds spread it.
-- **Keep BLAS products out of per-block paths.** OpenBLAS threads inside a call and spins between calls, which slows the
-  single-threaded numpy and native code around it (block mode was 20-60% slower until the frame sync's product became one C++
-  call). `OPENBLAS_NUM_THREADS=1` shows whether it is the cause.
-- **Benchmark best-of-N in one process.** A shared machine's load makes runs across processes incomparable.
-  `tests/bench_stages.py`, `tests/parallel_bench.py` and `tests/resample_bench.py` do this.
-
-## Parallel runner
-
-Real-time use needs more than one core. Once frame sync has found a frame and its header has set the parameters, the rest is
-per-frame work with no state across frames. The design is in [Parallelism](#parallelism); in code:
-
-```
-profile.rx(parallel=rp.parallel.Parallel("thread", workers=4))     -> ParallelRunner
-  front   the ordinary Runner, stopped at the region (Runner.stop, _finish)
-  cut     the changes the front resolved split the region's input at each frame start
-  Scheduler   frames -> batches of one key -> Executor -> results in order
-  BatchPlan   per key: the region's kernels, shapes checked, describe()
-  Kernel      a pure function over [N, L] arrays, run(xp, batch); LoopKernel runs frame by frame through the operators (the oracle)
-```
-
-- The loader refuses a region with stream-scoped steps, a publishing header or a late change (`rpps.profile.parallel`);
-  mark where it starts with `"parallel": "<step id>"`.
-- An operator gives its kernel with `op.kernel(params, how)`. Kernels belong to generic operators (a constellation's demapper),
-  never a protocol. They use only what numpy and cupy share (`xp`), hold their constants, and keep shapes fixed per key; a
-  row that fails is marked, not raised.
-- Kernels so far, each beside its operator: `symbol.kernels` (`Demap`, `Rotate`, `Gather`), `code.kernels` (`BlockDecode`: block
-  codes and block interleavers; `XorMask`), `sync.kernels` (`PilotLine`); the protocol (`Kernel`, `Batch`, `Form`) is `base.kernel`.
-  Each is checked row for row against the operator run frame by frame (`tests/unit/test_batch_kernels.py`).
-- Executors: inline, threads (a batch split by rows), processes (`start_method` is `fork` where there is one, else `spawn`,
-  so the script needs a `__main__` guard). Each process builds its own region from a picklable recipe (`RegionSteps`).
-- On `dvbs2/normal` the output equals the serial runner's bit for bit, for any block cut, worker count and batch size.
-- One demapper: `rpps.math.demap` for rows of symbols; `Constellation.llr` and `Demap` both use it, so a frame comes out the
-  same alone or in a batch. It runs in C++ (`demap_llr`) with the array version as fallback and reference.
-- Front-end speedups already in: FFT overlap-save for FIR and correlation (`signal.filters.convolve`), a phasor recurrence for
-  the carrier line (`sync.track.line_phasor`), native carrier windows and frame sync, and a matched filter fused into the
-  timing step when timing is known (`sync={"timing": {"fuse": False}}` turns it off).
-- Measure with `python tests/parallel_bench.py 64 4` (64 synthetic frames, 4 workers).
+- **`long long` loop and tap indices.** CPython builds with `-fno-strict-overflow`, so `int` indices are not widened: 3x
+  slower inside the module.
+- **`target_clones("avx2", "default")` only**, behind `#if` for GCC (MSVC has neither it nor `__builtin_*`; `common.hpp` has
+  portable helpers such as `ctz64`). `"arch=haswell"` made the 4-accumulator dot product 40% slower (FMA lengthens the chain).
+- **Size `parallel_for` chunks by work** (about 128k multiply-adds), not items; the pool is persistent and reset after a fork.
+- **Keep BLAS products out of per-block paths:** OpenBLAS spins between calls and slows everything around it
+  (`OPENBLAS_NUM_THREADS=1` shows it).
+- **Benchmark best-of-N in one process** (`tests/bench_stages.py`, `parallel_bench.py`, `resample_bench.py`).
 
 ## Testing
 
 ```
-python -m pytest                       # tests/unit, everything
-python -m pytest -m "not slow"         # skip the chain-decoding tests
-RPPS_NO_NATIVE=1 python -m pytest -m "not slow"     # the Python loops
-python -m pytest tests/unit/test_remez.py tests/unit/test_iir.py     # one file
+python -m pytest -n auto -m "not slow"                       # the fast tests, on every core (CI runs this)
+RPPS_NO_NATIVE=1 python -m pytest -n auto -m "not slow and not kernels"   # the Python loops
+python -m pytest -m oracle                                   # the scipy comparisons (needs .[oracle])
+python -m pytest tests/unit/test_remez.py                    # one file
 ```
 
-- `tests/unit/conftest.py` sets the Agg matplotlib backend and gives `rng` (seeded), `bits` and `awgn` helpers.
-- **RPPS must not need scipy.** The suite runs without it; the oracle tests (remez, resample_poly, convolve, the IIR designs,
-  channel sync) compare against scipy and are skipped when it is not installed. Install `.[oracle]` to run them.
-- `test_contracts.py` runs every definition against its category's contract. New definitions are covered automatically.
-- Native code is tested against its Python reference (above). Stream behaviour is tested by cutting the same input into
-  different block sizes and expecting the same output.
-- `projects/tests` hold the tests of the worked examples; they need no radio.
-- CI runs the fast tests on two Pythons and two operating systems, then the Python-loop run, the oracle tests and the slow
-  tests on Python 3.12 (see [CI and releases](#ci-and-releases)).
+| Marker | Meaning |
+|---|---|
+| `slow` | more than a few seconds even with the kernels; not run in CI |
+| `kernels` | over a minute without the kernels; left out of the no-kernel run |
+| `oracle` | compares against scipy through `pytest.importorskip`; skipped without it |
+
+- **RPPS must not need scipy**; nothing under `src/` may import it (`test_numpy_only.py`).
+- `conftest.py` sets the Agg backend and gives `rng` (seeded), `bits`, `awgn`, `shaped`, `cpfsk`.
+- `test_contracts.py` runs every definition against its category's contract, so new definitions are covered automatically.
+- A statistical test asserts with a margin measured over many seeds, not one lucky seed.
+- `projects/tests` hold the worked examples' tests; they need no radio. Run them on their own (`pytest projects/tests`).
 
 ## Adding things
 
-**A constellation, code, scrambler, pulse, CRC, sequence, header or profile:** write the JSON file in the right
-`config/<resource>/` folder with `base`, `type`, `comment` and, where there is one, `ref`. Run `python -m rpps ls <resource>`
-to see it, `python -m rpps fmt --check` to check the style, and the contract tests cover it.
-
-**A new implementation of a function (a new code type, a new sync method):**
-1. Put it in the package of its category (the rule: what it takes and gives, see [The rule](#the-rule)).
-2. Subclass `Pipe` (invertible), `Stage` or `BitStage`; set `CATEGORY`, `takes`, and `SCOPE` if it holds nothing across frames.
-3. Register its loader so a file's `type` can select it, and its profile step: `rp.profile.steps.register_step(category, kind)`
-   (a builder giving the receive and transmit operators), or for a sync method `register_sync_method(kind, method)`. A
-   profile can also name any `Stage` by its module path, with no registration: `{"signal": "stage", "class": "mypkg.Gain",
-   "args": {...}}`. The step builders pass on only what a step gives, so an operator's own defaults stand for the rest.
-4. Write the Python version first, with the block-cut test; move the hot loop to C++ after, keeping the Python as the reference.
-
-**Branches:** `data + rp.Tee(a=..., b=...)` runs each branch in a stream of its own, so one stage can serve several (FM stereo:
-one audio chain for L+R and L-R). Profiles stay one chain.
-
-**A sync estimator:** estimate from a window with block operations (FFT, correlation, least squares), at absolute positions,
-tracked across windows by `sync.track`. A per-sample loop is second class and selected by name in the profile's `defaults`.
-
-**A new signal:** a profile in `config/profile/<family>/<mode>.json`: one list of steps in receive order, with `params`,
-`defaults` for sync methods and, if a header changes later steps, a `controls` section and a `table`. It should need no new
-operator code. See [Profiles](#profiles) for the format and the 802.15.4 example.
-
-**A source:** subclass `Source` in `rpps.source`, say which representation it produces and which sync it has applied, set the
-rates it knows, and give each block its absolute position. The profile runner skips the steps before that point.
+- **A definition** (constellation, code, scrambler, pulse, CRC, sequence, header, table, profile): a JSON file in
+  `config/<resource>/` with `base`, `type`, `comment` and `ref`; `python -m rpps ls <resource>` to see it,
+  `python -m rpps fmt --check` for style.
+- **An implementation** (a code type, a sync method): put it in its category's package ([the rule](#the-rule)); subclass
+  `Pipe`, `Stage` or `BitStage` with `CATEGORY`, `takes` and `SCOPE`; register its loader and its profile step
+  (`rp.profile.steps.register_step`, `register_sync_method`), or name any `Stage` by module path in a profile
+  (`{"signal": "stage", "class": "mypkg.Gain", "args": {...}}`). Write Python first with a block-cut test; move hot loops to C++
+  after.
+- **A sync estimator:** block operations over windows at absolute positions, tracked by `sync.track`. A per-sample loop is
+  second class, chosen by name in `defaults`.
+- **A signal:** a profile, which should need no new operator code ([Profiles](#profiles)).
+- **A source:** subclass `Source`, say what representation and sync it gives, set its rates and each block's position.
+- **Branches:** `data + rp.Tee(a=..., b=...)` runs each branch in its own stream (FM stereo L+R and L-R); profiles stay one chain.
 
 ## CI and releases
 
-Workflows are in `.github/workflows/`:
-
 | Workflow | When | Does |
 |---|---|---|
-| `tests.yml` | push to `main`/`dev`, pull requests | tests on Python 3.12 and 3.13, Ubuntu and Windows; the Python-loop run, oracle and slow tests on 3.12; builds the sdist and wheel and runs the examples from a clean environment; builds the docs |
-| `deploy-docs.yml` | push to `main` | builds the docs (pdoc) and deploys them to GitHub Pages |
-| `python-publish.yml` | a GitHub release is published | builds wheels (cibuildwheel: Linux x86_64 and arm64, Windows) and the sdist, checks the tag matches the version, publishes to PyPI by trusted publishing |
+| `tests.yml` | push to `main` / `dev`, pull requests | fast tests on Python 3.12-3.14, Ubuntu and Windows (`-n auto`; Windows 30 min, Ubuntu 20); the oracle tests on 3.12; a no-kernel job; sdist → wheel and the examples in a clean venv; the docs build |
+| `deploy-docs.yml` | push to `main` | pdoc to GitHub Pages |
+| `python-publish.yml` | a GitHub release | cibuildwheel (CPython 3.12-3.14; Linux x86_64 and arm64, Windows; each wheel must carry `rpps._native`), checks the tag against the version, publishes by trusted publishing |
 
-To release:
-1. `python builder.py -v p` (or `m`, `M`) to preview the bump, then `-r` to do it. It edits `pyproject.toml` and
-   `src/rpps/__init__.py` and commits; it does not tag.
-2. Merge to `main`.
-3. Publish a GitHub release tagged `v<version>` (for example `v0.3.1`). The publish job refuses a tag that is not exactly
-   `v` plus the version in `pyproject.toml`. Only `v#.#.#` tags are used.
+To release: `python builder.py -v p` (or `m`, `M`) previews the bump, `-r` makes it (edits `pyproject.toml` and
+`src/rpps/__init__.py`, commits, does not tag); merge to `main`; publish a GitHub release tagged exactly `v<version>`.
 
 ## Conventions
 
-- **Operators first.** The API is `*`, `/`, `+`, `>>`; keep new features inside it rather than adding setup calls.
-- **No aliases.** When something is renamed or moved, drop the old name and fix the callers.
-- **Be explicit.** Fix a caller rather than loosen a contract check.
-- **A function belongs to the category named by what it takes and gives**, not what a standard calls it
-  ([the rule](#the-rule)).
-- **Read the standard** when a decode does not work, instead of guessing from memory.
-- **Examples live in `projects/`**, analysis in `tests/dev`. Reuse RPPS components there so the useful parts
-  can move into the package.
+- **Operators first:** keep features inside `*`, `/`, `+`, `>>` rather than adding setup calls.
+- **No aliases:** a rename or move drops the old name and fixes the callers.
+- **Be explicit:** fix a caller rather than loosen a contract check.
+- **Category by what it takes and gives** ([the rule](#the-rule)).
+- **Read the standard** when a decode does not work, instead of guessing.
+- **Examples live in `projects/`**, scratch in `tests/dev`; reuse RPPS so useful parts can move into the package.
+
+## Not yet built
+
+Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liquid-dsp and gr-satellites.
+
+- **Codes:** 5G NR polar (reliability sequence, rate matching); LDPC tables for 5G NR, CCSDS AR4JA / C2, DVB-S2X, DVB-T2, ATSC
+  3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; Fletcher and Internet checksums; fountain codes.
+- **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
+  spread spectrum, space-time codes; per-burst acquisition for short packets (offline: `analysis.spectrum.burst`); OFDM
+  preamble sync and LTE cell search (in `projects/` only); a tone / pilot PLL stage; a first-class carrier estimator for
+  staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
+  `sequence/word`; matched filter fused with Oerder & Meyr.
+- **Links, sources, profiles:** PPP, KISS, AX.25 addresses, MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
+  block-coded headers; tun/tap, audio devices, transmitting to a radio; profiles for DMR, P25, LTE, 802.11a/g/n, ATSC, GPS C/A,
+  DAB, UMTS, CCSDS turbo (and `projects/` using the BLE, ADS-B and 802.11b profiles that exist); `dvbs2/normal` dummy frames;
+  positions and gaps in the parallel runner's output; branches inside a profile; GPU and FPGA backends.
 
 ## Blind analysis (rpps.analysis)
 
-Tools for a signal no definition covers, beyond the code searches under [Design](#design). Each states its statistic and
-its chance level, so "nothing found" is an answer; each module's docstring has the method, its reference and its limits.
-They are numpy only and sit outside the data path. Most take baseband samples at a few times the signal's width (a
-channel with some noise floor visible beside the signal: the floors are estimated there), or locked symbols, or bits.
+Tools for signals no definition covers. Each states its statistic and chance level, so "nothing found" is an answer; each
+module's docstring has the method, reference and limits. Numpy only, outside the data path. Most take baseband at a few times
+the signal's width (some noise floor beside it), locked symbols, or bits. `identify.solve` peels layers off a decoder's output
+in turn; structure that holds at every alignment (constant bits, idle words) is not taken for a code. Rank methods need about
+n + 48 clean words of n bits; strong codes at low SNR are beyond them on channel bits.
 
 **What is it, and at what rate**
 
 | Question | Tool | How (and limits) |
 |---|---|---|
-| symbol rate, carrier order and offset | `spectrum.cyclic.features` | lines of `\|x\|^2`, `x^M` (also at the symbol instants) and the discriminator, each against a median floor with a calibrated false-alarm probability; the rate by a harmonic comb (`spectrum.cyclic.comb_rate`) |
-| every cycle frequency in the band (signals sharing it) | `spectrum.scf.cycle_frequencies`, `spectrum.scf.coherence` | FFT-accumulation spectral coherence, conjugate too; equal-power overlap is told apart only by these features |
-| which constellation | `modulation.cumulants.classify` | C40 ... C84 against each constellation's own; families blind, orders within QAM / ASK need the SNR |
-| FSK / MSK / GMSK, CPM index | `modulation.fsk.analyze`, `modulation.fsk.cpm_index` | instantaneous frequency: rate by comb, tones by clusters that split like tones; h from the phase lattice (full response) |
-| GMSK / SOQPSK bits, which pulse | `modulation.cpm.demodulate`, `modulation.cpm.identify` | rate and carrier from the x^2 line pair; timing and clock by the detector's metric; a per-survivor Viterbi (each survivor its own carrier loop and pulse tail: SOQPSK-TG's 8 symbols); the pulse that fits best. SOQPSK bits up to complement / alternate inversion |
-| OFDM pilot pattern | `spectrum.ofdm_pilots.discover`, `spectrum.ofdm_pilots.grid` | the grid from CP peaks (smoothed: a line plus a per-slot CP pattern); the lag at which cells repeat coherently is the period; per symbol, the subcarrier lattice standing out across the band, or the whole symbol known; continual pilots, boost, empty cells |
-| TDMA bursts' bits, frame and slots | `spectrum.burst.demodulate` | each burst on its own: the shared preamble found in it (pieces correlated), fractional timing from its phase steps, carrier and phase data-aided, a decision-directed loop; slots by start times within the frame |
-| two co-channel signals of equal power | `spectrum.separate.estimate`, `spectrum.separate.separate` | each one's carrier (x^M line), timing (its x^M +- baud lines) and phase; then a sequence estimate over both streams merged in time (state: two symbols), the farther coupling cancelled from the previous pass, gains refitted |
-| which named system | `catalogue.match`, `catalogue.features` | measured features (rate, modulation family, pulse, OFDM numerology and pilots, TDMA frame, spreading, band) against systems from their standards, each agreement and contradiction weighted and reported |
-| PM with a residual carrier, subcarriers | `modulation.pm.analyze`, `modulation.pm.subcarrier`, `modulation.pm.nrz` | the carrier tracked, the phase around it: a `\|x\|^2` "rate" at twice a subcarrier is a subcarrier |
-| spread (DSSS) | `sequence.spread.period`, `chip_rate`, `code`, `despread` | variance of windowed autocorrelations peaks at the code period; the code from eigenvectors; detection goes ~2 dB further under the noise than recovery |
-| frequency hopping | `spectrum.hopping.track`, `spectrum.hopping.dehop` | short-time spectrum, frames clustered into channels, dwells; de-hopped to one channel |
-| what kind of waveform (tones, OFDM and which system, bursts, envelope) | `spectrum.waveform.classify` | tones by narrow peaks, OFDM by its CP correlation and numerology against a table of systems, switching power, the envelope's kurtosis |
-| tones in a short record | `spectrum.pencil.lines` | matrix pencil: lines a fraction of a bin apart |
-| neighbours, overlap | `modulation.impairments.neighbours` | bands over the floor, split at valleys, level steps and carriers on another's plateau |
+| symbol rate, carrier order and offset | `spectrum.cyclic.features` | lines of `\|x\|^2`, `x^M` and the discriminator against a median floor, calibrated false alarms; rate by harmonic comb |
+| every cycle frequency (signals sharing a band) | `spectrum.scf.cycle_frequencies`, `coherence` | FFT-accumulation spectral coherence, conjugate too |
+| which constellation | `modulation.cumulants.classify` | C40 ... C84 against each constellation's; orders within QAM / ASK need the SNR |
+| FSK / MSK / GMSK, CPM index | `modulation.fsk.analyze`, `cpm_index` | instantaneous frequency; h from the phase lattice |
+| GMSK / SOQPSK bits, which pulse | `modulation.cpm.demodulate`, `identify` | per-survivor Viterbi, each survivor its own carrier loop |
+| OFDM pilot pattern | `spectrum.ofdm_pilots.discover`, `grid` | grid from CP peaks; period from coherent repetition; pilot lattice, boost, empty cells |
+| TDMA bursts, frame and slots | `spectrum.burst.demodulate` | each burst on its shared preamble, data-aided carrier and phase |
+| two co-channel signals of equal power | `spectrum.separate.estimate`, `separate` | each one's carrier, timing and phase; joint sequence estimate |
+| which named system | `catalogue.match`, `features` | measured features against systems from their standards, weighted |
+| PM, residual carrier, subcarriers | `modulation.pm.analyze`, `subcarrier`, `nrz` | carrier tracked, phase around it |
+| DSSS | `sequence.spread.period`, `chip_rate`, `code`, `despread` | windowed autocorrelation variance; code from eigenvectors |
+| frequency hopping | `spectrum.hopping.track`, `dehop` | short-time spectrum clustered into channels and dwells |
+| kind of waveform | `spectrum.waveform.classify` | tones, OFDM numerology against known systems, bursts, envelope kurtosis |
+| tones in a short record, neighbours | `spectrum.pencil.lines`, `modulation.impairments.neighbours` | matrix pencil; bands split at valleys and level steps |
 
 **Is the lock good, and what is left**
 
 | Question | Tool | How |
 |---|---|---|
-| can hard decisions be trusted for rank / LFSR tests | `modulation.quality.gate` | rotation, drift, decisions near boundaries against what the measured Es/N0 explains, displaced clusters |
-| how much of the signal we are locked to; what is underneath | `modulation.cancel.cancel`, `modulation.cancel.align` | regenerate from the symbols (block least squares through band-limited kernels), subtract, the residual's density against the floor; survey the residual |
-| amplifier, IQ, phase noise | `modulation.impairments.amplifier`, `iq`, `phase_noise` | ring gains and turns; image ratio from E[y^2]; white phase error from neighbours' differences |
-| separate an interferer with other cycle frequencies | `spectrum.scf.fresh` | least-squares FRESH filter over frequency-shifted copies of x and conj(x), trained on a reference (a preamble, or `cancel`'s regenerated signal); not blind |
+| can hard decisions be trusted | `modulation.quality.gate` | rotation, drift, near-boundary decisions against the measured Es/N0 |
+| how much is locked; what is underneath | `modulation.cancel.cancel`, `align` | regenerate, subtract, residual against the floor |
+| amplifier, IQ, phase noise | `modulation.impairments.amplifier`, `iq`, `phase_noise` | ring gains and turns; image ratio; phase error from neighbours |
+| separate an interferer | `spectrum.scf.fresh` | least-squares FRESH filter trained on a reference (not blind) |
 
 **Which code, scrambler, interleaver**
 
 | Question | Tool | How |
 |---|---|---|
-| convolutional mother code (rate 1/n, K) | `code.conv.mother.scan_conv` | for generators g_a, g_b, (c_a * g_b) xor (c_b * g_a) = 0 on codewords: every pair up to K, deviance z against chance; `scan_defined_conv` tries the configured codes. A found code is saved as a child of the configured mother with those generators (`code.conv.puncture.search` then finds the puncture on it) |
-| additive scrambler (PRBS) over data | `sequence.scrambler.additive_search`, `sequence.scrambler.explain` | Berlekamp-Massey over windows (`rpps.math.gf2.berlekamp_massey`); the polynomial factored into known scramblers and the data's own period |
-| trellis code on PSK labels (Ungerboeck, pragmatic) | `code.conv.tcm.search` | Walsh-Hadamard of label windows scores every parity check at once, per rotation and labelling; `soft=True` rescores a shortlist by LLRs |
-| scrambler taps, feedthrough or additive | `sequence.recurrence.search` (degree <= 24), `sequence.recurrence.lfsr` (any degree, Berlekamp-Massey), `sequence.recurrence.keystream` | the same transform over bit windows (`llr=` for soft); an additive keystream by fast correlation once its polynomial is known |
-| turbo / RSC constituent, turbo interleaver | `code.conv.rsc.constituent`, `code.conv.rsc.turbo_interleaver`, `code.conv.rsc.turbo_interleaver_soft` | `p g_b + s g_f = 0` as a 2-bit-label check; the permutation by matching columns over frames (clean frames), or from noisy frames by the soft check position by position (a beam, then a repair pass): 1024-bit frames at 10% bit errors from 300 frames |
-| LDPC: IRA (staircase), QC, large | `code.block.ldpc.staircase`, `code.block.ldpc.qc_staircase`, `code.block.ldpc.qc_dual`, `code.block.ldpc.qc_size`, `code.block.ldpc.progressive` | one GF(2) solve per structure: a DVB-S2 table from k/360 + 12 clean frames; progressive search cleans frames with the checks found so far |
-| binary cyclic / BCH roots | `code.block.ldpc.roots` | zero counts of the words at every beta^j against each subfield's chance |
-| polar frozen bits, construction | `code.block.polar.frozen`, `code.block.polar.recognize`, `code.block.polar.search` | tanh-product of each u_i's column over frames; at low SNR successive cancellation over all frames with a likelihood test per position (rate 1/2 found exactly at Es/N0 -2 dB from 200 frames); the construction and K nearest it |
-| interleaver | `code.interleave.block_search`, `forney_search`, `column_delays` | rank deficiency for the size, then rows x columns; Forney candidates scored by the code structure coming back; columns sent rows late |
+| convolutional code (rate 1/n, K) | `code.conv.mother.scan_conv`, `scan_defined_conv` | generator-pair parity relation against chance; the configured codes by re-encoding |
+| puncture of a known mother code | `code.conv.puncture.search` | every rate P/(P+1) pattern through the Viterbi decoder |
+| Reed-Solomon over GF(256) | `code.block.rs.search` | shared roots by Galois-field Fourier transform at every byte phase |
+| binary block code | `code.block.linear.solve_block` | length from rank deficiency, checks from the null space; then cyclic / BCH, product or LDPC |
+| additive scrambler | `sequence.scrambler.additive_search`, `explain`, `search` | Berlekamp-Massey over windows; polynomials factored into known scramblers |
+| scrambler taps | `sequence.recurrence.search`, `lfsr`, `keystream` | every recurrence to degree 24 at once; any degree by Berlekamp-Massey |
+| trellis code on PSK labels | `code.conv.tcm.search` | Walsh-Hadamard over label windows, every rotation and labelling |
+| turbo constituent and interleaver | `code.conv.rsc.constituent`, `turbo_interleaver`, `turbo_interleaver_soft` | 2-bit-label check; permutation from clean or noisy frames |
+| LDPC (IRA, QC, large) | `code.block.ldpc.staircase`, `qc_staircase`, `qc_dual`, `qc_size`, `progressive` | one GF(2) solve per structure (a DVB-S2 table from k/360 + 12 clean frames) |
+| cyclic / BCH roots | `code.block.ldpc.roots` | zero counts at every beta^j against chance |
+| polar frozen bits | `code.block.polar.frozen`, `recognize`, `search` | per-position likelihood over frames (rate 1/2 at -2 dB from 200 frames) |
+| interleaver | `code.interleave.block_search`, `forney_search`, `column_delays` | rank deficiency for the size; candidates scored by the code coming back |
 
 **What the bits are**
 
 | Question | Tool | How |
 |---|---|---|
-| frame period and unique word on symbols | `framing.frames.find`, `cut`, `bursts` | coherence of each position over candidate periods; the frames cut and turned on the word; TDMA bursts gated and acquired one by one |
-| sync markers, frame length, HDLC on bits | `framing.bits.find_sync`, `frame_length`, `scan_hdlc` | marker hits at a period, bit autocorrelation, flags and FCS against their chance |
-| PM telemetry end to end | `framing.telemetry.analyze` | each subcarrier's BPSK, line code (Manchester, differential), frame period by fixed bits, counters |
-| framing in decoded bits | `framing.payload.signatures` | E1/T1 G.704, ATM HEC, GFP cHEC, HDLC, IPv4, CCSDS ASM, MPEG-TS, fixed bits at a period: each against its chance rate (and the stream's own structure) |
-| structured, scrambled or random | `framing.payload.verdict` | signatures, bias, bytes, windowed linear complexity, zlib; `frame=` sets repeated (idle) frames aside first |
-
-Synthetic signals for their tests: `tests/unit/conftest.py` (`shaped` for RRC-shaped symbols at any samples per symbol,
-`cpfsk`). The tools were checked on recorded signals too;
-fixes from that are in the history of `ident`.
+| frame period and unique word on symbols | `framing.frames.find`, `cut`, `bursts` | coherence per position over candidate periods |
+| sync markers, frame length, HDLC | `framing.bits.find_sync`, `frame_length`, `scan_hdlc` | hits at a period, autocorrelation, flags and FCS against chance |
+| PM telemetry end to end | `framing.telemetry.analyze` | BPSK per subcarrier, line code, frame period, counters |
+| framing in decoded bits | `framing.payload.signatures` | E1/T1, ATM, GFP, HDLC, IPv4, CCSDS ASM, MPEG-TS, fixed bits, each against chance |
+| structured, scrambled or random | `framing.payload.verdict` | signatures, bias, linear complexity, compressibility |
