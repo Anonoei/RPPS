@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.code.types import Trellis, bcjr
+from rpps.code.types import Trellis
 from conftest import bits, awgn
 
 def modem(name):

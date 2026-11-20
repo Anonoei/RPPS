@@ -14,16 +14,14 @@ An operator gives one with `op.kernel(params, how)` (params: its controlled para
 returns None for what it has no kernel for). A step whose operators do not is run by `LoopKernel`: the existing
 per-frame operator, through `Data`. That path is also the oracle every kernel is compared with.
 """
-from dataclasses import dataclass, field
 
 import numpy as np
 
-from ..base.data import _Data
 from ..base.meta import Meta, Stream
 from ..base.rpps import FLUSH, DROPPED
 from ..errors import RPPSError, StreamError
 from ..profile.steps import STAGE, DECODE
-from ..base.kernel import Form, Batch, Kernel
+from ..base.kernel import Form, Kernel
 
 class LoopKernel(Kernel):
     """A step run one frame at a time through its operators (`Data`, a fresh stream per frame): correct for any operator, and

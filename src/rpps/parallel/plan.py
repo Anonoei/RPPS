@@ -34,7 +34,7 @@ class BatchPlan:
         return out
 
     def __repr__(self):
-        return f"<BatchPlan " + " > ".join(k.name for k in self.kernels) + ">"
+        return "<BatchPlan " + " > ".join(k.name for k in self.kernels) + ">"
 
 def compile(steps, params, direction="rx", key=None):
     """The plan of `steps` (built steps, in order) for `params` ({step id: {parameter: value}}). A parameter a step takes live

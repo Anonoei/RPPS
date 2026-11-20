@@ -126,7 +126,6 @@ def _mlse_python(r, Q, atab, S, parity, loop):
     L, ns = Q.shape
     n = len(r)//ns
     N = 1 << S
-    mask = N - 1
     k1, k2 = loop
     hpi = np.pi*H
     M = np.zeros(N)

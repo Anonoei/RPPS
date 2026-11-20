@@ -14,7 +14,6 @@ C42 -2, QPSK -1, 8PSK -1 with C40 0, 16QAM -0.68, 64QAM -0.62, OFDM and noise 0.
 `theory` computes them for any point set, so every constellation rpps knows is a candidate. `classify` fits, for each, the
 signal's share of the measured power (what the noise does not have) and compares; the share is an Es/N0.
 """
-import itertools
 from functools import lru_cache
 
 import numpy as np
@@ -38,7 +37,6 @@ def _partitions(p):
 def _moment_table(x, p):
     """E[x^a conj(x)^b] for a + b <= p"""
     x = np.asarray(x, dtype=np.complex128)
-    xc = np.conj(x)
     M = {}
     pw = [np.ones_like(x)]
     for _ in range(p):

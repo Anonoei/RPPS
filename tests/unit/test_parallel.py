@@ -9,7 +9,7 @@ import pytest
 import rpps as rp
 from rpps import _config
 from rpps.errors import ConfigError
-from rpps.parallel import Frame, Result, Scheduler, InlineExecutor, ThreadExecutor, DROPPED
+from rpps.parallel import Frame, Result, Scheduler, ThreadExecutor, DROPPED
 
 def frames(n, modcods=(1,)):
     return [Frame(i, np.full(8, i, dtype=np.float32), {"ldpc": {"name": modcods[i % len(modcods)]}}, pos=8*i, pos_out=4*i, n_out=4)
@@ -271,7 +271,6 @@ def test_a_batch_holds_one_key():
 def test_a_failing_row_is_dropped_and_the_rest_go_on(s2):
     """Frames of one batch share a plan; one that cannot be processed is a gap, the others come out as they would alone"""
     from rpps.base.kernel import Batch, Kernel, Form
-    from rpps.parallel.kernel import LoopKernel
     class Picky(Kernel):
         name = "picky"
         def run(self, xp, b):
@@ -389,7 +388,6 @@ def _boom(batch):
 
 def test_fused_matched_filter_gives_the_same_symbols_as_filtering_every_sample():
     """Known timing with the matched filter evaluated only at its instants, against the filter then the pick, for any block cut"""
-    from rpps import _accel
     rng = np.random.default_rng(4)
     for name, kw in (("dvbs2/normal", {}), ("ieee802154/2450", {"sps": 4})):
         fused = rp.profile.load(name, sync=KNOWN, **kw)

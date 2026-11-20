@@ -245,7 +245,6 @@ def definition(h, m, points=None):
     k = m - 1
     depth = [nu] + [max(h[i].bit_length() - 1, 0) for i in range(1, m)] # delays kept of each label bit
     shift = np.concatenate(([0], np.cumsum(depth)[:-1]))
-    bits = int(sum(depth))
     def step(state, u):
         hist = [[(state >> (shift[i] + d)) & 1 for d in range(depth[i])] for i in range(m)] # hist[i][d-1]: z^i at t-d
         z = [0] + [(u >> (k - i)) & 1 for i in range(1, m)]

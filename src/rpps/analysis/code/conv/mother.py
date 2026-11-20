@@ -6,10 +6,9 @@ import itertools
 
 import numpy as np
 
-from ....math.gf2 import nullspace, systematic
-from ....math.prob import deviance_z, z_critical
-from ....code.coding import puncture_period, mismatch, cached
-from ...result import Hypothesis, Guess, Report
+from ....math.prob import deviance_z
+from ....code.coding import puncture_period, mismatch
+from ...result import Hypothesis, Guess
 
 def _polys(K):
     """Generators of constraint length K: first and last tap set (otherwise it is a shorter code)"""

@@ -1,6 +1,5 @@
 """Time domain viz helpers"""
 import numpy as np
-import matplotlib.pyplot as plt
 
 from ..base import axes, line
 

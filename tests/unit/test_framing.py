@@ -1,6 +1,5 @@
 """rpps.analysis.framing.frames: the frame period, the unique word, frames cut and turned on it, frames that repeat"""
 import numpy as np
-import pytest
 
 import rpps as rp
 from rpps.analysis.framing import frames as FR

@@ -30,7 +30,7 @@ DOMAIN = _config.register_domain("constellation", {"constellation": Constellatio
 
 def load_header(name: str, **params) -> Header:
     """A physical header definition: `load_header("dvbs2_pl")` (config/header/physical)"""
-    from ..link import serial as _link # The header resource (physical and link) is registered with the link definitions
+    from ..link import serial as _link  # noqa: F401 -- registers the header resource (physical and link) with the link definitions
     h = _config.load("header", name, "physical", params=params)
     return h
 

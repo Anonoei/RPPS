@@ -1,4 +1,6 @@
 """Every shipped FEC definition loads, and encode -> decode gives the message back"""
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -129,6 +131,7 @@ def test_import_alist(tmp_path):
     obj = rp.code.import_alist(f)
     assert obj["n"] == 7 and obj["checks"] == [[0, 2, 3, 6], [1, 2, 5, 6], [3, 4, 5, 6]]
     path = rp.code.import_alist(f, "alist_ham", dest=tmp_path / "cfg", comment="test")
+    assert Path(path).is_file()
     rp.add_config_path(tmp_path / "cfg")
     try:
         code = rp.code.load("block/ldpc/alist_ham").encoder
@@ -151,7 +154,7 @@ def test_import_alist_rejects_inconsistent(tmp_path):
 def test_ldpc_flooding_schedule_decodes_what_layered_does(ref, rng):
     layered = rp.code.load(ref)
     flooding = rp.code.init("flood", {**rp._config.read(rp._config.find("fec", ref)), "schedule": "flooding", "iters": 100})
-    k, n = layered.encoder.num, layered.encoder.den
+    k = layered.encoder.num
     msg = rng.integers(0, 2, 8*k).astype(bool)
     x = layered.encoder.encode(msg)
     llr = 2*(1 - 2.0*x)/0.6**2 + rng.normal(0, 2/0.6, len(x))

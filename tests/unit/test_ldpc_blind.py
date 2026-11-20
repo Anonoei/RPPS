@@ -35,7 +35,6 @@ def test_staircase_rows_exactly():
     assert np.array_equal(H[:, :96], A) and np.all(holds > 0.9)
 
 def test_staircase_needs_information_first():
-    rng = np.random.default_rng(1)
     words = np.zeros((300, 40), np.uint8)
     with pytest.raises(ValueError):
         L.staircase(words, 20)

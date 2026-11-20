@@ -246,7 +246,7 @@ def bursts(x, Fs, names=None, baud=None, min_symbols=128, **kw):
     """The bursts of x (`gate`), each acquired on its own: rate (or `baud` for all), modulation, offset, timing (as a
     TDMA receiver must: every burst comes from another transmitter, with its own clock and carrier). [Burst]"""
     from ...sync.acquire import detect, correct, candidates, symmetry
-    from ...sync.time.mat import matrix_mf, centres_in, best_tau
+    from ...sync.time.mat import matrix_mf, centres_in
     x = np.asarray(x, dtype=np.complex128)
     out = []
     for a, b in gate(x, Fs, **kw):

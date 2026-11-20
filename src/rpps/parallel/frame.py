@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from ..base.kernel import Form
 
 OK, DROPPED = "ok", "dropped"
 

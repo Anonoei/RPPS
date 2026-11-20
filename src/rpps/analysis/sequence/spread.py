@@ -205,7 +205,6 @@ def chip_rate(x, Fs, lag, min_sps=2.0, pfa=1e-3, fluct=None, fine=None):
         # The period is known to a sample, so harmonic k only to k Fs/lag^2: a rate that far off slips the chips by
         # hundreds over the record and no window holds the code. Its line, searched for in that small window only, is
         # found far under the threshold a whole-band search needs: the rate to a fraction of a bin
-        f_ = np.fft.rfftfreq(N, 1/Fs)
         best = None
         for k in ks[np.argsort(-pw)[:5]]:
             b0 = int(round(k*Fs/lag/(Fs/N)))
