@@ -55,7 +55,6 @@ def track(x, Fs, nfft=256, hop=None, snr_db=6.0, merge=None, width=None):
     x = np.asarray(x, dtype=np.complex128)
     hop = hop or nfft//2
     S = _spectrogram(x, nfft, hop)
-    f = (np.arange(nfft) - nfft//2)*Fs/nfft
     k = np.argmax(S, axis=1)
     peak = S[np.arange(len(S)), k]
     floor = np.median(S, axis=1)

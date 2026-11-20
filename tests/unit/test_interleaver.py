@@ -1,6 +1,5 @@
 """Blind interleavers: block size and shape, Forney branches, column delays (rpps.analysis.code.interleave)"""
 import numpy as np
-import pytest
 
 from rpps.analysis.code import interleave as IL
 from rpps.code.types.interleave import rowcol

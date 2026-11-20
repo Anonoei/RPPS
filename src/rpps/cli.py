@@ -71,7 +71,6 @@ def cmd_ls(args):
 
 def cmd_steps(args):
     """The step kinds a profile's "steps" can name, by category, and the methods of the sync kinds that have them"""
-    import rpps as rp
     from rpps.profile import steps
     width = min(shutil.get_terminal_size((100, 20)).columns, 120)
     print("A profile step is {\"<category>\": \"<kind>\", ...}, in receive order (python -m rpps show profile/<family>/<mode> for examples):")

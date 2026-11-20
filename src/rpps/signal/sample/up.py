@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
-from .sample import Sample, Meta
+from ...base import Meta
+from .sample import Sample
 from ... import _accel
 
 from ..filters import shaping

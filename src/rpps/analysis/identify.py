@@ -14,12 +14,11 @@ The tests are about structure, not about being right: a noisy channel weakens th
 is None when nothing stands out.
 """
 import functools
-import itertools
 
 import numpy as np
 
-from ..math.gf2 import nullspace, systematic
-from ..math.prob import deviance_z, z_critical
+from ..math.gf2 import systematic
+from ..math.prob import deviance_z
 from ..code.coding import puncture_period, mismatch, cached
 from .result import Hypothesis, Report, Guess, pick
 from .code.conv.mother import scan_conv, scan_defined_conv, guess_conv
@@ -45,7 +44,7 @@ def diff_alphabets(constellation):
     The PSK definitions with as many points (config/constellation/psk: QPSK is the pi/4-DQPSK alphabet, qpsk_axes 802.11b's;
     labelling variants such as the DVB-S2 maps are skipped), and the constellation itself when 1 is one of its points
     (DBPSK is BPSK)."""
-    from .. import symbol, _config
+    from .. import symbol
     c = _constellation(constellation)
     out = {}
     for stem in symbol.ls().get("psk", []):
@@ -360,7 +359,6 @@ def _fec_steps(steps):
 
 def _symbol_steps(steps):
     """(differential?, constellation name) of a profile's symbol steps"""
-    from .. import symbol
     diff = any(s.get("symbol") == "differential" for s in steps)
     cons = [s for s in steps if s.get("symbol") == "constellation"]
     from ..profile.steps import constellation
@@ -738,7 +736,6 @@ def _finish(out, c, profiles):
 
 def _target(out, c):
     """(the map the steps decode with, the correction that turns the symbols to it, or None)"""
-    from .. import symbol
     spec = _symbol_steps(out.steps)[2][0]
     from ..profile.steps import constellation
     target = constellation(spec).mapping

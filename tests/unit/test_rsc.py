@@ -1,6 +1,5 @@
 """RSC constituents and a turbo interleaver, blind (rpps.analysis.code.conv.rsc)"""
 import numpy as np
-import pytest
 
 from rpps.analysis.code.conv import rsc
 

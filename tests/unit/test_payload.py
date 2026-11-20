@@ -1,6 +1,5 @@
 """Framing signatures in decoded bits, and the verdict on the rest (rpps.analysis.framing.payload)"""
 import numpy as np
-import pytest
 
 from rpps.analysis.framing import payload as P
 from rpps.math import gf2
@@ -115,7 +114,7 @@ def test_random_bits_have_nothing():
 def test_verdicts():
     rng = np.random.default_rng(9)
     assert P.verdict(rbits(rng, 100000)).kind == "random-looking"
-    poly = [15, 14] # an LFSR keystream over idle zeros
+    # an LFSR keystream (taps 15, 14) over idle zeros
     k = np.zeros(100000, np.uint8)
     k[:15] = 1
     for i in range(15, len(k)):

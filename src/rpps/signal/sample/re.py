@@ -2,7 +2,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from .sample import Sample, Meta
+from ...base import Meta
+from .sample import Sample
 from ..filters.impl.designer import designer
 
 class Resample(Sample):

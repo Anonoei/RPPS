@@ -9,7 +9,7 @@ thread at a time (`per_thread` makes another).
 import numpy as np
 
 from ..base.kernel import Form, Batch
-from .frame import Frame, Result
+from .frame import Result
 from .plan import compile
 
 class RegionSteps:

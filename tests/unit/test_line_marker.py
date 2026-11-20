@@ -216,7 +216,6 @@ def test_channelize_stage_is_designed_from_the_stream_and_streams(rng):
 def test_fm_by_deviation_round_trips_audio():
     t = np.arange(4000)/48e3
     audio = (0.7*np.sin(2*np.pi*440*t)).astype(np.float32)
-    s = None
     wave = rp.Data(audio, Fs=48e3) + rp.wave.FM(deviation=5e3)
     back = rp.Data(np.asarray(wave.data), Fs=48e3) + rp.wave.FMDemod(deviation=5e3)
     assert back.DT == rp.dtype.REAL and np.allclose(np.asarray(back.data)[1:], audio[1:], atol=1e-3)

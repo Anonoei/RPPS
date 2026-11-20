@@ -20,7 +20,6 @@ sum over the most it could have been plus `prior` (so a fit on one feature ranks
 approached as more agrees; below 0 more contradicts than agrees), and the reasons say which. Nothing measured that a system lacks counts either way. A blind tool reads some modulations as
 others (pi/4-DQPSK as 8PSK, GMSK as MSK or 2-FSK, C4FM as 4-FSK): systems list what they are seen as too.
 """
-import numpy as np
 
 # feature: (weight, default relative tolerance)
 WEIGHTS = {"modulation": (2.0, None), "baud": (3.0, 0.005), "chip_rate": (3.0, 0.005), "code_length": (2.0, 0.0),

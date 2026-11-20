@@ -59,7 +59,7 @@ python builder.py -t        # pytest
 without `-r`).
 
 Work on a feature branch and merge into `dev`; `main` is released. Scratch and analysis scripts go in `tests/dev` (or
-`scripts/` when they should reuse RPPS components and might be upstreamed).
+`projects/` when they should reuse RPPS components and might be upstreamed).
 
 ## Repository layout
 
@@ -961,7 +961,7 @@ To release:
 - **A function belongs to the category named by what it takes and gives**, not what a standard calls it
   ([the rule](#the-rule)).
 - **Read the standard** when a decode does not work, instead of guessing from memory.
-- **Examples live in `projects/`**, analysis in `scripts/` or `tests/dev`. Reuse RPPS components there so the useful parts
+- **Examples live in `projects/`**, analysis in `tests/dev`. Reuse RPPS components there so the useful parts
   can move into the package.
 
 ## Blind analysis (rpps.analysis)

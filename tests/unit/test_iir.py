@@ -1,11 +1,7 @@
-import json
-import warnings
 import numpy as np
 import pytest
 
 import rpps as rp
-from rpps import _config
-from rpps.errors import ConfigError
 from rpps.signal.filters import iir
 
 def lfilter_ref(b, a, x):
