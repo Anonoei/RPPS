@@ -15,13 +15,19 @@ class product(_code):
         iters: decoding rounds of all columns then all rows (hard decisions, each code's own syndrome decoder)
         chase: decode soft instead, as a turbo product code (Pyndiah, "Near-optimum decoding of product codes: block turbo
             codes", IEEE Trans. Commun. 1998): each row and column by Chase-II over its `chase` least reliable bits (2^chase
-            test patterns through the component's algebraic decoder, the candidate nearest the input chosen), and the
-            extrinsic information of each bit from the best candidate that disagrees with the decision on it (or beta
-            times the decision when none does), fed to the next half iteration scaled by alpha. `iters` rounds
+            test patterns through the component's algebraic decoder, the candidate nearest the input chosen). The channel
+            LLRs are normalized to mean |R| = 1; the extrinsic information W of a bit is the metric difference to the best
+            candidate that disagrees with the decision on it, minus the input, or beta times the decision when no candidate
+            disagrees; W is normalized to mean 1 and the next half iteration decodes R + alpha W (ALPHA and BETA per half
+            iteration). A row whose test patterns all fail keeps its hard decision. `iters` rounds, stopping early on
+            a word whose rows and columns are all codewords
     After a decode `errors` is the bits corrected per word, -1 where a row or column still fails its check.
     """
-    ALPHA = (0.2, 0.3, 0.5, 0.7, 0.9, 1.0) # Extrinsic weight per half iteration (Pyndiah), the last repeated
-    BETA = (0.2, 0.4, 0.6, 0.8, 1.0)       # Reliability when no competitor, in units of the mean input magnitude
+    # Per half iteration, the last repeated. ALPHA is Pyndiah's ramp held at 0.5 (as AFF3CT): rising on to his 1.0 makes
+    # words that fail diverge past 4 iterations (tests/tpc_ber.py). The first half iteration has no extrinsic yet.
+    ALPHA = (0.0, 0.2, 0.3, 0.5) # Weight of the extrinsic in the next decoder input
+    BETA = (0.2, 0.4, 0.6, 0.8, 1.0) # Extrinsic of a bit with no competing candidate (mean |W| is 1)
+    BATCH = 32 # Words decoded together
     @classmethod
     def from_config(cls, log, obj):
         return cls(log, _code_obj(obj["rows"]), _code_obj(obj["cols"]), obj.get("reserved", 0), obj.get("lead", 0),
@@ -60,7 +66,9 @@ class product(_code):
         return words, st
 
     def _chase(self, coder, R, n, k):
-        """One half iteration on the rows of R (rows, n) of LLRs: (soft output, extrinsic) by Chase-II"""
+        """Chase-II on the rows of R (rows, n), normalized LLRs: decisions D (rows, n), their signs sD (+1 for a 0), the
+        metric of each decision mD (rows,) and of the best competitor per bit mC (rows, n; inf where none). A row whose
+        test patterns all fail the algebraic decoder keeps its hard decision, with no competitor on any bit"""
         p = min(self.chase, n)
         rows = len(R)
         y = (R < 0).astype(np.uint8)
@@ -72,41 +80,54 @@ class product(_code):
         np.put_along_axis(flip, np.broadcast_to(weak[:, None, :], (rows, T, p)), np.broadcast_to(pats[None], (rows, T, p)), axis=2)
         cand ^= flip
         msg = coder.decoder.decode(cand.reshape(-1)).reshape(rows*T, k).astype(np.uint8)
-        ok = np.asarray(coder.errors) >= 0
+        ok = (np.asarray(coder.errors) >= 0).reshape(rows, T)
         cw = coder.encoder.encode(msg.reshape(-1)).reshape(rows, T, n).astype(np.uint8)
-        metric = (np.abs(R)[:, None, :]*(cw != y[:, None, :])).sum(axis=2) # correlation distance to the input
-        metric = np.where(ok.reshape(rows, T), metric, np.inf)
+        metric = (np.abs(R)[:, None, :]*(cw != y[:, None, :])).sum(axis=2) # correlation discrepancy to the input
+        metric = np.where(ok, metric, np.inf)
         best = np.argmin(metric, axis=1)
-        D = cw[np.arange(rows), best] # (rows, n) decisions
-        mD = metric[np.arange(rows), best]
-        sD = 1.0 - 2.0*D # +1 for a 0
+        idx = np.arange(rows)
+        D = cw[idx, best] # (rows, n) decisions
+        mD = metric[idx, best]
+        failed = ~ok.any(axis=1)
+        D[failed] = y[failed]
+        sD = 1.0 - 2.0*D
         differs = cw != D[:, None, :] # (rows, T, n): candidate disagrees with the decision on the bit
         mC = np.where(differs, metric[:, :, None], np.inf).min(axis=1) # best competitor per bit
+        mC[failed] = np.inf
         return D, sD, mD, mC
 
-    def _soft(self, w):
-        """Turbo decoding of one word's LLRs (n2, n1): the decided matrix"""
-        R = w.copy()
+    def _soft(self, L):
+        """Turbo decoding of words' LLRs (words, n2, n1): the decided matrices (words, n2, n1)"""
+        L = np.asarray(L, dtype=np.float64)
+        nw = len(L)
+        R = L/np.maximum(np.abs(L).mean(axis=(1, 2), keepdims=True), 1e-30) # Channel input normalized: mean |R| = 1
         Wx = np.zeros_like(R)
+        M = (L < 0).astype(np.uint8)
+        act = np.arange(nw) # Words still decoding
         half = 0
         for _ in range(self.iters):
             for axis in (0, 1): # columns, then rows
                 a = self.ALPHA[min(half, len(self.ALPHA) - 1)]
                 b = self.BETA[min(half, len(self.BETA) - 1)]
-                inp = R + a*Wx
+                inp = R[act] + a*Wx[act]
                 if axis == 0:
-                    D, sD, mD, mC = self._chase(self.cols, inp.T, self.n2, self.k2)
-                    D, sD, mC, inpT = D.T, sD.T, mC.T, inp
-                    mD = mD[None, :]
+                    D, sD, mD, mC = self._chase(self.cols, inp.transpose(0, 2, 1).reshape(-1, self.n2), self.n2, self.k2)
+                    shape = (len(act), self.n1, self.n2)
+                    D, sD, mC = (v.reshape(shape).transpose(0, 2, 1) for v in (D, sD, mC))
+                    mD = mD.reshape(len(act), 1, self.n1)
                 else:
-                    D, sD, mD, mC = self._chase(self.rows, inp, self.n1, self.k1)
-                    mD = mD[:, None]
-                scale = np.mean(np.abs(inp)) or 1.0
-                out = np.where(np.isfinite(mC), (mC - mD)*sD, b*scale*sD)
-                Wx = out - inp
+                    D, sD, mD, mC = self._chase(self.rows, inp.reshape(-1, self.n1), self.n1, self.k1)
+                    shape = (len(act), self.n2, self.n1)
+                    D, sD, mC = (v.reshape(shape) for v in (D, sD, mC))
+                    mD = mD.reshape(len(act), self.n2, 1)
+                # Extrinsic (Pyndiah): from the best competitor, soft output minus input; without one, beta times the decision
+                w = np.where(np.isfinite(mC), (mC - mD)*sD - inp, b*sD)
+                Wx[act] = w/np.maximum(np.abs(w).mean(axis=(1, 2), keepdims=True), 1e-30) # Normalized: mean |W| = 1
                 half += 1
-            M = D.astype(np.uint8)
-            if self._clean(M):
+            M[act] = D
+            done = np.array([self._clean(m) for m in D], bool)
+            act = act[~done]
+            if len(act) == 0:
                 break
         return M
 
@@ -136,14 +157,17 @@ class product(_code):
         return np.concatenate(out).astype(bool) if out else np.zeros(0, bool)
 
     def _decode_soft(self, x):
+        x = np.asarray(x, dtype=np.float64)
+        nw = len(x)//self.den
+        w = x[:nw*self.den].reshape(nw, self.den)
+        if self.offset is not None:
+            w = np.where(self.offset == 1, -w, w)
+        L = w[:, self.lead:].reshape(nw, self.n2, self.n1)
         out, errs = [], []
-        for w in np.asarray(x, dtype=np.float64)[:len(x)//self.den*self.den].reshape(-1, self.den):
-            if self.offset is not None:
-                w = np.where(self.offset == 1, -w, w)
-            L = w[self.lead:].reshape(self.n2, self.n1)
-            M = self._soft(L)
-            errs.append(int(np.count_nonzero(M != (L < 0))) if self._clean(M) else -1)
-            out.append(M[:self.k2, :self.k1].reshape(-1)[self.reserved:])
+        for s0 in range(0, nw, self.BATCH):
+            for Lw, M in zip(L[s0:s0 + self.BATCH], self._soft(L[s0:s0 + self.BATCH])):
+                errs.append(int(np.count_nonzero(M != (Lw < 0))) if self._clean(M) else -1)
+                out.append(M[:self.k2, :self.k1].reshape(-1)[self.reserved:])
         self.errors = np.array(errs, dtype=int)
         return np.concatenate(out).astype(bool) if out else np.zeros(0, bool)
 

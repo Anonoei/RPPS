@@ -175,6 +175,7 @@ def test_more_stages_do_not_depend_on_block_size(name, x):
         assert len(y) == len(ref), f"{len(y)} != {len(ref)}"
         assert np.allclose(y, ref, atol=1e-4)
 
+@pytest.mark.kernels
 def test_acquire_fec_does_not_depend_on_block_size():
     """Coded symbols (K=7 rate 1/2 on QPSK, a quarter turn off) with the modulation already detected"""
     from rpps.sync import Detection

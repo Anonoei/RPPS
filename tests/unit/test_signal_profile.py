@@ -26,6 +26,7 @@ def dvbs_capture(tmp_path_factory):
     w = rp.profile.load("dvbs/qpsk_3_4", sps=8).tx()(rp.Data(np.unpackbits(ts.reshape(-1)).astype(bool), Fs=1e6, sps=1, flush=True))
     return capture(tmp_path_factory.mktemp("cap")/"dvbs.cs16", np.asarray(w.data), 8e6, 1.7e6, rng)
 
+@pytest.mark.kernels
 def test_a_dvbs_capture_profiles_to_its_shipped_profile(dvbs_capture):
     profiles = rp.analysis.profile(dvbs_capture, blind=False)
     p = min(profiles, key=lambda p: abs(p.signal.mid - 1.7e6) - p.signal.width) # (the widest one there: the carrier)
@@ -38,6 +39,7 @@ def test_a_dvbs_capture_profiles_to_its_shipped_profile(dvbs_capture):
     d = json.loads(json.dumps(p.to_dict(), default=str))
     assert d["solved"] and d["steps"][7]["kind"] == "fec"
 
+@pytest.mark.kernels
 def test_uncoded_symbols_end_in_an_unsolved_step(tmp_path):
     rng = np.random.default_rng(1)
     q = rp.symbol.load("qpsk")

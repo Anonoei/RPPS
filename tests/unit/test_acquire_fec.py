@@ -27,6 +27,7 @@ def packets(out):
     b = np.packbits(np.asarray(out).astype(bool))
     return b[:len(b)//188*188].reshape(-1, 188)
 
+@pytest.mark.kernels
 def test_dvbs_is_identified_down_to_its_profile(dvbs):
     syms, ts = dvbs
     rng = np.random.default_rng(2)
@@ -60,6 +61,7 @@ def slipped(syms, carrier=None, symbol=None, seed=3):
         x = np.delete(x, symbol) # The code's puncture phase moves
     return noisy(x, np.random.default_rng(seed))
 
+@pytest.mark.kernels
 def test_stage_gives_the_same_output_whatever_the_cut(dvbs):
     x = slipped(dvbs[0], carrier=160000, symbol=190000)
     outs = {}
@@ -71,6 +73,7 @@ def test_stage_gives_the_same_output_whatever_the_cut(dvbs):
     n = min(len(v) for v in outs.values())
     assert np.array_equal(outs[777][:n], outs[50000][:n])
 
+@pytest.mark.kernels
 def test_stage_turns_back_a_carrier_slip(dvbs):
     syms, ts = dvbs
     y, stream = run_stage(slipped(syms, carrier=160000), 50000)
@@ -81,6 +84,7 @@ def test_stage_turns_back_a_carrier_slip(dvbs):
     ok = [np.array_equal(pk[j], ts[k + j]) for j in range(min(len(pk), len(ts) - k))]
     assert sum(ok) >= len(ok) - 16 and all(ok[-40:]) # Lost: the window the slip hit, spread by the deinterleaver
 
+@pytest.mark.kernels
 def test_stage_realigns_after_a_symbol_slip(dvbs):
     """The decoder after it keeps its puncture alignment: the Viterbi output carries the packets' sync bytes after the
     slip as before (whether a symbol was lost or gained can't be told from the puncture phase: the bits after the Viterbi
@@ -102,6 +106,7 @@ def test_stage_realigns_after_a_symbol_slip(dvbs):
     else:
         pytest.fail("no sync bytes every 204 bytes after the slip")
 
+@pytest.mark.kernels
 def test_a_code_with_no_profile_gets_one(rng):
     code = rp.code.load("conv/k7_133_171/1_2")
     msg = rng.integers(0, 2, 40000).astype(bool)
@@ -113,6 +118,7 @@ def test_a_code_with_no_profile_gets_one(rng):
     u = np.asarray(f.rx()(rp.Data(f.correct(rx), sps=1, Fs=1e6, flush=True)).data).astype(bool)
     assert max(np.mean(u[64:20000] == msg[k + 64:k + 20000]) for k in range(4)) == 1.0 # (after the Viterbi's start)
 
+@pytest.mark.kernels
 def test_differential_coding_is_found(rng):
     code = rp.code.load("conv/k7_171_133/1_2")
     msg = rng.integers(0, 2, 30000).astype(bool)
@@ -140,6 +146,7 @@ def test_hdlc_framing(rng):
     got = np.packbits(np.asarray(f.rx()(rp.Data(f.correct(rx), sps=1, Fs=1e6, flush=True)).data).astype(bool)).tobytes()
     assert got == b"".join(frames)
 
+@pytest.mark.kernels
 def test_uncoded_symbols_have_no_code(rng):
     q = rp.symbol.load("qpsk")
     f = F.identify(noisy(q.points[rng.integers(0, 4, 2**15)].astype(np.complex64), rng, 0.1), "qpsk")
@@ -147,6 +154,7 @@ def test_uncoded_symbols_have_no_code(rng):
     with pytest.raises(ValueError):
         f.profile()
 
+@pytest.mark.kernels
 def test_stage_releases_uncoded_symbols_unchanged(rng):
     q = rp.symbol.load("qpsk")
     x = noisy(q.points[rng.integers(0, 4, 40000)].astype(np.complex64), rng, 0.1)

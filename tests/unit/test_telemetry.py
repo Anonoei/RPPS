@@ -89,6 +89,7 @@ def test_phase_modulation_mirrors_about_its_carrier_and_a_tone_beside_a_carrier_
 def test_a_tone_in_band_limited_noise_has_no_sidebands():
     # A channel filtered to its band: the noise is flat inside and down in the stopband, so against the median bin it
     # would stand clear on both sides of a centred tone, and mirror
+    pytest.importorskip("scipy")
     from scipy.signal import firwin, lfilter
     rng = np.random.default_rng(7)
     n, band = 2**19, 300e3

@@ -170,7 +170,7 @@ std::vector<long long> gf2_eliminate(py::array_t<uint64_t, py::array::c_style> A
                 const long long gs = std::min(8LL, np - 8*gr), T = 1LL << gs;
                 uint64_t *tg = tab.data() + gr*256*span;
                 for (long long g = 1; g < T; g++) {
-                    const long long j = __builtin_ctzll(static_cast<unsigned long long>(g));
+                    const long long j = ctz64(static_cast<uint64_t>(g));
                     const uint64_t *src = tg + (g ^ (1LL << j))*span, *pr = a + (r + 8*gr + j)*Wd + w0;
                     uint64_t *dst = tg + g*span;
                     for (long long w = 0; w < span; w++) dst[w] = src[w] ^ pr[w];

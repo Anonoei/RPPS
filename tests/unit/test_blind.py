@@ -91,12 +91,14 @@ def test_guesses_save_as_definitions_that_load(tmp_path, monkeypatch, hdlc):
     words = np.packbits(bits[:len(bits)//(8*219)*8*219]).reshape(-1, 219).astype(np.int64)
     assert not code.syndromes(words).any()
 
+@pytest.mark.kernels
 def test_solve_peels_scrambler_then_rs(hdlc):
     y = scramble(rs_bits(219, 201, 0x187, 120, 1, words=40, payload=hdlc, phase=0, offset=0), (20, 3))
     layers = F.solve(y, rs_lengths=(219,))
     assert [h.kind for h, g in layers] == ["scrambler", "rs-blind"]
     assert layers[0][1].definition["poly"] == [20, 3] and layers[1][1].definition["k"] == 201
 
+@pytest.mark.kernels
 def test_solve_finds_rs_of_random_payload_behind_a_known_scrambler():
     y = scramble(rs_bits(219, 201, 0x187, 120, 1, words=40, phase=0, offset=0), (20, 3))
     layers = F.solve(y, rs_lengths=(219,))
@@ -179,6 +181,7 @@ def test_no_block_code_in_random_or_constant_bits():
     pattern = np.random.default_rng(5).integers(0, 2, 128).astype(np.uint8) # Idle fill repeating every 128 bits
     assert BK.solve_block(np.tile(pattern, 400)[37:]) == []
 
+@pytest.mark.kernels
 def test_unknown_puncture_pattern_on_a_known_mother_code():
     rng = np.random.default_rng(2)
     g = [[1, 0, 1, 1, 0, 1, 1], [1, 1, 1, 1, 0, 0, 1]]
@@ -195,6 +198,7 @@ def test_unknown_puncture_pattern_on_a_known_mother_code():
     q2 = q.points[rng.integers(0, 4, 8000)] + 0.1*(rng.standard_normal(8000) + 1j*rng.standard_normal(8000))
     assert PU.best(*PU.search(F.bit_streams(q2, q, differential=False))) == (None, None)
 
+@pytest.mark.kernels
 def test_blind_identify_peels_a_punctured_code_and_the_bch_inside():
     rng = np.random.default_rng(5)
     log = Logger().Child("t", 0)

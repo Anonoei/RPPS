@@ -195,17 +195,40 @@ def test_reed_muller_first_order_is_soft(rng):
     llr = 2*(1 - 2.0*x) + rng.normal(0, 2, len(x)) # Es/N0 0 dB: hard decisions have ~16% errors
     assert np.mean(c.decoder.decode(llr) != msg) < 0.01
 
-def test_turbo_product_code_soft_beats_hard(rng):
-    """Chase-Pyndiah on LLRs decodes frames the hard iterative decoder cannot"""
+def _tpc_words(code, W, ebn0, seed):
+    """W random messages through the code and BPSK over AWGN at Eb/N0 [dB]: (message, LLRs)"""
+    rng = np.random.default_rng(seed)
+    k, n = code.encoder.num, code.encoder.den
+    msg = rng.integers(0, 2, W*k).astype(bool)
+    x = code.encoder.encode(msg)
+    sigma = np.sqrt(n/k/(2*10**(ebn0/10)))
+    return msg, 2*((1 - 2.0*x) + rng.normal(0, sigma, len(x)))/sigma**2
+
+@pytest.mark.parametrize("ebn0, soft_max", [(3.25, 2e-3), (3.75, 3e-4)])
+def test_turbo_product_code_soft_beats_hard(ebn0, soft_max):
+    """Chase-Pyndiah on LLRs decodes the (64,57)^2 code far below the hard iterative decoder. 32 words (104k bits) per point;
+    over 20 seeds (chase 4, 4 iterations): soft at most 1.2e-4 at 3.25 dB and no errors at 3.75 dB; hard 1.8e-2 .. 3.6e-2.
+    The AFF3CT reference (chase 5, 8 iterations) is 1.2e-3 at 2.75 dB and 1.2e-5 at 3.0 dB (tests/tpc_ber.py)"""
     tpc = rp.code.load("block/product/tpc_64_57_sq")
     hard = rp.code.init("hard", {**rp._config.read(rp._config.find("fec", "block/product/tpc_64_57_sq")), "chase": None})
-    k = tpc.encoder.num
-    W = 4
-    msg = rng.integers(0, 2, W*k).astype(bool)
-    x = tpc.encoder.encode(msg)
-    sigma = 0.5 # Eb/N0 about 4 dB at rate 0.79: hard decisions have ~2.5% errors
-    llr = 2*((1 - 2.0*x) + rng.normal(0, sigma, len(x)))/sigma**2
+    msg, llr = _tpc_words(tpc, 32, ebn0, 7)
     ber_soft = np.mean(tpc.decoder.decode(llr) != msg)
     ber_hard = np.mean(hard.decoder.decode(llr) != msg)
-    assert ber_soft < 1e-3 and ber_hard > 1e-3
-    assert np.array_equal(tpc.decoder.decode(4.0*(1 - 2.0*x)), msg) and (tpc.decoder.errors == 0).all()
+    assert ber_soft < soft_max and ber_hard > 1e-2
+    assert ber_soft < ber_hard/20
+    assert np.array_equal(tpc.decoder.decode(4.0*(1 - 2.0*(tpc.encoder.encode(msg)))), msg) and (tpc.decoder.errors == 0).all()
+
+def test_turbo_product_code_iterations_do_not_hurt():
+    """Near the threshold (3.0 dB) each doubling of the iterations lowers BER and FER: measured 1.1e-2 / 1.2e-3 / 2.3e-4
+    for 2 / 4 / 8 iterations (20 seeds: each step at most 0.3 of the one before). Extrinsic information that fights the channel makes more iterations worse instead"""
+    tpc = rp.code.load("block/product/tpc_64_57_sq")
+    dec = tpc.decoder
+    msg, llr = _tpc_words(tpc, 32, 3.0, 11)
+    ber, fer = [], []
+    for it in (2, 4, 8):
+        dec.iters = it
+        e = (dec.decode(llr) != msg).reshape(32, -1)
+        ber.append(e.mean())
+        fer.append(e.any(axis=1).mean())
+    assert ber[1] < 0.5*ber[0] and ber[2] < 0.5*ber[1] + 1e-5
+    assert fer[0] >= fer[1] >= fer[2]
