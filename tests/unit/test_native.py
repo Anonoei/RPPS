@@ -99,17 +99,37 @@ def test_mm_matches_python(ted, biphase):
         assert float(st.est) == pytest.approx(float(st_ref.est), abs=1e-5)
 
 def test_kernels_release_the_gil():
-    """Two threads running a kernel take less wall time than running it twice in a row"""
-    import threading, time
+    """Python keeps running while a kernel runs in another thread. Holding the GIL, the kernel would stop this thread for
+    its whole run (but for switch intervals, 0.1 ms here): well under 1% of the counting rate it has alone. Released, it
+    keeps a large share even with every core busy (pytest -n), so the bound is 5%: no wall-clock race between threads"""
+    import sys, threading, time
     x = psk(np.random.default_rng(2), 2_000_000, 4)
     work = lambda: _accel.native.costas(x, 0.0, 0.0, 0.01, 1e-4, 4, 0.0)
-    t = time.perf_counter(); work(); work(); serial = time.perf_counter() - t
-    th = [threading.Thread(target=work) for _ in range(2)]
-    t = time.perf_counter()
-    for h in th: h.start()
-    for h in th: h.join()
-    parallel = time.perf_counter() - t
-    assert parallel < 0.8*serial
+    def count(until):
+        n = 0
+        while not until():
+            n += 1
+        return n
+    t0 = time.perf_counter()
+    alone = count(lambda: time.perf_counter() - t0 > 0.05)/(time.perf_counter() - t0) # iterations a second
+    started, done = threading.Event(), threading.Event()
+    def run():
+        started.set()
+        work()
+        done.set()
+    old = sys.getswitchinterval()
+    sys.setswitchinterval(1e-4)
+    try:
+        th = threading.Thread(target=run)
+        th.start()
+        started.wait()
+        t = time.perf_counter()
+        n = count(done.is_set)
+        during = time.perf_counter() - t
+        th.join()
+    finally:
+        sys.setswitchinterval(old)
+    assert during > 0.02 and n > 0.05*alone*during
 
 @pytest.mark.parametrize("taps", [1, 33, 1025])
 @pytest.mark.parametrize("cut", [[3000], [1, 2047, 7, 900]]) # short blocks: where the direct (native) path runs

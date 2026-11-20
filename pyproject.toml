@@ -33,7 +33,7 @@ dependencies = ["numpy>=2.0", "pysdrlib>=0.4.3"]
 
 [project.optional-dependencies]
 viz = ["matplotlib"]
-test = ["pytest"]
+test = ["pytest", "pytest-xdist"]
 oracle = ["scipy"] # only the tests that check against it: RPPS itself must not need it
 docs = ["pdoc3"]
 dev = ["rpps[viz,test,oracle,docs]", "twine", "build", "bumpver"]
