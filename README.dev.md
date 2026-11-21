@@ -28,7 +28,7 @@ bump and `-u` upload (both dry runs without `-r`; upload goes to TestPyPI withou
 `dependencies` (numpy, pysdrlib), extras `viz` (matplotlib), `test` (pytest, pytest-xdist), `oracle` (scipy), `docs` (pdoc3),
 `dev` (all of them plus twine, build, bumpver). It also holds `[tool.cibuildwheel]`, `[tool.bumpver]` and the pytest markers.
 
-Branch from `dev`, merge back into it; `main` is released. Scratch scripts go in `tests/dev`; worked examples that reuse
+Branch from `dev`, merge back into it; `main` is released. Scratch scripts are not committed; worked examples that reuse
 RPPS and may be upstreamed go in `projects/`.
 
 ## Repository layout
@@ -38,8 +38,8 @@ src/rpps/            the package: one sub-package per category (Where things are
 csrc/rpps_native/    C++ kernels, built as rpps._native (optional)
 config/              JSON definitions, copied into the wheel as rpps/config
 tests/unit/          the test suite
-tests/dev/, prop/    exploratory scripts, not run by CI
-tests/*.py           examples and benchmarks (example.py, bench_stages.py, parallel_bench.py, tpc_ber.py)
+tests/*.py           benchmarks (bench_stages.py, parallel_bench.py, tpc_ber.py)
+examples/            one script per recommended way of doing a thing, each checking itself (examples/README.md)
 projects/            worked examples on real signals (FM, ADS-B, ATSC, LTE, P25 ...), each with a README
 data/                captures (git-ignored)
 builder.py, setup.py local build helper; setup.py builds the native module and copies config/
@@ -512,7 +512,8 @@ To release: `python builder.py -v p` (or `m`, `M`) previews the bump, `-r` makes
 - **Be explicit:** fix a caller rather than loosen a contract check.
 - **Category by what it takes and gives** ([the rule](#the-rule)).
 - **Read the standard** when a decode does not work, instead of guessing.
-- **Examples live in `projects/`**, scratch in `tests/dev`; reuse RPPS so useful parts can move into the package.
+- **Examples live in `examples/` and `projects/`**, scratch stays uncommitted; reuse RPPS so useful parts can move
+  into the package.
 
 ## Not yet built
 

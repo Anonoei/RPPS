@@ -160,6 +160,10 @@ class Runner:
         self.ctx = dict(data.ctx)
         return self._finish(data)
 
+    def __radd__(self, data):
+        """`block + runner`, so a runner goes where a stage does: `for out in src(n) + p.rx()`"""
+        return self(data)
+
     def _finish(self, data):
         """What the runner does with what its own slots gave (a parallel runner hands it to its region)"""
         return data

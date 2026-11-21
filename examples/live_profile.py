@@ -1,9 +1,9 @@
 """Profile the signals of a live stream: capture from a pysdrlib source, find every signal, pick some, and print each one's
 profile (rp.analysis.profile: every step that processes it, and what it might be where that is unknown)
 
-    python tests/examples/live_profile.py --tcpiq HOST:PORT --format int16 --cf 1.2e9 --fs 25e6     # raw I/Q over TCP
-    python tests/examples/live_profile.py --radio hackrf --cf 851e6 --fs 10e6 --gain 0.6             # a radio here
-    python tests/examples/live_profile.py --remote tcp://10.0.10.35:5555 --cf 851e6 --fs 10e6        # one a pysdrlib server hosts
+    python examples/live_profile.py --tcpiq HOST:PORT --format int16 --cf 1.2e9 --fs 25e6     # raw I/Q over TCP
+    python examples/live_profile.py --radio hackrf --cf 851e6 --fs 10e6 --gain 0.6             # a radio here
+    python examples/live_profile.py --remote tcp://10.0.10.35:5555 --cf 851e6 --fs 10e6        # one a pysdrlib server hosts
 
 The stream is captured into memory first (`--seconds`; the analysis runs slower than the radio, which would drop samples
 under it), surveyed, and the signals listed. `--pick 0,3` (or `all`) chooses which to profile; without it you are asked.
