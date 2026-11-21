@@ -25,16 +25,52 @@ class Profile:
         if "steps" not in obj or not obj["steps"]:
             raise ConfigError(f"profile {name}: no steps")
         self.steps = self._build()
-        self.controls = _control.parse(obj.get("controls"), self.steps, f"profile {name}")
+        self.controls = _control.parse(obj.get("controls"), self.flat(self.steps), f"profile {name}")
+        if self.steps[-1].category == "branch" and obj.get("parallel"):
+            raise ConfigError(f"profile {name}: a parallel region and branches together are not supported")
         self.region = _parallel.plan(obj.get("parallel"), self.steps, self.controls, f"profile {name}")
+
+    @staticmethod
+    def flat(steps):
+        """Every step: the trunk's, then each branch's (a branch step holds its branches' steps)"""
+        if steps and steps[-1].category == "branch":
+            return steps[:-1] + [st for chain in steps[-1].obj.values() for st in chain]
+        return list(steps)
 
     def _build(self):
         """The steps, built (each runner builds its own: header-driven control changes their operators)"""
         ctx = _steps.context(self.params, self.obj.get("defaults", {}), self._sync)
         specs = list(self.obj["steps"])
+        at = [i for i, s in enumerate(specs) if "branch" in s]
+        if at and (len(at) > 1 or at[0] != len(specs) - 1):
+            raise ConfigError(f"profile {self.name}: one branch step, the last (it ends the chain)")
+        built = self._chain(specs[:-1] if at else specs, Rep.SAMPLES, ctx)
+        if at:
+            built.append(self._branch(specs[-1], built[-1].gives if built else Rep.SAMPLES, ctx))
+        return built
+
+    def _branch(self, spec, rep, ctx):
+        """The branch step: each branch's steps built as a chain from the trunk's output (rpps.profile.branch)"""
+        from .steps import Step
+        where = f"profile {self.name}: branch {spec['branch']!r}"
+        branches = spec.get("branches")
+        if not isinstance(branches, dict) or not branches:
+            raise ConfigError(f"{where}: needs 'branches': {{name: [steps]}}")
+        order = list(spec.get("order", branches))
+        if sorted(order) != sorted(branches):
+            raise ConfigError(f"{where}: order {order} is not the branches {sorted(branches)}")
+        nested = {name: self._chain(list(branches[name]), rep, ctx) for name in order}
+        ids = [st.id for chain in nested.values() for st in chain]
+        dup = sorted({i for i in ids if ids.count(i) > 1})
+        if dup:
+            raise ConfigError(f"{where}: step ids {dup} are in several branches (a control names one step)")
+        return Step("branch", str(spec["branch"]), [], [], rep, rep, spec, nested, str(spec.get("id", spec["branch"])))
+
+    def _chain(self, specs, rep, ctx):
+        """A list of step specs built in order from `rep`"""
         # A step can refer to one after it (a pilot equalizer to its carriers): build those first
         early = {i: _steps.build(s, None, ctx) for i, s in enumerate(specs) if s.get("symbol") == "carriers"}
-        built, rep = [], Rep.SAMPLES
+        built = []
         for i, spec in enumerate(specs):
             st = early.get(i) or _steps.build(spec, rep, ctx)
             st.takes = rep
@@ -99,8 +135,10 @@ class Profile:
         must have one (`"parallel"` in its definition)"""
         if source is not None:
             start, applied = source.REP, source.APPLIED
-        keep = lambda st: not (st.takes.value < start.value or (st.category == "sync" and st.kind in applied))
+        keep = lambda st: st.category == "branch" or not (st.takes.value < start.value or (st.category == "sync" and st.kind in applied))
         steps = [st for st in self._build() if keep(st)]
+        if steps[-1].category == "branch":
+            return self._branch_rx(steps, parallel)
         k = next((i for i, st in enumerate(steps) if st.category == "sync" and st.kind == "burst"), None)
         if k is not None:
             return self._burst_rx(steps, k, keep, parallel)
@@ -136,11 +174,36 @@ class Profile:
             return Runner(self._slots(post), f"{self.name} rx (burst)", self.controls, "rx")
         return BurstRunner(pre, steps[k].obj, make_post, f"{self.name} rx")
 
+    def _branch_rx(self, steps, parallel):
+        """The receive side of a profile that ends in branches (rpps.profile.branch)"""
+        from .branch import BranchRunner, BranchChain, _Bus
+        if parallel is not None:
+            raise ConfigError(f"profile {self.name}: branches and a parallel region together are not supported")
+        if any(st.category == "sync" and st.kind == "burst" for st in self.flat(steps)):
+            raise ConfigError(f"profile {self.name}: a burst step and branches together are not supported")
+        nested = steps[-1].obj
+        owner = {st.id: name for name, chain in nested.items() for st in chain}
+        for e in self.controls.values():
+            frm = owner.get(e.header)
+            for sid in e.drive:
+                to = owner.get(sid)
+                if frm is not None and to is not None and list(nested).index(to) < list(nested).index(frm):
+                    raise ConfigError(f"profile {self.name}: control {e.header!r} in branch {frm!r} drives {sid!r} in {to!r}, "
+                                      f"which runs before it (order {list(nested)})")
+        bus = _Bus(self.controls, owner)
+        trunk = Runner(self._slots(steps[:-1]), f"{self.name} rx", self.controls, "rx") if len(steps) > 1 else None
+        chains = {name: BranchChain(self._slots(chain), f"{self.name} rx {name}", self.controls, name, bus)
+                  for name, chain in nested.items()}
+        return BranchRunner(trunk, chains, f"{self.name} rx", bus, list(nested), steps[-1].spec.get("frame"))
+
     def tx(self):
         """Transmit runner: the transform steps inverted, in reverse order (sync and signal steps have no transmit side).
         Call it as `runner(block, fields=...)` to set the fields of the frames that start in the block (see Runner)"""
+        built = self._build()
+        if built[-1].category == "branch":
+            raise ConfigError(f"profile {self.name}: transmitting through branches is not built (receive only)")
         slots = []
-        for st in reversed(self._build()):
+        for st in reversed(built):
             slots += [Slot(how, op, st, len(slots) + i) for i, (how, op) in enumerate(st.tx)]
         return Runner(slots, f"{self.name} tx", self.controls, "tx")
 

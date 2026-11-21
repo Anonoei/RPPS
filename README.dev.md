@@ -284,6 +284,13 @@ first that maps symbols to bits back to the preamble's input. On a real stream (
 the correlation coefficient and `correct` takes off the level a carrier offset leaves; `{"sync": "timing", "method":
 "known", "anchor": <its name>}` places the symbols on what it found. `ble/adv` is built so.
 
+**Branches:** a last step `{"branch": "channels", "order": [...], "frame": N, "branches": {name: [steps]}}` fans the
+chain out (rpps.profile.branch): every block of the trunk goes through each branch in `order`, each a chain of its own in a
+stream of its own, and the runner gives {name: output}. A header in one branch drives steps in the branches after it: its
+fields' position is carried back to the trunk's output and the driven branch takes the change there. With `frame` (trunk
+items a frame), the branches read whole frames, so a header rules on a frame before the branches after it read that frame,
+however the blocks were cut. A step id is one step across all branches; branches are receive only.
+
 **Sources that start later in the chain:** the runner skips every receive step before what the source gives (`Source.REP`,
 `APPLIED`): timed symbols with the carrier on skip signal, wave and timing; a BBFRAME stream skips everything through code.
 
@@ -538,7 +545,7 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
 - **Codes:** 5G NR polar (reliability sequence, rate matching); LDPC tables for 5G NR, CCSDS AR4JA / C2, DVB-S2X, DVB-T2, ATSC
   3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; Fletcher and Internet checksums; fountain codes.
 - **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
-  spread spectrum, space-time codes; LTE cell search (in `projects/` only); a burst step in a parallel region; a
+  spread spectrum, space-time codes; LTE cell search (in `projects/` only); a burst step in a parallel region; the transmit side of branches; a
   first-class carrier estimator for
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
