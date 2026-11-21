@@ -96,9 +96,10 @@ def test_turbo(maxlog, rng):
     code.decoder.maxlog = maxlog
     msg = rng.integers(0, 2, 2*104).astype(bool)
     llr = noisy_llr(code.encoder.encode(msg), rng, ebn0=0.5)
-    ref, got = both(lambda: (code.decoder.decode(llr), code.decoder.llr.copy()))
+    ref, got = both(lambda: (code.decoder.decode(llr), code.decoder.app(llr)))
     assert np.array_equal(ref[0], got[0])
     assert np.allclose(ref[1], got[1], rtol=1e-6, atol=1e-6)
+    assert np.array_equal(got[0], got[1] < 0) # decode's bits are app's signs
 
 def test_syndrome_trellis(rng):
     code = rp.code.load("block/hamming/15_11", decoder="trellis")

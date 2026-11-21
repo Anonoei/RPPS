@@ -180,7 +180,7 @@ SYMBOLS; `BitStage` takes channel or data bits and keeps their form.
 |---|---|
 | `source` | files and their formats, WAV, SigMF, sockets, radios through pysdrlib (imported only when used); sinks |
 | `signal` | `filters` (FIR, IIR, windows, pulses, fractional delay, polyphase channelizer), `sample` (resampling), `channelize`, `DCBlock`, `Deemphasis`, `Conjugate`, `channel` (the simulated medium) |
-| `sync` | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `AcquireFEC`, `acquire_code`, `Squelch`, `PeakAGC`. Second class: `time.MM` (Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `CMA` |
+| `sync` | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `AcquireFEC`, `acquire_code`, `Squelch`, `PeakAGC`, `Burst` (splits a stream into bursts), `Preamble`, `ToneLock`. Second class: `time.MM` (Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `CMA` |
 | `wave` | `Shape`/`Matched`, `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod` |
 | `symbol` | `Constellation` (PSK, QAM, APSK, ASK), `Differential`, `Spread`/`Despread`, `Carriers`, `Header`, `Pilots`, `PhaseScramble` |
 | `code` | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), `Line`, `Marker`, `Uncoded` |
@@ -423,7 +423,8 @@ Other decoding behaviour worth knowing:
   hands on a-posteriori LLRs (RS uses them for erasures, keeping two checks spare), differential decoding is the product
   detector `y conj(y[n-1])`.
 - A decoder returns its status, it never keeps it: an implementation's `_decode` gives (output, errors per codeword or
-  None) and `decode(x, status=True)` passes both on, so one loaded (cached) code decodes on several threads at once. A code
+  None) and `decode(x, status=True)` passes both on, so one loaded (cached) code decodes on several threads at once.
+  Soft or path outputs are methods that return them too (`app` of BCJR and turbo, `paths` of fsm), never attributes. A code
   step puts the errors on its output (`data.errors`, not carried further) and sets `data.failed` from them (the last code
   with a verdict decides); later steps carry `failed`, and a link header drops a frame with any failed item whatever its
   CRC says. The parallel region drops such rows.
@@ -527,8 +528,8 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
 - **Codes:** 5G NR polar (reliability sequence, rate matching); LDPC tables for 5G NR, CCSDS AR4JA / C2, DVB-S2X, DVB-T2, ATSC
   3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; Fletcher and Internet checksums; fountain codes.
 - **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
-  spread spectrum, space-time codes; per-burst acquisition for short packets (offline: `analysis.spectrum.burst`); OFDM
-  preamble sync and LTE cell search (in `projects/` only); a tone / pilot PLL stage; a first-class carrier estimator for
+  spread spectrum, space-time codes; LTE cell search (in `projects/` only); `Burst` and `Preamble` in profiles (a profile
+  is one stream today); a first-class carrier estimator for
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
 - **Links, sources, profiles:** PPP, KISS, AX.25 addresses, MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,

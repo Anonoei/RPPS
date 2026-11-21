@@ -18,9 +18,19 @@ what breaks under **Breaking**, with what to use instead.
     with its FCS verdict and the aborts.
   - `Marker.errors` (the word's bit errors per frame) is on the decoded data: `out.errors`.
   - `Line.errors` is gone; a Manchester invalid pair is still marked in `out.failed`.
+  - Turbo: `decoder.llr` is gone; `decoder.app(x)` gives the a-posteriori LLRs of the message bits (the decoded bits
+    are `app(x) < 0`), as the BCJR decoders' `app` does.
+  - fsm: the decided paths' output words come from `decoder.paths(x)` (bits, words), not from a private attribute.
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- `rp.sync.Burst`: a stream cut into the bursts that rise out of its noise floor, each a `Data` of its own stream at its
+  absolute position, so what follows acquires every packet fresh. `Blocks` and `Pipeline` run what follows on each burst
+  (a stage may now give a list).
+- `rp.sync.Preamble`: a burst's preamble by a known waveform (normalized correlation) or its repetition (Schmidl & Cox),
+  with the carrier offset the repetition gives, optionally taken off.
+- `rp.sync.ToneLock`: an oscillator locked to a pilot, mixing at a harmonic (FM stereo's 38 kHz from 19 kHz; ATSC's pilot
+  to DC); windows at absolute positions.
 - A source checkout warns on `import rpps` when the in-place `rpps._native` was built from other C++ sources than
   `csrc/rpps_native` has now (`rpps._accel.stale`); rebuild with `python builder.py -c`. Installed packages are not checked.
 

@@ -124,9 +124,9 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
    - [X] Time (Oerder & Meyr, Mueller & Muller, Gardner, timing locked loop)
    - [X] Frames: preambles among symbols, delimiter words among bits (fixed or header-driven length, polarity), repeating markers
    - [X] Equalizers: block least squares, LMS, CMA; OFDM pilots and cyclic prefix
-   - [ ] Per-burst acquisition (packets with no stream to track: BLE, 802.15.4, TDMA)
-   - [ ] OFDM preamble sync (Schmidl-Cox, 802.11 STF/LTF), LTE cell search
-   - [ ] Tone / pilot PLL (FM stereo, ATSC pilot), decision-feedback equalizer
+   - [X] Per-burst acquisition (`sync.Burst`: each burst a stream of its own), preambles (`sync.Preamble`: known waveform or Schmidl-Cox, carrier offset)
+   - [X] Tone / pilot PLL (`sync.ToneLock`: FM stereo, ATSC pilot)
+   - [ ] LTE cell search, decision-feedback equalizer
  - [ ] [Symbol and wave](https://github.com/Anonoei/RPPS/tree/main/src/rpps/symbol)
    - [X] PSK, QAM, APSK, ASK, any point set from a file; differential coding; spreading (Barker, Gold, 802.15.4)
    - [X] FSK, GFSK, MSK, C4FM (frequency pulses), O-QPSK, OFDM, AM, SSB, analog FM

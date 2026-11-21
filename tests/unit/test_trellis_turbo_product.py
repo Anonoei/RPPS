@@ -17,6 +17,18 @@ def test_p25_half_rate(rng):
     out, errors = code.decoder.decode(bad, status=True)
     assert np.array_equal(out, msg) and errors[0] == 8
 
+def test_paths_give_what_the_decoder_decided_was_sent(rng):
+    code = rp.code.load("block/trellis/p25_1_2")
+    dec = code.decoder
+    msg = bits(rng, 96*3).reshape(3, 96)
+    cw = np.array([code.encoder.encode(m) for m in msg])
+    bad = cw.copy()
+    bad[:, 10] ^= True
+    out, words = dec.paths(bad)
+    assert np.array_equal(out, dec.decode_batch(bad)) and np.array_equal(out, msg)
+    sent = ((words[..., None] >> np.arange(dec.n - 1, -1, -1)) & 1).astype(bool).reshape(3, -1)
+    assert np.array_equal(sent, cw) # The flipped bit is not in the path: the path is the codeword
+
 def test_p25_half_rate_soft(rng):
     code = rp.code.load("block/trellis/p25_1_2")
     good = 0
