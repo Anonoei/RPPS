@@ -502,7 +502,8 @@ python -m pytest tests/unit/test_remez.py                    # one file
 | `deploy-docs.yml` | push to `main` | pdoc to GitHub Pages |
 | `python-publish.yml` | a GitHub release | cibuildwheel (CPython 3.12-3.14; Linux x86_64 and arm64, Windows; each wheel must carry `rpps._native`), checks the tag against the version, publishes by trusted publishing |
 
-To release: `python builder.py -v p` (or `m`, `M`) previews the bump, `-r` makes it (edits `pyproject.toml` and
+To release: move CHANGELOG.md's "Unreleased" under the new version (every rename or removal under **Breaking**, with
+what replaces it); `python builder.py -v p` (or `m`, `M`) previews the bump, `-r` makes it (edits `pyproject.toml` and
 `src/rpps/__init__.py`, commits, does not tag); merge to `main`; publish a GitHub release tagged exactly `v<version>`.
 
 ## Conventions
