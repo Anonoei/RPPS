@@ -1,0 +1,8 @@
+{
+  "base": "block",
+  "extends": "ccsds",
+  "comment": "CCSDS turbo code, rate 1/4: encoder a's G2, G3, encoder b's G1",
+  "outputs": [
+    ["0a", "2a", "3a", "1b"]
+  ]
+}

@@ -15,10 +15,10 @@ import queue
 import threading
 
 import numpy as np
-import pysdrlib
 
 from .. import base
 from ..base import Stream, Data
+from ..base.types import Rep
 from ..errors import StreamError
 from . import formats as fmts
 
@@ -157,9 +157,17 @@ class Blocks:
         return np.concatenate(parts) if parts else np.zeros(0, dtype=np.complex64)
 
 class Source:
-    """Parent of the things that produce blocks. Call it with a block length for the blocks"""
-    def __init__(self, Fs=1.0, cf=0.0, sps=0.0):
-        self.Fs, self.cf, self.sps = Fs, cf, sps
+    """Parent of the things that produce blocks. Call it with a block length for the blocks
+
+    REP: the representation its blocks are (SAMPLES; a demodulator's ring of timed symbols is SYMBOLS), and APPLIED the
+    sync it has done already ({"timing"}): `profile.rx(source=src)` skips the steps before and those (README.dev.md, source).
+    ppm: how far the radio's reference is off (+15: its clock runs 15 ppm fast). The sample rate and the tuned frequency
+    both come from it, so blocks carry Fs and cf times (1 + ppm 1e-6): what was actually sampled, and where."""
+    REP = Rep.SAMPLES
+    APPLIED = frozenset()
+
+    def __init__(self, Fs=1.0, cf=0.0, sps=0.0, ppm=0.0):
+        self.Fs, self.cf, self.sps, self.ppm = Fs, cf, sps, ppm
         self.stream = Stream(Fs) # Shared by every block this source makes
 
     def _block(self, samples, flush=False):
@@ -167,7 +175,8 @@ class Source:
         s.blocks += 1
         if self.Fs:
             s.air += len(samples) / self.Fs
-        return Data(samples, flush=flush, Fs=self.Fs, sps=self.sps, cf=self.cf, stream=s)
+        k = 1.0 + self.ppm*1e-6
+        return Data(samples, flush=flush, Fs=self.Fs*k, sps=self.sps, cf=self.cf*k, stream=s)
 
     def _samples(self, count):
         raise NotImplementedError()
@@ -196,6 +205,7 @@ class File(Source):
     def __init__(self, fmt, path, Fs=1.0, cf=0.0, sps=0.0, scale=True):
         super().__init__(Fs, cf, sps)
         self.fmt = fmts.get(fmt)
+        import pysdrlib
         self._f = pysdrlib.File(path, self.fmt.name, scale=scale)
         self.path = self._f.get_path()
 
@@ -305,7 +315,10 @@ class Device(Source):
     def __init__(self, device, cf=None, Fs=None, rx_gain=None, sps=0.0, **open_args):
         """device: a pysdrlib device name, or a device you made (rp.source.Device(pysdrlib.device("sim", realtime=False))).
         rx_gain: the receive gain as a fraction 0-1 of the device's range (the same on any radio), or a {stage: fraction} dict"""
-        self.sdr = pysdrlib.device(device) if isinstance(device, str) else device
+        if isinstance(device, str):
+            import pysdrlib
+            device = pysdrlib.device(device)
+        self.sdr = device
         self.rx_gain = rx_gain
         self._open_args = open_args
         super().__init__(Fs if Fs is not None else self.sdr.get_rx_sample_rate(), cf if cf is not None else self.sdr.get_rx_freq(), sps)
@@ -343,6 +356,7 @@ class Sink:
     def __init__(self, fmt, path, scale=True, append=False, clip=True):
         self.fmt = fmts.get(fmt)
         self.scale = self.fmt.full_scale if scale else 1.0
+        import pysdrlib
         self._sink = pysdrlib.FileSink(path, self.fmt.name, append=append, open=True, clip=clip)
 
     @property

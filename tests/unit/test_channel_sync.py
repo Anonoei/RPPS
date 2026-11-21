@@ -101,6 +101,7 @@ def test_agc_settles_on_the_target(rng):
     out2 = (rp.Data(40*x) + rp.sync.AGC(1.0, 0.02)).data
     assert np.mean(np.abs(out2[-2000:])) == pytest.approx(1.0, rel=0.05)
 
+@pytest.mark.oracle
 def test_designers_match_scipy():
     scipy_signal = pytest.importorskip("scipy.signal")
     from rpps.signal.filters.impl.designer import designer

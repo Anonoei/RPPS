@@ -1,0 +1,8 @@
+{
+  "base": "conv",
+  "extends": "k7_171_133",
+  "comment": "CCSDS basic convolutional code: rate 1/2, K=7, G1=171 G2=133 octal, output C1 C2, the G2 output inverted",
+  "ref": "CCSDS 131.0-B-5 3.3",
+  "tags": ["ccsds"],
+  "invert": [0, 1]
+}

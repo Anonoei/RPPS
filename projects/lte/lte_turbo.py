@@ -11,18 +11,18 @@ import numpy as np
 import rpps as rp
 import sys
 
-_CRC24A = rp.link.load("crc", "crc24_lte_a")._enc
+_CRC24A = rp.link.load("crc/crc24_lte_a").encoder
 
 def crc24a(bits):
     """gCRC24A (36.212 5.1.1), zero start, MSB first: returns 24 bits"""
-    return [int(b) for b in _CRC24A.to_bits(_CRC24A.compute_bits(bits))]
+    return _CRC24A.field(bits).astype(int).tolist()
 
 def _turbo(K):
-    return rp.code.load("block", "turbo/lte", K=K)._enc
+    return rp.code.load("block/turbo/lte", K=K).encoder
 
 
 def _rm(K, E, rv):
-    return rp.code.load("block", "ratematch/lte_turbo", K=K, E=E, rv=rv)._enc
+    return rp.code.load("block/ratematch/lte_turbo", K=K, E=E, rv=rv).encoder
 
 
 def turbo_encode(c):

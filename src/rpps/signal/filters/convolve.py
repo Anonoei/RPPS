@@ -5,6 +5,10 @@ _DIRECT = 16        # Filters shorter than this are cheaper to convolve directly
 _MIN_SIGNAL = 4096  # and so are short signals
 _GROUP = 1 << 18    # Samples per FFT call: the blocks of that many go through together
 
+def fft_pays(nx, nh):
+    """Is convolving nx samples with nh taps cheaper by FFT blocks than directly"""
+    return not (nh < _DIRECT or nx < _MIN_SIGNAL or nh*8 > nx)
+
 def convolve(x, h, mode="full"):
     """Convolution of the signal `x` with the filter `h` by overlap-add FFT blocks when that is cheaper than `np.convolve`
 
@@ -20,7 +24,7 @@ def convolve(x, h, mode="full"):
         x, h = h, x
     nx, nh = len(x), len(h)
     single = x.dtype in (np.float32, np.complex64) and h.dtype in (np.float32, np.complex64, np.float16)
-    if nh < _DIRECT or nx < _MIN_SIGNAL or nh*8 > nx:
+    if not fft_pays(nx, nh):
         out = np.convolve(x, h, "full")
     else:
         cplx = np.iscomplexobj(x) or np.iscomplexobj(h)
@@ -28,7 +32,7 @@ def convolve(x, h, mode="full"):
         step = n - nh + 1
         fwd, inv = (np.fft.fft, np.fft.ifft) if cplx else (np.fft.rfft, np.fft.irfft)
         kw = {} if cplx else {"n": n}
-        dt = np.complex128 if cplx else np.float64
+        dt = (np.complex64 if single else np.complex128) if cplx else (np.float32 if single else np.float64) # (numpy 2 keeps single precision through the FFT)
         H = fwd(h.astype(dt), n)
         nout = nx + nh - 1
         nb = -(-nout//step)

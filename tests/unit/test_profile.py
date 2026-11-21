@@ -22,12 +22,12 @@ def test_802154_builds_the_documented_pairs():
     p = rp.profile.load("ieee802154/2450", sync=KNOWN)
     assert [f"{s.category}:{s.kind}" for s in p.steps] == ["sync:carrier", "wave:stagger", "wave:shape", "sync:timing", "symbol:spread"]
     # carrier: method none. Known timing takes the matched filter in (it is evaluated at the instants it samples) ...
-    assert names(p.rx()) == ["+Stagger", "+_KnownTiming", "/Spread"]
-    assert str(p.rx().ops[1][1]) == "KnownTiming(matched)"
+    assert names(p.rx()) == ["+Stagger", "+Known", "/Spread"]
+    assert str(p.rx().ops[1][1]) == "Known(matched)"
     # ... unless asked not to
     apart = rp.profile.load("ieee802154/2450", sync={"timing": {"method": "known", "fuse": False}})
-    assert names(apart.rx()) == ["+Stagger", "+Designed", "+_KnownTiming", "/Spread"]
-    assert names(p.tx()) == ["*Spread", "+Zeros", "+Designed", "+Stagger"]
+    assert names(apart.rx()) == ["+Stagger", "+Matched", "+Known", "/Spread"]
+    assert names(p.tx()) == ["*Spread", "+Shape", "+Stagger"]
     assert str(p.rx().ops[0][1]) == "Stagger(i)" and str(p.tx().ops[-1][1]) == "Stagger(q)"
     assert [s.takes for s in p.steps] == [Rep.SAMPLES, Rep.SAMPLES, Rep.SAMPLES, Rep.SAMPLES, Rep.SYMBOLS]
 
@@ -72,6 +72,20 @@ def test_any_block_cut_on_receive():
         got = np.concatenate(outs)
         assert np.array_equal(got, ref[:len(got)]) and len(got) >= len(ref) - 64
 
+def test_a_runner_adds_to_blocks_like_a_stage():
+    """`src(n) + p.rx()` (the README's receive loop) gives what calling the runner on each block does"""
+    rng = np.random.default_rng(2)
+    p = rp.profile.load("ieee80211b/2m", sync=KNOWN)
+    wave = p.tx()(rp.Data(rng.integers(0, 256, 30).astype(np.uint8), Fs=1e6, sps=1))
+    src = lambda: rp.source.Memory(wave.data, Fs=wave.Fs, sps=wave.sps)(500)
+    rx = p.rx()
+    ref = np.concatenate([hard(rx(b)) for b in src()])
+    got = np.concatenate([hard(out) for out in src() + p.rx()])
+    assert len(ref) > 100 and np.array_equal(got, ref)
+    rx = p.rx()
+    assert np.array_equal(hard(rp.Data(wave.data, Fs=wave.Fs, sps=wave.sps) + rx),
+                          hard(p.rx()(rp.Data(wave.data, Fs=wave.Fs, sps=wave.sps))))
+
 def test_any_block_cut_on_transmit():
     rng = np.random.default_rng(3)
     p = rp.profile.load("ieee802154/2450", sync=KNOWN)
@@ -114,7 +128,7 @@ def test_errors():
     with pytest.raises(ConfigError):
         rp.profile.load("ieee80211b/1m", sync={"timing": {"method": "telepathy"}})
     with pytest.raises(ConfigError):
-        rp.profile.Profile("bad", {"steps": [{"symbol": "constellation", "code": "fec"}]})
+        rp.profile.Profile("bad", {"steps": [{"symbol": "constellation", "code": "conv"}]})
     with pytest.raises(ConfigError):
         rp.profile.Profile("bad", {"steps": [{"wave": "warp"}]})
     with pytest.raises(ConfigError):
@@ -191,3 +205,10 @@ def test_profile_parameters_reach_the_steps(tmp_path):
         assert np.array_equal(s.encode(z), rp.code.scram.load("ble_whiten", channel=38).encode(z))
     finally:
         rp._config._EXTRA.remove(tmp_path)
+
+def test_domain_loader_keeps_the_given_parameters():
+    """Loaded through the generic config loader, a profile gets the values given, not its defaults"""
+    from rpps import _config
+    assert _config.load("profile", "ieee802154/2450", params={"sps": 8}).params == {"sps": 8}
+    assert rp.profile.load("ieee802154/2450", sps=8).params == {"sps": 8}
+    assert rp.profile.load("ieee802154/2450").params == {"sps": 4}

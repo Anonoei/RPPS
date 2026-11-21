@@ -88,11 +88,11 @@ def descramble(bits):
 
 SFD_BITS = [(0xF3A0 >> i) & 1 for i in range(16)] # transmitted LSB first
 
-_PLCP_CRC = rp.link.load("crc", "crc16_genibus")._enc # CRC-16 CCITT, ones start, ones' complement (15.3.3.7)
+_PLCP_CRC = rp.link.load("crc/crc16_genibus").encoder # CRC-16 CCITT, ones start, ones' complement (15.3.3.7)
 
 def crc16_plcp(bits):
     """CRC-16 of the 32 PLCP header bits (SIGNAL, SERVICE, LENGTH), as 16 bits MSB first"""
-    return [int(b) for b in _PLCP_CRC.to_bits(_PLCP_CRC.compute_bits(bits))]
+    return _PLCP_CRC.field(bits).astype(int).tolist()
 
 def bytes_lsb(bits):
     n = len(bits)//8

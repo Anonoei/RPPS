@@ -1,26 +1,33 @@
-"""Analysis: blind estimation and measurement at any representation, outside the data path
+"""Analysis: blind estimation and measurement at any representation, outside the data path. The tree follows what is
+analysed, the way config/ and the implementation packages do:
 
- - fec: which error-correcting code (convolutional, block/LDPC, RS, scrambler) a hard-bit stream carries
- - signal_profile: `profile(source)`, every step that processes each signal in a capture, and what it might be where unsolved
- - rs, scrambler, block, puncture: blind Reed-Solomon codes, self-synchronising scramblers, binary block codes (BCH / cyclic,
-   product, LDPC: length, alignment and checks by rank) and puncture patterns, for what no definition covers
- - modulation: symbol rate, timing, modulation, frequency offset and phase from baseband samples
- - quality: Es/N0, Eb/N0 and EVM of locked symbols
- - psd, stft: spectra; rate: symbol rate; signal: finding the signals in a capture (survey)
-Results feed the configured stages (`Guess.save` writes a config/fec definition, `Detection` fills meta.stream.det,
-`fec.CodeDetection` (from `fec.identify`, which rp.sync.AcquireFEC runs) names the profile that decodes a stream).
+ - spectrum: what is in a capture and at what rate. signal (the survey: find_signals, Survey), psd, cyclic (symbol
+   rate and carrier lines with a calibrated false alarm, the SCF), scf (every cycle frequency, FRESH), pencil
+   (matrix-pencil lines), waveform (tones, OFDM and which system, bursts, envelope), ofdm_pilots (an OFDM grid and its
+   pilots), burst (TDMA bursts on a shared preamble), separate (two co-channel signals), hopping (frequency hopping)
+ - modulation: what carries the symbols (rate, timing, modulation, offset and phase are rp.sync.detect). cumulants (the constellation's
+   family, blind to noise), fsk (FSK / MSK / GMSK), cpm (GMSK and SOQPSK by a per-survivor detector), pm (residual-carrier
+   PM and its subcarriers), quality (a gate on hard decisions; Es/N0 is rp.sync.quality), impairments (compression, IQ imbalance,
+   phase noise, neighbours), cancel (regenerate and subtract: what hides under a signal)
+ - sequence: what was XOR'd in or spread with. recurrence (every recurrence to degree 24, LFSRs, keystreams), scrambler
+   (self-synchronising and additive scramblers), spread (DSSS chip rate and code)
+ - code: which code. conv (puncture: patterns on a known mother code; rsc: turbo constituents and interleaver; tcm:
+   trellis-coded modulation), block (linear: length, alignment and checks by rank, BCH / cyclic, product; ldpc; rs;
+   polar), interleave (block and Forney interleavers)
+ - framing: how the stream is cut. frames (frame period and unique word on symbols), payload (what decoded bits carry),
+   telemetry (PM telemetry end to end)
+ - code/conv/mother, framing/bits: a convolutional mother code's generators; sync markers, frame length and HDLC on bits
+ - identify: which code a hard-bit stream carries, peeling layers (`identify`, which rp.sync.AcquireFEC runs, `solve`)
+ - result: what the searches return (Hypothesis, Report, Guess) and `pick`
+ - signal_profile: `profile(source)`, every step that processes each signal in a capture, and what is left unsolved
+ - catalogue: measured features to named systems, with the reasons
+Results feed the configured stages (`Guess.save` writes a config/fec definition, a found punctured code as a child of
+its mother code; rp.sync.Detection fills meta.stream.det; `identify.CodeDetection` names the profile that decodes a stream).
 """
-from . import fec
-from . import rs, scrambler, block, puncture # Blind tools for what no definition covers (see fec.solve)
+from . import spectrum, modulation, sequence, code, framing
+from . import result, identify
 from . import signal_profile
+from . import catalogue
 from .signal_profile import profile, SignalProfile
-from . import modulation
-from . import quality
-from .modulation import detect, Detection
-
-from . import stft
-from . import rate
-from . import signal
-from .rate import find_rate, find_baud
-from .signal import Signal, Survey, Channel, find_signals, survey, welch, noise_floor
-from .psd import psd, vbw, vbw_calc
+from .spectrum.signal import Signal, Survey, Channel, find_signals, survey, welch, noise_floor
+from .spectrum.psd import psd, vbw, vbw_calc

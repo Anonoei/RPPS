@@ -16,6 +16,29 @@ import numpy as np
 from .. import _accel
 from ..base import Stage
 
+class PeakAGC(Stage):
+    """Gain from the peak: |x| is followed instantly upward and decays by `decay` per sample, and the signal is scaled so
+    that peak sits at `target`. For bursts and on-off keying (Mode S pulses, OOK): the first pulse of a burst sets the level,
+    where a loop that tracks the mean power is still settling. decay 0.999 at 2 MS/s holds a peak for about a millisecond"""
+    __slots__ = ("target", "decay", "floor")
+    def __init__(self, target=1.0, decay=0.999, floor=1e-6):
+        self.target, self.decay, self.floor = float(target), float(decay), float(floor)
+
+    def new_state(self, meta):
+        return SimpleNamespace(level=0.0)
+
+    def step(self, samples, st, meta):
+        x = np.asarray(samples)
+        mag = np.abs(x).astype(np.float64)
+        level, d = st.level, self.decay
+        out = np.empty(len(x), dtype=np.float64)
+        for i, m in enumerate(mag): # (a short loop: one max and one multiply per sample)
+            level = m if m > level*d else level*d
+            out[i] = level
+        st.level = level
+        return (x*(self.target/np.maximum(out, self.floor))).astype(x.dtype)
+
+
 class AGC(Stage):
     """Feedback AGC: `block + AGC(1.0, 0.01)`
 
@@ -59,7 +82,4 @@ class AGC(Stage):
         st.gain = gain
         return out
 
-AGC_log = AGC
-def AGC_lin(target=1.0, mu=0.01, **kw):
-    """Linear-domain AGC"""
-    return AGC(target, mu, log=False, **kw)
+

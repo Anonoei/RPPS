@@ -1,0 +1,10 @@
+{
+  "base": "sequence",
+  "type": "word",
+  "comment": "Bluetooth LE advertising channel sync word: the 8-bit preamble (01010101 on air: its last bit differs from the address's first) then the access address 0x8E89BED6, 40 bits sent least significant bit first. Neither is whitened",
+  "ref": "Bluetooth Core 6.0 Vol 6 Part B 2.1.1-2.1.2",
+  "tags": ["ble"],
+  "word": "0x8E89BED6AA",
+  "bits": 40,
+  "order": "lsb"
+}

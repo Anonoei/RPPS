@@ -18,7 +18,7 @@ def Hamming(n=7, k=4, decoder=None):
         raise ValueError(f"Hamming({n}, {k}) isn't a Hamming code or a shortened one: need n <= 2**(n-k) - 1")
     cols = [v for v in range(1, 2**r) if bin(v).count("1") >= 2][:k] # Parity checks of the data bits: not a unit vector
     p = [[(v >> (r - 1 - b)) & 1 for b in range(r)] for v in cols]
-    return _make(f"hamming{n}_{k}", {"type": "linear", "code": [n, k], "p": p}, decoder)
+    return _make(f"hamming{n}_{k}", {"type": "linear", "n": n, "k": k, "p": p}, decoder)
 
 def Repetition(count=3, decoder=None):
     """Each bit sent `count` times, decoded by majority (or by summing LLRs)"""
@@ -53,14 +53,14 @@ def Golay(n=23, decoder=None):
         raise ValueError(f"Golay({n}): 23 or 24")
     return _make(f"golay{n}_12", {"type": "cyclic", "n": 23, "k": 12, "poly": 0xC75, "extend": n == 24}, decoder)
 
-def Conv(generators, constraint=None, puncture=None, terminated=False, decoder="viterbi", termination=None):
+def Conv(generators, constraint=None, puncture=None, decoder="viterbi", termination="truncated"):
     """Rate 1/n convolutional code. generators: n taps lists (or octal/decimal ints) over the constraint length
 
         Conv([0o133, 0o171], 7)                          K=7 rate 1/2 (the IESS-308 generators)
         Conv([[1,0,1],[1,1,1]], puncture=[[1,1,0],[1,0,1]])
     puncture: pattern with one row per output and 1 where a bit is sent
     decoder: "viterbi" or "bcjr"
-    termination: "zero" (terminated=True), "tailbiting" or "truncated"
+    termination: "truncated" (default), "zero" (flushed with K-1 zeros) or "tailbiting"
     """
     if all(isinstance(g, (int, np.integer)) for g in generators):
         if constraint is None:
@@ -68,10 +68,8 @@ def Conv(generators, constraint=None, puncture=None, terminated=False, decoder="
         generators = [[(g >> (constraint - 1 - i)) & 1 for i in range(constraint)] for g in generators]
     generators = [list(map(int, g)) for g in generators]
     constraint = len(generators[0])
-    side = {"num": 1, "den": len(generators), "constraint": constraint, "generator": generators,
-            "termination": termination or ("zero" if terminated else "truncated")}
-    enc = {"type": "conv", **side}
+    obj = {"base": "conv", "constraint": constraint, "generator": generators,
+           "termination": termination, "decoder": decoder}
     if puncture is not None:
-        enc["puncture"] = [list(map(int, row)) for row in puncture]
-    return serial.init(f"conv{len(generators)}_{constraint}", {"base": "conv", "type": "split",
-                       "encode": enc, "decode": {"type": decoder, **side}})
+        obj["puncture"] = [list(map(int, row)) for row in puncture]
+    return serial.init(f"conv{len(generators)}_{constraint}", obj)

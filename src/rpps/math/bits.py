@@ -1,4 +1,12 @@
 """Bit manipulation"""
+import numpy as np
+
+def entropy(bits):
+    """Entropy of a bit stream [bits per bit]: H = -p0 log2 p0 - p1 log2 p1 (0 log 0 = 0)"""
+    bits = np.asarray(bits)
+    p = np.array([np.mean(bits == 0), np.mean(bits == 1)])
+    p = p[p > 0]
+    return float(-np.sum(p*np.log2(p)))
 
 def reflect(v, width):
     """Reverse the order of the low `width` bits of an integer"""
@@ -6,11 +14,13 @@ def reflect(v, width):
 
 def to_base2(order):
     """Every `order`-bit pattern in counting order: (2^order, order) array of 0/1, most significant bit first"""
-    import numpy as np
     return ((np.arange(2**order)[:, None] >> np.arange(order - 1, -1, -1)) & 1)
 
 def to_base10(arr):
     """Rows of bits (most significant first) -> integers"""
-    import numpy as np
     arr = np.asarray(arr)
     return np.dot(arr, 2**np.arange(arr.shape[1] - 1, -1, -1))
+
+def hamming(a, b):
+    """Hamming distance: the number of positions where bit arrays a and b differ"""
+    return int(np.count_nonzero(np.asarray(a, dtype=bool) != np.asarray(b, dtype=bool)))

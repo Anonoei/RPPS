@@ -1,0 +1,12 @@
+{
+  "base": "block",
+  "abstract": true,
+  "type": "rs",
+  "comment": "P25 Reed-Solomon codes over GF(64) (x^6 + x + 1), shortened from (63, k)",
+  "ref": "TIA-102.BAAA",
+  "tags": ["p25"],
+  "m": 6,
+  "poly": 67,
+  "fcr": 1,
+  "prim": 1
+}

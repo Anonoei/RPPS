@@ -9,6 +9,7 @@ for one (`rp.sync.acquire_code`).
 
     {"base": "sequence", "type": "recurrence", "sequences": [...], "skip": 1600}      see rpps.sequence.recurrence
     {"base": "sequence", "type": "chips" | "set" | "gold", ...}                       see rpps.sequence.code
+    {"base": "sequence", "type": "word", "word": "0x1ACFFC1D", "bits": 32}          a fixed word (sync marker, access address): rpps.sequence.word
 Any value can be a load-time parameter ("params", then {"param": ...} / {"expr": ...}). Chip rates are in "rate" (chips/s).
 """
 from .. import _config
@@ -16,6 +17,7 @@ from ..errors import ConfigError
 from . import lfsr
 from .recurrence import Recurrence
 from .code import Code, LOADERS as _CODES
+from .word import Word
 
 def _load(name, obj):
     t = obj.get("type")
@@ -23,7 +25,9 @@ def _load(name, obj):
         return Recurrence.load(name, obj)
     if t in _CODES:
         return _CODES[t](name, obj)
-    raise ConfigError(f"sequence {name}: no type {t!r} (have recurrence, {', '.join(_CODES)})")
+    if t == "word":
+        return Word.load(name, obj)
+    raise ConfigError(f"sequence {name}: no type {t!r} (have recurrence, word, {', '.join(_CODES)})")
 
 DOMAIN = _config.register_domain("sequence", {"sequence": _load})
 

@@ -6,7 +6,7 @@ become one. Read a file, get the definition as a dict, or have it written into a
     d = rp.signal.filters.import_fir("taps.txt")                                  # {"base": "fir", "type": "taps", "taps": [...]}
     rp.signal.filters.import_fir("lp.f32", dtype="f32", name="my_lp", dest="mine")  # writes mine/filter/fir/taps/my_lp.json
     rp.signal.filters.import_iir("sections.npy", form="sos", name="my_iir")
-    rp.add_config_path("mine"); rp.signal.filters.load("fir", "taps/my_lp")
+    rp.add_config_path("mine"); rp.signal.filters.load("fir/taps/my_lp")
 
 Formats: text/CSV, NumPy .npy/.npz, headerless raw binary (GNU Radio file sinks, `tofile`), numbers in a C/Python/Verilog array
 literal, Xilinx .coe. Arrays already in memory (scipy, firdes...) go through `fir_def`, `sos_def`, `ba_def` and `zpk_def`.
@@ -139,15 +139,6 @@ def read_table(path, fmt=None, dtype=None, key=None):
         a = np.asarray(loaded)
         return [a] if a.ndim <= 1 else [row for row in a]
     raise ValueError(f"unknown format {fmt!r}")
-
-def read_array(path, fmt=None, dtype=None, key=None):
-    """The numbers of a file as one array: 1-D for a vector or a single row, 2-D for rows of one length"""
-    rows = read_table(path, fmt, dtype, key)
-    if len(rows) == 1:
-        return np.asarray(rows[0])
-    if len({len(r) for r in rows}) != 1:
-        raise ValueError(f"{Path(path).name}: rows of different lengths {[len(r) for r in rows]}")
-    return np.vstack(rows)
 
 # ---- Definitions from arrays
 

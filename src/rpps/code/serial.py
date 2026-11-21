@@ -1,33 +1,47 @@
-"""Code definitions, two resources: config/fec/<kind>/<family>/<name>.json (`rp.code.load("block", "rs/204_188")`) and
-config/interleave/<type>/<name>.json (`rp.code.load("interleave", "forney/12_17")`)
+"""Code definitions, two resources: config/fec/<kind>/<family>/<name>.json (`rp.code.load("block/rs/204_188")`) and
+config/interleave/<type>/<name>.json (`rp.code.load("interleave/forney/12_17")`)
 
 Folders are kind (`base`), then the structure of the code; the standard goes in `ref`/`comment`. Names are parameters.
 
     block       {"base": "block", "type": ..., "decoder": optional type to decode with instead}
       linear      "code": [n, k], "p": parity block rows    or    "g": generator rows, "h": check rows (decoded on its syndrome "trellis" when small)
-      cyclic      "n", "k", "poly": generator polynomial (bit i = x^i), "extend": overall parity bit, "shorten": leading
+      cyclic      "n", "k", "poly": generator polynomial as a number, bit i = x^i (polynomial order: "0xb" is x^3 + x + 1;
+                  a convolutional or turbo generator is the other way round, its first or most significant bit the
+                  current input), "extend": overall parity bit, "shorten": leading
                   message bits dropped, "t": errors to correct (default from d_min); decoded by "syndrome" table
       repeat      "count": 3
       fsm         trellis code as a state machine: "k", "n", "next", "output" tables, "start", "end", "tail",
-                  "symbols": {"bits", "levels"} to decode amplitudes (P25 trellis, ATSC 8VSB)
-      turbo       LTE turbo code: "length", "g0", "g1", "constraint", "qpp" or "qpp_table", "iters", "scale"
+                  "symbols": {"bits", "levels"} to decode amplitudes (P25 trellis, ATSC 8VSB) or {"bits", "points"}: [re, im]
+                  pairs to decode constellation symbols (trellis-coded modulation)
+      turbo       LTE turbo code: "length", "g0", "g1", "constraint", "qpp" or "qpp_table", "iters", "scale"; or multiplexed
+                  bit time by bit time (CCSDS): "g0", "forward": {"1": g1, ...}, "interleave" (a definition), "outputs"
+      polar       "n", "k", "frozen": [...] or "order": "pw" | "bhattacharyya" (+ "design_db"), "list": paths (1: SC),
+                  "crc": a CRC definition for CRC-aided list decoding
+      rm          Reed-Muller RM("r", "m")
       ratematch   LTE rate matching: "mode": "conv" | "turbo", "length" (bits per stream), "out" (E), "rv", "ncb"
-      product     block product code: "rows", "cols" (block definitions), "reserved", "lead", "iters" (DMR BPTC)
+      product     block product code: "rows", "cols" (block definitions), "reserved", "lead", "iters" (DMR BPTC);
+                  "chase": p decodes it soft as a turbo product code (Chase-Pyndiah)
       rs          "n", "k", "m": 8, "poly": field polynomial, "fcr": 0, "prim": 1, "puncture": codeword positions not
-                  sent (negative from the end; decoded as erasures)
+                  sent (negative from the end; decoded as erasures), "basis": "dual" + "beta" (CCSDS: 117)
     Every block decoder leaves `errors` per codeword after a decode: bits (RS: symbols) corrected, -1 for a failure.
       bch         "n", "k", "t", "m": 16, "poly": "0x1002D"
       ldpc        "n" and the checks as "checks" (positions per check), "h" (dense rows), "table" + "k" + "group" (DVB-S2 address
-                  table) or "gallager": {...}; optional "k" + "systematic": "head" | "tail" | [positions], "iters": 50, "alpha": 0.8
-    conv        {"base": "conv", "type": "split", "encode": {...}, "decode": {...}} sharing "puncture" and "terminated"
-      encode      "type": "conv", "num", "den", "constraint", "generator": den rows of K bits, "puncture": den rows
-      decode      "type": "viterbi" | "bcjr" (soft output; also "maxlog", "hard_llr"), same keys as encode
+                  table), "shifts" + "z" (quasi-cyclic: a matrix of shifts of the z x z identity, -1 a zero block: 802.11n, 802.16e)
+                  or "gallager": {...}; optional "k" + "systematic": "head" | "tail" | [positions], "iters": 50, "alpha": 0.8,
+                  "schedule": "layered" | "flooding"
+    conv        {"base": "conv", "constraint": K, "generator": den rows of K bits, "puncture": den rows, "decoder": "viterbi"}
+                  one set of keys for the encoder and its decoder ("viterbi", or "bcjr": soft output; also "maxlog",
+                  "hard_llr", "termination", "invert"). A mother code is a file (fec/conv/k7_171_133.json); its punctured
+                  rates extend it with their "puncture" (fec/conv/k7_171_133/3_4.json)
     interleave  {"base": "interleave", "type": "forney", "I": 12, "M": 17, "symbol": 8}
                 {"base": "interleave", "type": "block", "perm": [...] or {"each": "<i>", "n": N}, "map": "from" | "to", "symbol": 1}
                 {"base": "interleave", "type": "block", "length": D, "cols": 32, "col_perm": [...], "fill": "front"}
     Any value can be a load-time parameter: "params": {"ncbps": null}, then {"param": "ncbps"} or {"expr": "..."}.
 
-Decoding only runs from a definition loaded here; `analysis.fec.Guess.save` turns a guessed structure into one,
+A reference is the path below config/fec or config/interleave with the kind first: "block/rs/204_188", "conv/k7_171_133/3_4",
+"interleave/forney/12_17". A bare name ("204_188") works while one definition of any kind has it.
+
+Decoding only runs from a definition loaded here; `analysis.identify.Guess.save` turns a guessed structure into one,
 `rp.code.import_alist` an LDPC alist file. CRC and framing are in rpps.link.
 """
 from pathlib import Path
@@ -71,29 +85,51 @@ def init(name: str, obj: dict, decoder=None) -> coding.Coding:
         raise ConfigError(f"Unknown coding base {obj.get('base')!r} in {name}: have {sorted(_LOADERS)}")
     return _LOADERS[base].load(name, obj, decoder)
 
-def locate(folder: str, ref: str, path=None):
-    """(file, name) of a definition: config/fec/<kind>/[<family>/]<name>.json or config/interleave/<type>/<name>.json. The name of what is loaded is its family folder, else its file"""
-    dom = _domain(folder)
-    file, parts = _config.locate(dom, ref, None if dom == "interleave" else folder, path)
+def _find(kind, rest, path):
+    dom = _domain(kind)
+    file, parts = _config.locate(dom, rest, None if dom == "interleave" else kind, path)
     if file is None:
-        raise FileNotFoundError(f"{folder}/{ref}: not found in {[str(r) for r in ([Path(path)] if path else _config.layers(dom))]}")
-    family = parts[:-1] if dom == "interleave" else parts[1:-1]
-    return file, family[-1] if family else parts[-1]
+        return None, None
+    return file, "/".join(parts if dom == "interleave" else parts[1:])
 
-def find(folder: str, ref: str, path=None) -> Path:
+def locate(ref: str, path=None):
+    """(file, kind, name) of a definition: `ref` is "<kind>/<path below it>" ("block/rs/204_188", "interleave/forney/12_17"), or
+    a bare name one definition of any kind has. name is the path below the kind ("rs/204_188"): what the loaded code is called"""
+    ref = str(ref).strip("/")
+    kind, _, rest = ref.partition("/")
+    if kind in KINDS and rest:
+        file, name = _find(kind, rest, path)
+        hits = [(file, kind, name)] if file is not None else []
+    else:
+        hits = [(f, k, n) for k in KINDS for f, n in [_find(k, ref, path)] if f is not None]
+    if len(hits) > 1:
+        raise ConfigError(f"{ref} is ambiguous: {[f'{k}/{n}' for _, k, n in hits]}")
+    if not hits:
+        raise FileNotFoundError(f"{ref}: no code definition (give <kind>/<name>, kind one of {KINDS}), see rp.code.ls()")
+    return hits[0]
+
+def mother(generator, constraint=None):
+    """The configured mother code (fec/conv/<mother>.json) with these generators, as "k7_171_133", or None: what a found
+    punctured code extends"""
+    from .types.conv import generators_of
+    want = generators_of({"generator": generator, "constraint": constraint}).astype(int).tolist()
+    for root in _config.layers("fec"):
+        for f in sorted((root / "conv").glob("*.json")):
+            obj = _config.read_raw(f)
+            if "generator" in obj and generators_of(obj).astype(int).tolist() == want:
+                return f.stem
+    return None
+
+def find(ref: str, path=None) -> Path:
     """File of a definition (see `locate`)"""
-    return locate(folder, ref, path)[0]
+    return locate(ref, path)[0]
 
-def load(folder: str, ref: str, path=None, decoder=None, **params) -> coding.Coding:
-    """Load a code from config/fec/<kind>/<family>/<name>.json (kind block, conv) or config/interleave/<type>/<name>.json (kind interleave), `load("block", "rs/204_188")` (or from `path`/<kind>/ instead of config/coding)
+def load(ref: str, path=None, decoder=None, **params) -> coding.Coding:
+    """Load a code: `load("block/rs/204_188")`, `load("conv/k7_171_133/3_4")`, `load("interleave/forney/12_17")`
+    (config/fec/<kind>/..., config/interleave/...; or below `path` instead of the shipped config)
 
-    A bare name ("204_188") also works when only one family has it.
     decoder: decode with another type than the definition's: "bcjr" or "viterbi" for conv, "trellis" for linear block codes
-    params: values of the definition's "params" (`load("interleave", "wifi_ofdm", ncbps=96, nbpsc=2)`)
+    params: values of the definition's "params" (`load("interleave/block/wifi_ofdm", ncbps=96, nbpsc=2)`)
     """
-    file, name = locate(folder, ref, path)
-    return init(name, _config.resolve(_config.read(file), params, f"coding/{folder}/{ref}"), decoder)
-
-def generate(t_str):
-    """Generate coding matrixes"""
-    return getattr(types, f"generate_{t_str}")
+    file, kind, name = locate(ref, path)
+    return init(name, _config.resolve(_config.read(file), params, f"{kind}/{name}"), decoder)

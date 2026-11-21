@@ -29,6 +29,7 @@ from ..base import Mod, dtype
 from ..base.types import Category, Rep
 from ..errors import ConfigError
 from ..base.rpps import FRAME
+from ..base.control import publish, anchor
 from .modulation import Modulation
 
 def _bits(value, n):
@@ -82,7 +83,6 @@ class _Frame(Modulation):
     def _anchor(self, data):
         """At a frame start: its first item is where the output goes on from (what came before may have been cut)"""
         if self._began:
-            from ..profile.control import anchor
             anchor(data.meta, self, data.meta.pos, 0)
 
     def restart(self, st):
@@ -97,7 +97,7 @@ class Header(_Frame):
     """A physical header at the start of every frame: known symbols, then a code word whose message is the fields
 
         rx: frame -> payload. Each frame's header is decoded (soft, every message tried: the code is short) and its fields
-            published from the payload's first symbol (rp.profile.publish). A header with more than `max_errors` bit errors
+            published from the payload's first symbol (rp.base.control.publish). A header with more than `max_errors` bit errors
             is refused, and the frame dropped. Its estimates are in stream.est[name]: frames, refused, last errors.
         tx: payload -> frame, the header built from the fields as last controlled (`control(modcod=..., ...)`).
     Frames start where a profile says (a frame sync before it), or at the start of the stream.
@@ -164,7 +164,6 @@ class Header(_Frame):
         st.mode, st.held, st.pos = "header", np.zeros(0, np.complex128), None
 
     def decode(self, data):
-        from ..profile.control import publish, anchor
         ctx = dict(data.ctx)
         st = self._state(ctx, False)
         x = np.asarray(data.data)
@@ -200,7 +199,6 @@ class Header(_Frame):
         return self._out(data, y, ctx)
 
     def encode(self, data):
-        from ..profile.control import anchor
         ctx = dict(data.ctx)
         x = np.asarray(data.data)
         start = self._start
@@ -276,7 +274,7 @@ class Pilots(_Frame):
         """The batch pilot remover (decoding), for the frame layout `params` set: pilots, and what is past the frame, dropped"""
         if how != "/":
             return None
-        from ..parallel.kernels import Gather
+        from .kernels import Gather
         if params:
             self.control(**params)
         if self.slots is None:
@@ -371,7 +369,7 @@ class PhaseScramble(_Frame):
         """The batch rotation, for a frame that starts at its first symbol (`control` marks it) and restarts every `length`"""
         if how not in ("/", "*"):
             return None
-        from ..parallel.kernels import Rotate
+        from .kernels import Rotate
         if params:
             self.control(**params)
         enc, step, length = how == "*", self.step, self.length

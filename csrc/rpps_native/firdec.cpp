@@ -12,7 +12,7 @@ namespace rpps {
 namespace {
 
 #if defined(__GNUC__) && defined(__x86_64__) && !defined(__clang__)
-#define RPPS_CLONES __attribute__((target_clones("avx2,fma", "default")))
+#define RPPS_CLONES __attribute__((target_clones("avx2", "default")))
 #else
 #define RPPS_CLONES
 #endif
@@ -38,7 +38,8 @@ py::array_t<cf32> fir_decimate(carray<cf32> x_a, carray<double> h_a, long long s
     cf32 *o = out.mutable_data();
     const cf32 *x = x_a.data();
     const double *h = h_a.data();
-    constexpr long long CHUNK = 2048;
+    // About 128k multiply-adds a chunk: a long filter spreads a short block over more threads
+    const long long CHUNK = std::max(64LL, std::min(2048LL, (1LL << 17)/nh));
     {
         py::gil_scoped_release nogil;
         parallel_for((count + CHUNK - 1)/CHUNK, threads, [&](long long blk) {
@@ -53,12 +54,42 @@ py::array_t<cf32> fir_decimate(carray<cf32> x_a, carray<double> h_a, long long s
     return out;
 }
 
+// Polyphase interpolation: out[k*R + p] = sum_j phases[p][j] x[start + k - j], every phase of an input sample in one pass
+// (what zero stuffing by R and filtering gives, without the zeros)
+py::array_t<cf32> fir_interpolate(carray<cf32> x_a, carray<double> ph_a, long long start, long long count, int threads) {
+    check_shape(ph_a, {-1, -1}, "phases");
+    const long long S = x_a.size(), R = ph_a.shape(0), L = ph_a.shape(1);
+    if (R < 1 || L < 1 || count < 0) throw std::invalid_argument("fir_interpolate: bad phases or count");
+    if (count > 0 && (start - (L - 1) < 0 || start + count - 1 >= S)) throw std::invalid_argument("fir_interpolate: outputs outside the signal");
+    py::array_t<cf32> out(static_cast<py::ssize_t>(count*R));
+    cf32 *o = out.mutable_data();
+    const cf32 *x = x_a.data();
+    const double *h = ph_a.data();
+    const long long CHUNK = std::max(16LL, std::min(2048LL, (1LL << 17)/(L*R)));
+    {
+        py::gil_scoped_release nogil;
+        parallel_for((count + CHUNK - 1)/CHUNK, threads, [&](long long blk) {
+            const long long end = std::min(count, (blk + 1)*CHUNK);
+            for (long long k = blk*CHUNK; k < end; k++)
+                for (long long p = 0; p < R; p++) {
+                    float re, im;
+                    dot_back(x + start + k, h + p*L, L, &re, &im);
+                    o[k*R + p] = cf32(re, im);
+                }
+        });
+    }
+    return out;
+}
+
 } // namespace
 
 void register_firdec(py::module_ &m) {
     m.def("fir_decimate", &fir_decimate,
           "fir_decimate(x complex64, taps float64, start, step, count, threads) -> out[k] = sum_j taps[j] x[start + k*step - j] (complex64)",
           py::arg("x"), py::arg("taps"), py::arg("start"), py::arg("step"), py::arg("count"), py::arg("threads") = 0);
+    m.def("fir_interpolate", &fir_interpolate,
+          "fir_interpolate(x complex64, phases float64 (R, L), start, count, threads) -> out[k*R + p] = sum_j phases[p, j] x[start + k - j] (complex64)",
+          py::arg("x"), py::arg("phases"), py::arg("start"), py::arg("count"), py::arg("threads") = 0);
 }
 
 } // namespace rpps

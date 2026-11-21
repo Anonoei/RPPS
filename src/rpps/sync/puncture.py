@@ -3,11 +3,12 @@ from types import SimpleNamespace
 import numpy as np
 
 from ..base import BitStage
+from ..code.coding import puncture_period, mismatch
 
 class Puncture(BitStage):
     """Find where a punctured convolutional code's puncture pattern starts, and start the stream there
 
-        aligned = llrs + rp.sync.Puncture(rp.code.load("conv", "k7_171_133/3_4")) + ...   # then Viterbi
+        aligned = llrs + rp.sync.Puncture(rp.code.load("conv/k7_171_133/3_4")) + ...   # then Viterbi
 
     Block estimation on channel bits: once `window` coded bits are in, each offset into the puncture period is tried by
     decoding that window and coding the decision again; the right offset reproduces what was received (only channel errors
@@ -16,8 +17,7 @@ class Puncture(BitStage):
     """
     def __init__(self, code, window=4000, name="puncture"):
         self.code, self.window, self.name = code, int(window), name
-        p = getattr(code._dec, "puncture", None)
-        self.period = int(p.sum()) if p is not None else code._dec.den
+        self.period = puncture_period(code)
 
     def __str__(self):
         return f"Puncture({self.code.name})"
@@ -26,11 +26,8 @@ class Puncture(BitStage):
         return SimpleNamespace(pending=None, offset=None, rates=None)
 
     def _rate(self, hard):
-        enc, dec = self.code._enc, self.code._dec
-        u = dec.decode(hard.astype(np.uint8))
-        e = enc.encode(u.astype(bool))
-        n = min(len(e), len(hard))
-        return float(np.mean(e[:n] != hard[:n].astype(bool))) if n else 1.0
+        k, n = mismatch(self.code, hard)
+        return k/n if n else 1.0
 
     def step(self, x, st, meta):
         x = np.asarray(x)

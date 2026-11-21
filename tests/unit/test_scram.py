@@ -81,3 +81,22 @@ def test_ccsds_sequence():
     y = np.asarray(rp.code.scram.load("ccsds").encode(np.zeros(len(s), dtype=bool))).astype(int)
     assert list(y) == s
     assert bytes(np.packbits(y.astype(np.uint8)))[:8].hex() == "ff480ec09a0d70bc"
+
+def test_additive_descrambler_keeps_llrs():
+    """LLRs through an additive descrambler stay LLRs (signs flipped by the sequence), so a soft decoder after it loses
+    nothing; their hard decisions are what descrambling hard bits gives, however the stream is cut"""
+    s = rp.code.scram.load("dvb_energy") if "dvb_energy" in str(rp.code.scram.ls()) else rp.code.scram.load(rp.code.scram.ls()["additive"][0])
+    rng = np.random.default_rng(7)
+    llr = rng.standard_normal(204*8*3)*3
+    out, ctx, i = [], None, 0
+    for b in (1000, 7, 3889):
+        d = rp.base.Mod(llr[i:i+b], ctx=ctx or {}, rep=rp.Rep.CHANNEL)
+        r = d / s
+        ctx = dict(r.ctx)
+        assert r.DT == rp.dtype.LLR
+        out.append(np.asarray(r.data))
+        i += b
+    soft = np.concatenate(out)
+    hard = np.asarray((rp.base.Mod(llr < 0, rep=rp.Rep.CHANNEL) / s).data).astype(bool)
+    assert np.array_equal(soft < 0, hard)
+    assert np.allclose(np.abs(soft[np.abs(soft) < 40]), np.abs(llr[np.abs(soft) < 40])) # magnitudes kept (known marker bits are sure)

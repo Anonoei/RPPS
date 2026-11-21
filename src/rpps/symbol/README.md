@@ -4,12 +4,12 @@ A signal is built from explicit pieces, and a new kind of signal is a new config
 
 | Layer | Pieces | Operator | What flows |
 |---|---|---|---|
-| **Symbol** (`rp.symbol`; codes from `rp.sequence`) | `Constellation`, `Differential`, `Spread`, `OFDM` | `*` encodes, `/` decodes | bits, symbols, chips (a `Pipe` each; decoding ends in LLRs) |
-| **Waveform** (`rp.wave`, `rp.signal.sample`, `rp.signal.filters`) | `Zeros` / `Upsample`, pulse shaping, `Stagger`, `FM`, `FMDemod` | `+` | symbols and samples (a streaming `Stage` each; any block length) |
+| **Symbol** (`rp.symbol`; codes from `rp.sequence`) | `Constellation`, `Differential`, `Spread`, `Carriers` | `*` encodes, `/` decodes | bits, symbols, chips (a `Pipe` each; decoding ends in LLRs) |
+| **Waveform** (`rp.wave`; pulses from `rp.signal.filters.load("pulse/...")`) | `Shape` / `Matched`, `Stagger`, `FM`, `FMDemod` | `+` | symbols and samples (a streaming `Stage` each; any block length) |
 
 ## Constellations
 A constellation is a set of points and the ways of labelling them with bits. PSK, QAM, APSK and ASK are generators
-(`rp.symbol.PSK(8)`, `rp.symbol.QAM(16)`, `rp.symbol.load("64QAM")`); anything else is a config file:
+(`rp.symbol.PSK(8)`, `rp.symbol.QAM(16)`, `rp.symbol.generate("64QAM")`); anything else is a config file:
 
 ```json
 {"base": "constellation",
@@ -38,17 +38,17 @@ Known structure among the symbols of a frame (`rpps.symbol.frame`), restarted at
 chips = bits * rp.symbol.load("bpsk") * rp.symbol.Differential() * rp.symbol.Spread(rp.sequence.load("barker11"))
 
 # O-QPSK (half-sine pulses, Q half a symbol late; this is MSK when the symbols are unit QPSK)
-wave = bits * rp.symbol.load("QPSK") + rp.signal.sample.up.Zeros(8) + rp.signal.filters.load("pulse", "halfsine") + rp.wave.Stagger()
+wave = bits * rp.symbol.load("QPSK") + rp.wave.Shape(8, rp.signal.filters.load("pulse/halfsine")) + rp.wave.Stagger()
 # receive, coherent and in this order: remove the carrier phase, realign the rails, matched filter, sample
-syms = wave + rp.wave.Stagger(rail="i") + rp.signal.filters.load("pulse", "halfsine") + rp.signal.sample.down.Decimate(8, offset=12)
+syms = wave + rp.wave.Stagger(rail="i") + rp.signal.filters.load("pulse/halfsine") + rp.signal.sample.down.Decimate(8, offset=12)
 
 # 802.15.4 2.4 GHz: 4 bits pick a 32-chip sequence, even chips on I, odd on Q
-wave = bits * rp.symbol.Spread(rp.sequence.load("ieee802154_2450"), pair=True) + rp.signal.sample.up.Zeros(4) \
-       + rp.signal.filters.load("pulse", "halfsine") + rp.wave.Stagger()
+wave = bits * rp.symbol.Spread(rp.sequence.load("ieee802154_2450"), pair=True) + rp.wave.Shape(4, rp.signal.filters.load("pulse/halfsine")) \
+       + rp.wave.Stagger()
 
 # GFSK (Bluetooth LE: BT 0.5, h 0.5) and 4FSK: levels from an ASK constellation, a pulse, a frequency modulator
 c = rp.symbol.ASK(2)
-wave = bits * c + rp.signal.sample.up.Zeros(8) + rp.signal.filters.load("pulse", "gaussian/bt0p5") + rp.wave.FM(0.5, c.min_distance)
+wave = bits * c + rp.wave.Shape(8, rp.signal.filters.load("pulse/gaussian/bt0p5")) + rp.wave.FM(0.5, c.min_distance)
 levels = wave + rp.wave.FMDemod(rp.wave.fm_gain(0.5, 8, c.min_distance))   # then integrate over each symbol and sample
 ```
 Each is exercised in `tests/unit/test_recipes.py` and `tests/unit/test_wave.py`.

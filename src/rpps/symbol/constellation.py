@@ -12,6 +12,7 @@ from ..base.types import Category, Rep
 from ..base.rpps import align, FRAME
 from ..errors import ConfigError
 from ..math import demap
+from .. import _effort
 
 from .modulation import Modulation
 from .mapping import Mapping, expand_maps
@@ -80,10 +81,10 @@ class Constellation(Modulation):
         """The batch demapper, for the constellation as `params` (live parameters) make it; encoding has none yet"""
         if how != "/":
             return None
-        from ..parallel.kernels import Demap
+        from .kernels import Demap
         if params:
             self.control(**params)
-        return Demap(self.points.copy(), self.labels().astype(bool), self.maxlog, self.name)
+        return Demap(self.points.copy(), self.labels().astype(bool), _effort.maxlog(self.maxlog), self.name, floor=_MIN_VAR) # (the level when the region is built)
 
     def pos_rate(self, decode):
         """Bits per symbol decoding, symbols per bit encoding (rpps.profile positions)"""
@@ -172,7 +173,7 @@ class Constellation(Modulation):
 
     def decode(self, data):
         syms = data.data
-        llr = self.llr(syms, maxlog=self.maxlog) if len(syms) else np.zeros(0, dtype=dtype.LLR.dtype)
+        llr = self.llr(syms, maxlog=_effort.maxlog(self.maxlog)) if len(syms) else np.zeros(0, dtype=dtype.LLR.dtype)
         return data.derive(llr, Category.SYMBOL, dtype.LLR, Mod, rep=Rep.CHANNEL)
 
     def estimate_noise(self, syms, iters=8):
@@ -216,9 +217,13 @@ class Constellation(Modulation):
 
     @staticmethod
     def load(name: str, obj: dict):
-        """{"base": "constellation", "points": [...], "maps": [{"map": [...], "comment": "..."}], "normalize": true}
+        """{"base": "constellation", "points": [...] or "rings": [...], "rotate": 0, "maps": [{"map": [...], "comment": "..."}], "normalize": true}
 
-        A point is {"mag": 1, "pha": 45} (phase in degrees), {"re": 0.7, "im": -0.7} or [re, im]
+        A point is {"mag": 1, "pha": 45} (phase in degrees), {"re": 0.7, "im": -0.7} or [re, im].
+        A ring is {"n": 12, "mag": 2.85, "pha": 15}: n points of magnitude mag (default 1), the first at pha degrees (default
+        180/n, so a 4-point ring is QPSK at 45 degrees) and the rest evenly round, counter-clockwise; rings are listed innermost
+        first and the points come out ring by ring, so a map indexes them in that order (PSK is one ring, APSK several).
+        rotate: degrees added to every point's phase (QPSK on the axes is QPSK rotated by -45)
         """
         def point(p):
             if isinstance(p, dict):
@@ -228,9 +233,18 @@ class Constellation(Modulation):
             if isinstance(p, (list, tuple)) and len(p) == 2:
                 return complex(p[0], p[1])
             return complex(p)
-        if "points" not in obj:
-            raise ConfigError(f"{name}: a constellation needs 'points'")
-        return Constellation([point(p) for p in obj["points"]], obj.get("maps"), name=name, normalize=obj.get("normalize", True))
+        if ("points" in obj) == ("rings" in obj):
+            raise ConfigError(f"{name}: a constellation has 'points' or 'rings' (one of them)")
+        if "rings" in obj:
+            pts = []
+            for r in obj["rings"]:
+                n = int(r["n"])
+                pha = r.get("pha", 180.0/n)
+                pts += [r.get("mag", 1.0)*np.exp(1j*np.deg2rad(pha + 360.0*k/n)) for k in range(n)]
+        else:
+            pts = [point(p) for p in obj["points"]]
+        pts = np.asarray(pts, dtype=np.complex128)*np.exp(1j*np.deg2rad(obj.get("rotate", 0.0)))
+        return Constellation(list(pts), obj.get("maps"), name=name, normalize=obj.get("normalize", True))
 
 # ---- Generators: the usual point sets
 
@@ -238,7 +252,8 @@ def _gen(M, shape, labels, comment, name, mapping, normalize=True):
     return Constellation(shape, [Mapping(np.asarray(labels), comment)], mapping, name=name, normalize=normalize)
 
 def PSK(M=4, mapping=None, offset=None):
-    """M points on the unit circle with a Gray map; offset: the first point's phase [rad], default pi/M (QPSK at 45 degrees)"""
+    """M points on the unit circle with a Gray map; offset: the first point's phase [rad], default pi/M (QPSK at 45 degrees),
+    0 for BPSK (+-1, as `load("psk/bpsk")`)"""
     pts, lab = shapes.psk(M, offset)
     return _gen(M, pts, lab, "Gray", f"{M}PSK", mapping)
 

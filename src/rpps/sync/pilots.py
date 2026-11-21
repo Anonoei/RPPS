@@ -4,6 +4,7 @@ import numpy as np
 
 from ..base import Stage
 from ..base.rpps import FRAME
+from ..base.control import anchor
 
 class PilotEqualizer(Stage):
     """Equalize OFDM carriers from their pilots: n_fft carrier values per OFDM symbol in, the same with the channel removed
@@ -85,7 +86,7 @@ class PilotPhase(Stage):
 
     def kernel(self, params, how):
         """The batch carrier fit, for the frame layout `params` set (without one, or without pilots, the symbols pass)"""
-        from ..parallel.kernels import PilotLine
+        from .kernels import PilotLine
         if params:
             self.control(**params)
         if self.slots is None or not self.pilots:
@@ -113,7 +114,6 @@ class PilotPhase(Stage):
     def step(self, x, st, meta):
         out = []
         if self._start:
-            from ..profile.control import anchor
             self._start = False
             if len(st.held): # A frame cut short: out as it came
                 out.append(st.held)

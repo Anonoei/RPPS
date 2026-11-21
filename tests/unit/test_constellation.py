@@ -18,7 +18,7 @@ def test_instances_do_not_share_state():
     a.mapping.arr[0] = 1
     a.mapping.arr[1] = 0
     assert b.mapping.arr.tolist() == [0, 1]
-    assert rp.symbol.ASK.__name__ == "ASK" and rp.symbol.load("4ASK").points is not rp.symbol.load("4ASK").points
+    assert rp.symbol.ASK.__name__ == "ASK" and rp.symbol.generate("4ASK").points is not rp.symbol.generate("4ASK").points
 
 def test_default_labels_are_the_points_in_order():
     c = rp.symbol.Constellation(np.exp(1j*np.arange(4)))
@@ -86,7 +86,34 @@ def test_a_config_file_in_a_user_directory(tmp_path):
     finally:
         rp._config._EXTRA.remove(tmp_path)
 
-def test_names_without_a_file_are_generated():
-    assert rp.symbol.load("16QAM").order == 16 and rp.symbol.load("OOK").order == 2 and rp.symbol.load("8PSK").bits_per_symbol == 3
+def test_shapes_are_generated_and_definitions_loaded():
+    assert rp.symbol.generate("16QAM").order == 16 and rp.symbol.generate("OOK").order == 2 and rp.symbol.generate("8PSK").bits_per_symbol == 3
+    assert rp.symbol.load("8PSK").bits_per_symbol == 3 # psk/8psk, a definition
+    with pytest.raises(rp.errors.ConfigError, match="generate"):
+        rp.symbol.load("16QAM")
     with pytest.raises(rp.errors.ConfigError):
         rp.symbol.load("nonsense")
+    assert rp.symbol.load_or_generate("16QAM").order == 16 # Names from a detector, either kind
+
+def test_bpsk_is_on_the_real_axis_however_made():
+    for c in (rp.symbol.PSK(2), rp.symbol.generate("BPSK"), rp.symbol.load("psk/bpsk")):
+        assert np.allclose(sorted(c.points.real), [-1, 1]) and np.allclose(c.points.imag, 0)
+
+def test_rings_and_rotate_build_points(tmp_path):
+    from rpps._config import format_json
+    d = tmp_path / "constellation" / "x"
+    d.mkdir(parents=True)
+    (d / "ring8.json").write_text(format_json({"base": "constellation", "comment": "8PSK as a ring", "rings": [{"n": 8}]}))
+    (d / "ring8_axes.json").write_text(format_json({"base": "constellation", "extends": "x/ring8", "comment": "turned", "rotate": -22.5}))
+    (d / "two.json").write_text(format_json({"base": "constellation", "comment": "4+12", "params": {"gamma": 2.0},
+                                              "rings": [{"n": 4, "pha": 45}, {"n": 12, "mag": {"param": "gamma"}, "pha": 15}],
+                                              "normalize": False}))
+    rp.add_config_path(tmp_path)
+    try:
+        assert np.allclose(rp.symbol.load("x/ring8").points, rp.symbol.load("psk/8psk").points)
+        assert np.allclose(np.angle(rp.symbol.load("x/ring8_axes").points[:2], deg=True), [0, 45])
+        two = rp.symbol.load("x/two", gamma=3.0)
+        assert np.allclose(np.abs(two.points), [1]*4 + [3]*12)
+        assert np.allclose(np.abs(rp.symbol.load("x/two").points), [1]*4 + [2]*12)
+    finally:
+        rp._config._EXTRA.remove(tmp_path)

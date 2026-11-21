@@ -73,3 +73,15 @@ def test_any_block_cut():
             outs.append(r.data)
             i += b
         assert np.allclose(np.concatenate(outs), sym, atol=1e-5)
+
+def test_soft_values_feed_a_decoder():
+    """The product detector weights each symbol by its reliability: DQPSK into a K=7 Viterbi decoder at Eb/N0 7 dB decodes
+    to about 1e-5 (dividing by the previous symbol gave 5e-3)"""
+    rng = np.random.default_rng(5)
+    c, v = rp.symbol.load("psk/qpsk_axes"), rp.code.load("conv/k7_133_171/1_2")
+    m = rng.integers(0, 2, 40000).astype(bool)
+    s = np.asarray((rp.Data(v.encoder.encode(m)) * c * Differential()).data)
+    var = 10**(-7.0/10)
+    y = (s*np.exp(0.4j) + np.sqrt(var/2)*(rng.standard_normal(len(s)) + 1j*rng.standard_normal(len(s)))).astype(np.complex64)
+    out = v.decoder.decode(c.llr(np.asarray((symbols_like(y) / Differential()).data))).astype(bool)
+    assert np.mean(out[100:39800] != m[100:39800]) < 3e-4

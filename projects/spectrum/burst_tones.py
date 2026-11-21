@@ -10,7 +10,7 @@ frequency with its peak/median ratio (short bursts give unreliable values; a ton
 the previous one. `--wav` writes the demodulated bursts (silence between) for listening. Meant to be upstreamed into RPPS.
 """
 import argparse
-import wave
+import rpps as rp
 
 import numpy as np
 from rpps.signal.sample import resample_poly
@@ -97,8 +97,7 @@ def main(argv=None):
         for s0, e0 in zip(st_, en_):
             f_ = fm(z[s0*fr:e0*fr], fs); out += [f_ - np.median(f_), np.zeros(int(0.1*fs))]
         y = np.concatenate(out); y = (y/np.abs(y).max()*30000).astype(np.int16)
-        with wave.open(a.wav, "wb") as w:
-            w.setnchannels(1); w.setsampwidth(2); w.setframerate(int(fs)); w.writeframes(y.tobytes())
+        rp.source.write_wav(a.wav, y, fs)
         print(f"wrote {a.wav} ({len(y)/fs:.1f} s at {fs:g} Hz)")
     return rows
 

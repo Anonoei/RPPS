@@ -1,0 +1,101 @@
+{
+  "comment": "The tags a definition can carry (\"tags\": [...]): the standards and systems that use it. A tag is listed here before it is used (tests check it); `python -m rpps ls --tag <tag>` lists what carries one, `rp.tagged(tag)` in code",
+  "tags": {
+    "3gpp-umts": {
+      "comment": "3GPP UMTS (WCDMA) channel coding",
+      "ref": "3GPP TS 25.212"
+    },
+    "adsb": {
+      "comment": "ADS-B / Mode S extended squitter, 1090 MHz",
+      "ref": "ICAO Annex 10 Vol IV, RTCA DO-260"
+    },
+    "atsc": {
+      "comment": "ATSC 1.0 8VSB digital television",
+      "ref": "ATSC A/53"
+    },
+    "ax.25": {
+      "comment": "AX.25 amateur packet radio",
+      "ref": "AX.25 v2.2"
+    },
+    "ble": {
+      "comment": "Bluetooth Low Energy",
+      "ref": "Bluetooth Core Vol 6"
+    },
+    "ccsds": {
+      "comment": "CCSDS space data link and channel coding",
+      "ref": "CCSDS 131.0-B"
+    },
+    "dab": {
+      "comment": "Digital Audio Broadcasting",
+      "ref": "ETSI EN 300 401"
+    },
+    "dmr": {
+      "comment": "Digital Mobile Radio",
+      "ref": "ETSI TS 102 361-1"
+    },
+    "dvb-s": {
+      "comment": "DVB-S satellite television",
+      "ref": "EN 300 421"
+    },
+    "dvb-s2": {
+      "comment": "DVB-S2 satellite television and data",
+      "ref": "EN 302 307-1"
+    },
+    "gps": {
+      "comment": "GPS L1 C/A",
+      "ref": "IS-GPS-200"
+    },
+    "gsm": {
+      "comment": "GSM",
+      "ref": "3GPP TS 45.004, 45.003"
+    },
+    "hdlc": {
+      "comment": "HDLC framing (ISO 13239) and the links built on it",
+      "ref": "ISO/IEC 13239"
+    },
+    "ieee-802.11a": {
+      "comment": "IEEE 802.11a/g OFDM Wi-Fi",
+      "ref": "IEEE 802.11-2020 17"
+    },
+    "ieee-802.11b": {
+      "comment": "IEEE 802.11b DSSS / CCK Wi-Fi",
+      "ref": "IEEE 802.11-2020 15, 16"
+    },
+    "ieee-802.11n": {
+      "comment": "IEEE 802.11n HT Wi-Fi",
+      "ref": "IEEE 802.11-2020 19"
+    },
+    "ieee-802.15.4": {
+      "comment": "IEEE 802.15.4 (Zigbee) O-QPSK PHY",
+      "ref": "IEEE 802.15.4-2020 12"
+    },
+    "iess-308": {
+      "comment": "Intelsat IESS-308/309 SCPC satellite modems",
+      "ref": "IESS-308, IESS-309"
+    },
+    "imbe": {
+      "comment": "IMBE vocoder frames (P25 phase 1 voice)",
+      "ref": "TIA-102.BABA"
+    },
+    "lte": {
+      "comment": "LTE",
+      "ref": "3GPP TS 36.211, 36.212"
+    },
+    "mpeg-ts": {
+      "comment": "MPEG-2 transport stream",
+      "ref": "ISO/IEC 13818-1"
+    },
+    "p25": {
+      "comment": "APCO Project 25 phase 1",
+      "ref": "TIA-102.BAAA"
+    },
+    "p25-phase2": {
+      "comment": "APCO Project 25 phase 2 TDMA",
+      "ref": "TIA-102.BBAC"
+    },
+    "v.35": {
+      "comment": "ITU-T V.35 / V.38 scrambler family",
+      "ref": "ITU-T V.35"
+    }
+  }
+}

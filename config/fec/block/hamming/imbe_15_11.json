@@ -2,7 +2,9 @@
   "base": "block",
   "type": "linear",
   "comment": "IMBE Hamming (15,11,3) of vectors u4-u6 (TIA-102.BABA): 11 data bits then 4 parity",
-  "code": [15, 11],
+  "tags": ["imbe", "p25"],
+  "n": 15,
+  "k": 11,
   "p": [
     [1, 1, 1, 1],
     [1, 1, 1, 0],

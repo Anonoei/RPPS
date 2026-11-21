@@ -9,7 +9,7 @@ import pytest
 import rpps as rp
 from rpps import _config
 from rpps.errors import ConfigError
-from rpps.parallel import Frame, Result, Scheduler, InlineExecutor, ThreadExecutor, DROPPED
+from rpps.parallel import Frame, Result, Scheduler, ThreadExecutor, DROPPED
 
 def frames(n, modcods=(1,)):
     return [Frame(i, np.full(8, i, dtype=np.float32), {"ldpc": {"name": modcods[i % len(modcods)]}}, pos=8*i, pos_out=4*i, n_out=4)
@@ -270,14 +270,14 @@ def test_a_batch_holds_one_key():
 
 def test_a_failing_row_is_dropped_and_the_rest_go_on(s2):
     """Frames of one batch share a plan; one that cannot be processed is a gap, the others come out as they would alone"""
-    from rpps.parallel.kernel import Batch, Kernel, LoopKernel
+    from rpps.base.kernel import Batch, Kernel, Form
     class Picky(Kernel):
         name = "picky"
         def run(self, xp, b):
             b.fail(1, "bad row")
             return b
     plan = rp.parallel.BatchPlan([Picky()])
-    b = Batch(np.zeros((3, 4), np.float32), rp.parallel.Form(rp.Data, rp.Category.UNK, rp.dtype.LLR, rp.Rep.CHANNEL, 1, 1, 0, 0), [0, 4, 8], 4)
+    b = Batch(np.zeros((3, 4), np.float32), Form(rp.Data, rp.Category.UNK, rp.dtype.LLR, rp.Rep.CHANNEL, 1, 1, 0, 0), [0, 4, 8], 4)
     b = plan.run(np, b)
     assert list(b.bad) == [False, True, False] and b.why == {1: "bad row"}
     assert plan.spent["picky"] >= 0 and plan.batches == 1
@@ -388,7 +388,6 @@ def _boom(batch):
 
 def test_fused_matched_filter_gives_the_same_symbols_as_filtering_every_sample():
     """Known timing with the matched filter evaluated only at its instants, against the filter then the pick, for any block cut"""
-    from rpps import _accel
     rng = np.random.default_rng(4)
     for name, kw in (("dvbs2/normal", {}), ("ieee802154/2450", {"sps": 4})):
         fused = rp.profile.load(name, sync=KNOWN, **kw)
@@ -396,7 +395,7 @@ def test_fused_matched_filter_gives_the_same_symbols_as_filtering_every_sample()
         x = (rng.normal(size=40000) + 1j*rng.normal(size=40000)).astype(np.complex64)
         def front(p, cuts):
             ops = [op for _, op in p.rx().ops]
-            stop = next(i for i, o in enumerate(ops) if "Timing" in str(o)) + 1
+            stop = next(i for i, o in enumerate(ops) if isinstance(o, rp.sync.time.Known)) + 1
             st, outs, i = None, [], 0
             for k, n in enumerate(cuts):
                 d = rp.Data(x[i:i + n], Fs=1e6, sps=4, stream=st, flush=k == len(cuts) - 1)

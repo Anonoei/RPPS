@@ -51,7 +51,8 @@ CONST = [n for cat, n in defs("constellation")] + ["16QAM", "64QAM", "16APSK", "
 
 @pytest.mark.parametrize("name", CONST)
 def test_symbol_contract(name):
-    c = rp.symbol.load(name)
+    f = _config.find("constellation", name)
+    c = rp.symbol.load(name, **_config.examples(_config.read(f))) if f else rp.symbol.generate(name)
     syms = data_bits(c.bits_per_symbol*16) * c
     assert syms.REP == Rep.SYMBOLS and syms.CAT == Category.SYMBOL
     llr = rp.Data(syms.data, sps=1) / c
@@ -94,7 +95,7 @@ def test_scrambler_contract(cat, name):
         symbols() * s
 
 def test_code_steps_chain_across_the_decoder():
-    ecc, scr = rp.code.load("block", "hamming/7_4"), rp.code.scram.load("v35")
+    ecc, scr = rp.code.load("block/hamming/7_4"), rp.code.scram.load("v35")
     tx = rp.Data(b"Hello World!") * scr * ecc
     assert tx.REP == Rep.CHANNEL
     rx = tx / ecc / scr
@@ -114,7 +115,7 @@ def test_link_contract(domain, cat, name):
         llr / link
 
 def test_crc_round_trip_gives_packets():
-    crc = rp.link.load("crc", "crc16_xmodem")
+    crc = rp.link.load("crc/crc16_xmodem")
     framed = rp.Data(b"payload!") * crc
     assert framed.REP == Rep.DATA and framed.CAT == Category.LINK
     back = framed / crc
@@ -123,7 +124,7 @@ def test_crc_round_trip_gives_packets():
 # ---- an uncoded link needs an explicit code step
 
 def test_uncoded_link():
-    qpsk, crc = rp.symbol.load("QPSK"), rp.link.load("crc", "crc16_xmodem")
+    qpsk, crc = rp.symbol.load("QPSK"), rp.link.load("crc/crc16_xmodem")
     syms = rp.Data(b"no fec here") * crc * qpsk
     rx = rp.Data(syms.data, sps=1) / qpsk
     with pytest.raises(StreamError):

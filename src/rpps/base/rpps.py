@@ -34,6 +34,10 @@ STREAM, FRAME = "stream", "frame"
 
 DROPPED = "dropped" # ctx entry: items a flushed decoder had to drop, as [count, ...]
 FLUSH = "flush" # ctx entry: this is the end of the stream, so nothing is held back (set by Data)
+def failed_of(data):
+    """The data's `failed` mask (True where a decoder before could not decode it), or None: nothing known to have failed"""
+    m = getattr(data, "failed", None)
+    return m if m is not None and len(m) == len(data) else None
 
 
 class Pipe:
@@ -64,11 +68,15 @@ class Pipe:
         """Decode data"""
         return NotImplemented
     def __rmul__(self, data):
-        """Encode data"""
-        return NotImplemented
+        """data * pipe: encode, after checking the pipe takes what data is"""
+        from .data import expect
+        expect(self, data, self.takes(True), True)
+        return self.encode(data)
     def __rtruediv__(self, data):
-        """Decode data"""
-        return NotImplemented
+        """data / pipe: decode, after checking the pipe takes what data is"""
+        from .data import expect
+        expect(self, data, self.takes(False), False)
+        return self.decode(data)
 
     def __mul__(self, other):
         if isinstance(other, Pipe):
@@ -183,3 +191,41 @@ def tag_stages(package, category):
         for obj in vars(mod).values():
             if isinstance(obj, type) and issubclass(obj, Stage) and obj.__module__ == name and "CATEGORY" not in vars(obj):
                 obj.CATEGORY = category
+
+class Tee(Pipe):
+    """The same blocks through several branches: `data + Tee(name=stage_or_pipeline, ...)` gives {name: data out}
+
+        out = mpx + rp.Tee(mono=audio, stereo=pilot + audio)     # one `audio` pipeline serves both
+        left, right = out["mono"].data + out["stereo"].data, ...
+
+    Each branch runs in a stream of its own (kept in the stream's state under the tee), so a stage can sit in several
+    branches, each with its state, and every branch is as independent of the block cut as a chain is. A branch's
+    estimates and states are on its output (`out["stereo"].state(pilot)`, `out["stereo"].stream.est`). A tee ends a
+    chain: what follows takes one branch's output."""
+    def __init__(self, **branches):
+        if not branches:
+            raise ValueError("a Tee needs at least one branch: Tee(name=stage, ...)")
+        self.branches = branches
+
+    def __str__(self):
+        return "Tee(" + ", ".join(f"{k}={v}" for k, v in self.branches.items()) + ")"
+
+    def __radd__(self, data):
+        from .data import _Data
+        from .meta import Stream
+        if not isinstance(data, _Data):
+            return NotImplemented
+        parent = data.meta.stream
+        subs = parent.states.get(self)
+        if subs is None: # The branches' streams, made when the tee first runs in this stream
+            subs = parent.states[self] = {k: Stream(parent.src_Fs) for k in self.branches}
+            for s in subs.values():
+                s.t0 = parent.t0
+        out = {}
+        for name, branch in self.branches.items():
+            meta = data.meta.fork()
+            meta.state = data.meta.state.copy() # (the block as it is, not as a stage left it)
+            meta.op = data.meta.state.copy()
+            meta.stream, meta.gen, meta.flush = subs[name], subs[name].gen, data.meta.flush
+            out[name] = type(data)(data.data, data.CAT, data.DT, dict(data.ctx), meta, data.REP) + branch
+        return out

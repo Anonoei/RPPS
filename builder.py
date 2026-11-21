@@ -57,7 +57,7 @@ def cmd_build(args) -> None:
 
 
 def cmd_test(args) -> None:
-    py("pytest", "-q")
+    py("pytest", "-q", "-n", "auto")
 
 
 def cmd_docs(args) -> None:

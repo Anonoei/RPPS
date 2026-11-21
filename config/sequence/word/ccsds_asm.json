@@ -1,0 +1,10 @@
+{
+  "base": "sequence",
+  "type": "word",
+  "comment": "CCSDS attached sync marker, 32 bits before every transfer frame (Reed-Solomon and convolutional / uncoded telemetry), most significant bit first",
+  "ref": "CCSDS 131.0-B-4 8.2",
+  "tags": ["ccsds"],
+  "word": "0x1ACFFC1D",
+  "bits": 32,
+  "order": "msb"
+}

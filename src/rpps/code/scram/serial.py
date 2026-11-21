@@ -9,7 +9,9 @@ How a sequence is applied to bits; the sequences are their own resource (rpps.se
           "frame": {"bytes": 1504, "sync_period": 188, "sync_bytes": 1, "marker": 184}}  optional: packet structure (see Additive)
     feedthrough  self-synchronizing: the output feeds the register, so the register is the scrambler's own
          {"base": "scramble", "type": "feedthrough", "register": "fibonacci" | "galois_left" | "galois_right",
-          "poly": [16, 14, 13, 11],          feedback taps, 1 = first stage
+          "poly": [16, 14, 13, 11],          the polynomial's exponents, as standards write it (1 + x^14 + x^17: [14, 17]):
+                                             the delays of the feedback taps, 1 = the first stage. (A recurrence's
+                                             "taps", in rpps.sequence, are positions from 0: another key, another thing)
           "seed": [1, 0, 1, ...]}            register bits, first stage first
     Seeds, sequence arguments and any other value can be load-time parameters ("params", then {"param": ...} / {"expr": ...}).
 """

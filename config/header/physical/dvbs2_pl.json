@@ -3,6 +3,7 @@
   "type": "physical",
   "comment": "DVB-S2 PLHEADER: 26 SOF symbols then the PLS code, 64 symbols, all pi/2-BPSK. The PLS carries the MODCOD (5 bits), the frame size (1: short) and pilots (1: on): a (32,6) first-order Reed-Muller word, each bit sent twice, the second copy XOR the pilots bit, then XOR a fixed scrambling word",
   "ref": "EN 302 307-1 5.5.2",
+  "tags": ["dvb-s2"],
   "constellation": "bpsk",
   "phase": 45,
   "rotate": 90,

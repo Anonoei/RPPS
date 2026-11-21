@@ -37,7 +37,8 @@ def test_tables():
     assert t.row({"modcod": 12, "short": 0})["constellation"] == "dvbs2_8psk"
     assert t.row({"modcod": 12, "short": 0})["interleaver"] == "dvbs2_8psk_210" # 8PSK 3/5 reads its columns backwards
     assert t.row({"modcod": 4, "short": 0})["kbch"] == 32208
-    assert t.row({"modcod": 4, "short": 1}) is None and t.row({"modcod": 4}) is None # no short frames; a key missing
+    assert t.row({"modcod": 4, "short": 1})["kbch"] == 7032 # A short frame (table 5b)
+    assert t.row({"modcod": 11, "short": 1}) is None and t.row({"modcod": 4}) is None # No short 9/10; a key missing
     assert t.row({"modcod": 4, "short": False}) is not None # header bits as bools look the same
     assert rp.profile.table("ieee80211b/rate").row({"signal": 20})["constellation"] == "qpsk_axes"
 
@@ -89,17 +90,17 @@ def test_live_operators():
     c = rp.symbol.load("bpsk")
     c.control(name="qpsk_axes")
     assert c.bits_per_symbol == 2 and c.pos_rate(True) == 2 and len(c.points) == 4
-    code = rp.code.load("block", "bch/dvbs2_1_2")
+    code = rp.code.load("block/bch/dvbs2_1_2")
     code.control(name="bch/dvbs2_3_4")
     assert (code.e_num, code.e_den) == (48408, 48600)
-    il = rp.code.load("interleave", "dvbs2_8psk")
+    il = rp.code.load("interleave/dvbs2_8psk")
     il.control(name=None) # nothing: QPSK has no bit interleaver
     x = rp.base.Mod(np.linspace(-1, 1, 30).astype(np.float32), rep=Rep.CHANNEL)
     assert np.array_equal((x/il).data, x.data)
 
 def test_restart_rebuilds_and_reports(config_path):
     """A transmit schedule restarting a convolutional code each frame: rebuilt, reported, output as from a fresh one"""
-    tmp_profile(config_path, {"steps": [{"code": "fec", "id": "cc", "type": "conv", "name": "k7_171_133/1_2"}],
+    tmp_profile(config_path, {"steps": [{"code": "conv", "id": "cc", "name": "k7_171_133/1_2"}],
                               "controls": {"cc": {"schedule": [{"name": "k7_171_133/1_2"}], "drive": {"cc": {"name": "name"}}}}},
                 "t/restart")
     p = rp.profile.load("t/restart")
@@ -113,7 +114,7 @@ def test_restart_rebuilds_and_reports(config_path):
         outs.append(np.asarray(tx(d).data))
     restarts = [r for r in s.control.reports if r["what"] == "restart"]
     assert len(restarts) == 2 and restarts[0]["step"] == "cc"
-    fresh = rp.code.load("conv", "k7_171_133/1_2")
+    fresh = rp.code.load("conv/k7_171_133/1_2")
     assert np.array_equal(outs[1], np.asarray((rp.Data(b) * fresh).data)) # the trellis started again
 
 # ---- operators of the frame structure
@@ -148,7 +149,7 @@ def test_pilots_round_trip():
     assert np.allclose((y / rp.symbol.Pilots(slots=40)).data, x)
 
 def test_link_header_round_trip():
-    h = rp.link.load("header", "ieee80211b_plcp")
+    h = rp.link.load("header/ieee80211b_plcp")
     h.control(signal=20)
     out = rp.Data(bits(200, 3)) * h
     assert len(out) == 128 + 16 + 48 + 200
@@ -273,7 +274,8 @@ def test_dvbs2_transmit_frames(s2_signal):
     heads = [(f["modcod"], f["pilots"], at) for _, f, at in o.stream.control.fields("pls")]
     assert heads == [(4, 1, 0), (12, 1, dfl[0]), (1, 0, dfl[0] + dfl[1])] # each frame's fields, where its data starts
     symbols = [90 + 360*90 + 22*36, 90 + 240*90 + 14*36, 90 + 360*90]
-    assert len(o) == 4*sum(symbols)
+    ntaps = next(s.ntaps for s in o.stream.states.values() if hasattr(s, "ntaps")) # the shaping filter's (its stream state)
+    assert len(o) == 4*sum(symbols) + 4*(-(-(ntaps - 1)//4)) # and the last pulses' tail, whole symbols of it
 
 def test_dvbs2_vcm_loopback(s2_signal):
     p, x, o, data, dfl = s2_signal
@@ -313,3 +315,33 @@ def test_dvbs2_from_timed_symbols(s2_signal):
     syms = np.asarray((rp.Data(x, Fs=o.Fs, sps=4, delay=o.delay, flush=True) + p.rx().ops[0][1] + p.rx().ops[1][1]).data)
     out = rx(rp.Data((syms*np.exp(0.3j)).astype(np.complex64), sps=1, flush=True))
     assert np.array_equal(np.asarray(out.data).astype(bool), data)
+
+@pytest.mark.parametrize("modcod", [18, 21, 23, 24, 26, 28]) # 16APSK 2/3, 5/6, 9/10; 32APSK 3/4, 5/6, 9/10
+def test_dvbs2_apsk_loopback(modcod):
+    """16APSK and 32APSK (EN 302 307-1 5.4.3-5.4.4): each rate's own ring ratios, the bit interleaver and the mapping"""
+    p = rp.profile.load("dvbs2/normal", sync=KNOWN)
+    t = rp.profile.table("dvbs2/modcod")
+    frames = [{"modcod": modcod, "pilots": 1}, {"modcod": 4, "pilots": 1}] # Then QPSK: the receiver switches back
+    dfl = [t.row({**f, "short": 0})["kbch"] - 80 for f in frames]
+    data = bits(sum(dfl), modcod)
+    o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=frames)
+    x = np.concatenate((o.data, np.zeros(200, np.complex64)))
+    got, st = s2_receive(p, x, o, noise=0.02) # about 25 dB Es/N0: 32APSK 9/10 needs about 16
+    assert np.array_equal(got, data)
+    assert [f["modcod"] for _, f, _ in st.control.fields("pls")] == [modcod, 4]
+    assert st.est["dvbs2_bb"]["crc_failed"] == 0
+
+@pytest.mark.parametrize("modcod", [1, 4, 12, 14, 18, 22, 24, 27]) # Short: QPSK 1/4, 1/2; 8PSK 3/5, 3/4; 16APSK 2/3, 8/9; 32APSK 3/4, 8/9
+def test_dvbs2_short_frame_loopback(modcod):
+    """Short FECFRAMEs (16200 bits, EN 302 307-1 annex C and tables 5b, 6b, 7b), between normal ones"""
+    p = rp.profile.load("dvbs2/normal", sync=KNOWN)
+    t = rp.profile.table("dvbs2/modcod")
+    frames = [{"modcod": modcod, "pilots": 1, "short": 1}, {"modcod": 4, "pilots": 0}, {"modcod": modcod, "pilots": 0, "short": 1}]
+    dfl = [t.row({"short": 0, **f})["kbch"] - 80 for f in frames]
+    data = bits(sum(dfl), 100 + modcod)
+    o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=frames)
+    x = np.concatenate((o.data, np.zeros(200, np.complex64)))
+    got, st = s2_receive(p, x, o, noise=0.02)
+    assert np.array_equal(got, data)
+    assert [(f["modcod"], f["short"]) for _, f, _ in st.control.fields("pls")] == [(modcod, 1), (4, 0), (modcod, 1)]
+    assert st.est["dvbs2_bb"]["crc_failed"] == 0

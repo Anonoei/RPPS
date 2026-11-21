@@ -13,7 +13,7 @@ MODS = ["bpsk", "qpsk", "8psk"]
 def build(code, scram, mod):
     m = rp.symbol.load(mod)
     m.set_mapping(m.maps[0])
-    return rp.code.load(*code), rp.code.scram.load(scram), m
+    return rp.code.load("/".join(code)), rp.code.scram.load(scram), m
 
 @pytest.mark.parametrize("code,scram,mod", list(itertools.product(CODES, SCRAMS, MODS)))
 def test_pipeline_round_trip(code, scram, mod, rng):
@@ -98,7 +98,7 @@ def test_scrambler_state_belongs_to_the_stream(rng):
     assert np.array_equal((a / scr).data, bits)
 
 def test_interleaver_streams(rng):
-    il = rp.code.load("interleave", "forney/12_17")
+    il = rp.code.load("interleave/forney/12_17")
     sym = rng.integers(0, 256, 12*40).astype(np.uint8)
     whole = rp.Data(sym, flush=True) * il
     got = chunked(lambda d: d * il, sym, [0, 12*7, 12*7 + 5, len(sym)])
@@ -109,7 +109,7 @@ CONV = ["k3_5_7/1_2", "k7_133_171/1_2", "k7_133_171/3_4"]
 @pytest.mark.parametrize("name", CONV)
 def test_conv_stream_keeps_the_register(name, rng):
     """The encoder register belongs to the stream: chunked equals one piece, and a second stream starts clean"""
-    ecc = rp.code.load("conv", name)
+    ecc = rp.code.load(f"conv/{name}")
     bits = rng.integers(0, 2, 600).astype(bool)
     whole = rp.Data(bits, flush=True) * ecc
     got = chunked(lambda d: d * ecc, bits, [0, 11, 100, 333, 600])
@@ -119,14 +119,14 @@ def test_conv_stream_keeps_the_register(name, rng):
 
 @pytest.mark.parametrize("name", CONV)
 def test_conv_stream_decodes_in_chunks(name, rng):
-    ecc = rp.code.load("conv", name)
+    ecc = rp.code.load(f"conv/{name}")
     bits = rng.integers(0, 2, 900).astype(bool)
     coded = (rp.Data(bits, flush=True) * ecc).data
     got = chunked(lambda d: d / ecc, coded, [0, 13, 250, 251, 1000, len(coded)])
     assert np.array_equal(got[:len(bits)], bits)
 
 def test_conv_stream_corrects_errors_across_chunks(rng):
-    ecc = rp.code.load("conv", "k7_133_171/1_2")
+    ecc = rp.code.load("conv/k7_133_171/1_2")
     bits = rng.integers(0, 2, 2000).astype(bool)
     coded = (rp.Data(bits, flush=True) * ecc).data.copy()
     coded[rng.choice(len(coded), 40, replace=False)] ^= True
@@ -134,9 +134,7 @@ def test_conv_stream_corrects_errors_across_chunks(rng):
     assert np.array_equal(got[:len(bits)], bits)
 
 TERMINATED = {
-    "base": "conv", "type": "split",
-    "encode": {"type": "conv", "num": 1, "den": 2, "generator": [[1, 0, 1], [1, 1, 1]], "constraint": 3, "terminated": True},
-    "decode": {"type": "viterbi", "num": 1, "den": 2, "generator": [[1, 0, 1], [1, 1, 1]], "constraint": 3, "terminated": True},
+    "base": "conv", "generator": [[1, 0, 1], [1, 1, 1]], "constraint": 3, "termination": "zero",
 }
 
 def test_terminated_conv_gets_its_tail_when_the_stream_ends(rng):
@@ -149,13 +147,14 @@ def test_terminated_conv_gets_its_tail_when_the_stream_ends(rng):
     assert np.array_equal(out, bits)
 
 def test_bcjr_conv_stream_decodes_at_the_end(rng):
-    ecc = rp.code.load("conv", "k7_133_171/1_2", decoder="bcjr")
+    ecc = rp.code.load("conv/k7_133_171/1_2", decoder="bcjr")
     bits = rng.integers(0, 2, 300).astype(bool)
     coded = (rp.Data(bits, flush=True) * ecc).data
     first = rp.Data(coded[:200]) / ecc
     assert len(first) == 0                                 # it waits for the end of the stream
     last = rp.Data(coded[200:], ctx=first.ctx, flush=True) / ecc
-    assert np.array_equal(last.data[:300], bits)
+    assert last.DT == rp.dtype.LLR                         # a soft-output decoder hands its LLRs on
+    assert np.array_equal(last.bits()[:300], bits)
 
 def test_scrambling_changes_the_symbols(rng):
     ecc, scr, m = build(("block", "hamming/7_4"), "v35", "qpsk")

@@ -1,0 +1,7 @@
+{
+  "base": "block",
+  "type": "rm",
+  "comment": "Reed-Muller RM(1,5): (32, 6, 16), the Mariner 9 telemetry code; decoded by the fast Hadamard transform",
+  "r": 1,
+  "m": 5
+}

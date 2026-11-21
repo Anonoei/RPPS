@@ -71,12 +71,6 @@ class PilotPLL(rp.base.Stage):
         st.phase = (st.phase + st.freq*n) % (2*np.pi)
         return out.astype(np.float32)
 
-class Deemphasis(rp.signal.filters.IIR):
-    """Broadcast FM boosts the highs: one pole at 1/(2*pi*tau) takes the boost back out (75 us US, 50 us elsewhere)"""
-    def __init__(self, tau, fs):
-        alpha = 1 - np.exp(-1/(tau*fs))
-        super().__init__(rp.signal.filters.iir.single_pole(alpha))
-
 # ---------------------------------------------------------------------------------------------- output
 
 class Speaker:
@@ -304,14 +298,12 @@ def build(args, carrier):
         lp, Fs_a, _ = rp.signal.channelize(0.0, 2*15e3, Fs_mpx, oversample=1.5) # 480k / 10
         assert abs(Fs_a - AUDIO) < 1, Fs_a # A wrong rate here is a pitch shift and dropouts
         return lp[1:] # Not its ShiftFreq(0): that would make the real audio complex
-    tau = args.tau*1e-6
+    # One audio chain for both: the tee gives each branch its own state, so L+R and L-R run the same filters in time
+    audio = audio_lp() + rp.signal.filters.IIR(rp.signal.filters.iir.biquad("notch", PILOT/AUDIO, q=8.0)) + rp.signal.Deemphasis(args.tau*1e-6)
+    pll = PilotPLL()
     return SimpleNamespace(
         front=front, shift=shift, demod=rp.wave.FMDemod(gain=-0.5), # FMDemod's sign is opposite the frequency's
-        mono_lp=audio_lp(), diff_lp=audio_lp(), pll=PilotPLL(),
-        notch_m=rp.signal.filters.IIR(rp.signal.filters.iir.biquad("notch", PILOT/AUDIO, q=8.0)),
-        notch_s=rp.signal.filters.IIR(rp.signal.filters.iir.biquad("notch", PILOT/AUDIO, q=8.0)),
-        deemph_m=Deemphasis(tau, AUDIO), deemph_s=Deemphasis(tau, AUDIO),
-        rds=rds_chain())
+        pll=pll, audio=rp.Tee(mono=audio, stereo=pll + audio), rds=rds_chain())
 
 def rds_chain():
     """MPX at 480 kS/s -> 1187.5 baud BPSK symbols"""
@@ -321,7 +313,7 @@ def rds_chain():
     sym = rp.sync.time.MM(0.05, 0.0, 32, biphase=True)
     costas = rp.sync.Costas(0.132, 0.00932, order=2)
     return SimpleNamespace(pre=pre, post=sym + costas, sym=sym, costas=costas,
-                           track=rp.analysis.quality.Track(np.array([1.0, -1.0])), decoder=RDS())
+                           track=rp.sync.quality.Track(np.array([1.0, -1.0])), decoder=RDS())
 
 def reader(blocks, out, stop):
     """The HackRF has to be drained steadily; processing happens on the other side of this queue"""
@@ -346,7 +338,7 @@ def run(args):
     stop = threading.Event()
     threading.Thread(target=reader, args=(src(BLOCK), q, stop), daemon=True).start()
     speaker = Speaker(play=not args.no_audio, wav=args.wav)
-    fo, afc, stereo = -OFFSET, 0.0, 0.0 # Shift to the carrier, smoothed carrier error [Hz], stereo blend (0 mono, 1 stereo)
+    fo, afc, stereo, pll_now = -OFFSET, 0.0, 0.0, None # Shift to the carrier, smoothed carrier error [Hz], stereo blend (0 mono, 1 stereo)
     t0, t_status, busy, nin = time.time(), time.time(), 0.0, 0
     t_mono = time.monotonic()
     print("Running; Ctrl-C to stop")
@@ -371,11 +363,11 @@ def run(args):
 
             if not args.no_audio or args.wav:
                 # Both paths run the same filters, so L+R and L-R stay in time. De-emphasis is linear: do it before L/R
-                m = np.asarray((mpx + st.mono_lp + st.notch_m + st.deemph_m).data)
-                d = np.asarray((mpx + st.pll + st.diff_lp + st.notch_s + st.deemph_s).data)
+                out = mpx + st.audio
+                m, d = np.asarray(out["mono"].data), np.asarray(out["stereo"].data)
                 n = min(len(m), len(d))
                 m, d = m[:n], d[:n]
-                pll = mpx.state(st.pll)
+                pll = pll_now = out["stereo"].state(st.pll) # (the pilot runs in the stereo branch's stream)
                 pilot_ok = bool(pll and pll.locked)
                 stereo += 0.1*((1.0 if pilot_ok and not args.mono else 0.0) - stereo) # Fade, don't click
                 speaker.write(args.volume*(m + stereo*d), args.volume*(m - stereo*d))
@@ -392,7 +384,7 @@ def run(args):
             busy += time.time() - t1
             now = time.time()
             if now - t_status >= 2.0:
-                pll = mpx.state(st.pll)
+                pll = pll_now
                 parts = [f"rx {nin/(time.monotonic() - t_mono)/1e6:.3f} MS/s", f"carrier {(cf - fo)/1e6:9.4f} MHz", f"AFC {afc:+6.0f} Hz",
                          f"load {busy/(now - t_status)*100:3.0f}%", f"queue {q.qsize():2d}"]
                 if speaker.proc:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rpps"
-version = "0.4.1"
+version = "0.5.0"
 description = "RF Parameter Processor Suite"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -33,7 +33,7 @@ dependencies = ["numpy>=2.0", "pysdrlib>=0.4.3"]
 
 [project.optional-dependencies]
 viz = ["matplotlib"]
-test = ["pytest"]
+test = ["pytest", "pytest-xdist"]
 oracle = ["scipy"] # only the tests that check against it: RPPS itself must not need it
 docs = ["pdoc3"]
 dev = ["rpps[viz,test,oracle,docs]", "twine", "build", "bumpver"]
@@ -53,7 +53,7 @@ where = ["src"]
 
 
 [tool.bumpver]
-current_version = "0.4.1"
+current_version = "0.5.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message = "bump version {old_version} -> {new_version}"
 tag_message = "{new_version}"
@@ -84,4 +84,8 @@ test-command = "python -c \"import rpps._native\" && python {project}/tests/run_
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
 pythonpath = ["src"]
-markers = ["slow: takes more than a few seconds"]
+markers = [
+    "slow: takes more than a few seconds",
+    "kernels: over a minute with the C++ kernels off (the no-kernel CI pass leaves it out; it runs in the others)",
+    "oracle: compares against scipy (pytest.importorskip); CI runs these again with scipy installed",
+]

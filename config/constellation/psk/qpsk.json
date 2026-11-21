@@ -1,11 +1,8 @@
 {
   "base": "constellation",
-  "comment": "QPSK, Gray, four rotations",
-  "points": [
-    {"mag": 1, "pha": 45},
-    {"mag": 1, "pha": 135},
-    {"mag": 1, "pha": 225},
-    {"mag": 1, "pha": 315}
+  "comment": "QPSK, Gray, four rotations: one ring of 4 at 45 + 90k degrees",
+  "rings": [
+    {"n": 4, "pha": 45}
   ],
   "maps": [
     {

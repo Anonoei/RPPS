@@ -7,20 +7,26 @@ class GF:
     poly: the field polynomial, with the x^m term included (0x11D for m=8). Elements are ints below 2^m, and every
     operation takes scalars or numpy arrays. Polynomials are arrays of elements, highest degree first.
     """
+    _TABLES = {} # (m, poly) -> (exp, log), built once per process (GF(2^16) takes a moment) and never written to
+
     def __init__(self, m=8, poly=0x11D):
         self.m = m
         self.poly = poly
         self.size = 2**m
-        self.exp = np.zeros(2*self.size, dtype=np.int64)
-        self.log = np.zeros(self.size, dtype=np.int64)
-        x = 1
-        for i in range(self.size-1):
-            self.exp[i] = x
-            self.log[x] = i
-            x <<= 1
-            if x & self.size:
-                x ^= poly
-        self.exp[self.size-1:2*self.size-2] = self.exp[:self.size-1]
+        if (m, poly) not in GF._TABLES:
+            exp = np.zeros(2*self.size, dtype=np.int64)
+            log = np.zeros(self.size, dtype=np.int64)
+            x = 1
+            for i in range(self.size-1):
+                exp[i] = x
+                log[x] = i
+                x <<= 1
+                if x & self.size:
+                    x ^= poly
+            exp[self.size-1:2*self.size-2] = exp[:self.size-1]
+            exp.flags.writeable = log.flags.writeable = False
+            GF._TABLES[(m, poly)] = (exp, log)
+        self.exp, self.log = GF._TABLES[(m, poly)]
 
     def mul(self, a, b):
         a, b = np.asarray(a), np.asarray(b)

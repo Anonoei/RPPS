@@ -1,0 +1,11 @@
+{
+  "base": "block",
+  "abstract": true,
+  "type": "ldpc",
+  "comment": "IEEE 802.11n LDPC codes of 648 bits (z = 27): each rate's matrix of shifts",
+  "ref": "IEEE 802.11-2020 F.1 (Table F-1), 20.3.11.7",
+  "tags": ["ieee-802.11n"],
+  "z": 27,
+  "iters": 50,
+  "alpha": 0.8
+}

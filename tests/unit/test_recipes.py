@@ -9,11 +9,11 @@ import rpps as rp
 HALFSINE = "halfsine/halfsine"
 
 def oqpsk_tx(bits_or_syms, sps):
-    return bits_or_syms + rp.signal.sample.up.Zeros(sps) + rp.signal.filters.load("pulse", HALFSINE) + rp.wave.Stagger()
+    return bits_or_syms + rp.signal.sample.up.Zeros(sps) + rp.signal.filters.load(f"pulse/{HALFSINE}") + rp.wave.Stagger()
 
 def oqpsk_rx(wave, sps):
     """Coherent: realign the rails, matched half-sine filter, one sample per symbol at the pulse peak (scaled to unit pulses)"""
-    out = wave + rp.wave.Stagger(rail="i") + rp.signal.filters.load("pulse", HALFSINE) + rp.signal.sample.down.Decimate(sps, offset=sps + sps//2)
+    out = wave + rp.wave.Stagger(rail="i") + rp.signal.filters.load(f"pulse/{HALFSINE}") + rp.signal.sample.down.Decimate(sps, offset=sps + sps//2)
     return out.data*2/sps
 
 def test_oqpsk_bits_loopback():
@@ -49,11 +49,11 @@ def test_oqpsk_any_block_cut_and_constant_phase():
     sps = 8
     c = rp.symbol.load("QPSK")
     syms = (rp.Data(rng.integers(0, 256, 40).astype(np.uint8), Fs=1e6, sps=1) * c)
-    up, hs, st = rp.signal.sample.up.Zeros(sps), rp.signal.filters.load("pulse", HALFSINE), rp.wave.Stagger()
+    up, hs, st = rp.signal.sample.up.Zeros(sps), rp.signal.filters.load(f"pulse/{HALFSINE}"), rp.wave.Stagger()
     ref = (syms + up + hs + st).data
     x = syms.data
     s, outs, i = None, [], 0
-    up2, hs2, st2 = rp.signal.sample.up.Zeros(sps), rp.signal.filters.load("pulse", HALFSINE), rp.wave.Stagger()
+    up2, hs2, st2 = rp.signal.sample.up.Zeros(sps), rp.signal.filters.load(f"pulse/{HALFSINE}"), rp.wave.Stagger()
     for b in [1]*10 + [0, 33, len(x) - 43]:
         d = rp.Data(x[i:i + b], stream=s, Fs=1e6, sps=1)
         s = d.stream
@@ -105,7 +105,7 @@ def test_dsss_waveform_wifi_dbpsk_with_rrc_shaping():
     bpsk, diff, spread = rp.symbol.load("bpsk"), rp.symbol.Differential(), rp.symbol.Spread(rp.sequence.load("barker11"))
     bits = np.unpackbits(msg).astype(bool)
     chips = rp.Data(msg, Fs=1e6, sps=1) * bpsk * diff * spread
-    rrc = rp.signal.filters.load("pulse", "rrc/0p35")
+    rrc = rp.signal.filters.load("pulse/rrc/0p35")
     tx = chips + rp.signal.sample.up.Zeros(sps) + rrc
     rx = tx + rrc # matched filter; rx.delay is the delay of both filters
     pick = rx.data[int(round(rx.delay*rx.Fs))::sps] # one sample per chip, at the pulse peaks

@@ -22,8 +22,9 @@ import copy
 
 import numpy as np
 
-from ..base.rpps import FLUSH
+from ..base.rpps import FLUSH, failed_of
 from . import control as _ctl
+from ..base import control as _control
 from .steps import STAGE, DECODE
 
 MIN_SEGMENT = 1024 # Items at the re-run span's first step per piece, at least
@@ -94,7 +95,7 @@ class Runner:
         self._step_slots = {}
         for s in self.slots:
             self._step_slots.setdefault(s.step.id, []).append(s.index)
-        self.entries = {h: e for h, e in self.entries.items() if h in self._step_slots}
+        self.entries = {h: e for h, e in self.entries.items() if h in self._step_slots and e.on in ("both", direction)}
         self.changes, self._keys, self._logent, self._seq, self._call = [], set(), {}, 0, 0
         self._fresh = []
         self.emitted = None
@@ -144,7 +145,7 @@ class Runner:
     def __call__(self, data, fields=None):
         self._call += 1
         self._stream = data.meta.stream
-        _ctl.of(self._stream)
+        _control.of(self._stream)
         if self.ctx is not None:
             ctx = dict(self.ctx)
             ctx[FLUSH] = data.ctx.get(FLUSH, False)
@@ -158,6 +159,10 @@ class Runner:
             data = self._run_span(data)
         self.ctx = dict(data.ctx)
         return self._finish(data)
+
+    def __radd__(self, data):
+        """`block + runner`, so a runner goes where a stage does: `for out in src(n) + p.rx()`"""
+        return self(data)
 
     def _finish(self, data):
         """What the runner does with what its own slots gave (a parallel runner hands it to its region)"""
@@ -246,7 +251,10 @@ class Runner:
         meta.pos = data.meta.pos + a
         c = dict(ctx)
         c[FLUSH] = bool(flush)
-        return type(data)(np.asarray(data.data)[a:b], data.CAT, data.DT, c, meta, data.REP)
+        out = type(data)(np.asarray(data.data)[a:b], data.CAT, data.DT, c, meta, data.REP)
+        f = failed_of(data)
+        out.failed = None if f is None else f[a:b]
+        return out
 
     @staticmethod
     def _join(outs):
@@ -257,7 +265,10 @@ class Runner:
         arr = np.concatenate(arrs) if arrs else np.asarray(last.data)
         meta = last.meta.fork()
         meta.pos = outs[0].meta.pos
-        return type(last)(arr, last.CAT, last.DT, dict(last.ctx), meta, last.REP)
+        out = type(last)(arr, last.CAT, last.DT, dict(last.ctx), meta, last.REP)
+        if any(failed_of(o) is not None for o in outs if len(o)):
+            out.failed = np.concatenate([failed_of(o) if failed_of(o) is not None else np.zeros(len(o), bool) for o in outs if len(o)])
+        return out
 
     # ---- changes
 
@@ -292,7 +303,7 @@ class Runner:
         self._keys.add(key)
         entry_log = {"step": step, "fields": dict(fields), "at": int(at)}
         self._logent[key] = (origin, entry_log)
-        _ctl.of(self._stream).log.append(entry_log)
+        _control.of(self._stream).log.append(entry_log)
         entry = self.entries.get(step) if origin >= 0 else self.framer
         if entry is None:
             return
@@ -400,7 +411,7 @@ class Runner:
 
     def _report(self, what, **kw):
         if self._stream is not None:
-            _ctl.of(self._stream).reports.append({"what": what, **kw})
+            _control.of(self._stream).reports.append({"what": what, **kw})
 
     # ---- transmit: the fields of each frame
 
@@ -469,7 +480,7 @@ class Runner:
         c.changes = [ch.copy() for ch in self.changes]
         c.keys = set(self._keys)
         c.est = copy.deepcopy(st.est)
-        c.log = len(_ctl.of(st).log)
+        c.log = len(_control.of(st).log)
         self.ckpts.append(c)
 
     def _restore(self, c):
@@ -491,13 +502,13 @@ class Runner:
         st.est.clear()
         st.est.update(copy.deepcopy(c.est))
         # What the span published after the checkpoint is published again by the re-run (or was wrong)
-        ctl = _ctl.of(st)
+        ctl = _control.of(st)
         span_ids = {id(e) for o, e in self._logent.values() if o >= self.span}
         ctl.log = ctl.log[:c.log] + [e for e in ctl.log[c.log:] if id(e) not in span_ids]
 
     def _rewind(self, late):
         """Back to the last checkpoint before the earliest late change; None when re-running is given up"""
-        ctl = _ctl.of(self._stream)
+        ctl = _control.of(self._stream)
         p = min(ch.s0 if ch.s0 is not None else min(ch.back.values()) for ch in late)
         fit = [c for c in self.ckpts if c.pos <= p]
         if fit:
@@ -570,9 +581,11 @@ class Runner:
             cut = int(self.emitted - out.meta.pos)
             meta = out.meta.fork()
             meta.pos = out.meta.pos + min(cut, len(out))
+            f = failed_of(out)
             out = type(out)(np.asarray(out.data)[cut:], out.CAT, out.DT, out.ctx, meta, out.REP)
+            out.failed = None if f is None else f[cut:]
         self.emitted = out.meta.pos + len(out)
-        _ctl.of(self._stream).buffer = sum(len(d) for d in self.buf)
+        _control.of(self._stream).buffer = sum(len(d) for d in self.buf)
         return out
 
     def _piece(self, a, b, ctx, flush, D):
@@ -584,7 +597,11 @@ class Runner:
         meta.pos = a
         c = dict(ctx)
         c[FLUSH] = bool(flush)
-        return type(D)(arr, D.CAT, D.DT, c, meta, D.REP)
+        out = type(D)(arr, D.CAT, D.DT, c, meta, D.REP)
+        masks = [(failed_of(d), max(a - d.meta.pos, 0), max(b - d.meta.pos, 0), d) for d in self.buf if d.meta.pos < b and d.meta.pos + len(d) > a]
+        if any(m is not None for m, _, _, _ in masks):
+            out.failed = np.concatenate([np.zeros(len(np.asarray(d.data)[i:j]), bool) if m is None else m[i:j] for m, i, j, d in masks])
+        return out
 
     def _trim(self, keep):
         """Forget checkpoints, and the input before them, further back than a field can reach (the last two stay)"""

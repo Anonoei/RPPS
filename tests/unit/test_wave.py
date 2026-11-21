@@ -29,7 +29,7 @@ def test_halfsine_pulse():
         shaping.ShapingHalfSine(1)
 
 def test_halfsine_config_uses_stream_sps():
-    st = rp.signal.filters.load("pulse", "halfsine/halfsine")
+    st = rp.signal.filters.load("pulse/halfsine/halfsine")
     x = np.zeros(32, np.complex64)
     x[::8] = 1
     out = (rp.Data(x, Fs=8e6, sps=8) + st).data
@@ -46,7 +46,7 @@ def test_gaussian_pulse_holds_a_level(name, bt):
     wide = shaping.ShapingGaussian(sps, 0.3).pulse
     narrow = shaping.ShapingGaussian(sps, 1.0).pulse
     assert wide.max() < narrow.max()
-    assert rp.signal.filters.load("pulse", name) is not None
+    assert rp.signal.filters.load(f"pulse/{name}") is not None
 
 # ---- Decimate offset
 
@@ -87,7 +87,7 @@ def test_stagger_needs_whole_samples():
 
 def oqpsk(syms, sps):
     d = rp.Data(syms.astype(np.complex64), Fs=1e6, sps=1)
-    return d + rp.signal.sample.up.Zeros(sps) + rp.signal.filters.load("pulse", "halfsine/halfsine") + rp.wave.Stagger()
+    return d + rp.signal.sample.up.Zeros(sps) + rp.signal.filters.load("pulse/halfsine/halfsine") + rp.wave.Stagger()
 
 def test_oqpsk_has_constant_envelope_and_no_phase_jumps():
     """Half-sine pulses on staggered rails: |s| is constant (MSK), so the phase moves by at most pi/2 per half symbol"""
@@ -102,7 +102,7 @@ def test_oqpsk_coherent_loopback_symbols():
     sps = 8
     sym = (rng.choice([-1, 1], 300) + 1j*rng.choice([-1, 1], 300))/np.sqrt(2)
     tx = oqpsk(sym, sps)
-    rx = tx + rp.wave.Stagger(rail="i") + rp.signal.filters.load("pulse", "halfsine/halfsine") + rp.signal.sample.down.Decimate(sps, offset=sps + sps//2)
+    rx = tx + rp.wave.Stagger(rail="i") + rp.signal.filters.load("pulse/halfsine/halfsine") + rp.signal.sample.down.Decimate(sps, offset=sps + sps//2)
     got = rx.data*2/sps # the matched filter's gain at the peak is sps/2
     n = min(len(got), len(sym))
     assert n > 250
@@ -145,7 +145,7 @@ def test_gfsk_loopback():
     rng = np.random.default_rng(7)
     sps = 8
     lev = rng.choice([-1.0, 1.0], 300).astype(np.float32)
-    w = levels_to_fm(lev, sps, 0.5, rp.signal.filters.load("pulse", "gaussian/bt0p5"))
+    w = levels_to_fm(lev, sps, 0.5, rp.signal.filters.load("pulse/gaussian/bt0p5"))
     freq = (w + rp.wave.FMDemod(rp.wave.fm_gain(0.5, sps))).data
     found = False
     for off in range(sps):
@@ -201,3 +201,28 @@ def test_fsk_transmit_in_chunks_matches_one_shot():
     ref = chain(levels, [400])
     for cuts in ([301, 99], [1]*40 + [360], [0, 399, 1]):
         assert np.allclose(chain(levels, cuts), ref, atol=1e-5)
+
+# ---- wave.Shape / wave.Matched: the pair a profile's shape step builds
+
+def _pulse():
+    return rp.signal.filters.load("pulse/rrc/0p35")
+
+def test_shape_is_zeros_and_pulse_for_any_block_cut(rng):
+    sym = (rng.choice([-1, 1], 300) + 1j*rng.choice([-1, 1], 300)).astype(np.complex64)
+    ref = (rp.Data(sym, sps=1) + rp.signal.sample.up.Zeros(8) + _pulse()).data
+    shape = rp.wave.Shape(8, _pulse())
+    s = rp.Stream()
+    out = np.concatenate([(rp.Data(sym[a:b], sps=1, stream=s) + shape).data for a, b in ((0, 7), (7, 7), (7, 150), (150, 300))])
+    assert np.allclose(out, ref[:len(out)], atol=1e-5)
+
+def test_matched_gives_symbols_back_at_unit_gain(rng):
+    sym = rng.choice([-1.0, 1.0], 400).astype(np.complex64)
+    out = rp.Data(sym, sps=1) + rp.wave.Shape(8, _pulse()) + rp.wave.Matched(_pulse())
+    y = out.data
+    delay = int(round(out.delay*out.Fs)) # the group delay of both filters
+    got = y[delay::8][20:300].real
+    assert np.allclose(got, sym[20:300].real, atol=0.05)
+
+def test_shape_and_matched_are_wave():
+    assert rp.wave.Shape.CATEGORY == rp.Category.WAVE and rp.wave.Matched.CATEGORY == rp.Category.WAVE
+    assert rp.sync.time.Known.CATEGORY == rp.Category.SYNC

@@ -1,13 +1,12 @@
 import numpy as np
 from matplotlib.lines import Line2D
-import matplotlib.pyplot as plt
+from ..base import axes
 
 LIM = 1.6 # Axis limit: the unit-rms symbols sit near 1 with noise around them, and the margin keeps their markers (which have a size) from clipping
 
 def phasor(ax, syms, points=None):
     """Symbols on the I/Q plane, scaled to unit rms. points: the ideal constellation, drawn as crosses (once)"""
-    if ax is None:
-        fig, ax = plt.subplots()
+    ax = axes(ax)
     norm = np.sqrt(np.mean(np.abs(syms)**2)) if len(syms) else 1.0 # Rms, so a few noise outliers don't shrink the rest
     snip = syms / (norm or 1.0)
     dots = dict(ms=3, alpha=0.4) if len(snip) > 500 else dict(alpha=1.0)

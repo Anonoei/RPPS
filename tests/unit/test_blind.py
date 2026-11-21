@@ -1,11 +1,13 @@
-"""Blind tools for what no definition covers: feedthrough scramblers (rpps.analysis.scrambler), Reed-Solomon codes
-(rpps.analysis.rs), the layers inside a decoded stream (fec.solve), and what must not be taken for a code"""
+"""Blind tools for what no definition covers: feedthrough scramblers (rpps.analysis.sequence.scrambler), Reed-Solomon codes
+(rpps.analysis.code.block.rs), the layers inside a decoded stream (fec.solve), and what must not be taken for a code"""
 import numpy as np
 import pytest
 
 import rpps as rp
 from rpps import _config
-from rpps.analysis import fec as F, rs as B, scrambler as SC
+from rpps.analysis import identify as F
+from rpps.analysis.code.block import rs as B
+from rpps.analysis.sequence import scrambler as SC
 from rpps.code.types.rs import rs
 from rpps.logger import Logger
 
@@ -23,9 +25,9 @@ def scramble(d, taps):
 @pytest.fixture(scope="module")
 def hdlc():
     rng = np.random.default_rng(1)
-    fr = rp.link.load("frame", "hdlc")
+    fr = rp.link.load("frame/hdlc")
     frames = [bytes(rng.integers(0, 256, int(rng.integers(20, 200))).astype(np.uint8)) for _ in range(120)]
-    return np.asarray(fr._enc.encode(frames)).astype(np.uint8)[:100000]
+    return np.asarray(fr.encoder.encode(frames)).astype(np.uint8)[:100000]
 
 def rs_bits(n, k, poly, fcr, prim, words=24, payload=None, seed=0, phase=37, offset=5):
     rng = np.random.default_rng(seed)
@@ -37,7 +39,7 @@ def rs_bits(n, k, poly, fcr, prim, words=24, payload=None, seed=0, phase=37, off
 def test_descramble_is_the_feedthrough_definition():
     y = np.random.default_rng(0).integers(0, 2, 2000).astype(bool)
     d = np.asarray((rp.Data(y, flush=True) / rp.code.scram.load("feedthrough/v35")).data).astype(np.uint8)
-    assert np.array_equal(SC.descramble(y, (20, 3))[20:], d[20:])
+    assert np.array_equal(rp.code.scram.Feedthrough.descramble(y, (20, 3))[20:], d[20:])
 
 def test_scrambler_found_from_the_structure_under_it(hdlc):
     h, n, g = SC.search(scramble(hdlc, (20, 3)))
@@ -85,16 +87,18 @@ def test_guesses_save_as_definitions_that_load(tmp_path, monkeypatch, hdlc):
     bits = rs_bits(219, 201, 0x187, 120, 1, phase=0, offset=0)
     g = B.search(bits, lengths=(219,))[2]
     g.save("found", tmp_path/"fec")
-    code = rp.code.load("block", "guess/found")._enc
+    code = rp.code.load("block/guess/found").encoder
     words = np.packbits(bits[:len(bits)//(8*219)*8*219]).reshape(-1, 219).astype(np.int64)
     assert not code.syndromes(words).any()
 
+@pytest.mark.kernels
 def test_solve_peels_scrambler_then_rs(hdlc):
     y = scramble(rs_bits(219, 201, 0x187, 120, 1, words=40, payload=hdlc, phase=0, offset=0), (20, 3))
     layers = F.solve(y, rs_lengths=(219,))
     assert [h.kind for h, g in layers] == ["scrambler", "rs-blind"]
     assert layers[0][1].definition["poly"] == [20, 3] and layers[1][1].definition["k"] == 201
 
+@pytest.mark.kernels
 def test_solve_finds_rs_of_random_payload_behind_a_known_scrambler():
     y = scramble(rs_bits(219, 201, 0x187, 120, 1, words=40, phase=0, offset=0), (20, 3))
     layers = F.solve(y, rs_lengths=(219,))
@@ -106,7 +110,7 @@ def test_an_unmodulated_carrier_is_not_a_code():
     assert not F.identify(s, "bpsk").found
 
 def test_acquire_fec_says_it_is_still_acquiring():
-    from rpps.analysis.modulation import Detection
+    from rpps.sync import Detection
     d = rp.Data(np.ones(1000, np.complex64), Fs=1e4, sps=1)
     d.meta.stream.det = Detection(mod="qpsk", baud=1e4, sps=1.0)
     d + rp.sync.AcquireFEC()
@@ -115,7 +119,8 @@ def test_acquire_fec_says_it_is_still_acquiring():
 
 # --- Binary block codes, products, unknown puncture patterns ---------------------------------------------------------
 
-from rpps.analysis import block as BK, puncture as PU
+from rpps.analysis.code.block import linear as BK
+from rpps.analysis.code.conv import puncture as PU
 from rpps.code.types.bchgf import bchgf
 from rpps.code.types.conv import conv
 from rpps.math.gf2 import nullspace, rank, rref
@@ -139,13 +144,13 @@ def test_bch_found_with_its_field_and_t_shortened_too():
 
 def test_cyclic_code_found_by_its_generator():
     rng = np.random.default_rng(2)
-    b = np.asarray(rp.code.load("block", "golay/23_12")._enc.encode(rng.integers(0, 2, 12*600).astype(bool))).astype(np.uint8)
+    b = np.asarray(rp.code.load("block/golay/23_12").encoder.encode(rng.integers(0, 2, 12*600).astype(bool))).astype(np.uint8)
     (h, g), = BK.solve_block(b[5:])
     assert g.definition["type"] == "cyclic" and int(g.definition["poly"], 16) == 0xC75
 
 def test_an_ldpc_code_from_its_sparse_checks():
     rng = np.random.default_rng(6)
-    H = np.asarray(rp.code.load("block", "ldpc/gallager_96_48")._enc.H, dtype=np.uint8)[:, rng.permutation(96)]
+    H = np.asarray(rp.code.load("block/ldpc/gallager_96_48").encoder.H, dtype=np.uint8)[:, rng.permutation(96)]
     cw = (rng.integers(0, 2, (1500, len(nullspace(H)))) @ nullspace(H) % 2).astype(np.uint8).reshape(-1)[13:]
     (h, g), = BK.solve_block(cw[:32768])
     assert h.params["kind"] == "ldpc" and (h.params["n"], h.params["k"]) == (96, 50)
@@ -153,7 +158,7 @@ def test_an_ldpc_code_from_its_sparse_checks():
 
 def test_soft_values_find_sparse_checks_at_a_bit_error_rate_hard_bits_cannot():
     rng = np.random.default_rng(6)
-    H = np.asarray(rp.code.load("block", "ldpc/gallager_96_48")._enc.H, dtype=np.uint8)[:, rng.permutation(96)]
+    H = np.asarray(rp.code.load("block/ldpc/gallager_96_48").encoder.H, dtype=np.uint8)[:, rng.permutation(96)]
     G = nullspace(H)
     cw = (rng.integers(0, 2, (3000, len(G))) @ G % 2).astype(np.uint8)
     y = (1 - 2.0*cw) + 0.4*rng.standard_normal(cw.shape) # BER about 0.6%
@@ -162,7 +167,7 @@ def test_soft_values_find_sparse_checks_at_a_bit_error_rate_hard_bits_cannot():
 
 def test_product_code_rows_and_columns():
     rng = np.random.default_rng(3)
-    r, c = rp.code.load("block", "hamming/15_11")._enc, rp.code.load("block", "hamming/7_4")._enc
+    r, c = rp.code.load("block/hamming/15_11").encoder, rp.code.load("block/hamming/7_4").encoder
     blocks = []
     for _ in range(500):
         rows = np.array([r.encode(x) for x in rng.integers(0, 2, (4, 11)).astype(bool)])
@@ -176,6 +181,7 @@ def test_no_block_code_in_random_or_constant_bits():
     pattern = np.random.default_rng(5).integers(0, 2, 128).astype(np.uint8) # Idle fill repeating every 128 bits
     assert BK.solve_block(np.tile(pattern, 400)[37:]) == []
 
+@pytest.mark.kernels
 def test_unknown_puncture_pattern_on_a_known_mother_code():
     rng = np.random.default_rng(2)
     g = [[1, 0, 1, 1, 0, 1, 1], [1, 1, 1, 1, 0, 0, 1]]
@@ -185,12 +191,14 @@ def test_unknown_puncture_pattern_on_a_known_mother_code():
     s = q.modulate(bits[:len(bits)//2*2])*1j
     s = s + 0.15*(rng.standard_normal(len(s)) + 1j*rng.standard_normal(len(s)))
     v, guess = PU.best(*PU.search(F.bit_streams(s[:8000], q, differential=False)))
-    found = np.array(guess.definition["encode"]["puncture"], dtype=bool)
+    assert guess.definition["extends"] == rp.code.serial.mother(g, 7) == "k7_133_171" # a child of the mother code it found
+    found = np.array(guess.definition["puncture"], dtype=bool)
     assert any(np.array_equal(found, np.roll(np.array(pat, dtype=bool), sh, axis=1)) for sh in range(6)) # (up to a turn)
     assert v.params["mismatch"] < 0.01
     q2 = q.points[rng.integers(0, 4, 8000)] + 0.1*(rng.standard_normal(8000) + 1j*rng.standard_normal(8000))
     assert PU.best(*PU.search(F.bit_streams(q2, q, differential=False))) == (None, None)
 
+@pytest.mark.kernels
 def test_blind_identify_peels_a_punctured_code_and_the_bch_inside():
     rng = np.random.default_rng(5)
     log = Logger().Child("t", 0)
@@ -201,3 +209,111 @@ def test_blind_identify_peels_a_punctured_code_and_the_bch_inside():
     f = F.identify(s, "qpsk", blind=True)
     assert not f.found and [h.kind for h in f.inner] == ["conv-punctured", "block-blind"]
     assert f.guesses[1].definition["type"] == "bch"
+
+def test_fixed_and_copied_bits_are_framing_not_a_code():
+    # Every 32 bits one bit is fixed and two are equal: two checks of weight 1 and 2, which a code never has alone
+    from rpps.analysis.code.block import linear as B
+    rng = np.random.default_rng(0)
+    W = rng.integers(0, 2, (3000, 32)).astype(np.uint8)
+    W[:, 5] = 1
+    W[:, 20] = W[:, 10]
+    (h, g), = B.solve_block(W.ravel(), n=32, offset=0)
+    assert h.kind == "frame-blind" and g is None and h.params["fixed"] == [5] and h.params["same"] == [(10, 20)]
+    W2 = rng.integers(0, 2, (3000, 4)).astype(np.uint8)
+    W2[:, 2:] = W2[:, :2] # "cyclic (4,2), g = x^2 + 1": each bit repeated two later
+    assert B.solve_block(W2.ravel())[0][0].kind == "frame-blind"
+    G = np.array([[1, 0, 0, 0, 1, 1, 0], [0, 1, 0, 0, 1, 0, 1], [0, 0, 1, 0, 0, 1, 1], [0, 0, 0, 1, 1, 1, 1]]) # Hamming (7,4)
+    c = (rng.integers(0, 2, (4000, 4)) @ G) % 2
+    assert B.solve_block(c.ravel().astype(np.uint8))[0][0].kind == "block-blind" # A real code's checks are heavier
+
+def _lfsr(taps, n, rng):
+    s = list(rng.integers(0, 2, max(taps)))
+    while len(s) < n:
+        s.append(int(np.bitwise_xor.reduce([s[-t] for t in taps])))
+    return np.array(s[:n], np.uint8)
+
+def _feedthrough(d, taps):
+    """y[n] = d[n] ^ y[n-a] ^ y[n-b]...: the scrambler rpps.code.scram.Feedthrough.descramble undoes"""
+    y = np.zeros(len(d), np.uint8)
+    for n in range(len(d)):
+        v = d[n]
+        for t in taps:
+            if n >= t:
+                v ^= y[n - t]
+        y[n] = v
+    return y
+
+def test_berlekamp_massey_finds_the_register():
+    from rpps.math import gf2
+    rng = np.random.default_rng(0)
+    C, L = gf2.berlekamp_massey(_lfsr((23, 18), 400, rng))
+    assert (L, gf2.lfsr_taps(C, L)) == (23, (23, 18))
+    _, L = gf2.berlekamp_massey(rng.integers(0, 2, 400).astype(np.uint8))
+    assert 190 <= L <= 210 # Random bits: about half their length
+
+def test_a_prbs_and_an_additive_scrambler_over_idle_data():
+    from rpps.analysis.sequence import scrambler as SC
+    rng = np.random.default_rng(1)
+    h, _, g = SC.additive_search(_lfsr((23, 18), 40000, rng))
+    assert h[0].params["taps"] == [23, 18] and h[0].params["prbs"] and "PRBS23" in h[0].name
+    d = rng.integers(0, 2, 40000).astype(np.uint8)
+    for a in range(0, 40000, 4000):
+        d[a:a + 1500] = 0 # Idle stretches: the scrambler's own sequence shows through
+    h, _, g = SC.additive_search(d ^ _lfsr((15, 14), 40000, rng))
+    assert h[0].params["taps"] == [15, 14] and not h[0].params["prbs"] and g is not None
+    assert SC.additive_search(rng.integers(0, 2, 40000).astype(np.uint8))[0] == []
+
+def test_cascaded_scramblers_over_a_repeating_word_are_explained():
+    # Two scramblers (1+x^18+x^23) in cascade over a 24-bit word sent again and again
+    from rpps.analysis.sequence import scrambler as SC
+    word = np.random.default_rng(24).integers(0, 2, 24).astype(np.uint8)
+    y = _feedthrough(_feedthrough(np.tile(word, 1700), (23, 18)), (23, 18))
+    h, _, _ = SC.additive_search(y)
+    p = h[0].params
+    assert p["data_period"] == 24 and p["scramblers"][0]["taps"] == [23, 18] and p["scramblers"][0]["times"] == 2
+    assert p["pattern_holds"] > 0.99 and p["pattern"] in "".join(map(str, np.tile(word, 3)))
+    assert SC.explain([23, 18]) [1] == 1 # A scrambler over constant data: period 1
+
+def test_an_inverted_output_is_the_code_with_that_output_flipped():
+    # CCSDS 131.0-B 3.3: the basic K=7 code sends its G2 output inverted
+    rng = np.random.default_rng(4)
+    m = rng.integers(0, 2, 500).astype(bool)
+    plain = rp.code.load("conv/k7_171_133/1_2").encoder.encode(m)
+    ccsds = rp.code.load("conv/k7_171_133/ccsds_1_2")
+    e = ccsds.encoder.encode(m)
+    assert np.array_equal(e[0::2], plain[0::2]) and np.array_equal(e[1::2], ~plain[1::2])
+    assert np.array_equal(ccsds.decoder.decode(e.astype(np.uint8))[:len(m)], m)
+
+@pytest.mark.parametrize("name", ["k7_133_171/2_3", "k7_133_171/5_6", "k7_133_171/7_8", "k9_561_753/1_2",
+                                  "k9_557_663_711/1_3", "k7_133_171_165/1_3", "k7_133_171_145_133/1_4"])
+def test_standard_convolutional_codes_round_trip(name):
+    rng = np.random.default_rng(5)
+    c = rp.code.load(f"conv/{name}")
+    m = rng.integers(0, 2, 1260).astype(bool) # A whole number of every puncture period (2, 3, 5, 7)
+    e = c.encoder.encode(m)
+    assert np.array_equal(c.decoder.decode(e.astype(np.uint8))[:len(m)], m)
+
+def test_a_ccsds_stream_on_bpsk_is_identified():
+    # On BPSK the G2 inversion turns every other symbol: no map of the plain code fits, the CCSDS definition does
+    rng = np.random.default_rng(6)
+    e = rp.code.load("conv/k7_171_133/ccsds_1_2").encoder.encode(rng.integers(0, 2, 20000).astype(bool))
+    y = (1 - 2*e.astype(float)) + 0.3*rng.standard_normal(len(e))
+    out = rp.analysis.identify.identify(y.astype(np.complex64), "bpsk")
+    assert out.found and out.name == "k7_171_133/ccsds_1_2"
+
+def test_a_prbs_or_noisy_fill_is_not_a_low_rate_code():
+    """What a blind search calls "linear (192,1)" and the like: rows of a short recurrence (a PRBS) are short of rank at
+    any length past its degree, and fill repeating with a few bit errors is nearly rank one: neither is a code"""
+    from rpps.analysis.code.block import linear as B
+    rng = np.random.default_rng(11)
+    s = list(rng.integers(0, 2, 15))
+    for i in range(15, 30000):
+        s.append(s[i - 15] ^ s[i - 14]) # PRBS15
+    s = np.array(s, np.uint8)
+    out = B.solve_block(s, n=64, offset=0)
+    assert out and out[0][0].kind == "frame-blind" and out[0][0].params["kind"] == "recurrence"
+    assert out[0][0].params["degree"] == 15
+    fill = np.tile(rng.integers(0, 2, 192).astype(np.uint8), 300)
+    flips = rng.random(len(fill)) < 0.03
+    out = B.solve_block(fill ^ flips, n=192, offset=0)
+    assert not out or out[0][0].kind == "frame-blind"

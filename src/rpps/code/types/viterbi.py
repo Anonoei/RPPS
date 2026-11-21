@@ -1,7 +1,7 @@
 import numpy as np
 
 from ... import _accel
-from ._code import _code, register
+from ._code import _code, register, as_llr
 from .conv import termination_of, generators_of
 
 @register("viterbi")
@@ -10,6 +10,7 @@ class viterbi(_code):
 
     generator: (n, K) taps. generator[j][i] multiplies the input delayed by i, the same convention as `conv`
     puncture: optional (n, P) 0/1 pattern, 1 = bit was sent. Punctured positions are decoded as erasures
+    invert: optional n 0/1 flags: outputs the encoder sent inverted (their values are turned back before decoding)
     terminated: the encoder was flushed with K-1 zeros, so the path ends in state 0 (and the tail is dropped).
         Or a termination name: "zero" (the same), "truncated" (no tail: the best end state), "tailbiting" (the
         path ends where it started: decoded on three laps round the frame, keeping the middle one; frames only)
@@ -27,14 +28,15 @@ class viterbi(_code):
     @classmethod
     def from_config(cls, log, obj):
         return cls(log, obj["num"], obj["den"], obj["constraint"], generators_of(obj),
-                   obj.get("puncture"), termination_of(obj))
+                   obj.get("puncture"), termination_of(obj), obj.get("invert"))
 
-    def __init__(self, log, num, den, constraint, generator, puncture=None, terminated=False):
+    def __init__(self, log, num, den, constraint, generator, puncture=None, termination="truncated", invert=None):
         super().__init__(log, None, num, den)
         self.con = constraint
         self.gen = np.asarray(generator, dtype=np.uint8).reshape(den, constraint)
         self.puncture = None if puncture is None else np.asarray(puncture, dtype=bool)
-        self.termination = termination_of({"termination": terminated})
+        self.invert = None if invert is None or not any(invert) else np.where(np.asarray(invert, dtype=bool), -1.0, 1.0)
+        self.termination = termination_of({"termination": termination})
         if self.termination == "tailbiting":
             self.stream = False # Whole frames: a stream is collected until it ends
         self.depth = 10*constraint # Traceback depth of a stream
@@ -80,30 +82,82 @@ class viterbi(_code):
         return self.termination == "zero"
 
     def decode(self, bits: np.ndarray, soft=None, state=None, final=True):
-        x = np.asarray(bits)
-        if soft is None:
-            soft = x.dtype.kind == "f"
-        llr = x.astype(np.float64) if soft else 1.0 - 2.0*x.astype(np.float64) # 0 -> +1, 1 -> -1
-        llr = self.depuncture(llr)                                              # (T, n)
-        if self.termination == "tailbiting":
-            return self._tailbiting(llr)
-        T = len(llr)
+        llr = self.depuncture(as_llr(bits, soft))                              # (T, n)
+        if self.invert is not None:
+            llr = llr*self.invert[None, :] # An inverted output's 0 means 1 (erasures stay 0)
         S = self.n_states
-        if _accel.native is not None:
-            return self._decode_native(llr, state, final)
-
-        # Cost of sending a bit 1 where llr>0 (it says 0), 0 otherwise: sum of llr over the code word's 1 bits
-        cost = llr @ self.patterns.T                                            # (T, 2^n)
-
+        if self.termination == "tailbiting":
+            # Three laps of the circular trellis from no particular state, the middle one kept: by then the path has
+            # settled, and it starts and ends in the state the frame's last bits leave
+            T = len(llr)
+            decision, pm = self._forward(np.tile(llr, (3, 1)), np.zeros(S))
+            return self.prev_in[self._states(decision, int(np.argmin(pm)))][T:2*T].astype(bool)
         if state and "pm" in state:
             pm, past = state["pm"], state["hist"]
         else:
             pm, past = np.full(S, np.inf), np.zeros((0, S), dtype=np.uint8)
             pm[0] = 0.0
-        decision = np.zeros((T, S), dtype=np.uint8)
-        pat0, pat1 = self.out_pat[self.prev[:, 0], self.prev_in], self.out_pat[self.prev[:, 1], self.prev_in]
+        decision, pm = self._forward(llr, pm)
+        decision = np.concatenate((past, decision)) if len(past) else decision
+        T = len(decision)
+        end = 0 if (self.terminated and final) else int(np.argmin(pm))
+        out = self.prev_in[self._states(decision, end)]
+        release = T if final else max(0, T - self.depth)
+        out = out[:release]
+        if state is not None:
+            if final:
+                state.clear()
+            else:
+                state["pm"], state["hist"] = pm, decision[release:]
+        if self.terminated and final:
+            out = out[:max(0, len(out)-(self.con-1))]
+        return out.astype(bool)
+
+    def decode_batch(self, words, soft=None):
+        """Words (W, L), each decoded as a frame of its own: decisions (W, T), the same as decode() on each row. In C++
+        (rpps._native.viterbi_batch) on several threads; a loop over decode() without the kernels or for a tail-biting code"""
+        words = np.asarray(words)
+        if _accel.native is None or self.termination == "tailbiting" or len(words) == 0:
+            return np.array([self.decode(w, soft) for w in words], dtype=bool).reshape(len(words), -1)
+        llr = self._depuncture_batch(as_llr(words, soft)) # (W, T, n)
+        if self.invert is not None:
+            llr = llr*self.invert[None, None, :]
+        S = self.n_states
+        pm0 = np.full(S, np.inf)
+        pm0[0] = 0.0
+        end = np.full(len(llr), 0 if self.terminated else -1, dtype=np.int64) # -1: the best end state, as decode()'s argmin
+        states, _, _ = _accel.native.viterbi_batch(np.ascontiguousarray(llr, dtype=np.float64), self.patterns, 1, self._pred,
+                                                   self._pat, pm0, end)
+        out = self.prev_in[states]
+        if self.terminated:
+            out = out[:, :max(0, out.shape[1]-(self.con-1))]
+        return out.astype(bool)
+
+    def _depuncture_batch(self, values):
+        """depuncture() of each row of values (W, L): (W, T, n)"""
+        n = self.den
+        if self.puncture is None or self.puncture.all():
+            T = values.shape[1]//n
+            return values[:, :T*n].reshape(len(values), T, n)
+        P = self.puncture.shape[1]
+        per_period = int(self.puncture.sum())
+        periods = values.shape[1]//per_period
+        mask = np.tile(self.puncture, (1, periods)).T # (T, n): the same order depuncture() fills
+        out = np.zeros((len(values), periods*P, n))
+        out[:, mask] = values[:, :periods*per_period]
+        return out
+
+    def _forward(self, llr, pm):
+        """Add-compare-select over (T, n) LLRs from path metrics pm: (decisions (T, S), final metrics)"""
+        if _accel.native is not None:
+            return _accel.native.viterbi_forward(np.ascontiguousarray(llr, dtype=np.float64), self.patterns, 1,
+                                                 self._pred, self._pat, pm)
+        # Cost of sending a bit 1 where llr>0 (it says 0), 0 otherwise: sum of llr over the code word's 1 bits
+        cost = llr @ self.patterns.T                                            # (T, 2^n)
+        decision = np.zeros((len(llr), self.n_states), dtype=np.uint8)
+        pat0, pat1 = self._pat[:, 0], self._pat[:, 1]
         p0, p1 = self.prev[:, 0], self.prev[:, 1]
-        for t in range(T):
+        for t in range(len(llr)):
             c = cost[t]
             m0 = pm[p0] + c[pat0]
             m1 = pm[p1] + c[pat1]
@@ -111,74 +165,15 @@ class viterbi(_code):
             decision[t] = take1
             pm = np.where(take1, m1, m0)
             pm -= pm.min() # Keep the metrics bounded
-        decision = np.concatenate((past, decision))
-        T = len(decision)
+        return decision, pm
 
-        end = 0 if (self.terminated and final) else int(np.argmin(pm))
-        out = np.zeros(T, dtype=np.uint8)
-        s_ = end
-        for t in range(T-1, -1, -1):
-            out[t] = self.prev_in[s_]
-            s_ = self.prev[s_, decision[t, s_]]
-        release = T if final else max(0, T - self.depth)
-        out = out[:release]
-        if state is not None:
-            if final:
-                state.clear()
-            else:
-                state["pm"], state["hist"] = pm, decision[release:]
-        if self.terminated and final:
-            out = out[:max(0, len(out)-(self.con-1))]
-        return out.astype(bool)
-
-    def _decode_native(self, llr, state, final):
-        """`decode` with the trellis walked in C++ (rpps._native): the same decisions, ties and traceback"""
-        nat, S = _accel.native, self.n_states
-        if state and "pm" in state:
-            pm, past = state["pm"], state["hist"]
-        else:
-            pm, past = np.full(S, np.inf), np.zeros((0, S), dtype=np.uint8)
-            pm[0] = 0.0
-        dec, pm = nat.viterbi_forward(np.ascontiguousarray(llr, dtype=np.float64), self.patterns, 1, self._pred, self._pat, pm)
-        decision = np.concatenate((past, dec)) if len(past) else dec
-        T = len(decision)
-        end = 0 if (self.terminated and final) else int(np.argmin(pm))
-        states, _ = nat.viterbi_traceback(decision, self._pred, end)
-        out = self.prev_in[states].astype(np.uint8)
-        release = T if final else max(0, T - self.depth)
-        out = out[:release]
-        if state is not None:
-            if final:
-                state.clear()
-            else:
-                state["pm"], state["hist"] = pm, decision[release:]
-        if self.terminated and final:
-            out = out[:max(0, len(out)-(self.con-1))]
-        return out.astype(bool)
-
-    def _tailbiting(self, llr):
-        """Viterbi over three laps of the circular trellis from no particular state, the middle lap kept: by then the
-        path has settled, and it starts and ends in the state the frame's last bits leave"""
-        T, S = len(llr), self.n_states
+    def _states(self, decision, end):
+        """Traceback: the state after each step of the survivor path that ends in `end`"""
         if _accel.native is not None:
-            x = np.ascontiguousarray(np.tile(llr, (3, 1))[None], dtype=np.float64)
-            states, _, _ = _accel.native.viterbi_batch(x, self.patterns, 1, self._pred, self._pat, np.zeros(S), np.array([-1]))
-            return self.prev_in[states[0]][T:2*T].astype(bool)
-        cost = np.tile(llr, (3, 1)) @ self.patterns.T
-        pm = np.zeros(S)
-        decision = np.zeros((3*T, S), dtype=np.uint8)
-        pat0, pat1 = self.out_pat[self.prev[:, 0], self.prev_in], self.out_pat[self.prev[:, 1], self.prev_in]
-        p0, p1 = self.prev[:, 0], self.prev[:, 1]
-        for t in range(3*T):
-            c = cost[t]
-            m0, m1 = pm[p0] + c[pat0], pm[p1] + c[pat1]
-            take1 = m1 < m0
-            decision[t] = take1
-            pm = np.where(take1, m1, m0)
-            pm -= pm.min()
-        out = np.zeros(3*T, dtype=np.uint8)
-        s_ = int(np.argmin(pm))
-        for t in range(3*T - 1, -1, -1):
-            out[t] = self.prev_in[s_]
+            return _accel.native.viterbi_traceback(decision, self._pred, end)[0]
+        states = np.zeros(len(decision), dtype=np.int64)
+        s_ = end
+        for t in range(len(decision)-1, -1, -1):
+            states[t] = s_
             s_ = self.prev[s_, decision[t, s_]]
-        return out[T:2*T].astype(bool)
+        return states

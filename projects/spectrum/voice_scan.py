@@ -18,7 +18,7 @@ import argparse
 import os
 import sys
 import time
-import wave
+import rpps as rp
 
 import numpy as np
 
@@ -67,9 +67,7 @@ def classify(x, fs, cf, freq):
 
 
 def write_wav(path, audio, mask):
-    y = np.where(mask, audio, 0.0); y = y/max(1e-9, np.abs(y).max())*0.8
-    with wave.open(path, "wb") as w:
-        w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes((y*32767).astype(np.int16).tobytes())
+    rp.source.write_wav(path, np.where(mask, audio, 0.0), 16000, peak=0.8)
 
 
 BANDS = [(30, 88), (118, 174), (174, 230), (230, 400), (400, 440), (440, 512), (758, 776), (851, 870)] # MHz: low-band VHF, aviation + VHF land mobile / marine / amateur, TV 7-13, military UHF, UHF land mobile, T-band, 700 / 800 MHz public safety

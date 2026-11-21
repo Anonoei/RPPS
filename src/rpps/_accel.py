@@ -16,6 +16,9 @@ if not os.environ.get("RPPS_NO_NATIVE"):
     except ImportError:
         native = None
 
+# What the per-sample kernels (squelch, dc_block, one_pole, the demodulators) take: anything else runs the Python loop
+NATIVE_DTYPES = ("float32", "float64", "complex64", "complex128")
+
 def available():
     """True when the C++ kernels are loaded and enabled"""
     return native is not None

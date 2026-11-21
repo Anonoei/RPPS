@@ -55,11 +55,11 @@ def sc_bin(k, nfft, n_rb):
 # ---------------------------------------------------------------------------------------------------------------- channel coding (36.212 5.1, 5.3.1)
 CONV_GENS = (0o133, 0o171, 0o165)
 
-_CRC16 = rp.link.load("crc", "crc16_xmodem")._enc # 36.212 5.1.1 gCRC16: D^16 + D^12 + D^5 + 1, zero start
+_CRC16 = rp.link.load("crc/crc16_xmodem").encoder # 36.212 5.1.1 gCRC16: D^16 + D^12 + D^5 + 1, zero start
 
 def crc16(bits):
     """CRC (36.212 5.1.1) of a bit list, fed MSB first; returns 16 bits"""
-    return [int(b) for b in _CRC16.to_bits(_CRC16.compute_bits(bits))]
+    return _CRC16.field(bits).astype(int).tolist()
 
 CRC_MASKS = {1: [0]*16, 2: [1]*16, 4: [0, 1]*8} # table 5.3.1.1-1: number of antenna ports -> mask
 
@@ -67,14 +67,14 @@ _CONV = rp.code.Conv(CONV_GENS, 7, termination="tailbiting") # 36.212 5.1.3.1
 
 def conv_encode(c):
     """Tail-biting rate-1/3 encoder (5.1.3.1): returns the three (K,) output streams"""
-    return _CONV._enc.encode(np.asarray(c, np.uint8)).reshape(-1, 3).T.astype(np.uint8)
+    return _CONV.encoder.encode(np.asarray(c, np.uint8)).reshape(-1, 3).T.astype(np.uint8)
 
 def subblock_perm(D):
     """For each output position of the sub-block interleaver (5.1.4.2.1) the input index, the <NULL> dummies left out (rpps interleave/block/lte_subblock)"""
-    return rp.code.load("interleave", "lte_subblock", length=D)._enc.src
+    return rp.code.load("interleave/lte_subblock", length=D).encoder.src
 
 def _rm(D, E):
-    return rp.code.load("block", "ratematch/lte_conv", D=D, E=E)._enc # 5.1.4.2
+    return rp.code.load("block/ratematch/lte_conv", D=D, E=E).encoder # 5.1.4.2
 
 
 def rate_match(d, E):
@@ -88,7 +88,7 @@ def rate_dematch(llr, D=40):
 
 def viterbi_tailbiting(llr3):
     """Soft decode of the tail-biting code (llr3: (3, K), positive = bit 0) with the rpps Viterbi (three laps round the circle, the middle kept). Returns (bits, None)"""
-    return _CONV._dec.decode(np.asarray(llr3, float).T.reshape(-1)).astype(np.uint8), None
+    return _CONV.decoder.decode(np.asarray(llr3, float).T.reshape(-1)).astype(np.uint8), None
 
 def decode_bch(llr):
     """1920 descrambled soft bits -> (MIB bits, ports or None, crc bits). The port count is read from which mask makes the CRC zero."""
@@ -253,9 +253,31 @@ def main(argv=None):
     n_rb = a.n_rb or {128: 6, 256: 15, 512: 25, 1024: 50, 1536: 75, 2048: 100}[nfft]
     scale = nfft/2048
     cp = int(round(144*scale)); cp0 = int(round(160*scale))
-    pss_off = (cp0 + nfft) + 5*(cp + nfft) + cp
-    frames = [(k, cell["pss_pos"][k]) for k, hyp, *_ in cell["found"] if hyp[0] == cell["n1"] and hyp[1] == 0]
-    print(f"\nPBCH: PCI {pci}, {n_rb} RB, {len(frames)} subframe-0 occurrences")
+    tdd = cell.get("duplex") == "TDD"
+    slot = (cp0 + nfft) + 6*(cp + nfft)
+    # From the start of subframe 0 to the PSS's useful part: FDD, symbol 6 of slot 0; TDD, symbol 2 of subframe 1 (slot 2)
+    pss_off = 2*slot + (cp0 + nfft) + (cp + nfft) + cp if tdd else (cp0 + nfft) + 5*(cp + nfft) + cp
+    # Which PSS follows subframe 0 is the SSS's half-frame; it can be read wrong, so both sets are tried and the CRC says
+    halves = {h: [(k, cell["pss_pos"][k]) for k, hyp, *_ in cell["found"] if hyp[0] == cell["n1"] and hyp[1] == h] for h in (0, 1)}
+    frames = halves[0]
+    print(f"\nPBCH: PCI {pci}, {cell.get('duplex', 'FDD')}, {n_rb} RB, {len(frames)} subframe-0 occurrences")
+    def crc_passes(fr):
+        n = 0
+        for ports in (1, 2, 4):
+            for k, pos in fr:
+                S0 = int(pos) - pss_off
+                if S0 - 20 < 0 or symbol_start(S0, 1, 3, nfft) + nfft > len(y):
+                    continue
+                s_ = soft_bits(equalize(y, S0, nfft, n_rb, pci, ports))
+                for q in range(4):
+                    llr = np.zeros(1920); llr[q*480:(q + 1)*480] = descramble(s_, pci, q)
+                    n += decode_bch(llr)[1] is not None
+        return n
+    if halves[1]:
+        c0, c1 = crc_passes(halves[0]), crc_passes(halves[1])
+        if c1 > c0:
+            frames = halves[1]
+            print(f"  (the PSS after subframe 0 is the one the SSS labelled half 1: {c1} CRC passes against {c0})")
     # --- statistic 1, per port hypothesis: QPSK-ness of the equalized symbols
     print("\nQPSK-ness of the equalized PBCH (1 = clean QPSK, ~0 = wrong), median over frames:")
     z_all = {}
@@ -283,7 +305,9 @@ def main(argv=None):
     for ports in (1, 2, 4):
         n = len({i for i, pp, q, bits, p in results if pp == ports})
         print(f"  demodulated as {ports} port(s): {n}/{len(frames)} frames pass a CRC (by chance ~{len(frames)*4*3/65536:.2f})")
-    best = max((1, 2, 4), key=lambda p: np.median([qpskness(z) for z in z_all[p]]))
+    # The CRC is the judge (1 in 65536 by chance); QPSK-ness only breaks a tie (it is weak on a poor channel estimate)
+    passes = {ports: len({i for i, pp, q, bits, p in results if pp == ports}) for ports in (1, 2, 4)}
+    best = max((1, 2, 4), key=lambda p: (passes[p], np.median([qpskness(z) for z in z_all[p]]) if z_all[p] else -1))
     good = sorted((i, q, bits, p) for i, pp, q, bits, p in results if pp == best)
     if not good:
         print("  nothing decoded")

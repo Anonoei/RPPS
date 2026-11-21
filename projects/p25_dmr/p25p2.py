@@ -50,8 +50,8 @@ GAP = 10 # symbols of ISCH half at each end of a slot
 
 
 # ---- Reed-Solomon codes: (63,35,29) over GF(64), roots alpha^1 .. alpha^28 (Annex A), and the codes derived from it (config/fec/block/rs/p25p2_*)
-_RS_ESS = rp.code.load("block", "rs/p25p2_ess_44_16")._dec
-_RS_EMI = {(26, 45, 9): rp.code.load("block", "rs/p25p2_soemi")._dec, (30, 52, 6): rp.code.load("block", "rs/p25p2_ioemi")._dec}
+_RS_ESS = rp.code.load("block/rs/p25p2_ess_44_16").decoder
+_RS_EMI = {(26, 45, 9): rp.code.load("block/rs/p25p2_soemi").decoder, (30, 52, 6): rp.code.load("block/rs/p25p2_ioemi").decoder}
 
 
 def emi_decode(bits, k_info, n_total, erase_tail):
@@ -186,7 +186,7 @@ def burst_fields(bits):
     return np.concatenate([bits[2*s:2*s + 2] for s in (10, 47, 132, 169)])
 
 
-_CRC12 = rp.link.load("crc", "crc12_p25")._enc
+_CRC12 = rp.link.load("crc/crc12_p25").encoder
 
 def crc12_ok(pdu_bits):
     """CRC-12 (x^12+x^11+x^7+x^4+x^2+x+1, inverted remainder) in the last 12 bits of the PDU"""

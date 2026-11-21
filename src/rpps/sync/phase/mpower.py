@@ -5,6 +5,7 @@ import numpy as np
 from ... import _accel
 from ...base import Stage
 from .. import track
+from ...math.interp import peak
 
 class MPower(Stage):
     """Carrier frequency and phase of M-fold symmetric symbols by the M-th power, block estimation tracked across windows
@@ -45,37 +46,21 @@ class MPower(Stage):
         return 1.0
 
     def new_state(self, meta):
-        return SimpleNamespace(buf=np.zeros(0, np.complex128), base=None, k=None, W=None, tr=track.new(), snr=0.0)
+        return SimpleNamespace(buf=np.zeros(0, np.complex64), base=None, k=None, W=None, tr=track.new(), snr=0.0)
 
     def _acquire(self, seg, n, c):
         M = self.order
-        z = _power(_unit(seg), M)
+        z = _power(_unit(seg.astype(np.complex128)), M)
         N = 4*(1 << int(np.ceil(np.log2(max(len(z), 2)))))
         F = np.abs(np.fft.fft(z, N))
-        i = int(np.argmax(F))
-        a, b_, d = F[(i - 1) % N], F[i], F[(i + 1) % N]
-        den = a - 2*b_ + d
-        k = i + (0.0 if den == 0 else 0.5*(a - d)/den)
-        f = ((k/N + 0.5) % 1.0 - 0.5)/M # cycles per symbol
+        i, d = peak(F, circular=True, log=False)
+        f = (((i + d)/N + 0.5) % 1.0 - 0.5)/M # cycles per symbol
         s = np.sum(z*np.exp(-2j*np.pi*M*f*(n - c)))
         return f, s, z
 
     def step(self, x, st, meta):
-        if st.base is None:
-            st.base = meta.pos
-            st.W = max(int(round(self.window*meta.Fs)), int(self.min_symbols))
-            st.k = meta.pos//st.W
-        st.buf = np.concatenate((st.buf, np.asarray(x, dtype=np.complex128)))
-        end = st.base + len(st.buf)
-        W, M, out = st.W, self.order, []
-        while True:
-            a, b = st.k*W, (st.k + 1)*W
-            if b > end:
-                if not (meta.flush and a < end):
-                    break
-                b = end
-            a0 = max(a, st.base)
-            seg = st.buf[a0 - st.base:b - st.base]
+        M, out = self.order, []
+        for a0, b, seg in track.windows(st, x, meta, max(int(round(self.window*meta.Fs)), int(self.min_symbols))):
             n = np.arange(a0, b)
             c = (a0 + b)/2
             tr = st.tr
@@ -98,12 +83,8 @@ class MPower(Stage):
                     else:
                         track.miss(tr, c)
             out.append(_turn_back(seg, track.at(tr, a0), tr.rate) if tr.started else seg.astype(np.complex64))
-            st.k += 1
-            if b >= end:
-                break
-        keep = min(max(st.k*W, st.base), end)
-        st.buf, st.base = st.buf[keep - st.base:], keep
-        tr = st.tr
+        track.keep(st, st.k*st.W)
+        W, tr = st.W, st.tr
         meta.stream.est[self.name] = dict(frequency=tr.rate/(2*np.pi) if tr.started else None,
                                           phase=float(tr.value % (2*np.pi/M)) if tr.started else None, snr=st.snr,
                                           windows=tr.windows, missed=tr.missed, latency=W/meta.Fs)

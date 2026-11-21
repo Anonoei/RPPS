@@ -5,12 +5,16 @@
     i8t.. ui8.. f32..  real samples
 `rp.source.formats.ls()` lists them.
 """
-from pysdrlib import Formats
+# pysdrlib is imported when a format is first asked for: `import rpps` works without it (codes, profiles, analysis)
 
-ls = Formats.ls
+def ls():
+    """The format names pysdrlib knows"""
+    from pysdrlib import Formats
+    return Formats.ls()
 
 def get(fmt):
     """A pysdrlib Formats member from its name (or a member)"""
+    from pysdrlib import Formats
     if isinstance(fmt, Formats):
         return fmt
     try:

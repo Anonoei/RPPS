@@ -275,8 +275,14 @@ class Sweeper:
         return np.fft.fftshift(acc/max(cnt, 1))
 
     def source_name(self):
+        """The radio for the status page. Finding it can fail (none plugged in, a server that does not answer): the
+        status still has to answer, with that as the name, while the sweep loop retries"""
         remote = self.remote or os.environ.get("PYSDRLIB_REMOTE")
-        return f"{radio_io.driver_name(self.driver, remote)} " + (f"at {remote}" if remote else "(local)")
+        try:
+            name = radio_io.driver_name(self.driver, remote)
+        except Exception as e:
+            return f"no radio ({e})"
+        return f"{name} " + (f"at {remote}" if remote else "(local)")
 
     def ok_at(self, headroom):
         """Predicate for GainHold: set the gain, look at 2**17 samples; acceptable when nothing clips and the peak is under `headroom` of full scale"""

@@ -160,12 +160,53 @@ double rotate_into(carray<cf32> x_a, py::array_t<cf32, py::array::c_style> out_a
     return end < 0 ? end + TWO_PI : end; // as Python's %, in [0, 2 pi)
 }
 
+// x at fractional positions t by a table of fractional delay filters: row k of `table` (phases + 1, taps) delays by k/phases,
+// rows blended linearly; out[k] = sum_j h[j] x[floor(t) + n0 + j]. The per-symbol interpolation of the timing stages
+py::array_t<cf32> fractional_read(carray<cf32> x_a, carray<double> t_a, carray<double> tab_a, long long n0, int threads) {
+    check_shape(tab_a, {-1, -1}, "table");
+    const long long S = x_a.size(), K = t_a.size(), P = tab_a.shape(0) - 1, N = tab_a.shape(1);
+    if (P < 1) throw std::invalid_argument("fractional_read: the table needs two rows at least");
+    const cf32 *x = x_a.data();
+    const double *t = t_a.data(), *tab = tab_a.data();
+    for (long long k = 0; k < K; k++) {
+        const long long i = static_cast<long long>(std::floor(t[k]));
+        if (!(t[k] == t[k]) || i + n0 < 0 || i + n0 + N > S) throw std::invalid_argument("fractional_read: a position outside the signal");
+    }
+    py::array_t<cf32> out(static_cast<py::ssize_t>(K));
+    cf32 *o = out.mutable_data();
+    constexpr long long CHUNK = 4096;
+    {
+        py::gil_scoped_release nogil;
+        parallel_for((K + CHUNK - 1)/CHUNK, threads, [&](long long blk) {
+            const long long end = std::min(K, (blk + 1)*CHUNK);
+            for (long long k = blk*CHUNK; k < end; k++) {
+                const double fl = std::floor(t[k]), p = (t[k] - fl)*static_cast<double>(P);
+                long long r = static_cast<long long>(p);
+                if (r > P - 1) r = P - 1;
+                const double a = p - static_cast<double>(r);
+                const double *h0 = tab + r*N, *h1 = h0 + N;
+                const cf32 *xp = x + static_cast<long long>(fl) + n0;
+                double sr = 0.0, si = 0.0;
+                for (long long j = 0; j < N; j++) {
+                    const double h = (1.0 - a)*h0[j] + a*h1[j];
+                    sr += h*xp[j].real();
+                    si += h*xp[j].imag();
+                }
+                o[k] = cf32(static_cast<float>(sr), static_cast<float>(si));
+            }
+        });
+    }
+    return out;
+}
+
 } // namespace
 
 void register_resample(py::module_ &m) {
     const char *doc = "polyphase_read(buf, table float32 (phases + 1, taps), pos0, step, count, threads) -> out[k] = sum_j table[nearest phase][j] buf[floor(pos0 + k step) - taps/2 + 1 + j]";
     m.def("polyphase_read", &polyphase_read<float>, doc, py::arg("buf").noconvert(), py::arg("table"), py::arg("pos0"), py::arg("step"), py::arg("count"), py::arg("threads") = 0);
     m.def("polyphase_read", &polyphase_read<cf32>, doc, py::arg("buf").noconvert(), py::arg("table"), py::arg("pos0"), py::arg("step"), py::arg("count"), py::arg("threads") = 0);
+    m.def("fractional_read", &fractional_read, "fractional_read(x complex64, t float64, table (phases + 1, taps), n0, threads) -> x at t (complex64)",
+          py::arg("x").noconvert(), py::arg("t"), py::arg("table"), py::arg("n0"), py::arg("threads") = 0);
     m.def("rotate_into", &rotate_into, "rotate_into(x complex64, out complex64, phase0, w, threads) -> phase after len(x): out = x exp(j (phase0 + w i))",
           py::arg("x"), py::arg("out").noconvert(), py::arg("phase0"), py::arg("w"), py::arg("threads") = 0);
 }

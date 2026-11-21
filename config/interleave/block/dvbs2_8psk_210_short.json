@@ -1,0 +1,6 @@
+{
+  "base": "interleave",
+  "extends": "dvbs2_8psk_short",
+  "comment": "DVB-S2 bit interleaver, short frames: the LDPC codeword written column by column into 3 columns of 5400, read row by row with the columns read in the order 2, 1, 0 (rate 3/5)",
+  "row_perm": [2, 1, 0]
+}
