@@ -3,6 +3,7 @@
 The C++ kernels (csrc/rpps_native -> rpps._native) are optional: without pybind11 or a compiler the build warns and
 rpps runs its pure Python loops. Build them in place with `python setup.py build_ext -i` (builder.py -c).
 """
+import importlib.util
 import os
 import shutil
 import sys
@@ -51,9 +52,19 @@ def native_extensions():
             raise
         print("WARNING: pybind11 is not installed; rpps._native is not built", file=sys.stderr)
         return []
-    srcs = sorted(str(p.relative_to(ROOT)) for p in (ROOT / "csrc" / "rpps_native").glob("*.cpp"))
+    src_dir = ROOT / "csrc" / "rpps_native"
+    srcs = sorted(str(p.relative_to(ROOT)) for p in src_dir.glob("*.cpp"))
     args = ["/O2"] if sys.platform == "win32" else ["-O3"]
-    return [Pybind11Extension("rpps._native", srcs, include_dirs=["csrc/rpps_native"], cxx_std=17, extra_compile_args=args)]
+    macros = [("RPPS_SRC_HASH", source_hash(src_dir))] # rpps._accel warns when the sources have moved on since
+    return [Pybind11Extension("rpps._native", srcs, include_dirs=["csrc/rpps_native"], cxx_std=17, extra_compile_args=args,
+                              define_macros=macros)]
+
+def source_hash(src_dir):
+    """rpps._srchash.source_hash, loaded by path: setup.py cannot import rpps"""
+    spec = importlib.util.spec_from_file_location("_rpps_srchash", ROOT / "src" / "rpps" / "_srchash.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.source_hash(src_dir)
 
 setup(
     name="rpps",
