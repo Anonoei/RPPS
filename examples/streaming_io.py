@@ -48,13 +48,15 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         path = pathlib.Path(tmp)/"capture"
         x = recording(path)
-        src = rp.source.SigMF(path, sps=Fs/BAUD) # Fs, cf and the sample format come from the metadata
-        print(f"{src}, {len(src)} samples")
+        # Fs, cf and the sample format come from the metadata. `with` unmaps the file when done: Windows can't delete
+        # (or overwrite) a file that is still mapped
+        with rp.source.SigMF(path, sps=Fs/BAUD) as src:
+            print(f"{src}, {len(src)} samples")
 
-        # 1. Iterate: rates follow the stages (Fs /5, sps from the detection), the detection rides on the data
-        parts = []
-        for out in src(4096) + receiver():
-            parts.append(out.data)
+            # 1. Iterate: rates follow the stages (Fs /5, sps from the detection), the detection rides on the data
+            parts = []
+            for out in src(4096) + receiver():
+                parts.append(out.data)
         iterated = np.concatenate(parts)
         print(f"iterated: {len(iterated)} symbols at {out.Fs:.0f} Bd, {out.det.mod} detected, {out.stream.est['quality']}")
 
@@ -71,16 +73,18 @@ def main():
         # 3. Pipelined: the source and every stage in a thread of their own, the same output; stream.load() is the time
         # each stage took as a fraction of real time (over 1.0: too slow for a live radio at this rate)
         parts = []
-        for out in rp.source.SigMF(path, sps=Fs/BAUD)(4096).pipelined(receiver()):
-            parts.append(out.data)
+        with rp.source.SigMF(path, sps=Fs/BAUD) as src:
+            for out in src(4096).pipelined(receiver()):
+                parts.append(out.data)
         assert np.allclose(np.concatenate(parts), iterated)
         print("pipelined: same symbols; load per stage " + ", ".join(f"{type(s).__name__} {v:.2f}"
                                                                     for s, v in out.stream.load().items()))
 
         # 4. Any block cut gives the same samples through fixed stages (filters, shifts, resamplers). An estimator that
         # waits for enough signal (Acquire) can decide at a slightly different point, so compare before it
-        a = (rp.source.SigMF(path)(4096) + conditioning()).collect()
-        b = (rp.source.SigMF(path)(1500) + conditioning()).collect()
+        with rp.source.SigMF(path) as src:
+            a = (src(4096) + conditioning()).collect()
+            b = (src(1500) + conditioning()).collect()
         assert np.allclose(a, b, atol=1e-5)
         print(f"conditioning in blocks of 4096 and 1500: the same {len(a)} samples")
 

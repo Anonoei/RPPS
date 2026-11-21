@@ -30,6 +30,26 @@ def test_sigmf_round_trip(tmp_path, datatype):
     tol = 1e-6 if "f" in datatype else (2/127 if "8" in datatype else 1e-4)
     assert np.allclose(y, x, atol=tol) and blocks[-1].flush and blocks[0].Fs == 2e6
 
+@pytest.mark.parametrize("datatype", ["cf64_le", "ci16_le"])
+def test_sigmf_closes_its_mapping(tmp_path, datatype):
+    """`with` unmaps the data file (Windows can't delete or replace a mapped file); the blocks are copies, not views of
+    the mapping, and reading after close maps it again"""
+    x = _tone()
+    with rp.source.SigMFSink(tmp_path/"rec", Fs=2e6, datatype=datatype) as s:
+        s.write(x)
+    with rp.source.SigMF(tmp_path/"rec") as src:
+        blocks = list(src(4096))
+        assert not any(np.shares_memory(b.data, src._map) for b in blocks)
+    assert src._map is None
+    again = np.concatenate([b.data for b in src(4096)])
+    assert np.allclose(again, np.concatenate([b.data for b in blocks]))
+    src.close()
+    (tmp_path/"rec.sigmf-data").unlink() # refused on Windows while mapped
+    with rp.source.SigMFSink(tmp_path/"rec", Fs=2e6, datatype=datatype) as s: # and so is replacing it
+        s.write(x[:100])
+    with rp.source.SigMF(tmp_path/"rec") as src:
+        assert len(src) == 100
+
 def test_sigmf_rejects_unknown_datatypes():
     with pytest.raises(ValueError):
         rp.source.sigmf.dtype_of("cq16")
