@@ -67,8 +67,18 @@ def rate_limits(sdr=None, driver=None, remote=None):
     return min(r.lo for r in rates)/1e6, max(r.hi for r in rates)/1e6
 
 def device(args=None, driver=None):
-    """A local radio, not yet opened (see `driver_name`). `args` is unused (kept for scripts that pass their argparse namespace)"""
+    """The radio for an `rp.source.Device`: with $PYSDRLIB_REMOTE one a pysdrlib server hosts, connected (the source leaves
+    it open), else a local one, not yet opened (see `driver_name`). `args` is unused (kept for scripts that pass their
+    argparse namespace)"""
+    global _remote_dev
+    remote = os.environ.get("PYSDRLIB_REMOTE")
+    if remote:
+        if _remote_dev is None: # One connection for the program: a second would ask the server for another radio of the type
+            _remote_dev = pysdrlib.connect(remote, driver or os.environ.get("RPPS_RADIO") or _server_driver(remote), reuse=True)
+        return _remote_dev
     return pysdrlib.device(driver_name(driver))
+
+_remote_dev = None
 
 def add_gain_arg(ap, default=DEFAULT_GAIN):
     """`--gain` for an argparse parser: a fraction 0-1 of the radio's range"""
