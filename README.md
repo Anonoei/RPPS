@@ -173,6 +173,8 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
    - [X] DVB-S, DVB-S2 (normal and short frames, APSK), IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
    - [X] CCSDS concatenated (convolutional + Reed-Solomon)
    - [X] LTE downlink to SIB1 (`lte/downlink`: MIB, CFI, DCI 1A, PDSCH, branches driving one another)
+   - [X] 5G NR downlink to SIB1 at 15 kHz, through LEO satellite Doppler (`nr/downlink`: SS/PBCH, MIB, CORESET 0, DCI 1_0, PDSCH)
+   - [X] DVB-S2 multiple input streams (`dvbs2/mis`)
    - [ ] From definitions already shipped: CCSDS turbo, P25, DMR, IEEE 802.11a/g, 802.11n, ATSC 8VSB, GPS C/A, DAB
  - [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey
 

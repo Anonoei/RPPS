@@ -33,7 +33,8 @@ The kinds (`python -m rpps steps` lists them with the sync methods):
              control), uncoded
     link     crc, frame (HDLC), header (fields, crc, fcs, payload; select: the frames with those field values)
     grid     resource grids (rpps.grid), receive only: lte_cell (offset, span, resolution, acquire, lose, gate), lte_grid
-             (n_rb), and the channels on its frames, lte_pbch, lte_pcfich, lte_pdcch (rntis), lte_pdsch
+             (n_rb), and the channels on its frames, lte_pbch, lte_pcfich, lte_pdcch (rntis), lte_pdsch; nr_cell (offset,
+             span, resolution, period, acquire, lose, gate), nr_grid, nr_pbch, nr_pdcch (rntis), nr_pdsch
 """
 from dataclasses import dataclass, field
 
@@ -483,6 +484,31 @@ def _lte_channel(kind, spec, rep, ctx):
 
 for _k in ("lte_pbch", "lte_pcfich", "lte_pdcch", "lte_pdsch"):
     register_step("grid", _k)(_lte_channel)
+
+@register_step("grid", "nr_cell")
+def _nr_cell(kind, spec, rep, ctx):
+    """NR cell search and slot timing, LEO Doppler tracked (rpps.grid.nr.NrCell): samples from a frame start, in slots"""
+    from ..grid import nr
+    if rep is not None and rep != Rep.SAMPLES:
+        raise ConfigError(f"grid nr_cell: takes samples, not {rep}")
+    return [(STAGE, nr.NrCell(**_given(spec, ("offset", "span", "resolution", "period", "acquire", "lose", "gate", "name"))))], [], Rep.SAMPLES
+
+@register_step("grid", "nr_grid")
+def _nr_grid(kind, spec, rep, ctx):
+    """Slots to grid frames (rpps.grid.nr.NrGrid)"""
+    from ..grid import nr
+    return [(STAGE, nr.NrGrid(**_given(spec, ("cell", "period"))))], [], Rep.SYMBOLS
+
+def _nr_channel(kind, spec, rep, ctx):
+    """A channel on NR grid frames (rpps.grid.nr.channels)"""
+    from ..grid.nr import channels as ch
+    name = spec.get("id", kind)
+    op = {"nr_pbch": lambda: ch.PBCH(name=name), "nr_pdcch": lambda: ch.PDCCH(**_given(spec, ("rntis",)), name=name),
+          "nr_pdsch": lambda: ch.PDSCH(name=name)}[kind]()
+    return [(STAGE, op)], [], Rep.DATA
+
+for _k in ("nr_pbch", "nr_pdcch", "nr_pdsch"):
+    register_step("grid", _k)(_nr_channel)
 
 # ---- wave (pairs)
 

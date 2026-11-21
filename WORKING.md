@@ -23,6 +23,7 @@ Burst and preamble steps in profiles, so burst demodulators can be profiles, the
 | 2 | Branches in profiles: one trunk, chains reading the same frames, headers driving across | 1dfbf42 |
 | 3 | `rpps.grid`, `lte/downlink` to SIB1 (band 13 capture: MIB 100/100, SI blocks 60/60; live: 100/100, 58/58) | 4046b86 |
 | 4 | NR polar and LDPC with their rate matching; checked against py3gpp | 8eb71fc, 26275ae |
+| DVB | DVB-S2 multistream in branches; trunk controls drive branch steps; header select | ebe1694 |
 
 ## In progress
 
@@ -41,16 +42,17 @@ Burst and preamble steps in profiles, so burst demodulators can be profiles, the
 
 ## Next
 
-- **Phase 5, NR through SIB1, as `grid.nr` and a profile like `lte/downlink`:**
-  - SSB: PSS, SSS, PBCH and its DMRS; the PBCH payload's interleaving and scrambling (38.212 7.1.1).
-  - The MIB, then CORESET0 and the search space from it (38.213 13).
-  - PDCCH: DCI 1_0 to the SI-RNTI (polar, `block/polar/nr_dci`).
-  - PDSCH: DMRS, LDPC (`block/ldpc/nr_bg*`), the transport block's CRC; a synthetic transmitter as `grid.lte.tx` is.
-- **NTN, LEO:**
-  - Doppler of tens of kHz, moving at hundreds of Hz/s: acquisition over a wide offset, then a frequency and
-    frequency-rate loop over the SSBs, and a sample clock that follows the Doppler.
-  - Tested on synthetic passes (no NTN on air here).
-- **End-to-end check:** a real NR PBCH passing its CRC-24C, if NR is in a capture.
+- **Phase 5, NR through SIB1 with NTN: built** (`grid.nr`, `nr/downlink`):
+  - synthetic: terrestrial, and a LEO pass at 2.185 GHz from 300 s out (50 kHz) through closest approach (over 600 Hz/s);
+  - the SS/PBCH block, BCH and PBCH scrambling are bit-exact against py3gpp.
+- **Next: a real NR signal.** A live NR cell at 15 kHz (n71, 617-652 MHz) is in the HackRF's range. Its PBCH passing
+  CRC-24C would check the chain end to end, past the synthetic tests and py3gpp.
+- **NR scope left:**
+  - 30 kHz SS/PBCH or CORESET (Tables 13-2 to 13-6);
+  - more than 4 candidate blocks (above 3 GHz);
+  - VRB-to-PRB interleaving;
+  - several code blocks a transport block;
+  - real time (about 7x slower at 7.68 MS/s).
 
 ## Open
 
