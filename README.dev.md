@@ -293,7 +293,10 @@ stream of its own, and the runner gives {name: output}. A header in one branch d
 fields' position is carried back to the trunk's output and the driven branch takes the change there. With `frame` (trunk
 items a frame), the branches read whole frames, so a header rules on a frame before the branches after it read that frame,
 however the blocks were cut. A step id is one step across all branches; branches are receive only. Fields published with
-a span (a CFI, a DCI: their own subframe) go back to the defaults after it in the driven branches too.
+a span (a CFI, a DCI: their own subframe) go back to the defaults after it in the driven branches too. A header in the trunk
+drives steps in branches too: the trunk ends on an exit step the controls drive in their place, which hands each change on
+at the trunk's output position. `dvbs2/mis` is built so: the PLS (trunk) sets each input stream's BBHEADER (a branch, `select`
+keeping its ISI). DVB-S2's own PLS-to-payload control needs no branch: the PLS rules its own frame, forward, in one chain.
 
 **Resource grids:** `grid` steps (rpps.grid) take an OFDM system's samples to frames of its resource grid, and its physical
 channels read them. `lte/downlink` is built so: `{"grid": "lte_cell"}` finds the cell (PSS, SSS: the cell id, the carrier

@@ -1,0 +1,184 @@
+{
+  "base": "profile",
+  "comment": "DVB-S2 multiple input streams (MIS): one demodulator and decoder (the steps of dvbs2/normal through the BBFRAME descrambler), then a branch per input stream, each a BBHEADER that keeps the frames of its ISI (MATYPE-2, with SIS/MIS 0). Each frame's PLS sets the BBFRAME length of every branch's BBHEADER, ahead of it. Out comes {stream: its data fields}. Two streams, `isi_a` and `isi_b`; another is another branch with its own BBHEADER step and a line in the PLS's drive. Transmit with dvbs2/normal, giving each frame's `sis` 0 and `isi`",
+  "ref": "EN 302 307-1 5.1.6",
+  "tags": ["dvb-s2"],
+  "params": {
+    "sps": {
+      "default": 4,
+      "comment": "samples per symbol"
+    },
+    "pulse": {
+      "default": "rrc/0p35",
+      "comment": "the transmit pulse, and so the matched filter: rrc/0p35, rrc/0p25 or rrc/0p20 (DVB-S2's roll-offs)"
+    },
+    "isi_a": {
+      "default": 0,
+      "comment": "the first stream's input stream identifier"
+    },
+    "isi_b": {
+      "default": 1,
+      "comment": "the second stream's"
+    }
+  },
+  "steps": [
+    {
+      "wave": "shape",
+      "pulse": {
+        "param": "pulse"
+      },
+      "sps": {
+        "param": "sps"
+      }
+    },
+    {
+      "sync": "timing"
+    },
+    {
+      "sync": "carrier",
+      "id": "carrier",
+      "order": 8
+    },
+    {
+      "sync": "frame",
+      "header": "dvbs2_pl",
+      "max_length": 33282
+    },
+    {
+      "symbol": "header",
+      "id": "pls",
+      "name": "dvbs2_pl"
+    },
+    {
+      "symbol": "scramble",
+      "id": "plscram",
+      "sequence": "dvbs2_pl",
+      "offsets": [131072, 0],
+      "step": 90
+    },
+    {
+      "sync": "carrier",
+      "id": "phase",
+      "method": "pilots",
+      "lead": -77.5
+    },
+    {
+      "symbol": "pilots",
+      "id": "pilots"
+    },
+    {
+      "symbol": "constellation",
+      "id": "map",
+      "name": "dvbs2_qpsk"
+    },
+    {
+      "code": "interleave",
+      "id": "bitil",
+      "name": null
+    },
+    {
+      "code": "block",
+      "id": "ldpc",
+      "name": "ldpc/dvbs2_64800_1_2"
+    },
+    {
+      "code": "block",
+      "id": "bch",
+      "name": "bch/dvbs2_1_2"
+    },
+    {
+      "code": "scramble",
+      "id": "bbscram",
+      "name": "additive/dvbs2_bb"
+    },
+    {
+      "branch": "streams",
+      "order": ["a", "b"],
+      "branches": {
+        "a": [
+          {
+            "link": "header",
+            "id": "bb_a",
+            "name": "dvbs2_bb",
+            "select": {
+              "sis": 0,
+              "matype2": {
+                "param": "isi_a"
+              }
+            }
+          }
+        ],
+        "b": [
+          {
+            "link": "header",
+            "id": "bb_b",
+            "name": "dvbs2_bb",
+            "select": {
+              "sis": 0,
+              "matype2": {
+                "param": "isi_b"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "controls": {
+    "frame": {
+      "drive": {
+        "pls": {
+          "frame": "frame"
+        }
+      }
+    },
+    "pls": {
+      "table": "dvbs2/modcod",
+      "key": ["modcod", "short"],
+      "default": {
+        "short": 0
+      },
+      "drive": {
+        "pls": {
+          "modcod": "modcod",
+          "short": "short",
+          "pilots": "pilots"
+        },
+        "plscram": {
+          "length": {
+            "calc": "slots*90 + pilots*((slots - 1)//16)*36"
+          }
+        },
+        "phase": {
+          "slots": "slots",
+          "pilots": "pilots"
+        },
+        "pilots": {
+          "slots": "slots",
+          "pilots": "pilots"
+        },
+        "map": {
+          "name": "constellation"
+        },
+        "bitil": {
+          "name": "interleaver"
+        },
+        "ldpc": {
+          "name": "ldpc"
+        },
+        "bch": {
+          "name": "bch"
+        },
+        "bbscram": {
+          "length": "kbch"
+        },
+        "bb_a": {
+          "length": "kbch"
+        },
+        "bb_b": {
+          "length": "kbch"
+        }
+      }
+    }
+  }
+}

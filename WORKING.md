@@ -22,7 +22,7 @@ Burst and preamble steps in profiles, so burst demodulators can be profiles, the
 | 1 | Burst floor from the noise windows alone (bursts may fill nearly all the air) | 57a819b |
 | 2 | Branches in profiles: one trunk, chains reading the same frames, headers driving across | 1dfbf42 |
 | 3 | `rpps.grid`, `lte/downlink` to SIB1 (band 13 capture: MIB 100/100, SI blocks 60/60; live: 100/100, 58/58) | 4046b86 |
-| 4 | NR polar and LDPC with their rate matching | 8eb71fc |
+| 4 | NR polar and LDPC with their rate matching; checked against py3gpp | 8eb71fc, 26275ae |
 
 ## In progress
 
@@ -33,10 +33,11 @@ Burst and preamble steps in profiles, so burst demodulators can be profiles, the
   - **Not covered:** py3gpp's polar always takes N = 2^nmax and freezes nothing for rate matching. Against that
     simplification the polar sequence, input interleaver and encoder match bit for bit. The N rule and the bits frozen
     for puncturing or shortening follow the 38.212 text, with nothing independent to check them against.
-- **DVB and branches.** Deciding where DVB fits the branch structure. A DVB-S2 PL header drives its own frame's payload,
-  as a PCFICH drives a PDCCH. But a branch reads frames of a fixed length, and a DVB-S2 PL frame's length changes with
-  its MODCOD and pilots. Being checked: whether that needs variable-length frames, or whether DVB's case stays the
-  single chain with re-runs that `dvbs2/normal` already uses.
+- **DVB and branches: done.**
+  - DVB-S2 multistream (`dvbs2/mis`): a branch per input stream, each BBHEADER keeping its ISI (`select`).
+  - Controls in the trunk now drive steps in branches; here the PLS sets every stream's BBFRAME length.
+  - DVB-S2's PLS-to-payload control stays in one chain: it is forward, and its frames change length.
+  - DVB-S carries one transport stream: nothing to branch.
 
 ## Next
 

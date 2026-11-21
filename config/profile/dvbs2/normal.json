@@ -156,7 +156,9 @@
           "length": "kbch"
         },
         "bbheader": {
-          "length": "kbch"
+          "length": "kbch",
+          "sis": "sis",
+          "matype2": "isi"
         }
       }
     }

@@ -345,3 +345,33 @@ def test_dvbs2_short_frame_loopback(modcod):
     assert np.array_equal(got, data)
     assert [(f["modcod"], f["short"]) for _, f, _ in st.control.fields("pls")] == [(modcod, 1), (4, 0), (modcod, 1)]
     assert st.est["dvbs2_bb"]["crc_failed"] == 0
+
+# ---- DVB-S2 multiple input streams: the trunk's PLS drives every branch's BBHEADER
+
+MIS_FRAMES = [{"modcod": 4, "pilots": 1, "sis": 0, "isi": 0}, {"modcod": 12, "pilots": 1, "sis": 0, "isi": 1},
+              {"modcod": 1, "pilots": 0, "sis": 0, "isi": 0}, {"modcod": 4, "pilots": 1, "sis": 0, "isi": 1}]
+
+@pytest.mark.parametrize("block", [None, 30011])
+def test_dvbs2_multistream_branches(block):
+    """Frames of two input streams (ISI 0, 1), sent by dvbs2/normal: dvbs2/mis gives each stream its own data fields. The
+    BBFRAME length each branch's BBHEADER needs comes from the PLS in the trunk, frame by frame"""
+    p = rp.profile.load("dvbs2/normal", sync=KNOWN)
+    t = rp.profile.table("dvbs2/modcod")
+    dfl = [t.row({**f, "short": 0})["kbch"] - 80 for f in MIS_FRAMES]
+    data = bits(sum(dfl), 9)
+    o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=MIS_FRAMES)
+    x = (np.concatenate((o.data, np.zeros(200, np.complex64)))*np.exp(0.7j)).astype(np.complex64)
+    parts = np.split(data, np.cumsum(dfl)[:-1])
+    rx, st, got, i = rp.profile.load("dvbs2/mis", sync=KNOWN).rx(), None, {"a": [], "b": []}, 0
+    cuts = [len(x)] if block is None else [block]*(len(x)//block) + [len(x) % block]
+    for k, n in enumerate(cuts):
+        d = rp.Data(x[i:i + n], Fs=o.Fs, sps=4, delay=o.delay, stream=st, flush=k == len(cuts) - 1)
+        st, i = d.stream, i + n
+        out = rx(d)
+        for s in got:
+            got[s].append(np.asarray(out[s].data).astype(bool))
+    assert np.array_equal(np.concatenate(got["a"]), np.concatenate((parts[0], parts[2])))
+    assert np.array_equal(np.concatenate(got["b"]), np.concatenate((parts[1], parts[3])))
+    for s in got:
+        e = out[s].stream.est["dvbs2_bb"]
+        assert (e["frames"], e["skipped"], e["crc_failed"]) == (2, 2, 0)

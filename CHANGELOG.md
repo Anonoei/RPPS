@@ -27,6 +27,10 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- **DVB-S2 multiple input streams:** `dvbs2/mis`, one demodulator and decoder, then a branch per input stream. Branches:
+  a control whose header is in the trunk drives steps in the branches (the PLS sets every stream's BBFRAME length). Link
+  headers: `select` ({field: value}) keeps only the frames with those values (`skipped` counts the others).
+  `dvbs2/normal` transmits multistream frames from each frame's `sis` and `isi` fields.
 - **5G NR codes:** `nr_polar` (`block/polar/nr_pbch`, `block/polar/nr_dci`): the polar sequence and input interleaver of
   38.212, code size, puncturing and shortening, the sub-block and coded-bit interleavers, CRC-aided list decoding with
   the DCI's 24 ones and RNTI mask (`paths()` for a blind search). `nr_ldpc` (`block/ldpc/nr_bg1`, `nr_bg2`): both base

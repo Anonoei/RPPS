@@ -176,7 +176,9 @@ class Profile:
 
     def _branch_rx(self, steps, parallel):
         """The receive side of a profile that ends in branches (rpps.profile.branch)"""
-        from .branch import BranchRunner, BranchChain, _Bus
+        import copy
+        from .branch import BranchRunner, BranchChain, _Bus, Exit, EXIT
+        from .steps import Step, STAGE
         if parallel is not None:
             raise ConfigError(f"profile {self.name}: branches and a parallel region together are not supported")
         if any(st.category == "sync" and st.kind == "burst" for st in self.flat(steps)):
@@ -191,10 +193,25 @@ class Profile:
                     raise ConfigError(f"profile {self.name}: control {e.header!r} in branch {frm!r} drives {sid!r} in {to!r}, "
                                       f"which runs before it (order {list(nested)})")
         bus = _Bus(self.controls, owner)
-        trunk = Runner(self._slots(steps[:-1]), f"{self.name} rx", self.controls, "rx") if len(steps) > 1 else None
+        trunk_ids = {st.id for st in steps[:-1]}
+        entries, exit_params = dict(self.controls), []
+        for h, e in self.controls.items(): # A trunk header driving branch steps drives the trunk's exit in their place
+            outside = {sid: ps for sid, ps in e.drive.items() if sid in owner}
+            if h in trunk_ids and outside:
+                e2 = copy.copy(e)
+                e2.drive = {sid: ps for sid, ps in e.drive.items() if sid not in owner}
+                e2.drive[EXIT] = {f"{sid}/{p}": src for sid, ps in outside.items() for p, src in ps.items()}
+                exit_params += list(e2.drive[EXIT])
+                entries[h] = e2
+        trunk_steps, exit_op = list(steps[:-1]), None
+        if exit_params:
+            exit_op = Exit(exit_params)
+            trunk_steps.append(Step("signal", "exit", [(STAGE, exit_op)], [], steps[-1].takes, steps[-1].takes, {}, exit_op, EXIT,
+                                    dict(exit_op.CONTROLS)))
+        trunk = Runner(self._slots(trunk_steps), f"{self.name} rx", entries, "rx") if trunk_steps else None
         chains = {name: BranchChain(self._slots(chain), f"{self.name} rx {name}", self.controls, name, bus)
                   for name, chain in nested.items()}
-        return BranchRunner(trunk, chains, f"{self.name} rx", bus, list(nested), steps[-1].spec.get("frame"))
+        return BranchRunner(trunk, chains, f"{self.name} rx", bus, list(nested), steps[-1].spec.get("frame"), exit_op, owner)
 
     def tx(self):
         """Transmit runner: the transform steps inverted, in reverse order (sync and signal steps have no transmit side).

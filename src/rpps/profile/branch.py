@@ -18,10 +18,53 @@ A header publishes once it has read its frame, and the driven branch reads after
 a branch step names its `frame` (items of the trunk's output in one: an LTE subframe's resource elements): the branches read
 whole frames, collected from however the blocks were cut, and every header rules on a frame before the branches after it read
 that frame. Without one, the branches read each block as it comes, which suits headers whose frames never span two blocks.
+
+A header in the trunk drives steps in the branches too (a DVB-S2 PLS sets the BBFRAME length of every input stream's
+BBHEADER). The profile ends the trunk on an exit step, `EXIT`, that the controls drive in their place: the runner carries
+the change forward through the trunk with the data as it does any, and applies it to the exit at the trunk's output
+position, which is where every branch takes it.
 """
 from ..errors import ConfigError
+from ..base import Stage
 from ..base.meta import Stream
 from .runner import Runner, Change
+
+EXIT = "@branches" # The trunk's exit step: what the trunk's controls drive in the branches' place
+
+
+class Exit(Stage):
+    """The trunk's last step: passes the data through, and keeps every change applied to it with its position (the trunk's
+    output position from which it holds). Its parameters are "<step id>/<parameter>" of steps in the branches"""
+    def __init__(self, params):
+        self.CONTROLS = {p: "live" for p in params}
+        self.records, self.cursor, self._pending = [], None, []
+
+    def __str__(self):
+        return "Exit"
+
+    def takes(self, encode=True):
+        return None # (anything the trunk gives)
+
+    def control(self, **params):
+        by_step = {}
+        for k, v in params.items():
+            sid, _, p = k.partition("/")
+            by_step.setdefault(sid, {})[p] = v
+        if self.cursor is None: # Before any data: from where the first block starts
+            self._pending.append(by_step)
+        else:
+            self.records.append((self.cursor, by_step))
+
+    def step(self, x, st, meta):
+        if self._pending:
+            self.records += [(meta.pos, b) for b in self._pending]
+            self._pending = []
+        self.cursor = meta.pos + len(x)
+        return x
+
+    def take(self):
+        out, self.records = self.records, []
+        return out
 
 
 class BranchChain(Runner):
@@ -37,6 +80,22 @@ class BranchChain(Runner):
             self.bus.post(self.branch, entry, fields, self._back(at, origin, 0))
             if span is not None: # Fields that hold for a span go back to the defaults after it, in the driven branches too
                 self.bus.post(self.branch, entry, entry.revert(fields), self._back(at + span, origin, 0))
+
+    def inject_params(self, sid, params, pos, key):
+        """A change from the trunk: step sid's parameters from `pos` of this branch's input"""
+        if key in self._keys:
+            return
+        self._keys.add(key)
+        slots = {i: dict(params) for i in self._step_slots.get(sid, [])}
+        if not slots:
+            return
+        ch = Change()
+        ch.key, ch.fields, ch.origin, ch.at, ch.params, ch.step = key, dict(params), -1, pos, slots, EXIT
+        self._seq += 1
+        ch.seq = self._seq
+        ch.fwd, ch.hop, ch.pos = set(slots), 0, pos
+        ch.group, ch.btargets, ch.back, ch.s0 = (-1, pos), [], {}, None
+        self.changes.append(ch)
 
     def inject(self, entry, fields, pos, key):
         """A change from another branch's header, at `pos` of this branch's input (a trunk position)"""
@@ -71,8 +130,9 @@ class _Bus:
 
 class BranchRunner:
     """trunk: the runner of the steps before the branch step (None: none), chains: {name: BranchChain} in order"""
-    def __init__(self, trunk, chains, name, bus, order, frame=None):
+    def __init__(self, trunk, chains, name, bus, order, frame=None, exit=None, owner=None):
         self.trunk, self.chains, self.name, self.bus, self.order = trunk, chains, name, bus, order
+        self.exit, self.owner = exit, owner or {} # The trunk's Exit (None: no control of the trunk drives a branch)
         self.frame = None if frame is None else int(frame)
         self.held = None # Trunk output short of a whole frame
 
@@ -88,6 +148,11 @@ class BranchRunner:
             raise ConfigError(f"{self.name}: fields are for transmitting")
         if self.trunk is not None:
             data = self.trunk(data)
+        if self.exit is not None:
+            for pos, by_step in self.exit.take():
+                for sid, params in by_step.items():
+                    key = (EXIT, sid, int(round(pos)), tuple(sorted(params.items(), key=lambda kv: kv[0])))
+                    self.chains[self.owner[sid]].inject_params(sid, params, pos, key)
         if self.frame is not None:
             data = self._frames(data)
         parent = data.meta.stream
