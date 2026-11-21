@@ -62,3 +62,19 @@ def test_decodes_through_noise(bg, kp, e, rv, rng):
     llr = 2*((1 - 2.0*x) + rng.normal(0, 0.6, len(x)))/0.36
     out, err = c.decoder.decode(llr, status=True)
     assert np.array_equal(out, m) and err[0] >= 0
+
+# ---- against py3gpp (tests/unit/vectors/nr_py3gpp.json: what it is in its "source")
+
+from pathlib import Path
+import json
+
+VECTORS = json.loads((Path(__file__).parent/"vectors"/"nr_py3gpp.json").read_text())
+
+@pytest.mark.parametrize("v", VECTORS["ldpc"], ids=lambda v: f"bg{v['bg']}_k{v['kp']}_rv{v['rv']}")
+def test_ldpc_matches_py3gpp(v):
+    """The block's bits through the code and rate matching (redundancy version, filler, the modulation's interleaver)"""
+    c = np.unpackbits(np.frombuffer(bytes.fromhex(v["c"]), np.uint8))[:v["kp"]]
+    code = rp.code.load(f"block/ldpc/nr_bg{v['bg']}", kp=v["kp"], e=v["E"], rv=v["rv"], qm=v["qm"]).encoder
+    assert code.K == v["k"]
+    e = np.unpackbits(np.frombuffer(bytes.fromhex(v["e"]), np.uint8))[:v["E"]]
+    assert np.array_equal(code.encode(c).astype(np.uint8), e)
