@@ -187,13 +187,12 @@ class polar(_code):
         flat = words.reshape(-1, self.K)
         return np.array([self.crc.syndrome(w) == 0 for w in flat]).reshape(words.shape[:-1])
 
-    def decode(self, bits):
+    def _decode(self, bits):
         x = np.asarray(bits)
         llr = as_llr(x[:len(x)//self.N*self.N]).reshape(-1, self.N)
         W = len(llr)
         if W == 0:
-            self.errors = np.zeros(0, int)
-            return np.zeros(0, bool)
+            return np.zeros(0, bool), np.zeros(0, int)
         ok = np.ones(W, bool)
         if self.size <= 1 and self.crc is None:
             u, _ = sc(llr, lambda i, L: np.zeros(len(L), np.uint8) if self.frozen[i] else (L < 0).astype(np.uint8))
@@ -206,5 +205,4 @@ class polar(_code):
                 pick = np.where(good.any(axis=1), np.argmax(good, axis=1), 0)
                 ok = good.any(axis=1)
                 u = paths[np.arange(W), pick]
-        self.errors = word_errors(llr < 0, encode_u(u), ok)
-        return u[:, self.info[:self.num]].reshape(-1).astype(bool)
+        return u[:, self.info[:self.num]].reshape(-1).astype(bool), word_errors(llr < 0, encode_u(u), ok)

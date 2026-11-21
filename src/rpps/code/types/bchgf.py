@@ -27,7 +27,6 @@ class bchgf(_code):
         self.gen = _generator(m, poly, t)
         if len(self.gen) - 1 != n - k:
             raise ValueError(f"BCH generator has degree {len(self.gen)-1}, but n-k={n-k}")
-        self.errors = None
 
     def mul(self, a, b):
         return self.gf.mul(a, b)
@@ -55,24 +54,23 @@ class bchgf(_code):
             S[:, j-1] = self.gf.evaluate(words, e*j)
         return S
 
-    def decode(self, bits):
+    def _decode(self, bits):
         cw = np.asarray(bits, dtype=np.uint8)
         cw = cw[:len(cw)//self.den*self.den].reshape(-1, self.den).copy()
         if _accel.native is not None: # The codewords on several threads
             out, errors = _accel.native.cyclic_decode(cw.astype(np.int64), np.zeros((0, 0), np.uint8), self.gf.exp, self.gf.log,
                                                       2*self.t, self.t, 1, 1, True, False)
-            self.errors = errors.astype(int)
-            return out[:, :self.num].reshape(-1).astype(bool)
+            return out[:, :self.num].reshape(-1).astype(bool), errors.astype(int)
         S = self.syndromes(cw)
-        self.errors = np.zeros(len(cw), dtype=int)
+        errors = np.zeros(len(cw), dtype=int)
         for w in np.nonzero(S.any(axis=1))[0]:
             pos = self._locate(S[w])
             if pos is None:
-                self.errors[w] = -1
+                errors[w] = -1
             else:
                 cw[w, pos] ^= 1
-                self.errors[w] = len(pos)
-        return cw[:, :self.num].reshape(-1).astype(bool)
+                errors[w] = len(pos)
+        return cw[:, :self.num].reshape(-1).astype(bool), errors
 
     def _locate(self, S):
         """Error positions of one word from its syndromes, or None if uncorrectable"""

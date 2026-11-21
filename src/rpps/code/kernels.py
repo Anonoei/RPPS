@@ -44,7 +44,8 @@ class BlockDecode(Kernel):
             return b
         x = self._in(b, b.x[:, :used])
         try:
-            y = np.asarray(self.coder.decode(x.reshape(-1))).reshape(N, -1)
+            y, errs = self.coder.decode(x.reshape(-1), status=True)
+            y = np.asarray(y).reshape(N, -1)
         except RPPSError: # one frame's block was bad: find which, the others go on
             rows = []
             for i in range(N):
@@ -61,11 +62,11 @@ class BlockDecode(Kernel):
             for i, r in enumerate(rows):
                 if r is not None:
                     y[i] = r
+            errs = None # (decoded row by row: no verdict per codeword)
         soft = y.dtype.kind == "f"
         b.x = y
         b.form = Form(Mod if soft else Digital, self.category, dtype.LLR if soft else dtype.BITS, self.rep, *b.form[4:])
-        errs = getattr(self.coder, "errors", None) # This decoder's verdict per row (the operator's FAILED mask, per frame)
-        if errs is not None and len(errs) and len(errs) % N == 0:
+        if errs is not None and len(errs) and len(errs) % N == 0: # This decoder's verdict per row (the FAILED mask, per frame)
             b.code_failed = (np.asarray(errs).reshape(N, -1) < 0).any(axis=1)
         return b
 

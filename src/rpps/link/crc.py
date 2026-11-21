@@ -15,7 +15,7 @@ class crc(_code):
                           already in the order of the bits; `refout` and `xorout` apply as usual, so
                           compute(data) == compute_bits(np.unpackbits(data, bitorder="little" if refin else "big")).
 
-    encode(bits) appends the CRC to a message of any length and decode(bits) strips it, setting `ok`. Both work on the
+    encode(bits) appends the CRC to a message of any length and decode(bits) strips it (status=True: [0] if it checked out, [-1] if not). Both work on the
     bit stream as sent: the CRC follows the message bits the way the register would shift it out, most significant
     bit first, or least significant first when `refout` is set (HDLC's FCS, BLE). A received frame passes when the CRC
     over the message equals the CRC field.
@@ -32,7 +32,6 @@ class crc(_code):
         self.refin, self.refout, self.xorout = refin, refout, xorout
         self.mask = (1 << width) - 1
         self.check = check
-        self.ok = None
         self.table = self._table() if width >= 8 else None
         if check is not None and self.compute(b"123456789") != check:
             raise ValueError(f"CRC definition fails its check value: {self.compute(b'123456789'):#x} != {check:#x}")
@@ -123,9 +122,7 @@ class crc(_code):
         msg, field = self._split(bits)
         return self.from_bits(field) ^ self.compute_bits(msg) ^ mask
 
-    def decode(self, bits, mask=0):
-        """The message without its CRC field; `ok` says whether it checked out"""
+    def _decode(self, bits, mask=0):
+        """The message without its CRC field, and [0] if it checked out, [-1] if not"""
         msg, _ = self._split(bits)
-        self.ok = self.syndrome(bits, mask) == 0
-        self.errors = np.array([0 if self.ok else -1])
-        return msg.astype(bool)
+        return msg.astype(bool), np.array([0 if self.syndrome(bits, mask) == 0 else -1])

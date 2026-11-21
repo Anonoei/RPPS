@@ -48,10 +48,10 @@ def hexbits(bits):
 def rs_correct(hb, duid):
     """Reed-Solomon decode of an LDU's 24 hexbits: (corrected hexbits with the parity left as received, symbols corrected) or (None, -1)"""
     code = _RS[duid]
-    info = code.decode(np.array(hb), symbols=True)
-    if code.errors[0] < 0:
+    info, errors = code.decode(np.array(hb), symbols=True, status=True)
+    if errors[0] < 0:
         return None, -1
-    return [int(v) for v in info] + list(hb[code.num:]), int(code.errors[0])
+    return [int(v) for v in info] + list(hb[code.num:]), int(errors[0])
 
 
 def ess(hb):

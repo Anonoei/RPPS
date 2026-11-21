@@ -22,7 +22,7 @@ from ..errors import StreamError
 class _Data:
     __slots__ = (
         "_data",
-        "CAT", "REP", "DT", "ctx", "meta", "failed"
+        "CAT", "REP", "DT", "ctx", "meta", "failed", "errors"
     )
 
     def __init__(self, data=None, cat=Category.UNK, dt=None, ctx=None, meta=None, rep=None):
@@ -35,6 +35,9 @@ class _Data:
         # Bool mask, True where a decoder could not decode the item (rpps.code.Coding sets it from its codewords' status):
         # it goes along with the items (a step that keeps their number keeps it), and a link header drops such frames
         self.failed = None
+        # The decode that made this block, per codeword: bits (Reed-Solomon: symbols) corrected, -1 where it failed. None
+        # unless a code with codewords decoded it (a marker: its word's bit errors per frame). Not carried to later blocks
+        self.errors = None
 
     @property
     def flush(self):
@@ -159,7 +162,7 @@ class _Data:
     def copy(self):
         """Create a copy of data (the stream state is copied too)"""
         out = type(self)(self._data, self.CAT, self.DT, dict(self.ctx), self.meta, self.REP)
-        out.failed = self.failed
+        out.failed, out.errors = self.failed, self.errors
         return out
 
 class Analog(_Data):

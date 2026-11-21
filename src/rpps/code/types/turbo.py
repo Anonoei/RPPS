@@ -116,7 +116,7 @@ class turbo(_code):
         app = bcjr(self.code.trellis, np.stack((sys, par), axis=-1)[None], start=0, end=0, maxlog=maxlog)[0]
         return app[:len(Ls)]
 
-    def decode(self, bits, soft=None):
+    def _decode(self, bits, soft=None):
         llr = as_llr(bits, soft, 2.0)
         K, n = self.Kb, self.den
         # The effort level (rpps._effort): its iterations and max-log or log-MAP. The extrinsic scaling corrects max-log
@@ -149,8 +149,7 @@ class turbo(_code):
             out.append(final < 0)
         self.llr = np.concatenate(finals) if finals else np.zeros(0)
         dec = np.array(out).reshape(len(words), K)
-        self.errors = word_errors(words[:, :K] < 0, dec)
-        return dec.reshape(-1)
+        return dec.reshape(-1), word_errors(words[:, :K] < 0, dec)
 
 
 class turbo_mux(_code):
@@ -232,7 +231,7 @@ class turbo_mux(_code):
             s[o][t] += v
         return s
 
-    def decode(self, bits, soft=None):
+    def _decode(self, bits, soft=None):
         llr = as_llr(bits, soft, 2.0)
         n, K, m = self.den, self.Kb, self.m
         iters, maxlog = _effort.iters(self.iters), _effort.maxlog(self.maxlog)
@@ -260,5 +259,4 @@ class turbo_mux(_code):
             hard.append(Ls < 0)
         self.llr = np.concatenate(finals) if finals else np.zeros(0)
         dec = np.array(out).reshape(len(words), K)
-        self.errors = word_errors(np.array(hard).reshape(len(words), K), dec)
-        return dec.reshape(-1)
+        return dec.reshape(-1), word_errors(np.array(hard).reshape(len(words), K), dec)

@@ -56,8 +56,8 @@ class forney(_code):
     def encode(self, bits, symbols=False, state=None):
         return self._apply(bits, symbols, state, False)
 
-    def decode(self, bits, symbols=False, state=None):
-        return self._apply(bits, symbols, state, True)
+    def _decode(self, bits, symbols=False, state=None):
+        return self._apply(bits, symbols, state, True), None
 
 
 @register("block")
@@ -103,8 +103,8 @@ class block_interleaver(_code):
     def encode(self, bits):
         return self._apply(bits, self.src)
 
-    def decode(self, bits):
-        return self._apply(bits, self.dst)
+    def _decode(self, bits):
+        return self._apply(bits, self.dst), None
 
 def rowcol(length, cols, col_perm=None, fill="front", row_perm=None):
     """`from` permutation of a row-column interleaver: written by rows (dummies first, or last with fill="back"),

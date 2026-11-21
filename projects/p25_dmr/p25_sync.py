@@ -87,11 +87,11 @@ def nid(sn, i):
         return None
     seg = np.delete(seg, 35 - len(SYNC))/(np.mean(a*SYNC)/9.0) # a status symbol follows every 35 symbols of the frame; the sync's +-3 levels set the scale
     bits = np.array([int(b) for b in "".join(format(int(v), "02b") for v in slice_dibits(seg))], np.uint8)
-    word = _BCH.decode(bits[:63])
-    if _BCH.errors[0] < 0:
+    word, errors = _BCH.decode(bits[:63], status=True)
+    if errors[0] < 0:
         return None
     w = "".join(map(str, word.astype(int)))
-    return int(w[:12], 2), int(w[12:16], 2), int(_BCH.errors[0])
+    return int(w[:12], 2), int(w[12:16], 2), int(errors[0])
 
 
 # --- trunking signalling blocks (TSDU): 196 bits = 98 dibits, interleaved, 1/2-rate trellis coded -> 12 bytes (10 data + CRC-16), TIA-102.BAAA-A section 7: status dibits dropped

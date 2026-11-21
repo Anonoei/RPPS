@@ -66,9 +66,9 @@ def test_line_conventions():
         rp.code.Line("ami")
     m = rp.code.Line("manchester")
     out = as_data_bits([1, 1, 0, 0, 1, 0], Rep.CHANNEL) / m
-    assert m.errors == 2 and list(out.failed) == [True, True, False] # 11 and 00 are not Manchester pairs: those bits failed
+    assert list(out.failed) == [True, True, False] # 11 and 00 are not Manchester pairs: those bits failed
     soft = as_llr(as_data_bits([1, 1, 0, 0, 1, 0], Rep.CHANNEL)) / m
-    assert m.errors == 2 and list(soft.failed) == [True, True, False]
+    assert list(soft.failed) == [True, True, False]
 
 # ---- words and markers
 
@@ -90,7 +90,7 @@ def test_marker_fixed_length_round_trip_and_errors(rng):
     bits = np.asarray(coded.data).copy()
     bits[96 + 3] ^= True # one marker bit wrong in the second frame
     back = as_data_bits(bits, Rep.CHANNEL, flush=True) / M
-    assert np.array_equal(hard(back), frames) and list(M.errors) == [0, 1, 0]
+    assert np.array_equal(hard(back), frames) and list(back.errors) == [0, 1, 0]
     soft = as_llr(coded) / M
     assert soft.DT == rp.dtype.LLR and np.array_equal(hard(soft), frames)
 
@@ -110,7 +110,7 @@ def test_delimiter_keeps_the_word_fixes_polarity_and_the_marker_strips_it(rng):
         aligned = np.concatenate(outs)
         assert np.array_equal(aligned, coded) and st.est["delimiter"]["polarity"] == -1 and st.est["delimiter"]["frames"] == 4
     back = as_data_bits(aligned, Rep.CHANNEL, flush=True) / M
-    assert np.array_equal(hard(back), frames) and not any(M.errors)
+    assert np.array_equal(hard(back), frames) and not any(back.errors)
 
 def test_delimiter_without_keep_gives_the_bits_after_the_word():
     bits = np.array([1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1], bool) # the word 0100 at index 2, then 11; no other exact match
@@ -137,7 +137,7 @@ def test_delimiter_frames_by_control_strip(rng):
     M2 = rp.code.Marker(w.bits)
     M2.control(frame=0)
     back = as_data_bits(outs[0], Rep.CHANNEL) / M2
-    assert np.array_equal(hard(back), a) and list(M2.errors) == [0]
+    assert np.array_equal(hard(back), a) and list(back.errors) == [0]
 
 # ---- link: a frame check sequence after the payload, and streaming HDLC
 
@@ -237,7 +237,7 @@ def test_ieee80211n_ldpc_from_shifts(rate, k, rng):
     assert not c.decoder.syndrome(np.asarray(enc.data).reshape(2, 648)).any() # every check holds
     llr = (1 - 2*np.asarray(enc.data).astype(np.float32))*2.0 + rng.normal(size=len(enc)).astype(np.float32)*0.8
     dec = enc.derive(llr, rp.Category.SYMBOL, rp.dtype.LLR, Mod, rep=Rep.CHANNEL) / c
-    assert np.array_equal(hard(dec), msg) and (c.errors >= 0).all()
+    assert np.array_equal(hard(dec), msg) and (dec.errors >= 0).all()
 
 def test_qc_checks_lift_shifts():
     from rpps.code.types.ldpc import qc_checks

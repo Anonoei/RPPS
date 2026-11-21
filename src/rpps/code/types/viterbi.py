@@ -81,7 +81,10 @@ class viterbi(_code):
     def terminated(self):
         return self.termination == "zero"
 
-    def decode(self, bits: np.ndarray, soft=None, state=None, final=True):
+    def _decode(self, bits, soft=None, state=None, final=True):
+        return self._path(bits, soft, state, final), None # No codewords: no status
+
+    def _path(self, bits: np.ndarray, soft=None, state=None, final=True):
         llr = self.depuncture(as_llr(bits, soft))                              # (T, n)
         if self.invert is not None:
             llr = llr*self.invert[None, :] # An inverted output's 0 means 1 (erasures stay 0)

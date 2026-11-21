@@ -68,12 +68,12 @@ def test_bch_corrects_up_to_t_errors(rng):
     bad = coded.copy()
     pos = rng.choice(code.den, code.t, replace=False)
     bad[pos] ^= True
-    assert np.array_equal(code.decode(bad), msg)
-    assert code.errors[0] == code.t
+    out, errors = code.decode(bad, status=True)
+    assert np.array_equal(out, msg)
+    assert errors[0] == code.t
     bad = coded.copy()
     bad[rng.choice(code.den, code.t + 3, replace=False)] ^= True
-    code.decode(bad)
-    assert code.errors[0] == -1 # Beyond t: reported as uncorrectable
+    assert code.decode(bad, status=True)[1][0] == -1 # Beyond t: reported as uncorrectable
 
 # --- Cyclic code decoding (shared by RS and BCH) ------------------------------------------------
 
@@ -99,19 +99,20 @@ def test_rs_variants_correct_t_errors(name, rng):
     msg = rng.integers(0, 2**p["m"], 20*p["k"]).astype(np.int64)
     cw = rs.encode(msg, symbols=True).reshape(20, p["n"])
     bad = inject(cw, rs.t, rng, m=p["m"])
-    out = rs.decode(bad.reshape(-1), symbols=True)
+    out, errors = rs.decode(bad.reshape(-1), symbols=True, status=True)
     assert np.array_equal(np.asarray(out), msg)
-    assert (rs.errors == rs.t).all()
+    assert (errors == rs.t).all()
     over = inject(cw, rs.t + 1, rng, m=p["m"]) # One too many: never a wrong "correction" reported as success
-    rs.decode(over.reshape(-1), symbols=True)
-    assert (rs.errors != rs.t + 1).all() # More than t is either flagged, or lands on another codeword with t or fewer
-    assert (rs.errors == -1).mean() > 0.5
+    _, errors = rs.decode(over.reshape(-1), symbols=True, status=True)
+    assert (errors != rs.t + 1).all() # More than t is either flagged, or lands on another codeword with t or fewer
+    assert (errors == -1).mean() > 0.5
 
 def test_rs_clean_words_untouched(rng):
     rs = rp.code.load("block/rs/204_188").encoder
     msg = rng.integers(0, 256, 188*3).astype(np.int64)
-    assert np.array_equal(rs.decode(rs.encode(msg, symbols=True), symbols=True), msg)
-    assert (rs.errors == 0).all()
+    out, errors = rs.decode(rs.encode(msg, symbols=True), symbols=True, status=True)
+    assert np.array_equal(out, msg)
+    assert (errors == 0).all()
 
 @pytest.mark.parametrize("n,k,m,poly,t", [(31, 21, 5, 0x25, 2), (63, 45, 6, 0x43, 3), (15, 7, 4, 0x13, 2)])
 def test_small_bch_codes(n, k, m, poly, t, rng):
@@ -119,8 +120,9 @@ def test_small_bch_codes(n, k, m, poly, t, rng):
     msg = rng.integers(0, 2, 30*k).astype(bool)
     cw = code.encode(msg).reshape(30, n).astype(np.uint8)
     bad = inject(cw, t, rng, symbols=False)
-    assert np.array_equal(code.decode(bad.reshape(-1)), msg)
-    assert (code.errors == t).all()
+    out, errors = code.decode(bad.reshape(-1), status=True)
+    assert np.array_equal(out, msg)
+    assert (errors == t).all()
 
 def test_rs_decoding_is_fast(rng):
     import time

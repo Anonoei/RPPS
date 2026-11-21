@@ -28,11 +28,11 @@ def test_crc_append_and_detect(name, n, rng):
     msg = bits(rng, n)
     coded = crc.encode(msg)
     assert len(coded) == len(msg) + crc.width
-    assert np.array_equal(crc.decode(coded), msg) and crc.ok
+    out, status = crc.decode(coded, status=True)
+    assert np.array_equal(out, msg) and status[0] == 0
     bad = coded.copy()
     bad[min(17, len(bad) - 1)] ^= True
-    crc.decode(bad)
-    assert not crc.ok
+    assert crc.decode(bad, status=True)[1][0] == -1
 
 def _serial(bits, width, poly, init=0, xorout=0):
     """Bit-at-a-time CRC as the standards draw it (no table, no reflection)"""
@@ -69,7 +69,8 @@ def test_crc_any_length_matches_serial(width, poly, init, xorout, ref, rng):
 def test_crc_catalogue_odd_widths(width, poly, init, refin, refout, xorout, check, rng):
     crc = rp.link.crc(rp.logger.Logger(), width, poly, init, refin, refout, xorout, check)
     msg = bits(rng, 29)
-    assert np.array_equal(crc.decode(crc.encode(msg)), msg) and crc.ok
+    out, status = crc.decode(crc.encode(msg), status=True)
+    assert np.array_equal(out, msg) and status[0] == 0
 
 def test_crc_ble_against_spec_lfsr(rng):
     """Core spec Vol 6 Part B 3.1.1: a 24-stage LFSR, position 0 nearest the input, CRC sent from position 23"""
@@ -90,8 +91,7 @@ def test_crc_mode_s_frame():
     crc = rp.link.load("crc/crc24_mode_s").encoder
     frame = np.unpackbits(np.frombuffer(bytes.fromhex("8D4840D6202CC371C32CE0576098"), np.uint8)) # DF17, KLM1023
     assert crc.syndrome(frame) == 0
-    crc.decode(frame)
-    assert crc.ok
+    assert crc.decode(frame, status=True)[1][0] == 0
     frame[40] ^= 1
     assert crc.syndrome(frame) != 0
 
@@ -101,10 +101,8 @@ def test_crc_mask_overlay(rng):
     msg = bits(rng, 24)
     sent = crc.encode(msg, mask=0xFFFF)
     assert crc.syndrome(sent) == 0xFFFF
-    crc.decode(sent, mask=0xFFFF)
-    assert crc.ok
-    crc.decode(sent)
-    assert not crc.ok
+    assert crc.decode(sent, mask=0xFFFF, status=True)[1][0] == 0
+    assert crc.decode(sent, status=True)[1][0] == -1
 
 def test_crc_width_out_of_range():
     with pytest.raises(ValueError):
@@ -127,6 +125,7 @@ def test_hdlc_bad_fcs_flagged(name, rng):
     bits = h.encode(frames).copy()
     mid = len(bits)//2
     bits[mid] ^= True
-    h.decode(bits)
-    good, bad, aborts = h.last
-    assert len(good) < len(frames) and (bad + aborts) >= 1
+    out, status = h.decode(bits, status=True)
+    got, aborts = h.deframe(bits)
+    assert list(status) == [0 if ok else -1 for _, ok in got]
+    assert sum(ok for _, ok in got) < len(frames) and ((status < 0).sum() + aborts) >= 1

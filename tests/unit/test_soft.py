@@ -218,8 +218,7 @@ def test_rs_soft_retry_never_passes_noise():
     rs = rp.code.load("block/rs/204_188").decoder
     rng = np.random.default_rng(11)
     llr = rng.standard_normal(204*8*40)*2
-    rs.decode(llr)
-    assert np.all(rs.errors == -1)
+    assert np.all(rs.decode(llr, status=True)[1] == -1)
 
 def test_rs_soft_retry_still_corrects_with_erasures():
     """A word with errors past t = 8 symbols, but where the soft values say which bytes are doubtful, is corrected"""
@@ -231,8 +230,8 @@ def test_rs_soft_retry_still_corrects_with_erasures():
     bad = rng.choice(204, 10, replace=False) # 10 byte errors (t = 8), all with low confidence
     for b in bad:
         llr[8*b:8*b + 8] = -0.1*np.sign(llr[8*b:8*b + 8])
-    out = code.decoder.decode(llr)
-    assert code.decoder.errors[0] >= 0 and np.array_equal(np.asarray(out).astype(bool), msg)
+    out, errors = code.decoder.decode(llr, status=True)
+    assert errors[0] >= 0 and np.array_equal(np.asarray(out).astype(bool), msg)
 
 def test_forney_and_bcjr_pass_llrs_on():
     """LLRs through a Forney deinterleaver stay LLRs (the same permutation as on bits), and a BCJR decoder hands its

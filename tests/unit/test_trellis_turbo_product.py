@@ -14,7 +14,8 @@ def test_p25_half_rate(rng):
     assert len(cw) == 196 # 48 dibits + the flush dibit, 4 bits each
     bad = cw.copy()
     bad[rng.permutation(196)[:8]] ^= True
-    assert np.array_equal(code.decoder.decode(bad), msg) and code.errors[0] == 8
+    out, errors = code.decoder.decode(bad, status=True)
+    assert np.array_equal(out, msg) and errors[0] == 8
 
 def test_p25_half_rate_soft(rng):
     code = rp.code.load("block/trellis/p25_1_2")
@@ -135,11 +136,11 @@ def test_dmr_bptc_corrects(rng):
     for nerr in (1, 4, 6):
         rx = tx.copy()
         rx[rng.permutation(196)[:nerr]] ^= True
-        assert np.array_equal(bptc.decoder.decode(il.decode(rx)), msg) and bptc.errors[0] == nerr
+        out, errors = bptc.decoder.decode(il.decode(rx), status=True)
+        assert np.array_equal(out, msg) and errors[0] == nerr
     rx = tx.copy()
     rx[:60] ^= True
-    bptc.decoder.decode(il.decode(rx))
-    assert bptc.errors[0] == -1
+    assert bptc.decoder.decode(il.decode(rx), status=True)[1][0] == -1
 
 def test_dmr_crc_mask(rng):
     crc = rp.link.load("crc/crc16_ccitt_false").encoder

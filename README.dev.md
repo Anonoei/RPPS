@@ -422,8 +422,11 @@ Other decoding behaviour worth knowing:
 - Soft values go as far as something uses them: additive descrambling flips LLR signs, Forney deinterleaving moves LLRs, BCJR
   hands on a-posteriori LLRs (RS uses them for erasures, keeping two checks spare), differential decoding is the product
   detector `y conj(y[n-1])`.
-- A code step sets `data.failed` from its codewords' status (the last code with a verdict decides); later steps carry it, and
-  a link header drops a frame with any failed item whatever its CRC says. The parallel region drops such rows.
+- A decoder returns its status, it never keeps it: an implementation's `_decode` gives (output, errors per codeword or
+  None) and `decode(x, status=True)` passes both on, so one loaded (cached) code decodes on several threads at once. A code
+  step puts the errors on its output (`data.errors`, not carried further) and sets `data.failed` from them (the last code
+  with a verdict decides); later steps carry `failed`, and a link header drops a frame with any failed item whatever its
+  CRC says. The parallel region drops such rows.
 - Under 4 sps Oerder & Meyr takes its square-law line at twice the rate (at 2 sps it aliased onto its mirror).
 
 ## Native kernels
@@ -486,8 +489,9 @@ python -m pytest tests/unit/test_remez.py                    # one file
 - **An implementation** (a code type, a sync method): put it in its category's package ([the rule](#the-rule)); subclass
   `Pipe`, `Stage` or `BitStage` with `CATEGORY`, `takes` and `SCOPE`; register its loader and its profile step
   (`rp.profile.steps.register_step`, `register_sync_method`), or name any `Stage` by module path in a profile
-  (`{"signal": "stage", "class": "mypkg.Gain", "args": {...}}`). Write Python first with a block-cut test; move hot loops to C++
-  after.
+  (`{"signal": "stage", "class": "mypkg.Gain", "args": {...}}`). A code type subclasses `code.types._code._code` and defines
+  `_decode(x, ...) -> (output, errors per codeword or None)`, keeping nothing of the call on itself. Write Python first
+  with a block-cut test; move hot loops to C++ after.
 - **A sync estimator:** block operations over windows at absolute positions, tracked by `sync.track`. A per-sample loop is
   second class, chosen by name in `defaults`.
 - **A signal:** a profile, which should need no new operator code ([Profiles](#profiles)).

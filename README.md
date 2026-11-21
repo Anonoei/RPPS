@@ -71,8 +71,9 @@ the shipped definitions: constellations, pulses, codes, scramblers, sequences, h
   A `Pipe` (`*`, `/`) keeps it in the context: `ctx=prev.ctx`. A fresh `rp.Data(chunk)` starts both over. Iterating a
   source does this for you.
 - **Some state lives on the operator.** `Feedthrough.encode(array)` called directly moves the register (`reset()` starts
-  it over); `control()` changes the operator for everyone holding it; decode status (`code.errors`, `crc.ok`) is the
-  last call's, on shared cached objects.
+  it over); `control()` changes the operator for everyone holding it. Decode status is not kept on the operator: it
+  comes with the output, `out.errors` after `data / code` (per codeword: corrections, -1 where it failed) or
+  `msg, errors = code.decoder.decode(x, status=True)`, so threads can share one loaded code.
 - **Bits to a link layer go through `rp.code.Uncoded()`.** `syms / qpsk / crc` is an error: channel bits are not data
   bits until a code (or `Uncoded`) says so.
 - **LLRs are log(P0/P1)**: positive means 0, a hard decision is `llr < 0`.

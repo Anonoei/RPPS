@@ -35,8 +35,8 @@ _RS = rp.code.RS(207, 187).decoder # t = 10; rpps._native decodes the codewords 
 def rs_decode(cw):
     """Reed-Solomon (207, 187) over many codewords at once: cw (N, 207) uint8 -> (data (N, 187) uint8, errors (N,) int: corrected bytes, -1 = uncorrectable, data as received)"""
     cw = np.ascontiguousarray(cw, dtype=np.int64)
-    data = np.asarray(_RS.decode(cw.reshape(-1), symbols=True)).reshape(-1, 187).astype(np.uint8)
-    return data, np.asarray(_RS.errors, dtype=int)
+    data, errors = _RS.decode(cw.reshape(-1), symbols=True, status=True)
+    return np.asarray(data).reshape(-1, 187).astype(np.uint8), np.asarray(errors, dtype=int)
 
 
 def viterbi(R, raw=False):
@@ -116,10 +116,10 @@ def deinterleave(y):
 def reed_solomon(z, start=DELAY):
     """RS(207,187) on the deinterleaved stream. Returns (data (codewords, 187), errors per codeword (-1: uncorrectable))"""
     code = rp.code.RS(207, 187) # ATSC: GF(256) with 0x11D, roots alpha^0 .. alpha^19: the defaults
-    rs = code.decoder # The byte-level code inside the pipeline stage: takes bytes (symbols=True), reports `errors` per codeword
+    rs = code.decoder # The byte-level code inside the pipeline stage: takes bytes (symbols=True), status=True gives `errors` per codeword
     cw = z[start:start + (len(z) - start)//207*207]
-    out = rs.decode(cw.astype(np.int64), symbols=True)
-    return np.asarray(out).reshape(-1, 187).astype(np.uint8), np.asarray(rs.errors)
+    out, errors = rs.decode(cw.astype(np.int64), symbols=True, status=True)
+    return np.asarray(out).reshape(-1, 187).astype(np.uint8), np.asarray(errors)
 
 # ------------------------------------------------------------------------------------------------ derandomizer, transport stream
 
