@@ -40,7 +40,10 @@ def _paths(path):
     return Path(str(stem) + ".sigmf-meta"), Path(str(stem) + ".sigmf-data")
 
 class SigMF(Source):
-    """A SigMF recording (the -meta or -data path, or their stem): Fs, cf and the datatype from its metadata"""
+    """A SigMF recording (the -meta or -data path, or their stem): Fs, cf and the datatype from its metadata
+
+    The data file stays memory mapped until `close()` (or the end of a `with` block): close it before the file is deleted
+    or overwritten, which Windows refuses while it is mapped"""
     def __init__(self, path, sps=0.0, scale=True):
         self.meta_path, self.data_path = _paths(path)
         self.meta = json.loads(self.meta_path.read_text())
@@ -53,7 +56,29 @@ class SigMF(Source):
         self.dtype, self.complex = dtype_of(self.datatype)
         self.scale = (1.0/float(2**(8*self.dtype.itemsize - 1))) if (scale and self.dtype.kind in "iu") else 1.0
         self.start = int(first.get("core:sample_start", 0))
-        self.data = np.memmap(self.data_path, dtype=self.dtype, mode="r")
+        self._map = None
+        self.open()
+
+    @property
+    def data(self):
+        """The recording's raw values, memory mapped (mapped again if the source was closed)"""
+        self.open()
+        return self._map
+
+    def open(self):
+        if self._map is None:
+            self._map = np.memmap(self.data_path, dtype=self.dtype, mode="r")
+
+    def close(self):
+        """Unmap the data file. Windows can't delete or replace a file while it is mapped; reading again maps it again"""
+        self._map = None # The blocks are copies, so this was the only reference
+
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, *a):
+        self.close()
 
     def __str__(self):
         return f"SigMF({self.data_path.name}, {self.datatype}, {self.Fs/1e6:g} MS/s, cf {self.cf/1e6:g} MHz)"
