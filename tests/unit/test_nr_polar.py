@@ -78,3 +78,36 @@ def test_bil_round_trip(rng):
     m = rng.integers(0, 2, 19).astype(bool)
     x = c.encode(m)
     assert np.array_equal(c.decode(4*(1 - 2.0*x)), m)
+
+# ---- against py3gpp (tests/unit/vectors/nr_py3gpp.json: what it is in its "source")
+
+from pathlib import Path
+import json
+
+VECTORS = json.loads((Path(__file__).parent/"vectors"/"nr_py3gpp.json").read_text())
+
+def unhex(h, n):
+    return np.unpackbits(np.frombuffer(bytes.fromhex(h), np.uint8))[:n]
+
+@pytest.mark.parametrize("v", VECTORS["polar"], ids=lambda v: f"K{v['K']}_E{v['E']}")
+def test_polar_matches_py3gpp(v):
+    """Where py3gpp's code is NR's (E >= N: repetition) the bits sent are the same; elsewhere the encoder is, at its N with
+    no bits frozen for rate matching"""
+    from rpps.code.types.polar import encode_u
+    K, N = v["K"], v["N"]
+    c = unhex(v["c"], K)
+    pi = nrp.input_pattern(K) if v["interleave"] else np.arange(K)
+    u = np.zeros(N, np.uint8)
+    u[np.sort(nrp.sequence(N)[-K:])] = c[pi]
+    assert np.array_equal(encode_u(u), unhex(v["d"], N))
+    if v["e"] is not None:
+        code = nrp.nr_polar(rp.logger.Logger(), K, v["E"], v["nmax"], v["interleave"])
+        assert code.N == N and np.array_equal(code.encode(c), unhex(v["e"], v["E"]).astype(bool))
+
+@pytest.mark.parametrize("v", VECTORS["crc"], ids=lambda v: v["poly"])
+def test_crcs_match_py3gpp(v):
+    name = {"24C": "crc24_nr_c", "24A": "crc24_lte_a", "24B": "crc24_lte_b", "16": "crc16_xmodem", "11": "crc11_nr", "6": "crc6_nr"}[v["poly"]]
+    m = unhex(v["m"], v["n"])
+    width = rp.link.load(f"crc/{name}").encoder.width
+    got = np.asarray(rp.link.load(f"crc/{name}").encoder.field(m)).astype(np.uint8)
+    assert np.array_equal(got, unhex(v["c"], v["n"] + width)[v["n"]:])

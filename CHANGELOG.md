@@ -1,7 +1,7 @@
 # Changelog
 
 RPPS is 0.x: a minor version may rename or remove things, and old names are not kept as aliases. Every release lists
-what breaks under **Breaking**, with what to use instead.
+what breaks under **Breaking**, with what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.md).
 
 ## Unreleased
 
@@ -33,6 +33,8 @@ what breaks under **Breaking**, with what to use instead.
   graphs with every lifting set, a structured encoder, filler and the punctured 2 Z, the circular buffer at each
   redundancy version and the modulation-order interleaver; `segment()` and `base_graph()` for transport blocks. CRCs
   `crc24_nr_c`, `crc11_nr`, `crc6_nr`; tables `nr/polar_sequence`, `nr/polar_interleave`.
+  Checked against py3gpp vectors (`tests/unit/vectors/nr_py3gpp.json`): LDPC and its rate matching, the CRCs and the
+  polar encoder are bit-exact.
 - **LTE downlink to SIB1:** the profile `lte/downlink` and the package `rpps.grid` (`grid` steps).
   - `grid.lte.LteCell`: cell search (PSS, SSS, carrier offset), then each half-frame's PSS tracked (the sample clock),
     the samples cut into whole half-frames from a subframe 0; acquired again when lost, zeros for what was missed.
