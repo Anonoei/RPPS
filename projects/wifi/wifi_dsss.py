@@ -28,7 +28,8 @@ def to_44(x, fs):
     r = Fraction(44e6/fs).limit_denominator(1000)
     return resample_poly(x, r.numerator, r.denominator)
 
-BURST = rp.sync.Burst(factor=6.0, win=100, min_s=150e-6) # A long-preamble frame: 192 us of PLCP before any data
+BURST = rp.sync.Burst(factor=6.0, win=100, min_s=150e-6, history=1 << 24) # A long-preamble frame: 192 us of PLCP before any data;
+# the floor from the whole capture (these scripts take one at once)
 
 def despread(y, start, n, off=0.0):
     """Correlate n consecutive symbols from start (float sample position): returns complex symbol values (fewer when the capture ends first).

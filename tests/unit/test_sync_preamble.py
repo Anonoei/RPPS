@@ -81,3 +81,16 @@ def test_after_burst_each_burst_finds_its_own(rng):
 def test_needs_something_to_find():
     with pytest.raises(ValueError):
         rp.sync.Preamble()
+
+def test_a_real_stream_is_matched_by_its_shape_and_its_level_taken_off(rng):
+    """A discriminator's output: the carrier offset is a level under the waveform, which the correlation coefficient
+    ignores and the fit gives"""
+    t = np.repeat(rng.choice([-1.0, 1.0], 40), 4)
+    x = 0.02*rng.standard_normal(3000)
+    x[700:700 + len(t)] += 0.8*t
+    x[700 + len(t):2500] += 0.8*rng.choice([-1.0, 1.0], 2500 - 700 - len(t))
+    x = (x + 0.3).astype(np.float32)
+    out = rp.Data(x, Fs=FS, flush=True) + rp.sync.Preamble(t, gate=0.8, correct=True)
+    est = out.stream.est["preamble"]
+    assert est["pos"] == 700 and est["metric"] > 0.95 and est["level"] == pytest.approx(0.3, abs=0.01)
+    assert np.allclose(np.asarray(out.data)[:len(t)], 0.8*t, atol=0.1) # The level off: the waveform as sent

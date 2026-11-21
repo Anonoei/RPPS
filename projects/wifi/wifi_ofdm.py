@@ -196,7 +196,8 @@ def receive(x, s, e, fs=FS, sig_rot=1.0):
     ok = len(psdu) == length and zlib.crc32(psdu[:-4]) == int.from_bytes(psdu[-4:], "little")
     return dict(rate=rate, length=length, frame=psdu, fcs_ok=ok, cfo=cfo + fine, start=start, nsym=nsym, stf=float(m))
 
-BURST = rp.sync.Burst(factor=6.0, win=100, min_s=30e-6) # The shortest frame: 20 us of preamble and SIGNAL, and data
+BURST = rp.sync.Burst(factor=6.0, win=100, min_s=30e-6, history=1 << 24) # The shortest frame: 20 us of preamble and SIGNAL, and
+# data; the floor from the whole capture (these scripts take one at once)
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])

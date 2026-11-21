@@ -15,9 +15,13 @@ class Known(Stage):
     With a matched filter fused in (`fuse`, which a profile does for the filter just before it) the filter is evaluated only at
     those instants, a dot product of its taps with the signal per symbol: `sps` times less work than filtering every sample and
     keeping every `sps`-th, the same symbols. The estimators that need the filter's output at every sample (Oerder & Meyr) have
-    nothing to fuse"""
-    def __init__(self, sps):
+    nothing to fuse
+
+    anchor: the name of a preamble (rpps.sync.Preamble) in the stream's estimates: the grid starts at its first symbol's
+    peak, moved by the group delay added since (a burst's own timing; until the preamble is found nothing comes out)"""
+    def __init__(self, sps, anchor=None):
         self.sps = sps
+        self.anchor = anchor
         self.matched = None
 
     def fuse(self, matched):
@@ -34,6 +38,14 @@ class Known(Stage):
     def step(self, samples, st, meta):
         sps = int(self.sps or meta.isps)
         delay = meta.delay + (0.0 if st.taps is None else (len(st.taps) - 1)/2/meta.Fs) # (the filter's group delay)
+        if st.next is None and self.anchor is not None:
+            est = meta.stream.est.get(self.anchor) or {}
+            if not est.get("found"):
+                meta.op.Fs, meta.op.sps = meta.Fs/sps, 1
+                return samples[:0]
+            r = meta.Fs/est["Fs"]
+            first = int(round(est["first"]*r + (delay - est["delay"])*meta.Fs)) # where the preamble put it, delayed since
+            st.next = first if first >= meta.pos else first + -(-(meta.pos - first)//sps)*sps
         if st.next is None:
             first = int(round(delay*meta.Fs)) # absolute index of the first symbol's peak
             st.next = first if first >= meta.pos else first + -(-(meta.pos - first)//sps)*sps

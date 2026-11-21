@@ -112,8 +112,9 @@ def cmd_rx(args):
     bits = []
     for block in src(args.block):
         out = rx(block)
-        x = np.asarray(out.data)
-        bits.append(x < 0 if x.dtype.kind == "f" else x.astype(bool))
+        for o in out if isinstance(out, list) else [out]: # (a profile with a burst step: one output per burst)
+            x = np.asarray(o.data)
+            bits.append(x < 0 if x.dtype.kind == "f" else x.astype(bool))
     bits = np.concatenate(bits) if bits else np.zeros(0, bool)
     print(f"{args.file}: {len(bits)} bits out of {args.profile}")
     if args.out:

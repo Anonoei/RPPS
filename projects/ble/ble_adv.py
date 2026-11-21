@@ -36,7 +36,8 @@ def crc24(bits, init=0x555555):
         raise ValueError("only the advertising CRC init (0x555555) is set up")
     return _CRC24.field(bits).astype(int).tolist()
 
-BURST = rp.sync.Burst(factor=6.0, win=8, min_s=60e-6, max_s=3e-3) # An advertising packet: 80 us to 2.1 ms on air
+BURST = rp.sync.Burst(factor=6.0, win=8, min_s=60e-6, max_s=3e-3, history=1 << 26) # A packet: 80 us to 2.1 ms on air; the floor from
+# the whole capture (these scripts take one at once)
 
 def demod(seg, fs=FS):
     """Instantaneous frequency (Hz) with the burst's mean removed, smoothed over one symbol"""
