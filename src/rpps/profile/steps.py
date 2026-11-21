@@ -31,7 +31,7 @@ The kinds (`python -m rpps steps` lists them with the sync methods):
     code     fec (type block / conv / interleave, name, args), scramble (name, args; length: frames of that many bits from
              the first), line (invert, nrzi, nrzm, manchester, thomas), marker (a word before each frame: length, or frames by
              control), uncoded
-    link     crc, frame (HDLC), header (fields, crc, fcs, payload)
+    link     crc, frame (HDLC), header (fields, crc, fcs, payload; select: the frames with those field values)
     grid     resource grids (rpps.grid), receive only: lte_cell (offset, span, resolution, acquire, lose, gate), lte_grid
              (n_rb), and the channels on its frames, lte_pbch, lte_pcfich, lte_pdcch (rntis), lte_pdsch
 """
@@ -600,7 +600,11 @@ def _link(kind, spec, rep, ctx):
     from .. import link
     if kind in ("crc", "frame", "header"):
         name = _need(spec, "name", f"link {kind}")
-        make = lambda: link.load(f"{kind}/{name}")
+        def make():
+            op = link.load(f"{kind}/{name}")
+            if kind == "header" and spec.get("select"): # {"select": {"isi": 1}}: only the frames with those field values
+                op.select = dict(spec["select"])
+            return op
         return _pair(make(), make(), Rep.PACKETS)
 
 for _cat, _fn, _kinds in (("wave", _wave, ("shape", "stagger", "fm", "am", "ssb", "ofdm")),

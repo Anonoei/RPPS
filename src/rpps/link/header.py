@@ -20,7 +20,9 @@ Receiving, each frame starts where a profile applies a change (a delimiter befor
 `length` bits after the last. The header's fields, with "bits" (the payload's length), are published from the payload's
 first bit for the payload's length, and {"frame_bits": header + payload} from the frame's first bit (rp.base.control.publish),
 so a profile can drive the rate of the payload and the length of the frame. A header whose CRC fails is counted, and its
-frame dropped; so is a frame whose FCS fails (`fcs_failed`). Out come the payloads.
+frame dropped; so is a frame whose FCS fails (`fcs_failed`). Out come the payloads. `select` ({field: value}) keeps only
+the frames whose fields have those values: the others are used up, counted (`skipped`), and neither given nor published
+(one of a DVB-S2 multistream's input streams by its ISI).
 Transmitting, a frame starts at each change a profile applies: its fields are the controlled values; framed, its payload
 is `length` minus the header, else everything until the next frame start (one frame per call). The fields are published
 from the payload's first bit, and {"frame_bits": the frame's bits} from the frame's first bit after the preamble, so the
@@ -60,6 +62,7 @@ class Header(Pipe):
             self._value_bits(preamble["word"], int(preamble["bits"])) if "word" in preamble else np.zeros(0, bool)))
         self.values = {f["name"]: f.get("default", 0) for f in self.fields}
         self.length = None
+        self.select = None # {field: value}: the frames kept (see the module)
         self._start = True
         self.CONTROLS = {"frame": "live", "length": "live", **{f["name"]: "live" for f in self.fields}}
 
@@ -150,6 +153,7 @@ class Header(Pipe):
         est = data.meta.stream.est.setdefault(self.name, {"frames": 0, "crc_failed": 0, "last": None})
         est.setdefault("fec_failed", 0)
         est.setdefault("fcs_failed", 0)
+        est.setdefault("skipped", 0)
         failed = failed_of(data) # What the decoders before could not decode: those frames are dropped
         out, n_out, i = [], 0, 0
         if self._start:
@@ -175,6 +179,10 @@ class Header(Pipe):
                     n = min(n if n is not None else self.length, self.length - self.header_bits - self.fcs_bits)
                 if failed is not None and failed[max(0, i - self.header_bits):i + (n or 0) + self.fcs_bits].any():
                     est["fec_failed"] += 1 # The code under it failed: its header passing its CRC proves nothing about the data
+                    st.mode, st.left = "drop", (n or 0) + self.fcs_bits
+                    continue
+                if self.select and any(fields.get(k) != v for k, v in self.select.items()):
+                    est["skipped"] += 1 # Not one of the frames kept
                     st.mode, st.left = "drop", (n or 0) + self.fcs_bits
                     continue
                 if self.fcs is None:
