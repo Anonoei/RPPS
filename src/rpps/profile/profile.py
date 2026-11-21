@@ -42,7 +42,42 @@ class Profile:
             built.append(st)
         if self._sync.get("timing", {}).get("fuse", True):
             self._fuse(built)
+        for i, st in enumerate(built):
+            if st.category == "sync" and st.kind == "preamble" and ("sequence" in st.spec or "word" in st.spec):
+                self._template(i, specs, built)
         return built
+
+    def _template(self, i, specs, built):
+        """A preamble step's waveform: its bits through the transmit side of the steps after it, from the first that makes
+        channel bits back to the preamble's input (built anew: making it changes no operator the profile uses). Its first
+        symbol's peak is where the group delay of those steps puts it"""
+        import numpy as np
+        from ..base.data import Data
+        spec, where = built[i].spec, f"profile {self.name}: preamble {built[i].id!r}"
+        j = next((k for k in range(i + 1, len(built)) if built[k].gives == Rep.CHANNEL), None)
+        if j is None:
+            raise ConfigError(f"{where}: no step after it maps symbols to bits, to make its waveform with")
+        if "sequence" in spec:
+            from .. import sequence
+            bits = np.asarray(sequence.load(spec["sequence"]).bits, bool)
+        else:
+            from ..sequence.word import word_bits
+            bits = np.asarray(word_bits(spec["word"], spec["bits"], spec.get("order", "msb")), bool)
+        bits = np.concatenate((np.asarray(spec.get("lead", []), bool), bits))
+        ctx = _steps.context(self.params, self.obj.get("defaults", {}), self._sync)
+        fresh, rep = [], built[i].gives
+        for k in range(i + 1, j + 1):
+            st = _steps.build(specs[k], rep, ctx)
+            rep = st.gives
+            fresh.append(st)
+        d = Data(bits, flush=True, sps=1) # (one sample a symbol: the transmit side's shaping takes it up to the stream's)
+        d = d.derive(d.data, d.CAT, d.DT, rep=Rep.CHANNEL)
+        from .steps import STAGE, ENCODE
+        for st in reversed(fresh):
+            for how, op in st.tx:
+                d = d + op if how == STAGE else d * op if how == ENCODE else d / op
+        x = np.asarray(d.data)
+        built[i].obj.set_template(x, int(round(d.meta.delay*d.meta.Fs)))
 
     @staticmethod
     def _fuse(steps):
@@ -64,11 +99,12 @@ class Profile:
         must have one (`"parallel"` in its definition)"""
         if source is not None:
             start, applied = source.REP, source.APPLIED
-        slots = []
-        for st in self._build():
-            if st.takes.value < start.value or (st.category == "sync" and st.kind in applied):
-                continue
-            slots += [Slot(how, op, st, len(slots) + i) for i, (how, op) in enumerate(st.rx)]
+        keep = lambda st: not (st.takes.value < start.value or (st.category == "sync" and st.kind in applied))
+        steps = [st for st in self._build() if keep(st)]
+        k = next((i for i, st in enumerate(steps) if st.category == "sync" and st.kind == "burst"), None)
+        if k is not None:
+            return self._burst_rx(steps, k, keep, parallel)
+        slots = self._slots(steps)
         if parallel is None:
             return Runner(slots, f"{self.name} rx", self.controls, "rx")
         if self.region is None:
@@ -78,6 +114,27 @@ class Profile:
         from ..parallel.worker import RegionSteps
         make = RegionSteps(self.name, self.obj, self._sync, self.params, self.region.first)
         return ParallelRunner(slots, f"{self.name} rx (parallel)", self.controls, "rx", make, first, parallel)
+
+    @staticmethod
+    def _slots(steps):
+        slots = []
+        for st in steps:
+            slots += [Slot(how, op, st, len(slots) + i) for i, (how, op) in enumerate(st.rx)]
+        return slots
+
+    def _burst_rx(self, steps, k, keep, parallel):
+        """The receive side of a profile with a burst step (rpps.profile.burst): the steps after it built anew per burst"""
+        from .burst import BurstRunner
+        where = f"profile {self.name}"
+        if parallel is not None:
+            raise ConfigError(f"{where}: a burst step and a parallel region together are not supported")
+        if sum(st.kind == "burst" and st.category == "sync" for st in steps) > 1:
+            raise ConfigError(f"{where}: one burst step")
+        pre = Runner(self._slots(steps[:k]), f"{self.name} rx", self.controls, "rx") if k else None
+        def make_post():
+            post = [st for st in self._build() if keep(st)][k + 1:]
+            return Runner(self._slots(post), f"{self.name} rx (burst)", self.controls, "rx")
+        return BurstRunner(pre, steps[k].obj, make_post, f"{self.name} rx")
 
     def tx(self):
         """Transmit runner: the transform steps inverted, in reverse order (sync and signal steps have no transmit side).

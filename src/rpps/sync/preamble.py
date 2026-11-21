@@ -30,16 +30,37 @@ class Preamble(Stage):
         (default: the template's length). correct: take that offset off the output
     search: candidate starts examined (None: the whole stream, which then waits for its end). offset: the output starts
         this many samples after the preamble's start (negative: before it; 802.11 STF before the LTF)
-    Estimates in stream.est[name]: found, pos (absolute), metric, cfo [Hz] (with repeat)."""
+    A real stream (an FSK discriminator's output) is matched by the correlation coefficient: the template and the stream's
+    window with their means taken off (a carrier offset there is a constant), positive only. The offset, the level b of
+    the fit x = a template + b over the match, is est["level"]; `correct` takes it off the output.
+    first: the template's sample at its first symbol's peak; pending: the template comes later (`set_template`: a profile
+    makes it from its own transmit side).
+    Estimates in stream.est[name]: found, pos (absolute), metric, cfo [Hz] (with repeat), and where the symbols are:
+    first (the absolute sample of the first symbol's peak), delay and Fs (the group delay and rate there; known timing
+    with an `anchor` places its grid by them)."""
     CONTROLS = {}
 
-    def __init__(self, template=None, repeat=None, window=None, search=None, gate=0.5, offset=0, correct=False, name="preamble"):
-        self.template = None if template is None else np.asarray(template, dtype=np.complex128)
-        if self.template is None and (repeat is None or window is None):
+    def __init__(self, template=None, repeat=None, window=None, search=None, gate=0.5, offset=0, correct=False, name="preamble",
+                 first=0, pending=False):
+        if template is None and not pending and (repeat is None or window is None):
             raise ValueError("Preamble: a template, or a repetition (repeat=lag, window=samples) to find")
         self.repeat, self.search, self.gate, self.offset = repeat, search, float(gate), int(offset)
-        self.window = int(window) if window is not None else (len(self.template) if self.template is not None else None)
+        self._window = window
         self.correct, self.name = correct, name
+        self.template, self.first, self.window = None, 0, None
+        if template is not None:
+            self.set_template(template, first)
+        else:
+            self.window = None if window is None else int(window)
+
+    def set_template(self, template, first=0):
+        """The waveform to find, and its sample at the first symbol's peak"""
+        t = np.asarray(template)
+        if t.dtype.kind == "c" and np.max(np.abs(t.imag), initial=0.0) <= 1e-6*np.max(np.abs(t), initial=1.0):
+            t = t.real # (real levels made from complex points: BPSK)
+        self.template = t.astype(np.complex128) if t.dtype.kind == "c" else t.astype(np.float64)
+        self.first = int(first)
+        self.window = int(self._window) if self._window is not None else len(self.template)
 
     def __str__(self):
         return f"Preamble({'template' if self.template is not None else f'repeat {self.repeat}'})"
@@ -56,15 +77,24 @@ class Preamble(Stage):
 
     def _locate(self, x):
         """(index, metric) of the preamble in x, or None"""
-        x = x.astype(np.complex128)
+        if self.template is None and self.repeat is None:
+            raise ValueError(f"{self}: no template yet (a profile makes it: set_template)")
+        real = x.dtype.kind != "c" and (self.template is None or self.template.dtype.kind != "c")
+        x = x.astype(np.float64 if real else np.complex128)
         if self.template is not None:
             t = self.template
             L = len(t)
             if len(x) < L:
                 return None
-            c = np.abs(np.correlate(x, t, mode="valid")) # sum x[n+i] t*[i]
             e = np.cumsum(np.r_[0.0, np.abs(x)**2])
             ex = e[L:] - e[:-L]
+            if real: # Correlation coefficient: the means off (a carrier offset in a discriminator's output is one)
+                t = t - t.mean()
+                c = np.correlate(x, t, mode="valid")
+                s1 = np.cumsum(np.r_[0.0, x])
+                ex = ex - (s1[L:] - s1[:-L])**2/L
+            else:
+                c = np.abs(np.correlate(x, t, mode="valid")) # sum x[n+i] t*[i]
             m = c/np.sqrt(np.maximum(ex, 1e-30)*np.sum(np.abs(t)**2))
             if self.search is not None:
                 m = m[:self.search]
@@ -115,9 +145,17 @@ class Preamble(Stage):
             return x[:0]
         i, metric = hit
         st.found = True
-        st.est = {"found": True, "pos": st.base + i, "metric": metric}
+        st.est = {"found": True, "pos": st.base + i, "metric": metric, "first": st.base + i + self.first, "delay": meta.delay,
+                  "Fs": meta.Fs}
         if self.repeat is not None:
             st.est["cfo"] = self._cfo(st.buf, i, meta.Fs)
+        st.level = 0.0
+        if self.template is not None and self.template.dtype.kind != "c" and st.buf.dtype.kind != "c":
+            t = self.template
+            w = st.buf[i:i + len(t)].astype(np.float64)
+            a = np.dot(w - w.mean(), t - t.mean())/max(np.sum((t - t.mean())**2), 1e-30)
+            st.est["level"] = float(w.mean() - a*t.mean())
+            st.level = st.est["level"] if self.correct else 0.0
         st.start = st.base + max(i + self.offset, 0) # (a start before the stream's first sample is clamped)
         st.w = 2*np.pi*st.est.get("cfo", 0.0)/meta.Fs if self.correct else 0.0
         meta.stream.est[self.name] = dict(st.est)
@@ -126,6 +164,8 @@ class Preamble(Stage):
         return self._out(buf, st.start, st, meta)
 
     def _out(self, x, pos, st, meta):
+        if getattr(st, "level", 0.0) and len(x):
+            return (x - st.level).astype(x.dtype)
         if not st.w or not len(x):
             return x
         n = pos - st.start + np.arange(len(x)) # Samples since the output's start: the correction's phase is continuous

@@ -52,7 +52,7 @@ pulse, modulation, codes, framing) and the parameters a header may change along 
 # docs: skip
 p = rp.profile.load("ble/adv", channel=38)                 # or dvbs2/normal, adsb/mode_s, ax25/afsk1200, ccsds/tm_rs, ieee80211b/long...
 for pdu in rp.source.File("cf64", "ch38.cf64", Fs=4e6, cf=2426e6)(65536) + p.rx():
-    print(pdu.as_bytes().hex, pdu.stream.est["ble_adv"]["last"])        # the payloads of the packets whose CRC checks, and their header fields
+    print(pdu.as_bytes().hex, pdu.stream.est["ble_adv"]["last"])        # one per packet (its burst step): its payload if the CRC checks, its header
 wave = p.tx()(rp.Data(bytes(31)), fields={"type": 2})                   # the same file transmits: the steps inverted, in reverse
 ```
 `python -m rpps ls profile` lists the shipped profiles, `python -m rpps steps` the step kinds and sync methods a profile

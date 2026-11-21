@@ -265,8 +265,9 @@ def _tll(m, rep, ctx):
 
 @register_sync_method("timing", "known")
 def _known(m, rep, ctx):
+    """Known timing; `anchor`: the name of a preamble step whose find starts the symbol grid (one grid per burst)"""
     from .. import sync
-    return sync.time.Known(m.get("sps", ctx["params"].get("sps")))
+    return sync.time.Known(m.get("sps", ctx["params"].get("sps")), anchor=m.get("anchor"))
 
 @register_sync_method("timing", "fixed")
 def _fixed(m, rep, ctx):
@@ -326,6 +327,32 @@ def _sync_one(kind):
         register_step("sync", kind)(lambda _, spec, rep, ctx: ([(STAGE, make(_sync_method(kind, spec, ctx), ctx))], [], rep))
         return make
     return deco
+
+@register_step("sync", "burst")
+def _burst(kind, spec, rep, ctx):
+    """Per-burst demodulation (rpps.profile.burst): the stream cut into its bursts, the steps after this one built anew for
+    each. {"sync": "burst", "factor": 6, "win": 8, "min_s": 60e-6, "max_s": 3e-3} (rpps.sync.Burst's settings)"""
+    from .. import sync
+    if rep is not None and rep != Rep.SAMPLES:
+        raise ConfigError(f"sync burst: cuts samples, not {rep}")
+    op = sync.Burst(spec.get("factor", 6.0), spec.get("win", 100), spec.get("min_s", 0.0), spec.get("max_s"),
+                    spec.get("percentile", 20), spec.get("history", 1 << 17), spec.get("settle", 512))
+    return [(STAGE, op)], [], Rep.SAMPLES
+
+@register_step("sync", "preamble")
+def _preamble(kind, spec, rep, ctx):
+    """A burst's preamble (rpps.sync.Preamble): by its repetition ({"repeat": 16, "window": 128}), or by its waveform, made
+    from bits (a `sequence` word, or `word` + `bits`, after `lead` bits) through the profile's own transmit side, from the
+    steps after this one down to the symbol mapping (the profile builds it: rpps.profile.Profile._templates). Timing
+    {"method": "known", "anchor": <its name>} then places the symbols on what it found"""
+    from .. import sync
+    m = dict(spec)
+    named = "sequence" in m or "word" in m
+    if not named and "repeat" not in m:
+        raise ConfigError("sync preamble: needs a `sequence` (or `word` and `bits`) or a `repeat`")
+    op = sync.Preamble(None, m.get("repeat"), m.get("window"), m.get("search"), m.get("gate", 0.5),
+                       m.get("offset", 0), m.get("correct", False), m.get("name", "preamble"), pending=named)
+    return [(STAGE, op)], [], rep
 
 @_sync_one("align")
 def _align(m, ctx):

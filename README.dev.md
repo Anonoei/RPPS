@@ -274,6 +274,16 @@ loop settings. A step that loads a definition names its kind and reference as th
 builds `rx = carrier + Stagger("i") + halfsine matched + timing + Spread decode` and `tx = Spread encode + Shape(4, halfsine)
 + Stagger("q")`. The carrier comes before `Stagger("i")`: a phase offset mixes I into Q while Q is half a symbol late.
 
+**Bursts:** a `{"sync": "burst"}` step (rpps.sync.Burst's settings) makes a burst demodulator. The steps before it run on
+the stream; the steps after it are built anew for every burst and run on it alone (rpps.profile.burst), so every packet is
+acquired fresh and nothing a stage, decoder, marker or header holds crosses from one packet to the next. The runner gives a
+list, one output per burst that ended in the block, each with its own `stream.est` (`Blocks` flattens it). A
+`{"sync": "preamble"}` step after it finds each burst's preamble: by repetition (`repeat`, `window`), or by a waveform the
+profile makes itself from a `sequence` word (or `word` + `bits`, after `lead` bits) through its own transmit steps, from the
+first that maps symbols to bits back to the preamble's input. On a real stream (an FSK discriminator's output) it matches by
+the correlation coefficient and `correct` takes off the level a carrier offset leaves; `{"sync": "timing", "method":
+"known", "anchor": <its name>}` places the symbols on what it found. `ble/adv` is built so.
+
 **Sources that start later in the chain:** the runner skips every receive step before what the source gives (`Source.REP`,
 `APPLIED`): timed symbols with the carrier on skip signal, wave and timing; a BBFRAME stream skips everything through code.
 
@@ -528,8 +538,8 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
 - **Codes:** 5G NR polar (reliability sequence, rate matching); LDPC tables for 5G NR, CCSDS AR4JA / C2, DVB-S2X, DVB-T2, ATSC
   3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; Fletcher and Internet checksums; fountain codes.
 - **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
-  spread spectrum, space-time codes; LTE cell search (in `projects/` only); `Burst` and `Preamble` in profiles (a profile
-  is one stream today); a first-class carrier estimator for
+  spread spectrum, space-time codes; LTE cell search (in `projects/` only); a burst step in a parallel region; a
+  first-class carrier estimator for
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
 - **Links, sources, profiles:** PPP, KISS, AX.25 addresses, MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
