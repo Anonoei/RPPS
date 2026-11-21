@@ -28,14 +28,7 @@ def to_44(x, fs):
     r = Fraction(44e6/fs).limit_denominator(1000)
     return resample_poly(x, r.numerator, r.denominator)
 
-def bursts(x, fs, factor=6.0, win=100, min_us=150):
-    """(start, end) sample ranges where the power stays above `factor` x the 20th percentile (the noise floor)"""
-    p = np.abs(x)**2
-    e = p[:len(p)//win*win].reshape(-1, win).mean(1)
-    on = e > factor*np.percentile(e, 20)
-    d = np.diff(np.r_[0, on.astype(int), 0])
-    st = np.where(d == 1)[0]*win; en = np.where(d == -1)[0]*win
-    return [(s, e_) for s, e_ in zip(st, en) if (e_ - s)/fs*1e6 >= min_us]
+BURST = rp.sync.Burst(factor=6.0, win=100, min_s=150e-6) # A long-preamble frame: 192 us of PLCP before any data
 
 def despread(y, start, n, off=0.0):
     """Correlate n consecutive symbols from start (float sample position): returns complex symbol values (fewer when the capture ends first).
@@ -161,7 +154,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     x = np.fromfile(a.path, np.complex64).astype(np.complex128)
     fs = a.fs*1e6
-    bs = bursts(x, fs)
+    bs = [(b.meta.pos, b.meta.pos + len(b)) for b in rp.Data(x, Fs=fs, flush=True) + BURST]
     print(f"{len(bs)} bursts of >= 150 us")
     y = to_44(x, fs)
     sc = 44e6/fs

@@ -19,6 +19,8 @@ from collections import Counter
 
 import numpy as np
 
+import rpps as rp
+
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
 import radio_io
 import wifi_dsss
@@ -43,12 +45,14 @@ def analyse(x, fs=20e6):
     out = []; n_bursts = 0
     y = wifi_dsss.to_44(x128, fs)
     sc = 44e6/fs
-    for s, e in wifi_dsss.bursts(x128, fs):
+    for b in rp.Data(x128, Fs=fs, flush=True) + wifi_dsss.BURST:
+        s, e = b.meta.pos, b.meta.pos + len(b)
         n_bursts += 1
         r = wifi_dsss.decode_burst(y, int(s*sc), int(e*sc))
         if r and r.get("fcs_ok"):
             out.append(dict(phy="DSSS", rate=r["rate"], frame=r["frame"], snr=10*np.log10(np.mean(p[s:e])/floor), t=s/fs))
-    for s, e in wifi_ofdm.bursts(x128, fs):
+    for b in rp.Data(x128, Fs=fs, flush=True) + wifi_ofdm.BURST:
+        s, e = b.meta.pos, b.meta.pos + len(b)
         r = wifi_ofdm.receive(x128, s, e, fs)
         if r and r.get("fcs_ok"):
             out.append(dict(phy="OFDM", rate=r["rate"], frame=r["frame"], snr=10*np.log10(np.mean(p[s:e])/floor), t=s/fs))
