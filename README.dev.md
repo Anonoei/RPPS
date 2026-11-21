@@ -185,6 +185,7 @@ SYMBOLS; `BitStage` takes channel or data bits and keeps their form.
 | `symbol` | `Constellation` (PSK, QAM, APSK, ASK), `Differential`, `Spread`/`Despread`, `Carriers`, `Header`, `Pilots`, `PhaseScramble` |
 | `code` | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), `Line`, `Marker`, `Uncoded` |
 | `link` | CRCs, HDLC, `Header` (fields, CRC, payload length) |
+| `grid` | resource grids of OFDM systems: `lte.LteCell` (PSS/SSS cell search, half-frame timing), `lte.LteGrid` (each subframe's grid with every port's channel), the channels `lte.PBCH`, `PCFICH`, `PDCCH`, `PDSCH`, and `lte.tx` (a downlink to test with) |
 | `profile` | loading, steps, header-driven control, runners |
 | `parallel` | the frame-parallel region (see [Parallelism](#parallelism)) |
 | `sequence` | recurrences, Gold sequences, chip codes, words: what scramblers, spreaders and searches share |
@@ -291,7 +292,18 @@ chain out (rpps.profile.branch): every block of the trunk goes through each bran
 stream of its own, and the runner gives {name: output}. A header in one branch drives steps in the branches after it: its
 fields' position is carried back to the trunk's output and the driven branch takes the change there. With `frame` (trunk
 items a frame), the branches read whole frames, so a header rules on a frame before the branches after it read that frame,
-however the blocks were cut. A step id is one step across all branches; branches are receive only.
+however the blocks were cut. A step id is one step across all branches; branches are receive only. Fields published with
+a span (a CFI, a DCI: their own subframe) go back to the defaults after it in the driven branches too.
+
+**Resource grids:** `grid` steps (rpps.grid) take an OFDM system's samples to frames of its resource grid, and its physical
+channels read them. `lte/downlink` is built so: `{"grid": "lte_cell"}` finds the cell (PSS, SSS: the cell id, the carrier
+offset) and cuts the samples into half-frames from a subframe 0, tracking the sample clock; `{"grid": "lte_grid"}` gives a
+frame per subframe, its grid and the channel of ports 0-3 from the reference signals; then a branch per channel, `frame`
+one subframe. Each channel publishes what it decoded as a header does: the PBCH the port count (its CRC mask) and the MIB,
+the PCFICH its subframe's CFI, the PDCCH a DCI 1A to the SI-RNTI, and the controls carry them to the channels after it,
+down to the PDSCH, which gives the transport blocks (SIB1, the SI messages). Mappings the standard gives by formula (where
+the reference signals, the REGs and the allocation are) are code in `grid`; tables (transport block sizes) and sequences
+(the Gold sequence) are definitions.
 
 **Sources that start later in the chain:** the runner skips every receive step before what the source gives (`Source.REP`,
 `APPLIED`): timed symbols with the carrier on skip signal, wave and timing; a BBFRAME stream skips everything through code.
@@ -547,14 +559,15 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
 - **Codes:** 5G NR polar (reliability sequence, rate matching); LDPC tables for 5G NR, CCSDS AR4JA / C2, DVB-S2X, DVB-T2, ATSC
   3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; Fletcher and Internet checksums; fountain codes.
 - **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
-  spread spectrum, space-time codes; LTE cell search (in `projects/` only); a burst step in a parallel region; the transmit side of branches; a
-  first-class carrier estimator for
+  spread spectrum, space-time codes; a burst step in a parallel region; the transmit side of branches (and of `grid`:
+  `grid.lte.tx` is a test transmitter); LTE beyond SIB1 (unicast DCI formats, multiple code blocks, TDD, extended prefix); `lte_grid` in
+  real time at 15.36 MS/s (about 5x slower); a first-class carrier estimator for
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
 - **Links, sources, profiles:** PPP, KISS, AX.25 addresses, MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
-  block-coded headers; tun/tap, audio devices, transmitting to a radio; profiles for DMR, P25, LTE, 802.11a/g/n, ATSC, GPS C/A,
+  block-coded headers; tun/tap, audio devices, transmitting to a radio; profiles for DMR, P25, 802.11a/g/n, ATSC, GPS C/A,
   DAB, UMTS, CCSDS turbo (and `projects/` using the BLE, ADS-B and 802.11b profiles that exist); `dvbs2/normal` dummy frames;
-  positions and gaps in the parallel runner's output; branches inside a profile; GPU and FPGA backends.
+  positions and gaps in the parallel runner's output; GPU and FPGA backends.
 
 ## Blind analysis (rpps.analysis)
 

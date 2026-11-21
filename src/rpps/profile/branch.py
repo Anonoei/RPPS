@@ -33,7 +33,10 @@ class BranchChain(Runner):
     def _accept(self, origin, fields, at, out, span, step, group=None):
         super()._accept(origin, fields, at, out, span, step, group)
         if origin >= 0 and step in self.bus.entries:
-            self.bus.post(self.branch, self.bus.entries[step], fields, self._back(at, origin, 0))
+            entry = self.bus.entries[step]
+            self.bus.post(self.branch, entry, fields, self._back(at, origin, 0))
+            if span is not None: # Fields that hold for a span go back to the defaults after it, in the driven branches too
+                self.bus.post(self.branch, entry, entry.revert(fields), self._back(at + span, origin, 0))
 
     def inject(self, entry, fields, pos, key):
         """A change from another branch's header, at `pos` of this branch's input (a trunk position)"""

@@ -15,7 +15,7 @@ import pytest
 import rpps
 
 SRC = Path(rpps.__file__).resolve().parent # the package under test: src/rpps in a checkout, site-packages in a wheel
-LOWER = ("base", "math", "sequence", "signal", "sync", "wave", "symbol", "code", "link")
+LOWER = ("base", "math", "sequence", "signal", "sync", "wave", "symbol", "code", "link", "grid")
 UPPER = ("analysis", "profile", "parallel")
 LAZY_ALLOWED = {("sync/acquire_fec.py", "analysis")} # (module, package it may import inside a function)
 

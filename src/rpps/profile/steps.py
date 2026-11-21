@@ -32,6 +32,8 @@ The kinds (`python -m rpps steps` lists them with the sync methods):
              the first), line (invert, nrzi, nrzm, manchester, thomas), marker (a word before each frame: length, or frames by
              control), uncoded
     link     crc, frame (HDLC), header (fields, crc, fcs, payload)
+    grid     resource grids (rpps.grid), receive only: lte_cell (offset, span, resolution, acquire, lose, gate), lte_grid
+             (n_rb), and the channels on its frames, lte_pbch, lte_pcfich, lte_pdcch (rntis), lte_pdsch
 """
 from dataclasses import dataclass, field
 
@@ -69,7 +71,7 @@ def _need(spec, key, where):
 
 # ---- the registry: what each category's kinds build, and the methods of the sync kinds that have them
 
-REGISTRY = {c: {} for c in ("signal", "sync", "wave", "symbol", "code", "link")}
+REGISTRY = {c: {} for c in ("signal", "sync", "grid", "wave", "symbol", "code", "link")}
 METHODS = {} # sync kind -> {method: builder(m, rep, ctx) -> operator}
 
 def register_step(category, kind):
@@ -448,6 +450,39 @@ def _given(spec, keys, **convert):
 
 def _complex(v):
     return complex(v[0], v[1]) if isinstance(v, (list, tuple)) else complex(v)
+
+# ---- grid (receive only): a resource grid's cell search, its frames, the channels read off them
+
+@register_step("grid", "lte_cell")
+def _lte_cell(kind, spec, rep, ctx):
+    """LTE cell search and half-frame timing (rpps.grid.lte.LteCell): samples from the first subframe 0, in half-frames"""
+    from ..grid import lte
+    if rep is not None and rep != Rep.SAMPLES:
+        raise ConfigError(f"grid lte_cell: takes samples, not {rep}")
+    return [(STAGE, lte.LteCell(**_given(spec, ("offset", "span", "resolution", "acquire", "lose", "gate", "name"))))], [], Rep.SAMPLES
+
+@register_step("grid", "lte_grid")
+def _lte_grid(kind, spec, rep, ctx):
+    """Subframes to grid frames with every port's channel (rpps.grid.lte.LteGrid)"""
+    from ..grid import lte
+    return [(STAGE, lte.LteGrid(**_given(spec, ("n_rb", "cell"))))], [], Rep.SYMBOLS
+
+def _lte_channel(kind, spec, rep, ctx):
+    """A channel on LTE grid frames (rpps.grid.lte.channels): gives bits, publishes what it decoded"""
+    from ..grid import lte
+    name = spec.get("id", kind)
+    if kind == "lte_pbch":
+        op = lte.PBCH(name=name)
+    elif kind == "lte_pcfich":
+        op = lte.PCFICH(name=name)
+    elif kind == "lte_pdcch":
+        op = lte.PDCCH(**_given(spec, ("rntis",)), name=name)
+    else:
+        op = lte.PDSCH(name=name)
+    return [(STAGE, op)], [], Rep.DATA
+
+for _k in ("lte_pbch", "lte_pcfich", "lte_pdcch", "lte_pdsch"):
+    register_step("grid", _k)(_lte_channel)
 
 # ---- wave (pairs)
 

@@ -27,6 +27,15 @@ what breaks under **Breaking**, with what to use instead.
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- **LTE downlink to SIB1:** the profile `lte/downlink` and the package `rpps.grid` (`grid` steps).
+  - `grid.lte.LteCell`: cell search (PSS, SSS, carrier offset), then each half-frame's PSS tracked (the sample clock),
+    the samples cut into whole half-frames from a subframe 0; acquired again when lost, zeros for what was missed.
+  - `grid.lte.LteGrid`: a frame per subframe, its resource grid and the channel of ports 0-3 from the reference signals.
+  - `grid.lte.PBCH`, `PCFICH`, `PDCCH`, `PDSCH`: the MIB and port count, the CFI, DCI 1A / 1C in the common search space,
+    and the transport block a DCI 1A allocates (turbo, CRC-24A), with transmit diversity for 1, 2 or 4 ports. Each publishes
+    what it decoded, so the profile's branches drive one another.
+  - `grid.lte.tx`: a downlink (cell signals, MIB, CFI, a DCI and its PDSCH) to test with; the table `lte/tbs`.
+  - `rpps rx --branch NAME`: a profile that branches gives that branch's bits.
 - **Branches in profiles:** a last `{"branch": ...}` step fans the chain out into branches that read the same blocks
   (`rpps.profile.branch`), in order, each in its own stream; a header in one branch drives steps in the branches after
   it, at the trunk position of its fields; `frame` makes the branches read whole frames. Receive only.
