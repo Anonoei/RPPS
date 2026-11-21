@@ -336,7 +336,7 @@ def _burst(kind, spec, rep, ctx):
     if rep is not None and rep != Rep.SAMPLES:
         raise ConfigError(f"sync burst: cuts samples, not {rep}")
     op = sync.Burst(spec.get("factor", 6.0), spec.get("win", 100), spec.get("min_s", 0.0), spec.get("max_s"),
-                    spec.get("percentile", 20), spec.get("history", 1 << 17), spec.get("settle", 512))
+                    spec.get("percentile", 20), spec.get("history", 1 << 17), spec.get("settle", 512), spec.get("quiet", 3.0))
     return [(STAGE, op)], [], Rep.SAMPLES
 
 @register_step("sync", "preamble")

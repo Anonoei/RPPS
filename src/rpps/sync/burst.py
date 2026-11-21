@@ -9,11 +9,16 @@ the source (`meta.pos`, and `meta.time_of` when the source has a time). `Blocks`
 burst. A burst still open at the end of a block waits for the blocks that end it; the stream's end closes it.
 
 The detector: the mean power of windows of `win` samples, at absolute positions (independent of the block cut), against
-`factor` times the noise floor, the `percentile` of the window powers seen so far (the last `history` windows). For one
-flushed block of a whole capture this is the batch rule: every window of the capture sets the floor. The floor is only
-the noise's while at least `percentile`% of the windows are quiet: bursts packed closer than that (a continuous signal)
-raise it to the signal's own level, and no burst is found. A stream's first `settle` windows are decided together, once
-they are all in (or the stream ends): a floor taken from the first few windows alone would be a burst's own level.
+`factor` times the noise floor. The floor is taken from the noise windows alone, of those seen so far (the last `history`):
+their mean m is the fixed point of m = mean(windows below `quiet`*m), climbed to from the quietest window, so it stops at the
+lowest cluster of window powers (the noise) however many windows the bursts fill; the floor is the `percentile` of the
+windows below `quiet`*m. Bursts may follow one another as closely as the air allows: the floor needs some quiet windows,
+not most of them (a signal with no gap of a window at all is one burst). Windows of exact zeros (padding, a clean synthetic
+signal's gaps) join the noise windows as the quietest of them: a few do not move the floor, but once they are `percentile`%
+of the noise windows the floor is 0, and any power is a burst (a clean signal's bursts are all found; a noisy capture padded
+with that many zeros is one burst). For one flushed block of a whole capture this is a batch rule: every window of the capture sets the floor.
+A stream's first `settle` windows are decided together, once they are all in (or the stream ends): a floor taken from the
+first few windows alone would be a burst's own level.
 """
 from types import SimpleNamespace
 
@@ -32,17 +37,18 @@ class Burst(Pipe):
     win: samples per window (the time resolution of the burst edges)
     min_s, max_s: shortest and longest burst kept [s] (max_s None: any length); a longer one is dropped, and its samples
         are not held past max_s
-    percentile: of the window powers, the noise floor; history: windows it is taken over (taken again once a 16th of them
-        are new: one block is the batch rule exactly, a long stream does not sort its history every block); settle: windows
-        at the stream's start held until the floor has them all
+    percentile: of the noise windows' powers, the noise floor; quiet: how far above their mean a window may be and still
+        count as noise; history: windows the floor is taken over (taken again once a 16th of them are new: one block is the
+        batch rule exactly, a long stream does not sort its history every block); settle: windows at the stream's start held
+        until the floor has them all
     Estimates go in the stream's `est["burst"]`: the floor, bursts emitted, too short, too long."""
     CATEGORY = Category.SYNC
 
-    def __init__(self, factor=6.0, win=100, min_s=0.0, max_s=None, percentile=20, history=1 << 17, settle=512):
-        if win < 1 or factor <= 0:
-            raise ValueError("Burst: win is at least 1 sample, factor positive")
+    def __init__(self, factor=6.0, win=100, min_s=0.0, max_s=None, percentile=20, history=1 << 17, settle=512, quiet=3.0):
+        if win < 1 or factor <= 0 or quiet <= 2:
+            raise ValueError("Burst: win is at least 1 sample, factor positive, quiet above 2 (below it the floor sinks to 0)")
         self.factor, self.win, self.min_s, self.max_s = float(factor), int(win), float(min_s), max_s
-        self.percentile, self.history, self.settle = percentile, int(history), int(settle)
+        self.percentile, self.history, self.settle, self.quiet = percentile, int(history), int(settle), float(quiet)
 
     def __str__(self):
         return f"Burst(x{self.factor:g}, {self.win})"
@@ -83,7 +89,7 @@ class Burst(Pipe):
             st.hist = np.concatenate((st.hist, e))[-self.history:]
             st.new += nw
             if st.floor is None or st.new*16 >= len(st.hist):
-                st.floor, st.new = float(np.percentile(st.hist, self.percentile)), 0
+                st.floor, st.new = self.floor(st.hist), 0
             floor = st.floor
             st.est["floor"] = floor
             on = e > self.factor*floor
@@ -102,6 +108,22 @@ class Burst(Pipe):
             out += self._close(st, data, st.pos)
         meta.stream.est["burst"] = dict(st.est)
         return out
+
+    def floor(self, e):
+        """The noise floor of window powers `e` (see the module)"""
+        zeros = int(np.count_nonzero(e <= 0))
+        s = np.sort(e[e > 0])
+        if not len(s):
+            return 0.0
+        cs = np.cumsum(s)
+        m, n = s[0], 1
+        for _ in range(1000): # m grows by at least quiet/2 a step while below the noise (quiet > 2), then settles
+            n = max(int(np.searchsorted(s, self.quiet*m)), 1)
+            m2 = cs[n - 1]/n
+            if m2 <= m*(1 + 1e-9):
+                break
+            m = m2
+        return float(np.percentile(np.r_[np.zeros(zeros), s[:n]], self.percentile))
 
     def _take(self, st, buf, pos0, end, Fs):
         """Hold the open burst's samples up to buf[end] (nothing more once it is past max_s)"""

@@ -277,7 +277,9 @@ builds `rx = carrier + Stagger("i") + halfsine matched + timing + Spread decode`
 **Bursts:** a `{"sync": "burst"}` step (rpps.sync.Burst's settings) makes a burst demodulator. The steps before it run on
 the stream; the steps after it are built anew for every burst and run on it alone (rpps.profile.burst), so every packet is
 acquired fresh and nothing a stage, decoder, marker or header holds crosses from one packet to the next. The runner gives a
-list, one output per burst that ended in the block, each with its own `stream.est` (`Blocks` flattens it). A
+list, one output per burst that ended in the block, each with its own `stream.est` (`Blocks` flattens it). The burst
+floor is the noise windows' own (the lowest cluster of window powers), so packets may fill nearly all the air: a few quiet
+windows between them are enough. A
 `{"sync": "preamble"}` step after it finds each burst's preamble: by repetition (`repeat`, `window`), or by a waveform the
 profile makes itself from a `sequence` word (or `word` + `bits`, after `lead` bits) through its own transmit steps, from the
 first that maps symbols to bits back to the preamble's input. On a real stream (an FSK discriminator's output) it matches by
