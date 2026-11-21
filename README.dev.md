@@ -310,7 +310,10 @@ the reference signals, the REGs and the allocation are) are code in `grid`; tabl
 a wide offset (a LEO pass at S-band moves the carrier by some 50 kHz) and tracks each SS/PBCH block's timing and offset
 with their rates (the Doppler sweeps hundreds of Hz a second, the range stretches the samples by tens of ppm); a frame
 per slot; branches pbch (MIB, SFN), pdcch (CORESET 0 and the Type0 search space from the MIB; DCI 1_0, polar) and pdsch
-(LDPC, SIB1). NR's channels each estimate the channel from their own DM-RS.
+(LDPC, SIB1). NR's channels each estimate the channel from their own DM-RS. The phase NR's upconversion gives
+each symbol (38.211 5.4) reaches a receiver as e^(-j 2 pi fc t_l) on symbol l (fc: the frequency at 0 Hz, the block's
+raster frequency); not every cell applies it (on air one did, one did not), so with `fc` the cell search tells which and
+the PDSCH tries both, its CRC choosing.
 
 **Sources that start later in the chain:** the runner skips every receive step before what the source gives (`Source.REP`,
 `APPLIED`): timed symbols with the carrier on skip signal, wave and timing; a BBFRAME stream skips everything through code.

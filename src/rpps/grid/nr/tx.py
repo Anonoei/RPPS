@@ -32,9 +32,10 @@ def sib_size(n_rb_alloc, tdra_row, dmrs_pos, mcs):
     return phy.tbs(12*t["l"] - 12*nd, n_rb_alloc, qm, r)
 
 def downlink(pci=17, nfft=512, frames=4, sib=None, ssb=(0,), coreset0=0, ss0=0, k_ssb=0, dmrs_pos=2, mcs=2, first=0,
-             count=None, tdra=0, L=4, cce=0, sfn0=0):
+             count=None, tdra=0, L=4, cce=0, sfn0=0, fc=0.0):
     """Samples (from slot 0 of frame sfn0) of `frames` radio frames. sib: the transport block (its length: the TBS the
-    allocation carries, `sib_size`)"""
+    allocation carries, `sib_size`). fc: the SS/PBCH block centre's absolute frequency, for the phase NR's upconversion
+    gives each symbol (38.211 5.4; 0: none)"""
     from ... import code, link
     c0 = phy.coreset0(coreset0)
     n_rb, nsym = c0["rbs"], c0["symbols"]
@@ -87,6 +88,8 @@ def downlink(pci=17, nfft=512, frames=4, sib=None, ssb=(0,), coreset0=0, ss0=0, 
                     seq = phy.pdsch_dmrs(pci, s, sym, int(qi.max()) + 1)
                     sel = qs == sym
                     G[sym, qb[sel]] = seq[qi[sel]]
+            if fc:
+                G *= np.conj(phy.symbol_phase(fc, nfft))[:, None]
             slots.append(G)
     return phy.modulate(np.concatenate(slots), nfft)
 

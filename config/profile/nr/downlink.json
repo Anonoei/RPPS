@@ -15,6 +15,10 @@
     "nfft": {
       "default": 512,
       "comment": "the FFT the sample rate gives: 15 kHz x nfft samples a second"
+    },
+    "fc": {
+      "default": 0.0,
+      "comment": "the SS/PBCH block centre's absolute frequency [Hz], on the synchronization raster: the phase NR's upconversion gives each symbol (38.211 5.4) is reckoned with it, by the cell search (whether the cell applies it) and the PDSCH (it tries its symbols with it taken off and without; 0: never)"
     }
   },
   "steps": [
@@ -26,6 +30,9 @@
       },
       "span": {
         "param": "span"
+      },
+      "fc": {
+        "param": "fc"
       }
     },
     {
@@ -49,7 +56,13 @@
           }
         ],
         "pdsch": [
-          {"grid": "nr_pdsch", "id": "pdsch"}
+          {
+            "grid": "nr_pdsch",
+            "id": "pdsch",
+            "fc": {
+              "param": "fc"
+            }
+          }
         ]
       }
     }

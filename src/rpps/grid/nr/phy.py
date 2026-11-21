@@ -30,6 +30,12 @@ def grid(x, nfft, early=None):
     W = W*np.exp(2j*np.pi*f*early/nfft)[None, :]
     return np.fft.fftshift(W, axes=1)
 
+def symbol_phase(fc, nfft):
+    """e^(j 2 pi fc t_l) for the 14 symbols of a slot: what undoes the phase NR's upconversion gives symbol l (38.211 5.4)
+    for a receiver whose 0 Hz is at fc (t_l: the useful part's start in the subframe; mu = 0, a slot is a subframe)"""
+    t = symbol_starts(nfft)/(SCS*nfft)
+    return np.exp(2j*np.pi*((fc*t) % 1.0))
+
 def modulate(G, nfft):
     """Samples of slots from their grids (n*14, nfft), as `grid` reads them"""
     cp0, cp = cp_lengths(nfft)
