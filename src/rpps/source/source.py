@@ -98,6 +98,8 @@ class Blocks:
         blocks >> sink      # write every block; returns the sink
         blocks.threaded()   # everything so far runs in a thread of its own
         blocks.pipelined(a + b + c) # a, b and c each in a thread of their own
+
+    A stage that splits a block (`rp.sync.Burst`: a list of bursts) gives its pieces one by one: what follows runs on each.
     """
     def __init__(self, gen):
         self._gen = gen
@@ -109,7 +111,11 @@ class Blocks:
         def gen(src=self._gen):
             try:
                 for b in src:
-                    yield fn(b)
+                    r = fn(b)
+                    if isinstance(r, list): # A split (bursts): each piece goes on as a block
+                        yield from r
+                    else:
+                        yield r
             finally:
                 _close(src) # A generator expression would leave the source (and its threads) to the garbage collector
         return Blocks(gen())

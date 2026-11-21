@@ -23,6 +23,9 @@ from .code_acquire import acquire_code
 from .pilots import PilotEqualizer, PilotPhase
 from .frame import FrameSync, Delimiter
 from .ofdm import CPSync
+from .burst import Burst
+from .tone import ToneLock
+from .preamble import Preamble
 
 from ..base.rpps import tag_stages as _tag_stages
 from ..base.types import Category as _Category

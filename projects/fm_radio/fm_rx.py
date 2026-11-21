@@ -38,39 +38,6 @@ CHANNEL = 200e3 # An FM broadcast channel
 PILOT = 19e3
 RDS_BAUD = 1187.5
 
-# ---------------------------------------------------------------------------------------------- stages
-
-class PilotPLL(rp.base.Stage):
-    """Mix the MPX down to the stereo difference signal, locking the 38 kHz carrier to the 19 kHz pilot
-
-    A block-rate PLL: each block measures the pilot's phase against the oscillator, then corrects the oscillator's
-    phase and frequency. The pilot is a steady tone, so 50 corrections a second hold it. Output is (L-R) before
-    low-pass filtering; `st.level` is the pilot amplitude (MPX units) and `st.err` the last phase error [rad].
-    """
-    def __init__(self, kp=0.3, ki=0.04):
-        self.kp, self.ki = kp, ki
-
-    def new_state(self, meta):
-        return SimpleNamespace(phase=0.0, freq=2*np.pi*PILOT/meta.Fs, level=0.0, err=0.0, locked=False)
-
-    def step(self, x, st, meta):
-        n = len(x)
-        if n == 0:
-            return x
-        k = np.arange(n)
-        ph = st.phase + st.freq*k
-        z = np.sum(x * np.exp(-1j*ph)) / n
-        st.level = 2*abs(z)
-        st.err = float(np.angle(z))
-        # Ignore the correction when there is no pilot: a station without one leaves noise here
-        if st.level > 0.005:
-            st.freq += self.ki*st.err/n
-            st.phase += self.kp*st.err
-        st.locked = st.level > 0.015 and abs(st.err) < 0.5
-        out = 2*x*np.cos(2*ph)
-        st.phase = (st.phase + st.freq*n) % (2*np.pi)
-        return out.astype(np.float32)
-
 # ---------------------------------------------------------------------------------------------- output
 
 class Speaker:
@@ -300,7 +267,9 @@ def build(args, carrier):
         return lp[1:] # Not its ShiftFreq(0): that would make the real audio complex
     # One audio chain for both: the tee gives each branch its own state, so L+R and L-R run the same filters in time
     audio = audio_lp() + rp.signal.filters.IIR(rp.signal.filters.iir.biquad("notch", PILOT/AUDIO, q=8.0)) + rp.signal.Deemphasis(args.tau*1e-6)
-    pll = PilotPLL()
+    # The 38 kHz L-R subcarrier from the 19 kHz pilot: real MPX mixed with the pilot's 2nd harmonic. Corrections every 55 ms
+    # (the pilot is steady); no correction without a pilot (a mono station leaves noise there)
+    pll = rp.sync.ToneLock(PILOT, win=26214, kp=0.3, ki=0.04, harmonic=2, min_level=0.005, lock_level=0.015)
     return SimpleNamespace(
         front=front, shift=shift, demod=rp.wave.FMDemod(gain=-0.5), # FMDemod's sign is opposite the frequency's
         pll=pll, audio=rp.Tee(mono=audio, stereo=pll + audio), rds=rds_chain())

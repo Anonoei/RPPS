@@ -92,7 +92,8 @@ class Pipeline(Pipe):
     """Pipes (and stages) applied in order. Build one by combining pipes: `a * b * c` or `a + b + c`
 
     data * pipeline: every item encodes in order. data / pipeline: every item decodes, last item first.
-    data + pipeline: every item processes in order (stages). Pipelines nest and flatten.
+    data + pipeline: every item processes in order (stages). Pipelines nest and flatten. A stage that splits the data
+    (`rp.sync.Burst`) makes the rest run on every piece, and the pipeline gives the list of what they made.
     """
     __slots__ = ("items",)
     def __init__(self, *items):
@@ -135,9 +136,18 @@ class Pipeline(Pipe):
         from .data import _Data
         if not isinstance(data, _Data):
             return NotImplemented
+        out, split = [data], False
         for it in self.items:
-            data = data + it
-        return data
+            nxt = []
+            for d in out:
+                r = d + it
+                if isinstance(r, list):
+                    nxt += r
+                    split = True
+                else:
+                    nxt.append(r)
+            out = nxt
+        return out if split else out[0]
 
 
 class Stage(Pipe):
