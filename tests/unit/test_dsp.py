@@ -217,7 +217,7 @@ def test_survey_from_a_file_keeps_its_place(rng, tmp_path):
 def test_choose_without_a_display_takes_the_strongest(rng, capsys):
     x = two_bands(rng, 1 << 16, 1e6, -200e3, 150e3, 60e3)
     sv = rp.analysis.find_signals(x, 1e6)
-    import matplotlib
+    matplotlib = pytest.importorskip("matplotlib") # choose() asks matplotlib whether there is a display
     matplotlib.use("Agg")
     assert sv.choose() is sv.pick(strongest=True)
     assert "strongest" in capsys.readouterr().out
