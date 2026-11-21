@@ -185,7 +185,7 @@ SYMBOLS; `BitStage` takes channel or data bits and keeps their form.
 | `symbol` | `Constellation` (PSK, QAM, APSK, ASK), `Differential`, `Spread`/`Despread`, `Carriers`, `Header`, `Pilots`, `PhaseScramble` |
 | `code` | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), `Line`, `Marker`, `Uncoded` |
 | `link` | CRCs, HDLC, `Header` (fields, CRC, payload length) |
-| `grid` | resource grids of OFDM systems: `lte.LteCell` (PSS/SSS cell search, half-frame timing), `lte.LteGrid` (each subframe's grid with every port's channel), the channels `lte.PBCH`, `PCFICH`, `PDCCH`, `PDSCH`, and `lte.tx` (a downlink to test with) |
+| `grid` | resource grids of OFDM systems. `lte`: `LteCell` (PSS/SSS cell search, half-frame timing), `LteGrid` (each subframe's grid with every port's channel), the channels `PBCH`, `PCFICH`, `PDCCH`, `PDSCH`, `tx` (a downlink to test with). `nr` (15 kHz): `NrCell` (cell search over a wide offset, LEO Doppler and clock tracked), `NrGrid`, `PBCH`, `PDCCH`, `PDSCH`, `tx` (a downlink, and `leo`: a satellite pass) |
 | `profile` | loading, steps, header-driven control, runners |
 | `parallel` | the frame-parallel region (see [Parallelism](#parallelism)) |
 | `sequence` | recurrences, Gold sequences, chip codes, words: what scramblers, spreaders and searches share |
@@ -306,7 +306,11 @@ one subframe. Each channel publishes what it decoded as a header does: the PBCH 
 the PCFICH its subframe's CFI, the PDCCH a DCI 1A to the SI-RNTI, and the controls carry them to the channels after it,
 down to the PDSCH, which gives the transport blocks (SIB1, the SI messages). Mappings the standard gives by formula (where
 the reference signals, the REGs and the allocation are) are code in `grid`; tables (transport block sizes) and sequences
-(the Gold sequence) are definitions.
+(the Gold sequence) are definitions. `nr/downlink` is the same for 5G NR at 15 kHz: `{"grid": "nr_cell"}` searches the PSS over
+a wide offset (a LEO pass at S-band moves the carrier by some 50 kHz) and tracks each SS/PBCH block's timing and offset
+with their rates (the Doppler sweeps hundreds of Hz a second, the range stretches the samples by tens of ppm); a frame
+per slot; branches pbch (MIB, SFN), pdcch (CORESET 0 and the Type0 search space from the MIB; DCI 1_0, polar) and pdsch
+(LDPC, SIB1). NR's channels each estimate the channel from their own DM-RS.
 
 **Sources that start later in the chain:** the runner skips every receive step before what the source gives (`Source.REP`,
 `APPLIED`): timed symbols with the carrier on skip signal, wave and timing; a BBFRAME stream skips everything through code.
@@ -564,8 +568,9 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
   ATSC 3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; Fletcher and Internet checksums; fountain codes.
 - **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
   spread spectrum, space-time codes; a burst step in a parallel region; the transmit side of branches (and of `grid`:
-  `grid.lte.tx` is a test transmitter); LTE beyond SIB1 (unicast DCI formats, multiple code blocks, TDD, extended prefix); `lte_grid` in
-  real time at 15.36 MS/s (about 5x slower); a first-class carrier estimator for
+  `grid.lte.tx`, `grid.nr.tx` are test transmitters); NR at 30 kHz and above, NR VRB-to-PRB interleaving, several
+  code blocks a transport block, multiple antenna ports; LTE beyond SIB1 (unicast DCI formats, multiple code blocks, TDD, extended prefix); `lte_grid` and `nr` in
+  real time (about 5x and 7x slower); a first-class carrier estimator for
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
 - **Links, sources, profiles:** PPP, KISS, AX.25 addresses, MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,

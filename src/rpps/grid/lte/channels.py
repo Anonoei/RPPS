@@ -75,9 +75,13 @@ def _int(bits):
 
 
 class _Channel(Pipe):
-    """A channel on grid frames: whole frames are handed to `frame(head, G, H, pos, meta, st)`, which gives bits"""
+    """A channel on grid frames: whole frames are handed to `frame(head, *planes, pos, meta, st)`, which gives bits. The
+    frame layout: `frame_len(head item 2)` items a frame, `unpack(frame)` its header and planes (LTE's here; NR's in
+    rpps.grid.nr)"""
     CATEGORY = Category.SYMBOL
     CONTROLS = {}
+    frame_len = staticmethod(frame_len)
+    unpack = staticmethod(unpack)
 
     def __init__(self, name, **params):
         self.name = name
@@ -109,15 +113,15 @@ class _Channel(Pipe):
             pos0 -= len(st.held)
             x = np.concatenate((st.held, x))
         if st.F is None and len(x) >= 4:
-            st.F = frame_len(int(round(x[2].real)))
+            st.F = self.frame_len(int(round(x[2].real)))
         out = []
         n = 0 if st.F is None else len(x)//st.F
         for i in range(n):
             f = x[i*st.F:(i + 1)*st.F]
-            head, G, H = unpack(f)
+            head, *planes = self.unpack(f)
             if head["pci"] < 0:
                 continue
-            bits = self.frame(head, G, H, pos0 + i*st.F, meta, st)
+            bits = self.frame(head, *planes, pos0 + i*st.F, meta, st)
             if bits is not None:
                 out.append(np.asarray(bits, bool))
         st.held = x[n*st.F:] if st.F else x

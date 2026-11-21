@@ -1,0 +1,26 @@
+{
+  "base": "table",
+  "comment": "Type0-PDCCH common search space monitoring occasions from the MIB's searchSpaceZero, multiplexing pattern 1, FR1: O (ms), search space sets per slot, M, and the CORESET's first symbol ('alt': 0 for an even SS/PBCH block index, the CORESET's symbols for an odd one). Slot n0 = (O 2^mu + floor(i M)) mod slots per frame, and n0 + 1",
+  "ref": "3GPP TS 38.213 13, Table 13-11",
+  "tags": ["nr"],
+  "key": "index",
+  "columns": ["index", "o", "sets", "m", "first"],
+  "rows": [
+    [0, 0, 1, 1, "0"],
+    [1, 0, 2, 0.5, "alt"],
+    [2, 2, 1, 1, "0"],
+    [3, 2, 2, 0.5, "alt"],
+    [4, 5, 1, 1, "0"],
+    [5, 5, 2, 0.5, "alt"],
+    [6, 7, 1, 1, "0"],
+    [7, 7, 2, 0.5, "alt"],
+    [8, 0, 1, 2, "0"],
+    [9, 5, 1, 2, "0"],
+    [10, 0, 1, 1, "1"],
+    [11, 0, 1, 1, "2"],
+    [12, 2, 1, 1, "1"],
+    [13, 2, 1, 1, "2"],
+    [14, 5, 1, 1, "1"],
+    [15, 5, 1, 1, "2"]
+  ]
+}
