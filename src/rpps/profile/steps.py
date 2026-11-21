@@ -34,7 +34,7 @@ The kinds (`python -m rpps steps` lists them with the sync methods):
     link     crc, frame (HDLC), header (fields, crc, fcs, payload; select: the frames with those field values)
     grid     resource grids (rpps.grid), receive only: lte_cell (offset, span, resolution, acquire, lose, gate), lte_grid
              (n_rb), and the channels on its frames, lte_pbch, lte_pcfich, lte_pdcch (rntis), lte_pdsch; nr_cell (offset,
-             span, resolution, period, acquire, lose, gate), nr_grid, nr_pbch, nr_pdcch (rntis), nr_pdsch
+             span, resolution, period, acquire, lose, gate, fc), nr_grid, nr_pbch, nr_pdcch (rntis), nr_pdsch
 """
 from dataclasses import dataclass, field
 
@@ -491,7 +491,7 @@ def _nr_cell(kind, spec, rep, ctx):
     from ..grid import nr
     if rep is not None and rep != Rep.SAMPLES:
         raise ConfigError(f"grid nr_cell: takes samples, not {rep}")
-    return [(STAGE, nr.NrCell(**_given(spec, ("offset", "span", "resolution", "period", "acquire", "lose", "gate", "name"))))], [], Rep.SAMPLES
+    return [(STAGE, nr.NrCell(**_given(spec, ("offset", "span", "resolution", "period", "acquire", "lose", "gate", "fc", "name"))))], [], Rep.SAMPLES
 
 @register_step("grid", "nr_grid")
 def _nr_grid(kind, spec, rep, ctx):
@@ -504,7 +504,7 @@ def _nr_channel(kind, spec, rep, ctx):
     from ..grid.nr import channels as ch
     name = spec.get("id", kind)
     op = {"nr_pbch": lambda: ch.PBCH(name=name), "nr_pdcch": lambda: ch.PDCCH(**_given(spec, ("rntis",)), name=name),
-          "nr_pdsch": lambda: ch.PDSCH(name=name)}[kind]()
+          "nr_pdsch": lambda: ch.PDSCH(**_given(spec, ("fc",)), name=name)}[kind]()
     return [(STAGE, op)], [], Rep.DATA
 
 for _k in ("nr_pbch", "nr_pdcch", "nr_pdsch"):

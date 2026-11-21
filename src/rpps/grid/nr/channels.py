@@ -10,6 +10,13 @@ PDSCH) and publishes what it decoded from the first item of its slot (rpps.base.
            a DCI 1_0's fields (for its slot)
     PDSCH  where a DCI allocated it: the TBS (38.214 5.1.3.2), LDPC (block/ldpc/nr_bg*), the transport block's CRC;
            gives the block when the CRC checks
+
+The phase NR's upconversion gives each symbol (38.211 5.4: e^(j 2 pi f0 (t - t_start,l - N_CP,l Tc)), the carrier's phase
+restarted every symbol) reaches a receiver that mixes down continuously as e^(-j 2 pi fc t_l) on symbol l: t_l its useful
+part's start in the subframe, fc the absolute frequency at 0 Hz, here the SS/PBCH block's centre on the synchronization
+raster. The PBCH and PDCCH, a DM-RS in every symbol, do not notice; the PDSCH, its DM-RS in some, does. Not every cell
+shows it (on air, one cell of two did: one sharing its carrier with LTE did not), so the PDSCH, given `fc`, tries the block
+with the phase taken off and without, the one that worked last first: the CRC says which.
 """
 import functools
 
@@ -122,6 +129,9 @@ class PDCCH(_NrChannel):
         st.est["frames"] += 1
         pci, nfft = head["pci"], head["nfft"]
         c0bin = phy.coreset0_first_bin(nfft, int(self.k_ssb), c0["offset"])
+        if c0bin < 0 or c0bin + 12*n_rb > nfft: # CORESET 0 past the band the samples hold
+            st.est["outside"] = st.est.get("outside", 0) + 1
+            return None
         K = phy.dci_10_si_size(n_rb) + 24
         n_cce = n_rb*nsym//6
         found = []
@@ -161,9 +171,10 @@ class PDSCH(_NrChannel):
     CONTROLS = {k: "live" for k in ("coreset0", "k_ssb", "dmrs_pos", "fdra", "tdra", "vrb", "mcs", "rv", "sii", "rnti",
                                     "aggregation", "cce")}
 
-    def __init__(self, name="pdsch"):
+    def __init__(self, fc=0.0, name="pdsch"):
         super().__init__(name, coreset0=None, k_ssb=0, dmrs_pos=2, fdra=None, tdra=0, vrb=0, mcs=0, rv=0, sii=0,
-                         rnti=phy.SI_RNTI, aggregation=None, cce=None)
+                         rnti=phy.SI_RNTI, aggregation=None, cce=None, fc=float(fc))
+        self.order = [True, False] if self.fc else [False] # Take the symbols' phase off: first what worked last
 
     def __str__(self):
         return "NR PDSCH()"
@@ -180,6 +191,9 @@ class PDSCH(_NrChannel):
         n_rb = c0["rbs"]
         c0bin = phy.coreset0_first_bin(nfft, int(self.k_ssb), c0["offset"])
         first, count = phy.riv_decode(int(self.fdra), n_rb)
+        if c0bin + 12*first < 0 or c0bin + 12*(first + count) > nfft:
+            st.est["outside"] = st.est.get("outside", 0) + 1
+            return None
         t = phy.tdra(int(self.tdra) + 1, int(self.dmrs_pos))
         ssb = [head["ssb_symbol"]] if head["ssb_symbol"] >= 0 else []
         data, (qb, qs, qi) = phy.pdsch_res(nfft, c0bin, first, count, t["s"], t["l"], t["mapping"], int(self.dmrs_pos), ssb)
@@ -187,16 +201,25 @@ class PDSCH(_NrChannel):
         for sym in np.unique(qs):
             seq = phy.pdsch_dmrs(pci, head["slot"], sym, int(qi.max()) + 1)
             ref[qs == sym] = seq[qi[qs == sym]]
-        yh, h2 = equalize(G, data, (qb, qs), ref)
         qm, rate = phy.mcs(int(self.mcs))
-        z = yh/np.maximum(h2, 1e-12)
         nd = len(phy.dmrs_symbols(t["mapping"], t["s"], t["l"], int(self.dmrs_pos)))
         tbs = phy.tbs(12*t["l"] - 12*nd, count, qm, rate)
         E = qm*len(data[0])
         crc, ldpc = phy.ldpc_for(tbs, rate, E, int(self.rv), qm)
-        llr = phy.soft_bits(z, qm, noise=1/np.maximum(np.mean(h2), 1e-12))*phy.sign(phy.gold((int(self.rnti) << 15) + pci, E))
-        b = np.asarray(ldpc.decoder.decode(llr)).astype(np.uint8)
-        ok = not np.asarray(_crc(crc).field(b)).any()
+        scr = phy.sign(phy.gold((int(self.rnti) << 15) + pci, E))
+        ok, b = False, None
+        for turn in list(self.order):
+            Gt = G*phy.symbol_phase(self.fc, nfft)[:, None] if turn else G
+            yh, h2 = equalize(Gt, data, (qb, qs), ref)
+            z = yh/np.maximum(h2, 1e-12)
+            llr = phy.soft_bits(z, qm, noise=1/np.maximum(np.mean(h2), 1e-12))*scr
+            b = np.asarray(ldpc.decoder.decode(llr)).astype(np.uint8)
+            ok = not np.asarray(_crc(crc).field(b)).any()
+            if ok:
+                if turn != self.order[0]:
+                    self.order.reverse()
+                break
         st.est["decoded" if ok else "failed"] += 1
-        st.est["last"] = {"tbs": tbs, "first": first, "count": count, "qm": qm, "crc": bool(ok)}
+        st.est["last"] = {"tbs": tbs, "first": first, "count": count, "qm": qm, "crc": bool(ok),
+                          "phase": bool(ok and self.order[0])}
         return b[:tbs] if ok else None

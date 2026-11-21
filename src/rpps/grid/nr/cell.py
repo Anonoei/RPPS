@@ -2,11 +2,12 @@
 
 Acquiring (the first `acquire` seconds): the PSS at 1.92 MS/s over carrier offsets `offset` +- `span` (a LEO pass at
 S-band moves the carrier by up to some 50 kHz), folded on the SS/PBCH block period (`period`, 20 ms). Then each block at
-the full rate: the residual offset from the phase between PSS and SSS, the SSS's N_ID1, and from the PBCH DM-RS the
+the full rate: the residual offset from the PSS-to-SSS phase, less the cell's bias in it (NR gives each symbol's carrier a
+phase of its own, 38.211 5.4: a constant for a cell, found against the four symbols' cyclic prefixes), the SSS's N_ID1, and from the PBCH DM-RS the
 block's index and half frame, which place the slots and the frame. Over the blocks of the acquisition, the sample clock
 (the delay's rate: a satellite's range stretches the signal by tens of ppm) and the offset's rate.
 
-Tracking: every block, its PSS's timing error and the PSS-to-SSS phase error drive two loops of the second order: time
+Tracking: every block, its PSS's timing error and its offset (the bias kept up to date) drive two loops of the second order: time
 (the next slot's start and the clock's rate) and frequency (the offset and its rate: a pass changes it by hundreds of Hz
 a second). Between blocks the offset follows its rate, the derotation's phase continuous. With no Doppler the rates
 stay near zero: the same receiver serves a terrestrial cell.
@@ -43,13 +44,16 @@ class NrCell(Stage):
     """NR cell search and slot timing, LEO Doppler tracked (see the module)
 
     offset, span, resolution: carrier offsets searched [Hz]; period: SS/PBCH block period [s]; acquire: seconds looked
-    at; lose: periods without the block before acquiring again; gate: the PSS's normalized correlation for a block"""
+    at; lose: periods without the block before acquiring again; gate: the PSS's normalized correlation for a block;
+    fc: the block centre's absolute frequency (on the raster), when known: the PSS-to-SSS bias is then one of two, none
+    or what the upconversion phase gives at fc (est "phase"), whichever the cyclic prefixes' average is nearer"""
     CATEGORY = Category.SYNC
     CONTROLS = {}
 
-    def __init__(self, offset=0.0, span=60e3, resolution=4e3, period=0.02, acquire=0.065, lose=8, gate=0.25, name="cell"):
+    def __init__(self, offset=0.0, span=60e3, resolution=4e3, period=0.02, acquire=0.065, lose=8, gate=0.25, fc=0.0, name="cell"):
         self.offset, self.span, self.resolution, self.period = float(offset), float(span), float(resolution), float(period)
         self.acquire, self.lose, self.gate, self.name = float(acquire), int(lose), float(gate), name
+        self.fc = float(fc)
 
     def __str__(self):
         return f"NrCell({self.offset/1e3:+g} kHz +- {self.span/1e3:g})"
@@ -86,8 +90,35 @@ class NrCell(Stage):
             metric = float(m[n_id1])
         else:
             metric = float(np.abs(phy.sss(n_id1, n_id2) @ z)/np.sqrt(np.sum(np.abs(z)**2)*127 + 1e-30))
-        ph = np.angle(np.sum(z*phy.sss(n_id1, n_id2)))
-        return n_id1, float(ph/(2*np.pi*2*step/fs)), metric, Y, h
+        # Two views of the residual offset: the phase from the PSS to the SSS (127 subcarriers each: little noise, but moved
+        # by the phase NR's upconversion gives each symbol, 38.211 5.4, a constant for a cell), and each symbol's cyclic
+        # prefix against its end (that phase cannot move it; few samples: noisy). The bias is their difference, averaged
+        acc = 0j
+        for k in range(4):
+            u = p + k*step
+            acc += np.sum(y[u - cp:u]*np.conj(y[u - cp + nfft:u + nfft]))
+        f_cp = float(-np.angle(acc)/(2*np.pi*nfft/fs))
+        ph = float(np.angle(np.sum(z*phy.sss(n_id1, n_id2))))
+        return n_id1, (ph, f_cp, 2*step/fs), metric, Y, h
+
+    @staticmethod
+    def _offset(meas, bias):
+        """The residual offset [Hz] of a block from the PSS-to-SSS phase, the cell's bias (a unit vector) taken off"""
+        ph, _, span = meas
+        return float(np.angle(np.exp(1j*ph)*np.conj(bias))/(2*np.pi*span))
+
+    @staticmethod
+    def _bias(meas):
+        ph, f_cp, span = meas
+        return np.exp(1j*(ph - 2*np.pi*f_cp*span))
+
+    def _snap(self, raw, span):
+        """The cell's bias from its running average `raw`: with fc, the nearer of none and the upconversion phase's"""
+        if not self.fc:
+            return raw/abs(raw) if abs(raw) > 0 else 1.0 + 0j, None
+        term = np.exp(-2j*np.pi*((self.fc*span) % 1.0))
+        applied = abs(raw - term) < abs(raw - 1.0)
+        return (term if applied else 1.0 + 0j), bool(applied)
 
     def _ibar(self, Y, h, pci):
         """i_SSB + 4 n_hf from the PBCH DM-RS: the hypothesis its equalized values agree with best"""
@@ -154,7 +185,10 @@ class NrCell(Stage):
             return None
         pci = 3*n_id1 + n_id2
         pos = np.array([p for p, _ in blocks], float)
-        dfs = np.array([m[1] for _, m in blocks])
+        raw = np.mean([self._bias(m[1]) for _, m in blocks])
+        raw = raw/abs(raw) if abs(raw) > 0 else 1.0 + 0j
+        bias, applied = self._snap(raw, blocks[0][1][1][2])
+        dfs = np.array([self._offset(m[1], bias) for _, m in blocks])
         k = np.round((pos - pos[0])/Pf)
         scale = float(np.polyfit(k, pos, 1)[0]/Pf) if len(set(k)) > 1 else 1.0
         tt = pos/fs
@@ -170,7 +204,8 @@ class NrCell(Stage):
         frame0 = p_first - phy.symbol_starts(nfft)[l0]*scale - (5*n_hf + i_ssb//2)*S*scale
         tm = float(np.mean(tt))
         return SimpleNamespace(pci=pci, n_id1=n_id1, n_id2=n_id2, i_ssb=i_ssb, n_hf=n_hf, l0=l0, tmpl=tmpl, T=float(frame0),
-                               scale=scale, f=f0 + rate*(frame0/fs - tm), rate=rate, phase=0.0, slot=0, miss=0, metric=0.0)
+                               scale=scale, f=f0 + rate*(frame0/fs - tm), rate=rate, phase=0.0, slot=0, miss=0, metric=0.0,
+                               bias=bias, raw=raw, applied=applied)
 
     # ---- the stream
 
@@ -234,7 +269,10 @@ class NrCell(Stage):
                     Tp = per*S # (samples between measurements)
                     lk.T += 0.5*e
                     lk.scale += 0.15*e/Tp
-                    ef = m[1]
+                    b = lk.raw*0.9 + 0.1*self._bias(m[1])
+                    lk.raw = b/abs(b) if abs(b) > 0 else lk.raw
+                    lk.bias, lk.applied = self._snap(lk.raw, m[1][2])
+                    ef = self._offset(m[1], lk.bias)
                     lk.f += 0.5*ef
                     lk.rate += 0.15*ef/self.period
                     lk.phase += 0.0
@@ -251,7 +289,7 @@ class NrCell(Stage):
             lk.T += L
             lk.slot += 1
             st.est.update(slots=st.est["slots"] + 1, cfo=lk.f, rate=lk.rate, ppm=(lk.scale - 1)*1e6, metric=lk.metric,
-                          next=lk.T)
+                          next=lk.T, phase=lk.applied)
             drop = max(int(lk.T) - st.base - 64, 0)
             st.buf, st.base = st.buf[drop:], st.base + drop
             if lk.miss >= self.lose:

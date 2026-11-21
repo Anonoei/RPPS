@@ -71,8 +71,8 @@ def downlink(frames, mcs=2, **kw):
     sib = rng.integers(0, 2, size).astype(np.uint8)
     return nr.tx.downlink(pci=17, nfft=NFFT, frames=frames, sib=sib, ssb=(0, 1), mcs=mcs, k_ssb=2, **kw), sib
 
-def receive(x, block=100000):
-    outs = list(rp.source.Memory(x, Fs=FS)(block) + rp.profile.load("nr/downlink").rx())
+def receive(x, block=100000, **params):
+    outs = list(rp.source.Memory(x, Fs=FS)(block) + rp.profile.load("nr/downlink", **params).rx())
     est = {k: outs[-1][k].stream.est[k] for k in ("pbch", "pdcch", "pdsch")}
     got = np.concatenate([np.asarray(o["pdsch"].data) for o in outs]).astype(np.uint8)
     return est, got, outs
@@ -118,3 +118,15 @@ def test_the_block_cut_does_not_matter():
     for name in ("pbch", "pdcch", "pdsch"):
         assert np.array_equal(np.concatenate([np.asarray(o[name].data) for o in a[2]]),
                               np.concatenate([np.asarray(o[name].data) for o in b[2]]))
+
+@pytest.mark.parametrize("sent", [True, False], ids=["phase_sent", "no_phase"])
+def test_symbol_phase_either_way(sent):
+    """The phase NR's upconversion gives each symbol (38.211 5.4), from the block's raster frequency: a cell that applies it
+    and one that does not (as on air) both decode, the PDSCH trying both and the CRC choosing"""
+    y, sib = downlink(6, fc=FC if sent else 0.0)
+    x = nr.tx.awgn(np.concatenate((np.zeros(1000), y)), 15, ref=y)
+    est, got, _ = receive(x, fc=FC)
+    check(est, got, sib, 3)
+    assert est["pdsch"]["last"]["phase"] is sent
+    if sent: # Without fc the receiver cannot take it off
+        assert receive(x)[0]["pdsch"]["decoded"] == 0

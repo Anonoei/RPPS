@@ -37,6 +37,11 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   - Tables `nr/coreset0_15_15`, `nr/type0_fr1`, `nr/pdsch_tdra_a`, `nr/mcs_pdsch_1`, `nr/tbs`. The SS/PBCH block, BCH and
     PBCH scrambling match py3gpp bit for bit (`tests/unit/vectors/nr_py3gpp_ssb.json`).
   - Through a 600 km pass at 2.185 GHz: every MIB and SIB1 over 3 s across closest approach, and at 46 and 50 kHz offsets.
+  - On air (HackRF): two live cells at 15 kHz decode to SIB1, one in n5 (MIB 100/100, SIB1 41/42) and one in n25 (MIB
+    100/100, SIB1 50/50).
+  - The phase NR's upconversion gives each symbol (38.211 5.4): one cell applied it, one (sharing its carrier with LTE)
+    did not. Given `fc` (the block's raster frequency), the cell search tells which (its offset measure is not fooled by
+    it), and the PDSCH tries both, the CRC choosing.
 - **DVB-S2 multiple input streams:** `dvbs2/mis`, one demodulator and decoder, then a branch per input stream. Branches:
   a control whose header is in the trunk drives steps in the branches (the PLS sets every stream's BBFRAME length). Link
   headers: `select` ({field: value}) keeps only the frames with those values (`skipped` counts the others).

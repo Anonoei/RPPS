@@ -45,8 +45,12 @@ Burst and preamble steps in profiles, so burst demodulators can be profiles, the
 - **Phase 5, NR through SIB1 with NTN: built** (`grid.nr`, `nr/downlink`):
   - synthetic: terrestrial, and a LEO pass at 2.185 GHz from 300 s out (50 kHz) through closest approach (over 600 Hz/s);
   - the SS/PBCH block, BCH and PBCH scrambling are bit-exact against py3gpp.
-- **Next: a real NR signal.** A live NR cell at 15 kHz (n71, 617-652 MHz) is in the HackRF's range. Its PBCH passing
-  CRC-24C would check the chain end to end, past the synthetic tests and py3gpp.
+- **A real NR signal: done.** Live cells through the HackRF:
+  - one in n5: MIB 100/100, SIB1 41/42;
+  - one in n25: MIB 100/100, SIB1 50/50.
+  - Their PBCH CRC-24C passing checks the chain end to end.
+  - On air, the phase 38.211 5.4 gives each symbol is applied by one cell and not by the other; both are handled.
+  - Co-channel cells sharing one SSB frequency (another n5 frequency) mix in the PBCH: a single-cell receiver only.
 - **NR scope left:**
   - 30 kHz SS/PBCH or CORESET (Tables 13-2 to 13-6);
   - more than 4 candidate blocks (above 3 GHz);
