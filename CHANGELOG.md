@@ -28,6 +28,9 @@ what breaks under **Breaking**, with what to use instead.
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- **Branches in profiles:** a last `{"branch": ...}` step fans the chain out into branches that read the same blocks
+  (`rpps.profile.branch`), in order, each in its own stream; a header in one branch drives steps in the branches after
+  it, at the trunk position of its fields; `frame` makes the branches read whole frames. Receive only.
 - **Burst demodulation in profiles:** a `{"sync": "burst"}` step; the steps after it are built anew for every burst
   (`rpps.profile.burst.BurstRunner`). A `{"sync": "preamble"}` step finds each burst's preamble, its waveform made by the
   profile's own transmit side; on real input (FSK) by the correlation coefficient, with the offset level taken off. Known
