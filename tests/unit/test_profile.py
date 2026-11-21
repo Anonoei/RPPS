@@ -72,6 +72,20 @@ def test_any_block_cut_on_receive():
         got = np.concatenate(outs)
         assert np.array_equal(got, ref[:len(got)]) and len(got) >= len(ref) - 64
 
+def test_a_runner_adds_to_blocks_like_a_stage():
+    """`src(n) + p.rx()` (the README's receive loop) gives what calling the runner on each block does"""
+    rng = np.random.default_rng(2)
+    p = rp.profile.load("ieee80211b/2m", sync=KNOWN)
+    wave = p.tx()(rp.Data(rng.integers(0, 256, 30).astype(np.uint8), Fs=1e6, sps=1))
+    src = lambda: rp.source.Memory(wave.data, Fs=wave.Fs, sps=wave.sps)(500)
+    rx = p.rx()
+    ref = np.concatenate([hard(rx(b)) for b in src()])
+    got = np.concatenate([hard(out) for out in src() + p.rx()])
+    assert len(ref) > 100 and np.array_equal(got, ref)
+    rx = p.rx()
+    assert np.array_equal(hard(rp.Data(wave.data, Fs=wave.Fs, sps=wave.sps) + rx),
+                          hard(p.rx()(rp.Data(wave.data, Fs=wave.Fs, sps=wave.sps))))
+
 def test_any_block_cut_on_transmit():
     rng = np.random.default_rng(3)
     p = rp.profile.load("ieee802154/2450", sync=KNOWN)

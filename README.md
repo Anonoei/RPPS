@@ -9,8 +9,9 @@ RPPS is a generic signal processor/generator library.
 
 Everything is driven by operators: `*` encodes / modulates / scrambles, `/` undoes it, `+` runs a DSP stage.
 The data carries its sample rate and the state of every stage from block to block (see "Things that surprise people" below).
+[examples/](examples/README.md) has a runnable script for each of the things below, and more.
 
-### Bits to symbols and back ([file](https://github.com/Anonoei/RPPS/tree/main/tests/example.py))
+### Bits to symbols and back ([file](https://github.com/Anonoei/RPPS/tree/main/examples/quickstart.py))
 ```python
 import rpps as rp
 
@@ -93,10 +94,6 @@ BCJR / turbo, LDPC, Reed-Solomon, BCH) run in C++ (`rpps._native`, built with th
 threads run them in parallel; batches of codewords are spread over the cores (`RPPS_THREADS` sets how many).
 Without a compiler RPPS uses its Python loops (the reference: `RPPS_NO_NATIVE=1` forces them). Compare with
 `python tests/bench_stages.py`.
-
-### Real-time spectrum
-![RT](/media/example_rt.jpg?raw=true "Real-time Persistent Spectrum")
-- [file](https://github.com/Anonoei/RPPS/tree/main/tests/dev/viz_rt.py)
 
 ## Install
 1. Run `python3 -m pip install rpps` (`rpps[viz]` adds matplotlib for `rp.viz`). From a checkout, `python builder.py -c`
@@ -181,5 +178,5 @@ See [README.dev.md](README.dev.md) for the design, how the project is organized 
  2. `cd RPPS`
  3. `git branch -c feature/<your feature>`
  4. `python3 builder.py -s -c` installs rpps editable with its dev dependencies and builds the C++ kernels
- 5. run `python3 -m pytest` (add `-m "not slow"` to skip the chain tests). Scratch scripts live in `tests/dev`
+ 5. run `python3 -m pytest` (add `-m "not slow"` to skip the chain tests)
  6. Check out the `dev` branch for latest changes

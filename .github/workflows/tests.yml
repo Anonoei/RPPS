@@ -107,8 +107,8 @@ jobs:
           python -m venv /tmp/clean
           /tmp/clean/bin/pip install dist/*.whl
           cd /tmp
-          /tmp/clean/bin/python "$GITHUB_WORKSPACE/tests/example.py"
-          /tmp/clean/bin/python "$GITHUB_WORKSPACE/tests/example_ls.py" > /dev/null
+          /tmp/clean/bin/python "$GITHUB_WORKSPACE/examples/quickstart.py"
+          /tmp/clean/bin/python "$GITHUB_WORKSPACE/examples/list_definitions.py" > /dev/null
           /tmp/clean/bin/python -c "import rpps, sys; assert 'matplotlib' not in sys.modules"
 
   docs:
