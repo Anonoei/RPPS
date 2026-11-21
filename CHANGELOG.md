@@ -8,8 +8,7 @@ what breaks under **Breaking**, with what to use instead.
 ### Breaking
 - **`ble/adv` receives packet by packet:** a burst step cuts the capture into packets and each is demodulated on its own
   (timing and carrier offset from its access address, found by a preamble step). Its runner gives a list, one output per
-  packet, each with its own `stream.est`; `sync={"timing": {"method": "known"}}` is no longer needed. Packets closer
-  together than 80% of the time (a continuous stream) are not found: the burst floor needs quiet.
+  packet, each with its own `stream.est`; `sync={"timing": {"method": "known"}}` is no longer needed.
 - **Decode status comes with the decode; nothing of it stays on the code.** One loaded code can now decode on several
   threads (before, a thread could read another's status, and get its `failed` mask).
   - Through operators: `out = data / code`, then `out.errors` (per codeword: corrected bits or symbols, -1 where it
@@ -38,7 +37,8 @@ what breaks under **Breaking**, with what to use instead.
   packet the hand-written receiver (projects/ble) gets, and 4 more of 106.
 - `rp.sync.Burst`: a stream cut into the bursts that rise out of its noise floor, each a `Data` of its own stream at its
   absolute position, so what follows acquires every packet fresh. `Blocks` and `Pipeline` run what follows on each burst
-  (a stage may now give a list).
+  (a stage may now give a list). Its floor is taken from the noise windows alone (`quiet`), so bursts filling nearly
+  all the air are found; zero windows (padding) count as the quietest noise.
 - `rp.sync.Preamble`: a burst's preamble by a known waveform (normalized correlation) or its repetition (Schmidl & Cox),
   with the carrier offset the repetition gives, optionally taken off.
 - `rp.sync.ToneLock`: an oscillator locked to a pilot, mixing at a harmonic (FM stereo's 38 kHz from 19 kHz; ATSC's pilot
