@@ -1,0 +1,13 @@
+{
+  "base": "block",
+  "type": "nr_polar",
+  "comment": "5G NR BCH: the 32-bit PBCH payload and a CRC-24C, polar coded with the input interleaver (n_max 9), 864 bits out (the PBCH of an SS/PBCH block)",
+  "ref": "3GPP TS 38.212 7.1.4, 7.1.5",
+  "tags": ["nr"],
+  "K": 56,
+  "E": 864,
+  "nmax": 9,
+  "interleave": true,
+  "crc": "crc/crc24_nr_c",
+  "list": 8
+}

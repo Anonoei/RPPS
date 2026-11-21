@@ -141,6 +141,7 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
      - [X] Reed-Solomon
      - [X] LDPC (layered or flooding min-sum; DVB-S2 tables, quasi-cyclic matrices: IEEE 802.11n)
      - [X] Golay, cyclic codes by generator polynomial, product codes (DMR BPTC), turbo (LTE), rate matching (LTE)
+     - [X] 5G NR polar (with its rate matching, CRC-aided list decoding) and NR LDPC (both base graphs, rate matching)
      - [X] Polar (successive cancellation, list, CRC-aided)
      - [ ] Polar: the 5G NR sequence and rate matching
      - [X] Turbo product codes (Chase-Pyndiah)

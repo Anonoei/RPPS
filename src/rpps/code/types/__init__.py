@@ -6,6 +6,8 @@ from .interleave import forney, block_interleaver, rowcol
 from .fsm import fsm
 from .turbo import turbo, rsc, qpp
 from .ratematch import ratematch
+from .nr_polar import nr_polar
+from .nr_ldpc import nr_ldpc
 from .product import product
 from .ldpc import ldpc, gallager
 from .linear import linear
