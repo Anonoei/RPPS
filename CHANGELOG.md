@@ -27,6 +27,12 @@ what breaks under **Breaking**, with what to use instead.
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- **5G NR codes:** `nr_polar` (`block/polar/nr_pbch`, `block/polar/nr_dci`): the polar sequence and input interleaver of
+  38.212, code size, puncturing and shortening, the sub-block and coded-bit interleavers, CRC-aided list decoding with
+  the DCI's 24 ones and RNTI mask (`paths()` for a blind search). `nr_ldpc` (`block/ldpc/nr_bg1`, `nr_bg2`): both base
+  graphs with every lifting set, a structured encoder, filler and the punctured 2 Z, the circular buffer at each
+  redundancy version and the modulation-order interleaver; `segment()` and `base_graph()` for transport blocks. CRCs
+  `crc24_nr_c`, `crc11_nr`, `crc6_nr`; tables `nr/polar_sequence`, `nr/polar_interleave`.
 - **LTE downlink to SIB1:** the profile `lte/downlink` and the package `rpps.grid` (`grid` steps).
   - `grid.lte.LteCell`: cell search (PSS, SSS, carrier offset), then each half-frame's PSS tracked (the sample clock),
     the samples cut into whole half-frames from a subframe 0; acquired again when lost, zeros for what was missed.

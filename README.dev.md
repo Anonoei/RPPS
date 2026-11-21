@@ -556,8 +556,9 @@ what replaces it); `python builder.py -v p` (or `m`, `M`) previews the bump, `-r
 
 Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liquid-dsp and gr-satellites.
 
-- **Codes:** 5G NR polar (reliability sequence, rate matching); LDPC tables for 5G NR, CCSDS AR4JA / C2, DVB-S2X, DVB-T2, ATSC
-  3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; Fletcher and Internet checksums; fountain codes.
+- **Codes:** NR polar parity-check bits (an uplink message of 12-19 bits), LDPC limited-buffer rate matching from a
+  transport block's TBS_LBRM, HARQ combining across redundancy versions; LDPC tables for CCSDS AR4JA / C2, DVB-S2X, DVB-T2,
+  ATSC 3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; Fletcher and Internet checksums; fountain codes.
 - **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
   spread spectrum, space-time codes; a burst step in a parallel region; the transmit side of branches (and of `grid`:
   `grid.lte.tx` is a test transmitter); LTE beyond SIB1 (unicast DCI formats, multiple code blocks, TDD, extended prefix); `lte_grid` in

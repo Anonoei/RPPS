@@ -85,6 +85,10 @@
       "comment": "MPEG-2 transport stream",
       "ref": "ISO/IEC 13818-1"
     },
+    "nr": {
+      "comment": "5G NR",
+      "ref": "3GPP TS 38.211, 38.212"
+    },
     "p25": {
       "comment": "APCO Project 25 phase 1",
       "ref": "TIA-102.BAAA"
