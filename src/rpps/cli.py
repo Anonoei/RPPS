@@ -112,11 +112,16 @@ def cmd_rx(args):
     bits = []
     for block in src(args.block):
         out = rx(block)
+        if isinstance(out, dict): # A profile that branches: one branch's output
+            name = args.branch or list(out)[-1]
+            if name not in out:
+                raise SystemExit(f"{args.profile} has no branch {name!r} (has {', '.join(out)})")
+            out = out[name]
         for o in out if isinstance(out, list) else [out]: # (a profile with a burst step: one output per burst)
             x = np.asarray(o.data)
             bits.append(x < 0 if x.dtype.kind == "f" else x.astype(bool))
     bits = np.concatenate(bits) if bits else np.zeros(0, bool)
-    print(f"{args.file}: {len(bits)} bits out of {args.profile}")
+    print(f"{args.file}: {len(bits)} bits out of {args.profile}" + (f" ({args.branch})" if args.branch else ""))
     if args.out:
         Path(args.out).write_bytes(np.packbits(bits).tobytes())
         print(f"wrote {args.out}")
@@ -346,6 +351,7 @@ def main(argv=None):
     p_rx.add_argument("--effort", default="balanced", choices=("fast", "balanced", "max"),
                       help="speed against recovered SNR (default: balanced; see rpps._effort)")
     p_rx.add_argument("--out", help="write the bits out as bytes here")
+    p_rx.add_argument("--branch", help="a profile that branches: the branch whose bits go out (default: the last)")
     p_rx.set_defaults(fn=cmd_rx)
 
     p_tx = sub.add_parser("tx", help="transmit data with a profile into a sample file")

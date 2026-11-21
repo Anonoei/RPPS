@@ -52,3 +52,15 @@ def test_tx_writes_what_rx_receives(tmp_path, capsys):
     bits = [np.asarray(o.data) < 0 if np.asarray(o.data).dtype.kind == "f" else np.asarray(o.data).astype(bool) for o in outs]
     got = np.packbits(np.concatenate(bits)).tobytes()
     assert got == payload
+
+def test_rx_gives_the_branch_asked_for(tmp_path, capsys):
+    """A profile that branches (lte/downlink): --branch picks whose bits go out"""
+    from rpps.grid import lte
+    sib = np.random.default_rng(2).integers(0, 2, 224).astype(np.uint8)
+    x = lte.tx.channel(lte.tx.downlink(pci=10, ports=1, n_rb=6, frames=4, sib=sib), delay=700, snr_db=20)
+    x.tofile(tmp_path/"lte.cf64")
+    assert cli.main(["rx", "lte/downlink", str(tmp_path/"lte.cf64"), "--fs", "1.92e6", "--param", "n_rb=6", "--branch", "pdsch",
+                     "--out", str(tmp_path/"sib.bin")]) == 0
+    assert (tmp_path/"sib.bin").read_bytes() == np.packbits(np.tile(sib, 2)).tobytes() # Frames 0 and 2
+    with pytest.raises(SystemExit, match="no branch"):
+        cli.main(["rx", "lte/downlink", str(tmp_path/"lte.cf64"), "--fs", "1.92e6", "--param", "n_rb=6", "--branch", "nope"])

@@ -126,7 +126,8 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
    - [X] Equalizers: block least squares, LMS, CMA; OFDM pilots and cyclic prefix
    - [X] Per-burst acquisition (`sync.Burst`: each burst a stream of its own), preambles (`sync.Preamble`: known waveform or Schmidl-Cox, carrier offset)
    - [X] Tone / pilot PLL (`sync.ToneLock`: FM stereo, ATSC pilot)
-   - [ ] LTE cell search, decision-feedback equalizer
+   - [X] LTE cell search and resource grid (`grid.lte`: PSS/SSS, sample-clock tracking, channel of each antenna port)
+   - [ ] Decision-feedback equalizer
  - [ ] [Symbol and wave](https://github.com/Anonoei/RPPS/tree/main/src/rpps/symbol)
    - [X] PSK, QAM, APSK, ASK, any point set from a file; differential coding; spreading (Barker, Gold, 802.15.4)
    - [X] FSK, GFSK, MSK, C4FM (frequency pulses), O-QPSK, OFDM, AM, SSB, analog FM
@@ -170,7 +171,8 @@ Logging is off until you ask: `rp.logger.enable("DEBUG")`.
  - [ ] [Profiles](https://github.com/Anonoei/RPPS/tree/main/config/profile)
    - [X] DVB-S, DVB-S2 (normal and short frames, APSK), IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
    - [X] CCSDS concatenated (convolutional + Reed-Solomon)
-   - [ ] From definitions already shipped: CCSDS turbo, P25, DMR, LTE, IEEE 802.11a/g, 802.11n, ATSC 8VSB, GPS C/A, DAB
+   - [X] LTE downlink to SIB1 (`lte/downlink`: MIB, CFI, DCI 1A, PDSCH, branches driving one another)
+   - [ ] From definitions already shipped: CCSDS turbo, P25, DMR, IEEE 802.11a/g, 802.11n, ATSC 8VSB, GPS C/A, DAB
  - [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey
 
 ## Contributing
