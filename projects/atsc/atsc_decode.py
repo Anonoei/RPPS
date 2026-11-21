@@ -48,11 +48,11 @@ def viterbi(R, raw=False):
     """
     F, T, E = R.shape
     flat = np.asarray(R, np.float64).transpose(0, 2, 1).reshape(F*E, T)
-    bits = _TCM.decode_batch(flat) # (F*E, 2T): X2, X1 per step (rpps._native when built)
+    bits, words = _TCM.paths(flat) # (F*E, 2T): X2, X1 per step, and the (Z2 Z1 Z0) word sent at each step (rpps._native when built)
     to = lambda v: v.astype(np.uint8).reshape(F, E, T).transpose(0, 2, 1)
     z1 = to(bits[:, 1::2])
     if raw:
-        return z1, to((_TCM._path_out >> 2) & 1)
+        return z1, to((words >> 2) & 1)
     return z1, to(bits[:, 0::2])
 
 def meta_path(soft_path):

@@ -67,8 +67,9 @@ class turbo(_code):
     each, one after the other, with the 12 tail bits placed as 5.1.3.2.2 does.
         length: block size; qpp: [f1, f2], or qpp_table: {"<length>": [f1, f2], ...}
         iters: decoder iterations, scale: extrinsic scaling (max-log), maxlog: max-log-MAP (default) or log-MAP
-    decode() takes LLRs (positive = 0) of the 3 (length + 4) bits and returns the length message bits; `llr` keeps
-    the final a-posteriori LLRs. `errors`: systematic bits that the decoder changed (a CRC is the real check).
+    decode() takes LLRs (positive = 0) of the 3 (length + 4) bits and returns the length message bits; app() gives the
+    final a-posteriori LLRs of the message bits instead (decode's bits are app() < 0). Status (status=True): systematic
+    bits that the decoder changed (a CRC is the real check).
     """
     soft = True
 
@@ -92,7 +93,6 @@ class turbo(_code):
         self.pi = qpp(length, *qpp_f)
         self.inv = np.argsort(self.pi)
         self.iters, self.scale, self.maxlog = iters, scale, maxlog
-        self.llr = None
 
     def encode(self, bits):
         c = np.asarray(bits).astype(np.uint8)
@@ -116,7 +116,17 @@ class turbo(_code):
         app = bcjr(self.code.trellis, np.stack((sys, par), axis=-1)[None], start=0, end=0, maxlog=maxlog)[0]
         return app[:len(Ls)]
 
+    def app(self, bits, soft=None):
+        """The a-posteriori LLRs of the message bits (positive = 0), every word's K one after the other"""
+        return self._iterate(bits, soft)[0].reshape(-1)
+
     def _decode(self, bits, soft=None):
+        finals, hard = self._iterate(bits, soft)
+        dec = finals < 0
+        return dec.reshape(-1), word_errors(hard, dec)
+
+    def _iterate(self, bits, soft):
+        """(final LLRs (words, K), the received systematic bits hard decided (words, K))"""
         llr = as_llr(bits, soft, 2.0)
         K, n = self.Kb, self.den
         # The effort level (rpps._effort): its iterations and max-log or log-MAP. The extrinsic scaling corrects max-log
@@ -124,7 +134,7 @@ class turbo(_code):
         iters, maxlog = _effort.iters(self.iters), _effort.maxlog(self.maxlog)
         scale = self.scale if maxlog or maxlog == self.maxlog else 1.0
         words = llr[:len(llr)//n*n].reshape(-1, n)
-        out, finals = [], []
+        finals = []
         for w in words:
             d = w.reshape(3, K + 4)
             Ls, L1, L2 = d[0, :K], d[1, :K], d[2, :K]
@@ -144,12 +154,8 @@ class turbo(_code):
                     last = now
                     if same >= 2:
                         break
-            final = Ls + La1 + Le1
-            finals.append(final)
-            out.append(final < 0)
-        self.llr = np.concatenate(finals) if finals else np.zeros(0)
-        dec = np.array(out).reshape(len(words), K)
-        return dec.reshape(-1), word_errors(words[:, :K] < 0, dec)
+            finals.append(Ls + La1 + Le1)
+        return np.array(finals).reshape(len(words), K), words[:, :K] < 0
 
 
 class turbo_mux(_code):
@@ -203,7 +209,6 @@ class turbo_mux(_code):
             for o in self.outputs[t % len(self.outputs)]:
                 self.slots.append((t, o))
         self.iters, self.scale, self.maxlog = iters, scale, maxlog
-        self.llr = None
         super().__init__(log, None, self.Kb, len(self.slots))
 
     def _run(self, u):
@@ -231,13 +236,23 @@ class turbo_mux(_code):
             s[o][t] += v
         return s
 
+    def app(self, bits, soft=None):
+        """The a-posteriori LLRs of the message bits (positive = 0), every word's K one after the other"""
+        return self._iterate(bits, soft)[0].reshape(-1)
+
     def _decode(self, bits, soft=None):
+        finals, hard = self._iterate(bits, soft)
+        dec = finals < 0
+        return dec.reshape(-1), word_errors(hard, dec)
+
+    def _iterate(self, bits, soft):
+        """(final LLRs (words, K), the received systematic bits hard decided (words, K))"""
         llr = as_llr(bits, soft, 2.0)
         n, K, m = self.den, self.Kb, self.m
         iters, maxlog = _effort.iters(self.iters), _effort.maxlog(self.maxlog)
         scale = self.scale if maxlog or maxlog == self.maxlog else 1.0
         words = llr[:len(llr)//n*n].reshape(-1, n)
-        out, finals, hard = [], [], []
+        finals, hard = [], []
         for w in words:
             s = self._streams(w)
             Ls = s["0a"][:K]
@@ -253,10 +268,6 @@ class turbo_mux(_code):
                 app = bcjr(self.trellis, np.concatenate((sys_b[:, None], pb), axis=1)[None], start=0, end=0, maxlog=maxlog)[0][:K]
                 Le2 = scale*(app - Ls[self.perm] - La2)
                 La1 = Le2[self.inv]
-            final = Ls + La1 + Le1
-            finals.append(final)
-            out.append(final < 0)
+            finals.append(Ls + La1 + Le1)
             hard.append(Ls < 0)
-        self.llr = np.concatenate(finals) if finals else np.zeros(0)
-        dec = np.array(out).reshape(len(words), K)
-        return dec.reshape(-1), word_errors(np.array(hard).reshape(len(words), K), dec)
+        return np.array(finals).reshape(len(words), K), np.array(hard).reshape(len(words), K)

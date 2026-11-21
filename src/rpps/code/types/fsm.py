@@ -118,8 +118,14 @@ class fsm(_code):
 
     def decode_batch(self, x, soft=None, status=False):
         """Sequences (W, ...) decoded together: bits (W, ...), or (bits, errors per sequence) with status=True"""
-        bits, errors = self._batch(x, soft)
+        bits, errors, _ = self._batch(x, soft)
         return (bits, errors) if status else bits
+
+    def paths(self, x, soft=None):
+        """Sequences (W, ...) decoded together: (bits (W, ...), the encoder's output word at every step of each decoded path
+        (W, T): what the decoder decided was sent, before any mapping to levels)"""
+        bits, _, out = self._batch(x, soft)
+        return bits, out
 
     def _batch(self, x, soft):
         x = np.asarray(x)
@@ -167,20 +173,20 @@ class fsm(_code):
         return words, self.out[prev, words]
 
     def _finish(self, x, soft, words, path_out):
-        """Input bits of the decoded paths, and their errors against what was received (None for a code on levels)"""
+        """(input bits of the decoded paths, their errors against what was received (None for a code on levels), the paths'
+        output words)"""
         W, T = words.shape
         keep = T - self.tail
         bits = ((words[:, :keep, None] >> np.arange(self.k - 1, -1, -1)) & 1).astype(bool).reshape(W, -1)
-        self._path_out = path_out
         if self.levels is None:
             rx = (x.reshape(W, T, self.n) < 0) if soft else x.reshape(W, T, self.n).astype(bool)
             sent = ((path_out[..., None] >> np.arange(self.n - 1, -1, -1)) & 1).astype(bool)
-            return bits, np.count_nonzero(rx != sent, axis=(1, 2))
-        return bits, None
+            return bits, np.count_nonzero(rx != sent, axis=(1, 2)), path_out
+        return bits, None, path_out
 
     def _decode(self, bits, soft=None):
         x = np.asarray(bits)
         per = self.n // self.sym_bits if self.levels is not None else self.n
         x = x[:len(x)//per*per]
-        bits, errors = self._batch(x[None], soft)
+        bits, errors, _ = self._batch(x[None], soft)
         return bits[0], errors
