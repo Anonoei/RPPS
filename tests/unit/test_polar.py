@@ -94,7 +94,8 @@ def test_round_trip_and_noise(ref, rng):
     msg = rng.integers(0, 2, 6*k).astype(bool)
     x = c.encoder.encode(msg)
     assert len(x) == 6*n
-    assert np.array_equal(c.decoder.decode(x), msg) and (c.decoder.errors == 0).all()
+    out, errors = c.decoder.decode(x, status=True)
+    assert np.array_equal(out, msg) and (errors == 0).all()
     llr = 4.0*(1 - 2.0*x) + rng.normal(0, 2.0, len(x)) # Es/N0 about 3 dB: a few channel errors
     assert np.array_equal(c.decoder.decode(llr), msg)
 
@@ -113,8 +114,8 @@ def test_list_and_crc_beat_sc(rng):
 
 def test_crc_failure_is_reported(rng):
     ca = rp.code.load("block/polar/256_128_crc16")
-    out = ca.decoder.decode(rng.normal(0, 1, 2*256)) # noise: no path checks
-    assert (ca.decoder.errors == -1).all() and len(out) == 2*112
+    out, errors = ca.decoder.decode(rng.normal(0, 1, 2*256), status=True) # noise: no path checks
+    assert (errors == -1).all() and len(out) == 2*112
 
 def test_bad_definitions():
     with pytest.raises(ValueError):

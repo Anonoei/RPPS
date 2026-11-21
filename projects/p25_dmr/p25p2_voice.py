@@ -41,8 +41,8 @@ _GOLAY24 = rp.code.load("block/golay/24_12") # extended Golay, overall parity bi
 
 def golay24_decode(c0):
     """(12 data bits, errors) of the 24-bit extended Golay word (LSB = overall parity); errors = 4 when uncorrectable (4 errors are detected)"""
-    u = imbe._bits_int(_GOLAY24.decoder.decode(imbe._int_bits(c0, 24)))
-    e = int(_GOLAY24.errors[0])
+    bits, errors = _GOLAY24.decoder.decode(imbe._int_bits(c0, 24), status=True)
+    u, e = imbe._bits_int(bits), int(errors[0])
     return u, (4 if e < 0 else e)
 
 

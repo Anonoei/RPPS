@@ -44,7 +44,7 @@ class ldpc(_code):
     schedule: "layered" (the default: a layer of checks at a time, each codeword stopping once every check holds) or
         "flooding" (every check from the same totals, `iters` iterations: what `flood` gives the blind tools)
     decode() takes hard bits or LLRs (log(P(0)/P(1)), positive means 0) for whole codewords, returns the message.
-    After a decode, `converged` says which codewords satisfied every parity check.
+    decode(x, status=True) also gives each codeword's status: -1 where it did not satisfy every parity check.
     With rpps._native the codewords are decoded on several threads, each stopping as soon as it converges (the
     numpy decoder iterates the whole batch until every codeword has).
     """
@@ -103,7 +103,6 @@ class ldpc(_code):
         super().__init__(log, None, k, n)
         self.iters = iters
         self.alpha = alpha
-        self.converged = None
 
         M = len(self.checks)
         self.M, self.N = M, n
@@ -184,9 +183,8 @@ class ldpc(_code):
         return (np.add.reduceat(w[:, var], start, axis=1) % 2).astype(np.uint8)
 
     def decode_codewords(self, llr):
-        """Min-sum on (B, N) LLRs. Returns hard decisions (B, N); `converged` says which codewords satisfied every check"""
-        hard, self.converged = self.min_sum(llr)
-        return hard
+        """Min-sum on (B, N) LLRs: hard decisions (B, N) and which codewords satisfied every check (B,)"""
+        return self.min_sum(llr)
 
     def layers(self):
         """The checks in layers that share no variable (greedy colouring, rows in order), computed once per code: the layered
@@ -282,9 +280,8 @@ class ldpc(_code):
             done[act] = ~self.syndrome(t < 0).any(axis=1)
         return total < 0, done
 
-    def decode(self, bits, soft=None):
+    def _decode(self, bits, soft=None):
         llr = as_llr(bits, soft, 2.0)
         llr = llr[:len(llr)//self.N*self.N].reshape(-1, self.N)
         cw, converged = self.min_sum(llr)
-        self.converged, self.errors = converged, word_errors(llr < 0, cw, converged)
-        return cw[:, self.info].reshape(-1)
+        return cw[:, self.info].reshape(-1), word_errors(llr < 0, cw, converged)

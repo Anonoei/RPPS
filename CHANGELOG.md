@@ -5,6 +5,21 @@ what breaks under **Breaking**, with what to use instead.
 
 ## Unreleased
 
+### Breaking
+- **Decode status comes with the decode; nothing of it stays on the code.** One loaded code can now decode on several
+  threads (before, a thread could read another's status, and get its `failed` mask).
+  - Through operators: `out = data / code`, then `out.errors` (per codeword: corrected bits or symbols, -1 where it
+    failed). `Coding.errors` is gone.
+  - Direct calls: `msg, errors = code.decoder.decode(x, status=True)` replaces reading `decoder.errors` after
+    `decode(x)`. The same applies to `fsm.decode_batch(x, status=True)`.
+  - CRC: `crc.ok` is gone; `crc.decode(bits, status=True)[1]` is `[0]` if it checked out, `[-1]` if not.
+  - LDPC: `converged` is gone; it is `errors >= 0`, and `decode_codewords` returns `(hard, converged)`.
+  - HDLC: `last` is gone; `decode(bits, status=True)` gives 0 or -1 per frame found, and `deframe(bits)` every frame
+    with its FCS verdict and the aborts.
+  - `Marker.errors` (the word's bit errors per frame) is on the decoded data: `out.errors`.
+  - `Line.errors` is gone; a Manchester invalid pair is still marked in `out.failed`.
+  - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
+
 ### Added
 - A source checkout warns on `import rpps` when the in-place `rpps._native` was built from other C++ sources than
   `csrc/rpps_native` has now (`rpps._accel.stale`); rebuild with `python builder.py -c`. Installed packages are not checked.

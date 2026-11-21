@@ -65,15 +65,15 @@ def golay_encode(u):
 
 def golay_decode(c):
     """(12 data bits, errors corrected) of a 23-bit word; errors = 4 when the word is not within 3 of a codeword"""
-    u = _bits_int(_GOLAY.decoder.decode(_int_bits(c, 23)))
-    e = int(_GOLAY.errors[0])
+    bits, errors = _GOLAY.decoder.decode(_int_bits(c, 23), status=True)
+    u, e = _bits_int(bits), int(errors[0])
     return u, (4 if e < 0 else e)
 
 
 def hamming_decode(c):
     """(11 data bits, errors corrected) of a 15-bit word (data in bits 14..4, parity in bits 3..0)"""
-    u = _bits_int(_HAMMING.decoder.decode(_int_bits(c, 15)))
-    return u, int(_HAMMING.errors[0])
+    bits, errors = _HAMMING.decoder.decode(_int_bits(c, 15), status=True)
+    return _bits_int(bits), int(errors[0])
 
 
 # ---------------------------------------------------------------------------------------------------- frame layout and bit manipulation

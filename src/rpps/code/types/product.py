@@ -57,8 +57,8 @@ class product(_code):
     def _fix(self, coder, words, n, k):
         """Decode each word (rows of `words`, n bits) with the code's hard decoder; returns words corrected and statuses"""
         dec = coder.decoder
-        msg = dec.decode(words.reshape(-1)).reshape(len(words), k).astype(np.uint8)
-        st = np.asarray(coder.errors)
+        msg, st = dec.decode(words.reshape(-1), status=True)
+        msg = msg.reshape(len(words), k).astype(np.uint8)
         fixed = coder.encoder.encode(msg.reshape(-1)).reshape(len(words), n).astype(np.uint8)
         ok = st >= 0
         words = words.copy()
@@ -79,8 +79,9 @@ class product(_code):
         flip = np.zeros((rows, T, n), np.uint8)
         np.put_along_axis(flip, np.broadcast_to(weak[:, None, :], (rows, T, p)), np.broadcast_to(pats[None], (rows, T, p)), axis=2)
         cand ^= flip
-        msg = coder.decoder.decode(cand.reshape(-1)).reshape(rows*T, k).astype(np.uint8)
-        ok = (np.asarray(coder.errors) >= 0).reshape(rows, T)
+        msg, st = coder.decoder.decode(cand.reshape(-1), status=True)
+        msg = msg.reshape(rows*T, k).astype(np.uint8)
+        ok = (np.asarray(st) >= 0).reshape(rows, T)
         cw = coder.encoder.encode(msg.reshape(-1)).reshape(rows, T, n).astype(np.uint8)
         metric = (np.abs(R)[:, None, :]*(cw != y[:, None, :])).sum(axis=2) # correlation discrepancy to the input
         metric = np.where(ok, metric, np.inf)
@@ -131,7 +132,7 @@ class product(_code):
                 break
         return M
 
-    def decode(self, bits, soft=None):
+    def _decode(self, bits, soft=None):
         x = np.asarray(bits)
         if self.chase is not None and x.dtype.kind == "f" and soft is not False:
             return self._decode_soft(x)
@@ -153,8 +154,7 @@ class product(_code):
             good = (st_c >= 0).all() and (st_r >= 0).all() and self._clean(M)
             errs.append(int(np.count_nonzero(M != first)) if good else -1)
             out.append(M[:self.k2, :self.k1].reshape(-1)[self.reserved:])
-        self.errors = np.array(errs, dtype=int)
-        return np.concatenate(out).astype(bool) if out else np.zeros(0, bool)
+        return (np.concatenate(out).astype(bool) if out else np.zeros(0, bool)), np.array(errs, dtype=int)
 
     def _decode_soft(self, x):
         x = np.asarray(x, dtype=np.float64)
@@ -168,8 +168,7 @@ class product(_code):
             for Lw, M in zip(L[s0:s0 + self.BATCH], self._soft(L[s0:s0 + self.BATCH])):
                 errs.append(int(np.count_nonzero(M != (Lw < 0))) if self._clean(M) else -1)
                 out.append(M[:self.k2, :self.k1].reshape(-1)[self.reserved:])
-        self.errors = np.array(errs, dtype=int)
-        return np.concatenate(out).astype(bool) if out else np.zeros(0, bool)
+        return (np.concatenate(out).astype(bool) if out else np.zeros(0, bool)), np.array(errs, dtype=int)
 
     def _clean(self, M):
         """Every row and column is a codeword"""

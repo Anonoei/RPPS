@@ -46,8 +46,9 @@ def main():
     unc = rp.code.Uncoded()
     framed = msg * crc * unc * mod
     back = framed / mod / unc / crc
-    print(f"crc ok: {crc.encoder.ok}, {len(framed)} symbols for {len(msg.as_bytes().hex)//2} bytes + 16 CRC bits")
-    assert crc.encoder.ok and back.as_bytes().hex == msg.as_bytes().hex
+    ok = back.errors[0] == 0 # The decode's status comes with its output: 0 errors, or -1 where the CRC failed
+    print(f"crc ok: {ok}, {len(framed)} symbols for {len(msg.as_bytes().hex)//2} bytes + 16 CRC bits")
+    assert ok and back.as_bytes().hex == msg.as_bytes().hex
     try:
         _ = framed / mod / crc
         raise AssertionError("channel bits went into a CRC")

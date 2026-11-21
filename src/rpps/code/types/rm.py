@@ -44,12 +44,11 @@ class rm(_code):
         msg = np.asarray(bits).astype(np.int64).reshape(-1, self.num)
         return ((msg @ self.G) % 2).reshape(-1).astype(bool)
 
-    def decode(self, bits):
+    def _decode(self, bits):
         x = np.asarray(bits)
         llr = as_llr(x[:len(x)//self.den*self.den]).reshape(-1, self.den)
         msg = self._fht(llr) if self.r == 1 else self._majority((llr < 0).astype(np.uint8))
-        self.errors = word_errors(llr < 0, (msg.astype(np.int64) @ self.G) % 2)
-        return msg.reshape(-1).astype(bool)
+        return msg.reshape(-1).astype(bool), word_errors(llr < 0, (msg.astype(np.int64) @ self.G) % 2)
 
     def _fht(self, llr):
         """RM(1, m): the affine function nearest each word. The transform of the LLRs at u is the correlation with the

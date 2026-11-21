@@ -29,11 +29,14 @@ def word_errors(received_hard, decided, ok=None):
     return out
 
 class _code:
-    """A code implementation. Block decoders set `errors` after each decode(): one entry per codeword, the number
-    of bits (symbols for Reed-Solomon) corrected, or -1 where the word could not be decoded. Decoding never raises
-    on a bad word: its message bits are returned as received and the status says so."""
+    """A code implementation. `decode(x, status=True)` returns the decode's status with its output: per codeword, the
+    number of bits (symbols for Reed-Solomon) corrected, or -1 where the word could not be decoded; None for a decoder
+    without codewords (Viterbi, BCJR, an interleaver). Nothing of a decode is kept on the code, so one loaded code can
+    decode on several threads. Decoding never raises on a bad word: its message bits are returned as received and the
+    status says so.
+
+    Implementations define `_decode(x, ...) -> (output, errors)`; `decode` passes every other argument on."""
     soft = False # Does decode() make use of LLR input (otherwise it takes hard decisions)
-    errors = None
     def __init__(self, log, name, num, den):
         if name is None:
             name = f"{num}_{den}"
@@ -45,8 +48,13 @@ class _code:
         """Encode bits"""
         raise NotImplementedError()
 
-    def decode(self, bits: np.ndarray):
-        """Decode bits"""
+    def decode(self, bits: np.ndarray, *args, status=False, **kw):
+        """Decode bits: the message, or (message, errors per codeword) with status=True"""
+        out, errors = self._decode(bits, *args, **kw)
+        return (out, errors) if status else out
+
+    def _decode(self, bits: np.ndarray):
+        """(output, errors per codeword or None)"""
         raise NotImplementedError()
 
     def pad(self, bits):

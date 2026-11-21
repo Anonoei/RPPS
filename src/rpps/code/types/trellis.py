@@ -144,8 +144,8 @@ class bcjr_conv(viterbi):
         out = bcjr(self.trellis, llr[None], start=0, end=0 if self.terminated else None, maxlog=_effort.maxlog(self.maxlog))[0]
         return out[:len(out)-(self.con-1)] if self.terminated else out
 
-    def decode(self, bits, soft=None):
-        return self.app(bits, soft) < 0
+    def _decode(self, bits, soft=None):
+        return self.app(bits, soft) < 0, None
 
 @register("trellis")
 class trellis(_code):
@@ -174,10 +174,9 @@ class trellis(_code):
         llr = llr[:len(llr)//self.den*self.den].reshape(-1, self.den)
         return bcjr(self.trellis, llr[:, :, None], start=0, end=0, maxlog=_effort.maxlog(self.maxlog))
 
-    def decode(self, bits, soft=None):
+    def _decode(self, bits, soft=None):
         x = np.asarray(bits)
         words = self.app(x, soft) < 0
         hard = (x < 0) if (soft or (soft is None and x.dtype.kind == "f")) else x.astype(bool)
         ok = ~((words.astype(np.int64) @ self.H.T.astype(np.int64)) % 2).any(axis=1) # MAP per bit need not be a codeword
-        self.errors = word_errors(hard[:words.size], words, ok)
-        return words[:, :self.num].reshape(-1)
+        return words[:, :self.num].reshape(-1), word_errors(hard[:words.size], words, ok)

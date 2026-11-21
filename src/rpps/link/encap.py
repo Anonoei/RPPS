@@ -64,8 +64,8 @@ class Frame(Encap):
     def _process(self, coder, x, ctx, enc):
         if enc:
             if not len(x):
-                return np.zeros(0, dtype=bool)
-            return coder.encode([np.packbits(np.asarray(x, dtype=np.uint8)).tobytes()])
+                return np.zeros(0, dtype=bool), None
+            return coder.encode([np.packbits(np.asarray(x, dtype=np.uint8)).tobytes()]), None
         key = (self, "held")
         out, held = coder.decode_stream(x, ctx.pop(key, np.zeros(0, np.uint8)))
         if ctx.get(FLUSH):
@@ -73,7 +73,7 @@ class Frame(Encap):
             out = np.concatenate((out, rest))
         else:
             ctx[key] = held
-        return out
+        return out, None # (only the frames whose FCS checks out come out)
 
     @staticmethod
     def load(name, obj):

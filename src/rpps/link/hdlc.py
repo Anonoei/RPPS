@@ -9,14 +9,13 @@ class hdlc(_code):
     nrzi: line coding (a 0 is a transition, a 1 is no change). Bytes go out least significant bit first.
     min_bytes: shortest frame (including the FCS) accepted.
 
-    encode(frames) takes a list of bytes. decode(bits) returns the frames whose FCS checks out; `last` holds
-    (frames, bad frames, aborts) for the call.
+    encode(frames) takes a list of bytes. decode(bits) returns the frames whose FCS checks out (status=True: also 0 or -1
+    per frame found, by its FCS); deframe(bits) gives every frame with its FCS verdict, and the aborts.
     """
     def __init__(self, log, fcs, flag=0x7E, stuff=5, nrzi=False, min_bytes=4):
         super().__init__(log, None, 1, 1)
         self.fcs, self.flag, self.stuff, self.nrzi, self.min_bytes = fcs, flag, stuff, nrzi, min_bytes
         self.flag_bits = self._lsb(bytes([flag]))
-        self.last = None
 
     @staticmethod
     def _lsb(data):
@@ -80,14 +79,11 @@ class hdlc(_code):
             frames.append((raw[:-n_fcs], ok))
         return frames, aborts
 
-    def decode(self, bits):
-        frames, aborts = self.deframe(bits)
-        return self._good(frames, aborts)
-
-    def _good(self, frames, aborts):
+    def _decode(self, bits):
+        frames, _ = self.deframe(bits)
         good = [p for p, ok in frames if ok]
-        self.last = (good, len(frames) - len(good), aborts)
-        return np.concatenate([np.unpackbits(np.frombuffer(p, np.uint8)) for p in good]).astype(bool) if good else np.zeros(0, bool)
+        out = np.concatenate([np.unpackbits(np.frombuffer(p, np.uint8)) for p in good]).astype(bool) if good else np.zeros(0, bool)
+        return out, np.array([0 if ok else -1 for _, ok in frames], dtype=int)
 
     MAX_FRAME_BITS = 1 << 16 # Bits after a flag before the wait for a closing flag is given up
 
