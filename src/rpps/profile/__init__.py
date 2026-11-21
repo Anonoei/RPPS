@@ -12,4 +12,4 @@ from .profile import Profile, load, ls
 from .runner import Runner
 from .parallel import Region
 from .steps import Step
-from .control import publish, anchor, table, Table, Control
+from .control import table, Table

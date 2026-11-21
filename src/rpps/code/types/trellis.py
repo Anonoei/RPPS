@@ -15,11 +15,10 @@ under confident. `maxlog=True` is the cheap approximation (Viterbi-like) and doe
 """
 import numpy as np
 
-from ... import _accel
-from ._code import _code, register, word_errors
+from ... import _accel, _effort
+from ._code import _code, register, word_errors, as_llr
 from .viterbi import viterbi
 from .conv import termination_of, generators_of
-from ..blocker import block
 
 class Trellis:
     """Sections of a trellis
@@ -114,9 +113,6 @@ def bcjr(tr, llr, start=0, end=0, maxlog=False):
         beta = b_new - b_new.max(axis=1, keepdims=True)
     return np.nan_to_num(out, nan=0.0, posinf=1e4, neginf=-1e4)
 
-def _hard_to_llr(x, hard_llr):
-    return hard_llr*(1.0 - 2.0*np.asarray(x, dtype=np.float64))
-
 @register("bcjr")
 class bcjr_conv(viterbi):
     """BCJR (MAP) decoder for feed-forward convolutional codes: same definition as `viterbi`
@@ -133,22 +129,19 @@ class bcjr_conv(viterbi):
         return cls(log, obj["num"], obj["den"], obj["constraint"], generators_of(obj),
                    obj.get("puncture"), termination_of(obj), obj.get("maxlog", False), obj.get("hard_llr", 2.94))
 
-    def __init__(self, log, num, den, constraint, generator, puncture=None, terminated=False, maxlog=False, hard_llr=2.94):
-        super().__init__(log, num, den, constraint, generator, puncture, terminated)
+    def __init__(self, log, num, den, constraint, generator, puncture=None, termination="truncated", maxlog=False, hard_llr=2.94):
+        super().__init__(log, num, den, constraint, generator, puncture, termination)
         self.maxlog, self.hard_llr = maxlog, hard_llr
         self.trellis = Trellis(self.next_state[None], self.out_bits[None])
 
     def app(self, bits, soft=None):
         """A-posteriori LLR of each information bit (the tail of a terminated code is left out)"""
-        x = np.asarray(bits)
-        if soft is None:
-            soft = x.dtype.kind == "f"
-        llr = x.astype(np.float64) if soft else _hard_to_llr(x, self.hard_llr)
+        llr = as_llr(bits, soft, self.hard_llr)
         llr = self.depuncture(llr)                                   # (T, n)
         if self.termination == "tailbiting": # Three laps from and to any state, the middle one kept
             T = len(llr)
-            return bcjr(self.trellis, np.tile(llr, (3, 1))[None], start=None, end=None, maxlog=self.maxlog)[0][T:2*T]
-        out = bcjr(self.trellis, llr[None], start=0, end=0 if self.terminated else None, maxlog=self.maxlog)[0]
+            return bcjr(self.trellis, np.tile(llr, (3, 1))[None], start=None, end=None, maxlog=_effort.maxlog(self.maxlog))[0][T:2*T]
+        out = bcjr(self.trellis, llr[None], start=0, end=0 if self.terminated else None, maxlog=_effort.maxlog(self.maxlog))[0]
         return out[:len(out)-(self.con-1)] if self.terminated else out
 
     def decode(self, bits, soft=None):
@@ -177,12 +170,9 @@ class trellis(_code):
 
     def app(self, bits, soft=None):
         """A-posteriori LLRs of the coded bits, (words, n)"""
-        x = np.asarray(bits)
-        if soft is None:
-            soft = x.dtype.kind == "f"
-        llr = x.astype(np.float64) if soft else _hard_to_llr(x, self.hard_llr)
-        llr = block(llr[:len(llr)//self.den*self.den], self.den)
-        return bcjr(self.trellis, llr[:, :, None], start=0, end=0, maxlog=self.maxlog)
+        llr = as_llr(bits, soft, self.hard_llr)
+        llr = llr[:len(llr)//self.den*self.den].reshape(-1, self.den)
+        return bcjr(self.trellis, llr[:, :, None], start=0, end=0, maxlog=_effort.maxlog(self.maxlog))
 
     def decode(self, bits, soft=None):
         x = np.asarray(bits)

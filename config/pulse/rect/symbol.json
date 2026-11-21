@@ -1,0 +1,6 @@
+{
+  "base": "pulse",
+  "type": "rect",
+  "comment": "Rectangular symbol pulse, one symbol long: a level held for the symbol (on-off keying, pulse position modulation, NRZ); its matched filter is the integrate-and-dump",
+  "kind": "symbol"
+}

@@ -74,18 +74,11 @@ class ShapingSinc(ShapingFilter):
     def __init__(self, taps, sps, gain=1.0):
         t = np.arange(-taps//2,taps//2)/sps
         h = np.sinc(t)
-        # h = np.concat((h[:-1], h[::-1]))
-        # h = h * np.hanning(len(h))
-        # hc = np.zeros(len(h), dtype=np.complex64)
-        # hc = h+1j*h
-        # hc = h+1j*h
         self.pulse = gain*h
 
 class ShapingRect(ShapingFilter):
     def __init__(self, taps, sps, gain=1.0):
         h = np.ones(taps)
-        # hc = np.zeros(len(h), dtype=np.complex64)
-        # hc = h+1j*h
         self.pulse = gain*h
 
 

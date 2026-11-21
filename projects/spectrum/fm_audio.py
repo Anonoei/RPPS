@@ -7,7 +7,7 @@ sub-audible (<300 Hz), voice (300-3000 Hz) and high (>3 kHz) bands, the stronges
 2-8 Hz, a carrier with a tone or hiss does not. `--wav` writes the audio, silent where the carrier is absent. Nothing is decoded and nothing is uploaded. Meant to be upstreamed into RPPS.
 """
 import argparse
-import wave
+import rpps as rp
 
 import numpy as np
 from rpps.signal.filters import IIR, iir, low_pass
@@ -82,10 +82,8 @@ def main(argv=None):
     print(f"  audio energy: <300 Hz {ft['low']:.0f}%, 300-3000 Hz {ft['voice']:.0f}%, >3 kHz {ft['high']:.0f}%; strongest tone below 260 Hz {ft['tone']:.1f} Hz (nearest CTCSS {cts} Hz), {ft['tone_db']:.0f} dB over the band median")
     print(f"  syllabic ratio (2-8 Hz / 8-30 Hz envelope modulation) {ft['syl']:.1f}   (speech is typically > 2; a steady tone or noise is < 1)")
     if a.wav:
-        y = np.where(mask, audio, 0.0); y = y/np.abs(y).max()*0.8
-        with wave.open(a.wav, "wb") as w:
-            w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes((y*32767).astype(np.int16).tobytes())
-        print(f"  wrote {a.wav} ({len(y)/16000:.1f} s)")
+        n = rp.source.write_wav(a.wav, np.where(mask, audio, 0.0), 16000, peak=0.8)
+        print(f"  wrote {a.wav} ({n/16000:.1f} s)")
 
 
 if __name__ == "__main__":

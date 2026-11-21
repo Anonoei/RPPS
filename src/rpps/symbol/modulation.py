@@ -5,7 +5,6 @@ from . import _config
 
 from ..base import Analog, Mod, Digital
 from ..base.types import Category
-from ..base.data import expect
 
 class Modulation(base.rpps.Pipe):
     """Modulation parent class"""
@@ -25,15 +24,6 @@ class Modulation(base.rpps.Pipe):
         """Convert IQ samples to bits"""
         raise NotImplementedError()
 
-    def __rmul__(self, data):
-        self.log.debug(f"Modulating {data}")
-        expect(self, data, self.takes(True), True)
-        return self.encode(data)  # Bits become symbols; a partial last symbol is carried or padded (see Data)
-
-    def __rtruediv__(self, data):
-        self.log.debug(f"Demodulating {data}")
-        expect(self, data, self.takes(False), False)
-        return self.decode(data)
 
     def draw_refs(self, points: bool = True, ref: bool = True, ax=None):
         """Draw constellation points on viz"""

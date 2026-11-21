@@ -6,7 +6,7 @@ import pytest
 
 import rpps as rp
 from rpps.analysis import signal_profile as SP
-from rpps.analysis.fec import Hypothesis
+from rpps.analysis.result import Hypothesis
 
 def capture(path, x, Fs, shift, rng, noise=0.05):
     n = np.arange(len(x))
@@ -26,6 +26,7 @@ def dvbs_capture(tmp_path_factory):
     w = rp.profile.load("dvbs/qpsk_3_4", sps=8).tx()(rp.Data(np.unpackbits(ts.reshape(-1)).astype(bool), Fs=1e6, sps=1, flush=True))
     return capture(tmp_path_factory.mktemp("cap")/"dvbs.cs16", np.asarray(w.data), 8e6, 1.7e6, rng)
 
+@pytest.mark.kernels
 def test_a_dvbs_capture_profiles_to_its_shipped_profile(dvbs_capture):
     profiles = rp.analysis.profile(dvbs_capture, blind=False)
     p = min(profiles, key=lambda p: abs(p.signal.mid - 1.7e6) - p.signal.width) # (the widest one there: the carrier)
@@ -38,6 +39,7 @@ def test_a_dvbs_capture_profiles_to_its_shipped_profile(dvbs_capture):
     d = json.loads(json.dumps(p.to_dict(), default=str))
     assert d["solved"] and d["steps"][7]["kind"] == "fec"
 
+@pytest.mark.kernels
 def test_uncoded_symbols_end_in_an_unsolved_step(tmp_path):
     rng = np.random.default_rng(1)
     q = rp.symbol.load("qpsk")
@@ -60,12 +62,23 @@ def test_candidates_are_one_per_code_with_softmax_weights():
     assert "generators 5 7" in c[0][0]
 
 def test_a_weak_code_does_not_confirm_a_doubtful_rate():
-    from rpps.analysis.fec import CodeDetection
+    from rpps.analysis.identify import CodeDetection
     weak = CodeDetection(found=True, kind="conv", name="k3_5_7/1_2", mismatch=0.041, baseline=0.139)
     strong = CodeDetection(found=True, kind="conv", name="k7_133_171/3_4", mismatch=0.0009, baseline=0.051)
     framed = CodeDetection(found=True, kind="conv", name="k7_133_171/3_4", mismatch=0.02, baseline=0.051)
     framed.profile_name = "dvbs/qpsk_3_4"
     assert not SP._strong(weak) and SP._strong(strong) and SP._strong(framed)
+
+def test_symbols_far_noisier_than_the_band_make_the_fit_doubtful():
+    from rpps.sync import Detection
+    sig = rp.analysis.Signal(0.0, 1.2e6, 0.0, 1.0, snr=20.0)
+    locked = Detection(baud=1e6, esn0=20.5)
+    lost = Detection(baud=1e6, esn0=2.0) # A 20 dB band whose symbols measure 2 dB: not on this constellation
+    want, gap = SP.esn0_gap(sig, locked)
+    assert abs(want - (20 + 10*np.log10(1.2))) < 1e-9 # The band's SNR at this rate
+    assert abs(gap - (want - 20.5)) < 1e-9 and gap < SP.ESN0_GAP
+    assert SP.esn0_gap(sig, lost)[1] > SP.ESN0_GAP
+    assert SP.esn0_gap(rp.analysis.Signal(0.0, 1.2e6, 0.0, 1.0), lost) == (None, None) # No band SNR: nothing to compare
 
 def test_detection_keeps_the_rate_line_it_came_from():
     rng = np.random.default_rng(2)
@@ -73,10 +86,10 @@ def test_detection_keeps_the_rate_line_it_came_from():
     x = np.zeros(8*4000, complex)
     x[::8] = q.points[rng.integers(0, 4, 4000)]
     x = np.convolve(x, rp.signal.filters.rrc_pulse((np.arange(-64, 65))/8, 0.35), mode="same")
-    det = rp.analysis.modulation.detect(x.astype(np.complex64), 8e6)
+    det = rp.sync.detect(x.astype(np.complex64), 8e6)
     assert det.line > 5 # A clean signal's rate line stands far above the floor
     noise = (rng.standard_normal(32000) + 1j*rng.standard_normal(32000)).astype(np.complex64)
-    assert rp.analysis.modulation.detect(noise, 8e6).line < 5
+    assert rp.sync.detect(noise, 8e6).line < 5
 
 def test_the_preamble_turning_backwards_means_an_inverted_spectrum():
     rng = np.random.default_rng(3)

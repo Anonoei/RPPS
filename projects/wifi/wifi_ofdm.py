@@ -54,7 +54,7 @@ _CONV = rp.code.Conv(_G, 7, termination="zero")
 
 def viterbi_r12(llr_a, llr_b):
     """Soft Viterbi for the terminated K=7 code (rpps): llr_* positive = bit 0, erased (punctured) positions 0. Returns the input bits (tail included: the zero tail of a path that ends in state 0)"""
-    bits = _CONV._dec.decode(np.column_stack((llr_a, llr_b)).reshape(-1)).astype(np.uint8)
+    bits = _CONV.decoder.decode(np.column_stack((llr_a, llr_b)).reshape(-1)).astype(np.uint8)
     return np.concatenate((bits, np.zeros(6, np.uint8)))
 
 def depuncture(llr, rate):
@@ -68,7 +68,7 @@ def depuncture(llr, rate):
 
 def interleave_perm(ncbps, nbpsc):
     """For each coded bit index k of the transmitted symbol: its position j after the two permutations of 17.3.5.7 (rpps interleave/block/wifi_ofdm)"""
-    return np.argsort(rp.code.load("interleave", "wifi_ofdm", ncbps=ncbps, nbpsc=nbpsc)._enc.src)
+    return np.argsort(rp.code.load("interleave/wifi_ofdm", ncbps=ncbps, nbpsc=nbpsc).encoder.src)
 
 _QAM = {4: rp.symbol.QAM(16), 6: rp.symbol.QAM(64)} # 802.11 Gray mapping (17.3.5.8): rpps QAM labels are the same
 

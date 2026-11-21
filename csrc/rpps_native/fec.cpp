@@ -1,4 +1,4 @@
-// Block FEC decoders: LDPC min-sum (rpps/coding/types/ldpc.py) and the algebraic decoding of cyclic codes over
+// Block FEC decoders: LDPC min-sum (rpps/code/types/ldpc.py) and the algebraic decoding of cyclic codes over
 // GF(2^m) (rpps/math/cyclic.py: Reed-Solomon with erasures, binary BCH). Codewords are independent: batches run on
 // several threads.
 #include "common.hpp"
@@ -18,27 +18,22 @@ namespace {
 
 constexpr double INF = std::numeric_limits<double>::infinity();
 
-// ---------------------------------------------------------------- LDPC: normalised min-sum, flooding schedule
-// Edges are grouped by check: var[e] is the variable of edge e, check c owns edges cstart[c] .. cstart[c] + deg[c].
-// order: the edges grouped by variable, variable v owning order[vstart[v] .. vend[v]). The variable update is the
-// difference of one running sum over `order`, as the numpy decoder computes it, so the two agree exactly.
-// Each codeword stops at its own convergence (the numpy decoder stops when the whole batch has).
+// Layered normalized min-sum (rpps/code/types/ldpc.py min_sum): the checks in `rows` order (a colouring's layers one after
+// the other: within a layer no two checks share a variable, so going row by row gives what the numpy decoder's layer at a
+// time does). For each check: q = total - r (the variable's value without this check), the sign product and the two
+// smallest |q|, r = alpha * sign * the smallest of the others, total = q + r. Each codeword stops when every check holds.
 py::tuple ldpc_minsum(carray<double> llr, carray<int64_t> var_a, carray<int64_t> cstart_a, carray<int64_t> deg_a,
-                      carray<int64_t> order_a, carray<int64_t> vstart_a, carray<int64_t> vend_a, int iters, double alpha, int threads) {
+                      carray<int64_t> rows_a, int iters, double alpha, int threads) {
     check_shape(llr, {-1, -1}, "llr");
-    const long long B = llr.shape(0), N = llr.shape(1), E = var_a.size(), M = cstart_a.size();
+    const long long B = llr.shape(0), N = llr.shape(1), E = var_a.size(), M = cstart_a.size(), R = rows_a.size();
     check_shape(deg_a, {M}, "deg");
-    check_shape(order_a, {E}, "order");
-    check_shape(vstart_a, {N}, "vstart");
-    check_shape(vend_a, {N}, "vend");
-    const int64_t *var = var_a.data(), *cstart = cstart_a.data(), *deg = deg_a.data(), *order = order_a.data(),
-                  *vstart = vstart_a.data(), *vend = vend_a.data();
+    const int64_t *var = var_a.data(), *cstart = cstart_a.data(), *deg = deg_a.data(), *rows = rows_a.data();
     for (long long e = 0; e < E; e++)
-        if (var[e] < 0 || var[e] >= N || order[e] < 0 || order[e] >= E) throw std::invalid_argument("ldpc: edge tables out of range");
+        if (var[e] < 0 || var[e] >= N) throw std::invalid_argument("ldpc: edge tables out of range");
     for (long long c = 0; c < M; c++)
         if (deg[c] < 1 || cstart[c] < 0 || cstart[c] + deg[c] > E) throw std::invalid_argument("ldpc: check tables out of range");
-    for (long long v = 0; v < N; v++)
-        if (vstart[v] < 0 || vend[v] > E || vstart[v] > vend[v]) throw std::invalid_argument("ldpc: variable tables out of range");
+    for (long long k = 0; k < R; k++)
+        if (rows[k] < 0 || rows[k] >= M) throw std::invalid_argument("ldpc: row order out of range");
     py::array_t<bool> hard({B, N});
     py::array_t<bool> conv(static_cast<py::ssize_t>(B));
     const double *ch_all = llr.data();
@@ -47,38 +42,36 @@ py::tuple ldpc_minsum(carray<double> llr, carray<int64_t> var_a, carray<int64_t>
         py::gil_scoped_release nogil;
         parallel_for(B, threads, [&](long long b) {
             const double *ch = ch_all + b*N;
-            std::vector<double> v2c(E), c2v(E), total(ch, ch + N), cs(E + 1);
-            for (long long e = 0; e < E; e++) v2c[e] = ch[var[e]];
+            std::vector<double> total(ch, ch + N), r(E, 0.0), q;
             bool done = false;
-            for (int it = 0; it < iters; it++) {
-                for (long long c = 0; c < M; c++) { // check nodes
-                    const long long e0 = cstart[c], d = deg[c];
+            for (int it = 0; it < iters && !done; it++) {
+                for (long long k = 0; k < R; k++) {
+                    const long long c = rows[k], e0 = cstart[c], d = deg[c];
+                    q.resize(static_cast<size_t>(d));
                     int negs = 0; long long i1 = 0; double min1 = INF;
-                    for (long long k = 0; k < d; k++) {
-                        const double v = v2c[e0 + k];
+                    for (long long j = 0; j < d; j++) {
+                        const double v = total[var[e0 + j]] - r[e0 + j];
+                        q[j] = v;
                         if (v < 0) negs++;
                         const double a = std::fabs(v);
-                        if (k == 0 || a < min1) { min1 = a; i1 = k; } // first minimum, as argmin
+                        if (j == 0 || a < min1) { min1 = a; i1 = j; } // first minimum, as argmin
                     }
                     double min2 = INF;
-                    for (long long k = 0; k < d; k++) if (k != i1) min2 = std::min(min2, std::fabs(v2c[e0 + k]));
+                    for (long long j = 0; j < d; j++) if (j != i1) min2 = std::min(min2, std::fabs(q[j]));
                     const double total_sign = (negs % 2 == 1) ? -1.0 : 1.0;
-                    for (long long k = 0; k < d; k++) {
-                        const double s = total_sign * (v2c[e0 + k] < 0 ? -1.0 : 1.0);
-                        c2v[e0 + k] = alpha*s*(k == i1 ? min2 : min1);
+                    for (long long j = 0; j < d; j++) {
+                        const double s = total_sign * (q[j] < 0 ? -1.0 : 1.0);
+                        const double nr = alpha*s*(j == i1 ? min2 : min1);
+                        r[e0 + j] = nr;
+                        total[var[e0 + j]] = q[j] + nr;
                     }
                 }
-                cs[0] = 0.0; // variable nodes
-                for (long long k = 0; k < E; k++) cs[k + 1] = cs[k] + c2v[order[k]];
-                for (long long v = 0; v < N; v++) total[v] = ch[v] + cs[vend[v]] - cs[vstart[v]];
-                for (long long e = 0; e < E; e++) v2c[e] = total[var[e]] - c2v[e];
                 done = true;
                 for (long long c = 0; c < M && done; c++) {
                     int par = 0;
-                    for (long long k = 0; k < deg[c]; k++) par ^= total[var[cstart[c] + k]] < 0 ? 1 : 0;
+                    for (long long j = 0; j < deg[c]; j++) par ^= total[var[cstart[c] + j]] < 0 ? 1 : 0;
                     if (par) done = false;
                 }
-                if (done) break;
             }
             for (long long v = 0; v < N; v++) hd[b*N + v] = total[v] < 0;
             cv[b] = done;
@@ -199,15 +192,41 @@ void check_symbols(const int64_t *w, long long n, int64_t size) {
         if (w[k] < 0 || w[k] >= size) throw std::invalid_argument("symbol outside the field");
 }
 
-py::array_t<int64_t> gf_syndromes(carray<int64_t> words, carray<int64_t> exp, carray<int64_t> log, int nroots, int fcr, int prim) {
+// Syndromes of many words: S_i = sum_k w_k alpha^((N-1-k)(fcr+i) prim), the exponent of every (i, k) taken mod q once
+// for all words (a table) and exp doubled so log[w_k] + e_ik indexes it with no modulo: independent lookups a symbol,
+// words in parallel. The same values as syndromes() above.
+py::array_t<int64_t> gf_syndromes(carray<int64_t> words, carray<int64_t> exp, carray<int64_t> log, int nroots, int fcr, int prim,
+                                  int threads) {
     GF gf = make_gf(exp, log);
     check_shape(words, {-1, -1}, "words");
     const long long W = words.shape(0), N = words.shape(1);
     check_symbols(words.data(), W*N, gf.q + 1);
     py::array_t<int64_t> S({W, static_cast<long long>(nroots)});
+    const int64_t *w = words.data();
+    int64_t *out = S.mutable_data();
     {
         py::gil_scoped_release nogil;
-        for (long long w = 0; w < W; w++) syndromes(gf, words.data() + w*N, N, nroots, fcr, prim, S.mutable_data() + w*nroots);
+        const int64_t q = gf.q;
+        std::vector<int64_t> exp2(2*q);
+        for (int64_t e = 0; e < 2*q; e++) exp2[e] = gf.exp[e % q];
+        std::vector<int64_t> e(static_cast<std::size_t>(nroots*N));
+        for (int i = 0; i < nroots; i++) {
+            const int64_t step = gf.mod(static_cast<int64_t>(fcr + i)*prim);
+            int64_t v = 0; // (N-1-k) step mod q, from k = N-1 down
+            for (long long k = N - 1; k >= 0; k--) { e[i*N + k] = v; v += step; if (v >= q) v -= q; }
+        }
+        const int64_t *lg = gf.log, *ex = exp2.data(), *et = e.data();
+        parallel_for(W, W*N*nroots > (1 << 16) ? threads : 1, [&](long long r) {
+            const int64_t *x = w + r*N;
+            int64_t *o = out + r*nroots;
+            for (int i = 0; i < nroots; i++) {
+                const int64_t *ei = et + i*N;
+                int64_t acc = 0;
+                for (long long k = 0; k < N; k++)
+                    if (x[k]) acc ^= ex[lg[x[k]] + ei[k]];
+                o[i] = acc;
+            }
+        });
     }
     return S;
 }
@@ -276,14 +295,71 @@ py::tuple cyclic_decode(carray<int64_t> words, carray<uint8_t> erased, carray<in
     return py::make_tuple(out, errors);
 }
 
+// LDPC normalized min-sum, flooding (every check from the same totals; rpps.code.types.ldpc, schedule "flooding"), frames in parallel.
+// llr (B, n); idx (c, dmax) with deg (c) valid entries a row. Returns the totals (B, n). Ties in the minimum go to the
+// first entry, as numpy's argmin.
+py::array_t<double> ldpc_flood(carray<double> llr, carray<int64_t> idx, carray<int64_t> deg, int iters, double alpha, int threads) {
+    check_shape(llr, {-1, -1}, "llr");
+    check_shape(idx, {-1, -1}, "idx");
+    const long long B = llr.shape(0), n = llr.shape(1), C = idx.shape(0), D = idx.shape(1);
+    check_shape(deg, {C}, "deg");
+    const int64_t *ix = idx.data(), *dg = deg.data();
+    for (long long i = 0; i < C; i++) {
+        if (dg[i] < 0 || dg[i] > D) throw std::invalid_argument("ldpc_flood: deg");
+        for (long long j = 0; j < dg[i]; j++)
+            if (ix[i*D + j] < 0 || ix[i*D + j] >= n) throw std::invalid_argument("ldpc_flood: idx outside the word");
+    }
+    py::array_t<double> out({B, n});
+    const double *L = llr.data();
+    double *T = out.mutable_data();
+    {
+        py::gil_scoped_release nogil;
+        parallel_for(B, threads, [&](long long b) {
+            const double *l = L + b*n;
+            double *t = T + b*n;
+            std::vector<double> msg(static_cast<std::size_t>(C*D), 0.0), nt(n), q(D);
+            std::copy(l, l + n, t);
+            for (int it = 0; it < iters; it++) {
+                std::copy(l, l + n, nt.begin());
+                for (long long i = 0; i < C; i++) {
+                    const long long d = dg[i];
+                    if (!d) continue;
+                    double *m = msg.data() + i*D;
+                    const int64_t *ii = ix + i*D;
+                    double m1 = INFINITY, m2 = INFINITY;
+                    long long i1 = 0;
+                    int neg = 0;
+                    for (long long j = 0; j < d; j++) {
+                        q[j] = t[ii[j]] - m[j];
+                        const double a = std::fabs(q[j]);
+                        if (q[j] < 0) neg ^= 1;
+                        if (a < m1) { m2 = m1; m1 = a; i1 = j; }
+                        else if (a < m2) m2 = a;
+                    }
+                    if (std::isinf(m2)) m2 = m1;
+                    for (long long j = 0; j < d; j++) {
+                        const double sg = ((neg ^ (q[j] < 0 ? 1 : 0)) ? -1.0 : 1.0);
+                        m[j] = alpha*sg*(j == i1 ? m2 : m1);
+                        nt[ii[j]] += m[j];
+                    }
+                }
+                std::copy(nt.begin(), nt.end(), t);
+            }
+        });
+    }
+    return out;
+}
+
 } // namespace
 
 void register_fec(py::module_ &m) {
-    m.def("ldpc_minsum", &ldpc_minsum, "ldpc_minsum(llr (B, N), var, cstart, deg, order, vstart, vend, iters, alpha, threads) -> (hard (B, N), converged (B))",
-          py::arg("llr"), py::arg("var"), py::arg("cstart"), py::arg("deg"), py::arg("order"), py::arg("vstart"), py::arg("vend"),
-          py::arg("iters"), py::arg("alpha"), py::arg("threads") = 0);
-    m.def("gf_syndromes", &gf_syndromes, "gf_syndromes(words (W, N), exp, log, nroots, fcr, prim) -> S (W, nroots)",
-          py::arg("words"), py::arg("exp"), py::arg("log"), py::arg("nroots"), py::arg("fcr"), py::arg("prim"));
+    m.def("ldpc_flood", &ldpc_flood, "ldpc_flood(llr (B, n), idx (c, dmax), deg (c), iters, alpha, threads) -> totals (B, n)",
+          py::arg("llr"), py::arg("idx"), py::arg("deg"), py::arg("iters"), py::arg("alpha"), py::arg("threads") = 0);
+    m.def("ldpc_minsum", &ldpc_minsum, "ldpc_minsum(llr (B, N), var, cstart, deg, rows (check order: the layers), iters, alpha, threads) -> (hard (B, N), converged (B))",
+          py::arg("llr"), py::arg("var"), py::arg("cstart"), py::arg("deg"), py::arg("rows"), py::arg("iters"), py::arg("alpha"),
+          py::arg("threads") = 0);
+    m.def("gf_syndromes", &gf_syndromes, "gf_syndromes(words (W, N), exp, log, nroots, fcr, prim, threads) -> S (W, nroots)",
+          py::arg("words"), py::arg("exp"), py::arg("log"), py::arg("nroots"), py::arg("fcr"), py::arg("prim"), py::arg("threads") = 0);
     m.def("cyclic_correct", &cyclic_correct, "cyclic_correct(S, exp, log, N, nroots, t, fcr, prim, binary, erasures) -> (positions, values) or None",
           py::arg("S"), py::arg("exp"), py::arg("log"), py::arg("N"), py::arg("nroots"), py::arg("t"), py::arg("fcr"), py::arg("prim"),
           py::arg("binary"), py::arg("erasures"));

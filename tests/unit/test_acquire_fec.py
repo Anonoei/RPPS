@@ -1,10 +1,10 @@
-"""Automatic FEC identification: rpps.analysis.fec.identify and the rp.sync.AcquireFEC stage"""
+"""Automatic FEC identification: rpps.analysis.identify.identify and the rp.sync.AcquireFEC stage"""
 import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.analysis import fec as F
-from rpps.analysis.modulation import Detection
+from rpps.analysis import identify as F
+from rpps.sync import Detection
 
 def noisy(s, rng, sigma=0.12):
     return (s + sigma*(rng.standard_normal(len(s)) + 1j*rng.standard_normal(len(s)))).astype(np.complex64)
@@ -27,6 +27,7 @@ def packets(out):
     b = np.packbits(np.asarray(out).astype(bool))
     return b[:len(b)//188*188].reshape(-1, 188)
 
+@pytest.mark.kernels
 def test_dvbs_is_identified_down_to_its_profile(dvbs):
     syms, ts = dvbs
     rng = np.random.default_rng(2)
@@ -60,6 +61,7 @@ def slipped(syms, carrier=None, symbol=None, seed=3):
         x = np.delete(x, symbol) # The code's puncture phase moves
     return noisy(x, np.random.default_rng(seed))
 
+@pytest.mark.kernels
 def test_stage_gives_the_same_output_whatever_the_cut(dvbs):
     x = slipped(dvbs[0], carrier=160000, symbol=190000)
     outs = {}
@@ -71,6 +73,7 @@ def test_stage_gives_the_same_output_whatever_the_cut(dvbs):
     n = min(len(v) for v in outs.values())
     assert np.array_equal(outs[777][:n], outs[50000][:n])
 
+@pytest.mark.kernels
 def test_stage_turns_back_a_carrier_slip(dvbs):
     syms, ts = dvbs
     y, stream = run_stage(slipped(syms, carrier=160000), 50000)
@@ -81,6 +84,7 @@ def test_stage_turns_back_a_carrier_slip(dvbs):
     ok = [np.array_equal(pk[j], ts[k + j]) for j in range(min(len(pk), len(ts) - k))]
     assert sum(ok) >= len(ok) - 16 and all(ok[-40:]) # Lost: the window the slip hit, spread by the deinterleaver
 
+@pytest.mark.kernels
 def test_stage_realigns_after_a_symbol_slip(dvbs):
     """The decoder after it keeps its puncture alignment: the Viterbi output carries the packets' sync bytes after the
     slip as before (whether a symbol was lost or gained can't be told from the puncture phase: the bits after the Viterbi
@@ -102,10 +106,11 @@ def test_stage_realigns_after_a_symbol_slip(dvbs):
     else:
         pytest.fail("no sync bytes every 204 bytes after the slip")
 
+@pytest.mark.kernels
 def test_a_code_with_no_profile_gets_one(rng):
-    code = rp.code.load("conv", "k7_133_171/1_2")
+    code = rp.code.load("conv/k7_133_171/1_2")
     msg = rng.integers(0, 2, 40000).astype(bool)
-    cw = code._enc.encode(msg)[1:] # Not on a symbol boundary
+    cw = code.encoder.encode(msg)[1:] # Not on a symbol boundary
     q = rp.symbol.load("qpsk")
     rx = noisy(q.modulate(cw[:len(cw)//2*2])*np.exp(-1j*np.pi/2), rng, 0.1)
     f = F.identify(rx, "qpsk")
@@ -113,10 +118,11 @@ def test_a_code_with_no_profile_gets_one(rng):
     u = np.asarray(f.rx()(rp.Data(f.correct(rx), sps=1, Fs=1e6, flush=True)).data).astype(bool)
     assert max(np.mean(u[64:20000] == msg[k + 64:k + 20000]) for k in range(4)) == 1.0 # (after the Viterbi's start)
 
+@pytest.mark.kernels
 def test_differential_coding_is_found(rng):
-    code = rp.code.load("conv", "k7_171_133/1_2")
+    code = rp.code.load("conv/k7_171_133/1_2")
     msg = rng.integers(0, 2, 30000).astype(bool)
-    ph = rp.symbol.load("qpsk_axes").modulate(code._enc.encode(msg))
+    ph = rp.symbol.load("qpsk_axes").modulate(code.encoder.encode(msg))
     s = np.asarray((rp.Data(ph, sps=1, Fs=1e6, flush=True) * rp.symbol.Differential()).data)
     rx = noisy(np.conj(s*np.exp(1j*3*np.pi/4)), rng, 0.08) # On the 45 degree grid, a turn off, inverted
     f = F.identify(rx, "qpsk")
@@ -125,21 +131,22 @@ def test_differential_coding_is_found(rng):
     assert max(np.mean(u[64:20000] == msg[k + 64:k + 20000]) for k in range(4)) == 1.0 # (after the Viterbi's start)
 
 def test_block_code_and_where_its_words_start(rng):
-    h = rp.code.load("block", "hamming/7_4")
-    cw = h._enc.encode(rng.integers(0, 2, 4*12000).astype(bool))[3:]
+    h = rp.code.load("block/hamming/7_4")
+    cw = h.encoder.encode(rng.integers(0, 2, 4*12000).astype(bool))[3:]
     f = F.identify(noisy(rp.symbol.load("bpsk").modulate(cw), rng, 0.1), "bpsk")
     assert f.found and f.kind == "block" and f.name == "hamming/7_4" and f.offset == 4 and f.period == 7
 
 def test_hdlc_framing(rng):
-    fr = rp.link.load("frame", "hdlc")
+    fr = rp.link.load("frame/hdlc")
     frames = [bytes(rng.integers(0, 256, int(rng.integers(20, 60))).astype(np.uint8)) for _ in range(300)]
-    bits = np.asarray(fr._enc.encode(frames)).astype(bool)
+    bits = np.asarray(fr.encoder.encode(frames)).astype(bool)
     rx = noisy(-rp.symbol.load("bpsk").modulate(bits)[7:], rng, 0.05)
     f = F.identify(rx, "bpsk")
     assert f.found and f.kind == "hdlc"
     got = np.packbits(np.asarray(f.rx()(rp.Data(f.correct(rx), sps=1, Fs=1e6, flush=True)).data).astype(bool)).tobytes()
     assert got == b"".join(frames)
 
+@pytest.mark.kernels
 def test_uncoded_symbols_have_no_code(rng):
     q = rp.symbol.load("qpsk")
     f = F.identify(noisy(q.points[rng.integers(0, 4, 2**15)].astype(np.complex64), rng, 0.1), "qpsk")
@@ -147,6 +154,7 @@ def test_uncoded_symbols_have_no_code(rng):
     with pytest.raises(ValueError):
         f.profile()
 
+@pytest.mark.kernels
 def test_stage_releases_uncoded_symbols_unchanged(rng):
     q = rp.symbol.load("qpsk")
     x = noisy(q.points[rng.integers(0, 4, 40000)].astype(np.complex64), rng, 0.1)
@@ -159,8 +167,14 @@ def test_rs_scan_says_when_it_had_too_little():
     assert short and not hyps
 
 def reference_conv_encode(enc, bits):
-    """The register loop the vectorized encoder replaced"""
+    """The register loop the vectorized encoder replaced: a zero tail when terminated, the register started with the
+    frame's last bits when tail-biting, inverted outputs flipped"""
     reg = np.zeros(enc.con, dtype=bool)
+    bits = np.asarray(bits, dtype=bool)
+    if enc.termination == "tailbiting":
+        reg[1:] = bits[::-1][:enc.con - 1]
+    if enc.terminated:
+        bits = np.concatenate((bits, np.zeros(enc.con - 1, dtype=bool)))
     out = np.empty((len(bits), enc.den), dtype=int)
     for i, b in enumerate(bits):
         reg[0] = b
@@ -168,6 +182,8 @@ def reference_conv_encode(enc, bits):
             out[i, j] = np.bitwise_xor.reduce(reg[g])
         reg = np.roll(reg, 1)
         reg[0] = 0
+    if enc.invert is not None:
+        out ^= enc.invert[None, :]
     if enc.puncture is not None:
         P = enc.puncture.shape[1]
         full = len(out)//P*P
@@ -176,9 +192,11 @@ def reference_conv_encode(enc, bits):
 
 @pytest.mark.parametrize("name", rp.code.names("conv"))
 def test_conv_encoder_matches_the_register_loop(name, rng):
-    enc = rp.code.load("conv", name)._enc
+    enc = rp.code.load(f"conv/{name}").encoder
     b = rng.integers(0, 2, 1001).astype(bool)
-    assert np.array_equal(enc.encode(b), reference_conv_encode(enc, b[:len(b)] if not enc.terminated else b))
+    assert np.array_equal(enc.encode(b), reference_conv_encode(enc, b))
+    if enc.termination == "tailbiting": # Whole frames only: no stream to split
+        return
     st = {}
     split = np.concatenate((enc.encode(b[:420], st, False), enc.encode(b[420:], st, True))) # Whole puncture periods (2, 3, 5, 7)
     assert np.array_equal(split, enc.encode(b))

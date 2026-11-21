@@ -22,7 +22,7 @@ import radio_io
 import ts_info
 
 FS = 20e6
-GAINS = [(1, 24, 24), (1, 32, 16), (0, 32, 24), (1, 16, 32), (1, 40, 8)]
+GAINS = [0.5, 0.42, 0.58, 0.33, 0.67] # gain fractions (radio_io.set_gain), mid-range first: the best MER of these is kept
 
 
 def lower_edge(n):

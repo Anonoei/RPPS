@@ -11,6 +11,14 @@ def register(name):
         return cls
     return deco
 
+def as_llr(x, soft=None, hard=1.0):
+    """Decoder input as float64 LLRs (positive means 0). soft: is x LLRs (None: when it is floating point);
+    otherwise x is hard bits, which become +-`hard`"""
+    x = np.asarray(x)
+    if soft is None:
+        soft = x.dtype.kind == "f"
+    return x.astype(np.float64) if soft else hard*(1.0 - 2.0*x.astype(np.float64))
+
 def word_errors(received_hard, decided, ok=None):
     """Per-codeword decode status: bits that differ between what came in (hard decided) and the codeword the
     decoder chose, or -1 where `ok` is False (the decoder could not find a codeword)"""

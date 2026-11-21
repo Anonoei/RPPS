@@ -1,8 +1,10 @@
 {
   "base": "block",
   "type": "linear",
-  "comment": "P25 phase 1 Hamming (10,6,3) of the LDU link control / encryption sync hexbits (TIA-102.BAAA): 6 data bits then 4 parity",
-  "code": [10, 6],
+  "comment": "P25 phase 1 Hamming (10,6,3) of the LDU link control / encryption sync hexbits (TIA-102.BAAA-A Table 5-4, the (10,6,3) short code): 6 data bits then 4 parity",
+  "tags": ["p25"],
+  "n": 10,
+  "k": 6,
   "p": [
     [1, 1, 1, 0],
     [1, 1, 0, 1],

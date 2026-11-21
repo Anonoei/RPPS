@@ -1,7 +1,7 @@
 import numpy as np
 
-from ... import _accel
-from ._code import _code, register, word_errors
+from ... import _accel, _effort
+from ._code import _code, register, word_errors, as_llr
 from ...math.gf2 import systematic, to_checks
 
 def gallager(n, wc=3, wr=6, seed=0):
@@ -16,6 +16,22 @@ def gallager(n, wc=3, wr=6, seed=0):
     return np.vstack([base] + [base[:, rng.permutation(n)] for _ in range(wc-1)])
 
 
+def qc_checks(base, z):
+    """The checks of a quasi-cyclic code: (n, checks) from a base matrix of shifts (an entry s >= 0 is the z x z identity
+    shifted right by s: row r of the block has its 1 at column (r + s) % z; -1 or None is a zero block)"""
+    z = int(z)
+    B = [[-1 if v is None else int(v) for v in row] for row in base]
+    nb = len(B[0])
+    checks = []
+    for row in B:
+        if len(row) != nb:
+            raise ValueError("every row of the base matrix has the same number of blocks")
+        for r in range(z):
+            checks.append(np.array([j*z + (r + s) % z for j, s in enumerate(row) if s >= 0], dtype=np.int64))
+    return nb*z, checks
+
+_LAYERS = {} # (N, M, edges) -> the code's check layers: one colouring per code per process
+
 @register("ldpc")
 class ldpc(_code):
     """Linear code defined by sparse parity checks, with a normalised min-sum belief propagation decoder
@@ -25,6 +41,8 @@ class ldpc(_code):
     k/systematic: the message length, and where the message sits in the codeword: "head", "tail" or a list of
         positions. When omitted both come from GF(2) elimination, which needs a dense H (small codes only)
     iters/alpha: maximum iterations / min-sum normalisation
+    schedule: "layered" (the default: a layer of checks at a time, each codeword stopping once every check holds) or
+        "flooding" (every check from the same totals, `iters` iterations: what `flood` gives the blind tools)
     decode() takes hard bits or LLRs (log(P(0)/P(1)), positive means 0) for whole codewords, returns the message.
     After a decode, `converged` says which codewords satisfied every parity check.
     With rpps._native the codewords are decoded on several threads, each stopping as soon as it converges (the
@@ -32,10 +50,28 @@ class ldpc(_code):
     """
     soft = True
 
+    SCHEDULES = ("layered", "flooding")
+    schedule = "layered"
+
     @classmethod
     def from_config(cls, log, obj):
-        """Parity checks as dense rows ("h"), sparse lists ("checks" + "n"), a DVB-S2 style address "table", or a "gallager" construction"""
+        code = cls._from_config(log, obj)
+        schedule = obj.get("schedule", "layered")
+        if schedule not in cls.SCHEDULES:
+            raise ValueError(f"ldpc: schedule {schedule!r}, one of {cls.SCHEDULES}")
+        code.schedule = schedule
+        return code
+
+    @classmethod
+    def _from_config(cls, log, obj):
+        """Parity checks as dense rows ("h"), sparse lists ("checks" + "n"), a DVB-S2 style address "table", a quasi-cyclic
+        matrix of "shifts" lifted by "z" (IEEE 802.11n/ac, 802.16e, 5G NR style: each entry a right shift of the z x z identity,
+        -1 or null a zero block), or a "gallager" construction"""
         from .ira import ira_checks
+        if "shifts" in obj:
+            n, checks = qc_checks(obj["shifts"], obj["z"])
+            k = obj.get("k", n - len(checks))
+            return cls(log, n, checks, k, obj.get("systematic", "head"), obj.get("iters", 50), obj.get("alpha", 0.8))
         if "table" in obj:
             n, checks = obj["n"], ira_checks(obj["n"], obj["k"], obj["table"], obj.get("group", 360))
             code = cls(log, n, checks, obj.get("k"), obj.get("systematic"), obj.get("iters", 50), obj.get("alpha", 0.8))
@@ -81,10 +117,6 @@ class ldpc(_code):
             ok = deg > d
             self.slot[ok, d] = self.cstart[ok] + d
         self.valid = self.slot >= 0
-        self.order = np.argsort(self.var, kind="stable") # Edges grouped by variable
-        vdeg = np.bincount(self.var, minlength=n)
-        self.vend = np.cumsum(vdeg)
-        self.vstart = self.vend - vdeg
 
     def dense(self):
         H = np.zeros((len(self.checks), self.n), dtype=bool)
@@ -141,59 +173,117 @@ class ldpc(_code):
             A[rows] ^= A[c]
         return ((A[:, K:] @ G) % 2).astype(bool)
 
-    def syndrome(self, words):
-        """Parity check failures for words (B, N), without a dense H"""
+    def syndrome(self, words, checks=None):
+        """Parity check failures for words (B, N), without a dense H: (B, M), or (B, checks) for only the first `checks`"""
         w = np.asarray(words, dtype=np.uint8)
-        return (np.add.reduceat(w[:, self.var], self.cstart, axis=1) % 2).astype(np.uint8)
+        if checks is None or checks >= self.M:
+            var, start = self.var, self.cstart
+        else:
+            start = self.cstart[:checks]
+            var = self.var[:int(self.cstart[checks])]
+        return (np.add.reduceat(w[:, var], start, axis=1) % 2).astype(np.uint8)
 
     def decode_codewords(self, llr):
         """Min-sum on (B, N) LLRs. Returns hard decisions (B, N); `converged` says which codewords satisfied every check"""
         hard, self.converged = self.min_sum(llr)
         return hard
 
+    def layers(self):
+        """The checks in layers that share no variable (greedy colouring, rows in order), computed once per code: the layered
+        schedule updates a layer at a time, each layer seeing what the ones before it found"""
+        key = (self.N, self.M, hash(self.var.tobytes()), hash(self.deg.tobytes()))
+        if key not in _LAYERS:
+            used, rows = [], []
+            for r, c in enumerate(self.checks):
+                vs = set(c.tolist())
+                for u, lst in zip(used, rows):
+                    if not (u & vs):
+                        u |= vs
+                        lst.append(r)
+                        break
+                else:
+                    used.append(vs)
+                    rows.append([r])
+            _LAYERS[key] = [np.array(l, dtype=np.int64) for l in rows]
+        return _LAYERS[key]
+
+    def flood(self, llr, iters=None):
+        """Flooding normalized min-sum on (B, N) LLRs for `iters` iterations (default the code's), every check from the same
+        totals: the a-posteriori LLRs (B, N), what the checks say about each bit. The C++ kernel ldpc_flood runs the same loop
+        (this is its reference)"""
+        iters = self.iters if iters is None else int(iters)
+        llr = np.asarray(llr, dtype=np.float64)
+        idx = np.where(self.valid, self.var[np.maximum(self.slot, 0)], 0)
+        if _accel.native is not None and hasattr(_accel.native, "ldpc_flood"):
+            return _accel.native.ldpc_flood(np.ascontiguousarray(llr), np.ascontiguousarray(idx), self.deg, iters, float(self.alpha))
+        B, dmax, valid, alpha = len(llr), self.dmax, self.valid, self.alpha
+        msg = np.zeros((B, self.M, dmax))
+        total = llr.copy()
+        flat = idx[valid]
+        for _ in range(iters):
+            q = total[:, idx] - msg # (B, c, dmax): variable to check, without the check's own message
+            a = np.where(valid[None], np.abs(q), np.inf)
+            neg = (q < 0) & valid[None]
+            sgn = np.where(neg.sum(axis=2, keepdims=True) % 2 == 1, -1.0, 1.0)*np.where(neg, -1.0, 1.0)
+            i1 = np.argmin(a, axis=2)[..., None]
+            m1 = np.take_along_axis(a, i1, axis=2)
+            a2 = a.copy()
+            np.put_along_axis(a2, i1, np.inf, axis=2)
+            m2 = a2.min(axis=2, keepdims=True)
+            m2 = np.where(np.isinf(m2), m1, m2)
+            msg = np.where(valid[None], alpha*sgn*np.where(np.arange(dmax)[None, None, :] == i1, m2, m1), 0.0)
+            total = llr.copy()
+            np.add.at(total.T, flat, msg[:, valid].T)
+        return total
+
     def min_sum(self, llr):
-        """Min-sum on (B, N) LLRs: (hard decisions (B, N), converged (B,)). Keeps nothing on the code, so threads can share it"""
+        """Min-sum by the code's schedule: (hard decisions (B, N), converged (B,))"""
+        if self.schedule == "flooding":
+            total = self.flood(llr, _effort.iters(self.iters))
+            return total < 0, ~self.syndrome(total < 0).any(axis=1)
+        return self.layered(llr)
+
+    def layered(self, llr):
+        """Layered normalized min-sum on (B, N) LLRs: (hard decisions (B, N), converged (B,)). Each codeword stops when every
+        check holds. Layered (a layer of checks at a time, the variables updated after each) converges in about half the
+        iterations of flooding: at Eb/N0 0.9 dB (DVB-S2 1/2 normal frame) 50 layered iterations decode what 100 flooding did.
+        Keeps nothing on the code, so threads can share it"""
+        layers = self.layers()
+        iters = _effort.iters(self.iters)
         if _accel.native is not None:
-            hard, converged = _accel.native.ldpc_minsum(
-                np.ascontiguousarray(llr, dtype=np.float64), self.var, self.cstart.astype(np.int64), self.deg,
-                self.order.astype(np.int64), self.vstart.astype(np.int64), self.vend.astype(np.int64), int(self.iters), float(self.alpha))
-            return hard, converged
-        B = llr.shape[0]
-        ch = llr
-        v2c = ch[:, self.var].copy() # (B, E)
-        total = ch.copy()
-        done = np.zeros(B, dtype=bool)
-        slot0 = np.maximum(self.slot, 0)
-        flat = self.slot[self.valid]
-        for _ in range(self.iters):
-            # Check nodes: sign product and the two smallest magnitudes, excluding each edge itself
-            m = np.where(self.valid[None], v2c[:, slot0], np.inf) # (B, M, dmax)
-            neg = (m < 0) & self.valid[None]
-            sgn = np.where(neg.sum(axis=2, keepdims=True) % 2 == 1, -1.0, 1.0) * np.where(neg, -1.0, 1.0)
-            mag = np.abs(m)
-            idx1 = np.argmin(mag, axis=2)
-            min1 = np.take_along_axis(mag, idx1[..., None], axis=2)
-            mag2 = mag.copy()
-            np.put_along_axis(mag2, idx1[..., None], np.inf, axis=2)
-            min2 = mag2.min(axis=2, keepdims=True)
-            is_min = np.arange(self.dmax)[None, None, :] == idx1[..., None]
-            c2v_slot = self.alpha * sgn * np.where(is_min, min2, min1) # (B, M, dmax)
-            c2v = np.zeros_like(v2c)
-            c2v[:, flat] = c2v_slot[:, self.valid]
-            # Variable nodes
-            cs = np.concatenate((np.zeros((B, 1)), np.cumsum(c2v[:, self.order], axis=1)), axis=1)
-            total = ch + cs[:, self.vend] - cs[:, self.vstart]
-            v2c = total[:, self.var] - c2v
-            done = ~self.syndrome(total < 0).any(axis=1)
-            if done.all():
+            return _accel.native.ldpc_minsum(np.ascontiguousarray(llr, dtype=np.float64), self.var, self.cstart.astype(np.int64),
+                                             self.deg, np.concatenate(layers), iters, float(self.alpha))
+        total = np.array(llr, dtype=np.float64) # (B, N): the a-posteriori values
+        r = np.zeros((total.shape[0], len(self.var))) # check to variable messages, per edge
+        done = np.zeros(total.shape[0], dtype=bool)
+        cols = np.arange(self.dmax)
+        for _ in range(iters):
+            act = np.nonzero(~done)[0] # (a codeword that has converged stops, as in the C++ decoder)
+            if not len(act):
                 break
+            t, rr = total[act], r[act]
+            for rows in layers:
+                ok = self.valid[rows]
+                e = np.where(ok, self.slot[rows], 0) # (rows, dmax) edges
+                q = np.where(ok[None], t[:, self.var[e]] - rr[:, e], np.inf) # variable to check, without this check's own
+                a = np.abs(q)
+                neg = (q < 0) & ok[None]
+                i1 = np.argmin(a, axis=2)
+                m1 = np.take_along_axis(a, i1[..., None], axis=2)
+                a2 = a.copy()
+                np.put_along_axis(a2, i1[..., None], np.inf, axis=2)
+                m2 = a2.min(axis=2, keepdims=True)
+                sgn = np.where(neg.sum(axis=2, keepdims=True) % 2 == 1, -1.0, 1.0)*np.where(neg, -1.0, 1.0)
+                new = self.alpha*sgn*np.where(cols[None, None, :] == i1[..., None], m2, m1)
+                ev = e[ok]
+                rr[:, ev] = new[:, ok]
+                t[:, self.var[ev]] = q[:, ok] + new[:, ok]
+            total[act], r[act] = t, rr
+            done[act] = ~self.syndrome(t < 0).any(axis=1)
         return total < 0, done
 
     def decode(self, bits, soft=None):
-        x = np.asarray(bits)
-        if soft is None:
-            soft = x.dtype.kind == "f"
-        llr = x.astype(np.float64) if soft else 2.0*(1.0 - 2.0*x.astype(np.float64)) # Hard bit: LLR +-2
+        llr = as_llr(bits, soft, 2.0)
         llr = llr[:len(llr)//self.N*self.N].reshape(-1, self.N)
         cw, converged = self.min_sum(llr)
         self.converged, self.errors = converged, word_errors(llr < 0, cw, converged)

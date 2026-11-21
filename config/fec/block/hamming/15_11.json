@@ -2,7 +2,8 @@
   "base": "block",
   "type": "linear",
   "comment": "Hamming (15,11)",
-  "code": [15, 11],
+  "n": 15,
+  "k": 11,
   "p": [
     [0, 0, 1, 1],
     [0, 1, 0, 1],

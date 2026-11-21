@@ -1,0 +1,75 @@
+{
+  "base": "profile",
+  "comment": "DVB-S QPSK: convolutional code K=7 171/133 (the `code` parameter picks the punctured rate), Forney interleaver I=12, RS(204,188), energy dispersal, MPEG-TS out. QPSK carries the code's two outputs on I and Q, I first, a 1 negative",
+  "ref": "EN 300 421",
+  "tags": ["dvb-s"],
+  "params": {
+    "sps": {
+      "default": 4,
+      "comment": "samples per symbol"
+    },
+    "code": {
+      "default": "k7_171_133/1_2",
+      "comment": "the inner convolutional code: conv/k7_171_133/<rate>, rate 1_2, 2_3, 3_4, 5_6 or 7_8"
+    }
+  },
+  "steps": [
+    {
+      "wave": "shape",
+      "pulse": "rrc/0p35",
+      "sps": {
+        "param": "sps"
+      }
+    },
+    {
+      "sync": "timing"
+    },
+    {
+      "sync": "carrier",
+      "order": 4,
+      "constellation": "qpsk"
+    },
+    {
+      "symbol": "constellation",
+      "name": "qpsk",
+      "mapping": "R090 inverted"
+    },
+    {
+      "sync": "puncture",
+      "conv": {
+        "param": "code"
+      }
+    },
+    {
+      "code": "conv",
+      "name": {
+        "param": "code"
+      }
+    },
+    {
+      "sync": "align",
+      "period": 204,
+      "pattern": [184, 71, 71, 71, 71, 71, 71, 71],
+      "name": "packets"
+    },
+    {
+      "code": "interleave",
+      "name": "forney/12_17"
+    },
+    {
+      "code": "block",
+      "name": "rs/204_188"
+    },
+    {
+      "sync": "align",
+      "period": 188,
+      "pattern": [184, 71, 71, 71, 71, 71, 71, 71],
+      "name": "frames",
+      "start": "pattern"
+    },
+    {
+      "code": "scramble",
+      "name": "additive/dvb_energy"
+    }
+  ]
+}

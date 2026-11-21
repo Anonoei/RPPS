@@ -12,11 +12,16 @@ or a register as drawn (Galois form, as Bluetooth draws its whitening LFSR):
     {"register": "galois", "length": 7, "taps": [4], "state": [1, 0, 1, 0, 0, 1, 1]}
         positions 0..L-1; each step outputs position L-1, shifts toward it, feeds the output into position 0
         and XORs it into each tap position
+
+Taps here are positions, from 0. A feedthrough scrambler's "poly" (rpps.code.scram) is the polynomial's exponents instead,
+from 1, the way the standards write it (1 + x^14 + x^17 is [14, 17]): two things, two keys.
 """
 import json
 import threading
 
 import numpy as np
+
+from ..math.gf2 import berlekamp_massey
 
 
 def _bits(v, L, order="lsb"):
@@ -44,29 +49,6 @@ def _galois_outputs(L, taps, state, n):
             s[t] ^= o
     return np.array(out, dtype=np.uint8)
 
-def _recurrence_of(seq):
-    """Shortest recurrence of a binary sequence (Berlekamp-Massey over GF(2)): (L, taps) with s[t+L] = XOR s[t+j]"""
-    s = [int(x) for x in seq]
-    c, b = [1], [1]
-    L, m = 0, 1
-    for n in range(len(s)):
-        d = s[n]
-        for i in range(1, L + 1):
-            d ^= c[i] & s[n - i]
-        if d == 0:
-            m += 1
-            continue
-        t = c[:]
-        c = c + [0]*(len(b) + m - len(c))
-        for i, bi in enumerate(b):
-            c[i + m] ^= bi
-        if 2*L <= n:
-            L, b, m = n + 1 - L, t, 1
-        else:
-            m += 1
-    c = c + [0]*(L + 1 - len(c))
-    return L, [L - i for i in range(1, L + 1) if c[i]] # s[t] = XOR c_i s[t-i]  ->  s[t+L] = XOR s[t+L-i]
-
 class _Component:
     """One binary sequence, extended on demand"""
     def __init__(self, obj):
@@ -74,7 +56,8 @@ class _Component:
         taps = [int(t) for t in obj["taps"]]
         if obj.get("register") == "galois":
             first = _galois_outputs(L, taps, _bits(obj["state"], L, "msb"), 2*L)
-            L2, rtaps = _recurrence_of(first)
+            C2, L2 = berlekamp_massey(first)
+            rtaps = [L2 - j for j in range(1, L2 + 1) if C2 >> j & 1] # s[t+L] = XOR s[t+L-j]
             self.L, self.taps, self.s = L2, rtaps, first[:max(L2, 1)].copy()
         elif obj.get("register") not in (None, "recurrence"):
             raise ValueError(f"register {obj['register']!r}: 'galois' or 'recurrence'")

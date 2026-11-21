@@ -1,30 +1,10 @@
 {
   "base": "conv",
-  "type": "split",
+  "extends": "k7_133_171",
   "comment": "IESS-308 rate 3/4, K=7 (punctured)",
-  "aliases": ["iess308.3_4_7"],
-  "encode": {
-    "type": "conv",
-    "num": 1,
-    "den": 2,
-    "constraint": 7,
-    "generator": [
-      [1, 0, 1, 1, 0, 1, 1],
-      [1, 1, 1, 1, 0, 0, 1]
-    ],
-    "puncture": [
-      [1, 1, 0],
-      [1, 0, 1]
-    ]
-  },
-  "decode": {
-    "type": "viterbi",
-    "num": 1,
-    "den": 2,
-    "constraint": 7,
-    "generator": [
-      [1, 0, 1, 1, 0, 1, 1],
-      [1, 1, 1, 1, 0, 0, 1]
-    ]
-  }
+  "tags": ["iess-308", "ieee-802.11a"],
+  "puncture": [
+    [1, 1, 0],
+    [1, 0, 1]
+  ]
 }

@@ -8,7 +8,7 @@ to noise, and no key is used or attempted). Voice frames sit at the symbols (wit
 (imbe.py); the positions were checked against an independent implementation's table. Output: 8 kS/s mono 16-bit WAV, silence between calls, written locally, never uploaded. Meant to be upstreamed into RPPS.
 """
 import argparse
-import wave
+import rpps as rp
 from collections import Counter
 
 import numpy as np
@@ -91,8 +91,7 @@ def main(argv=None):
         y = y*24000/pk # level the whole file to a peak of 24000 (the vocoder's output is in 16-bit units: loud frames pass full scale, quiet calls are very low)
         print(f"scaled by {24000/pk:.2f} (peak was {pk:.0f})")
         y = y.astype(np.int16)
-        with wave.open(a.wav, "wb") as w:
-            w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000); w.writeframes(y.tobytes())
+        rp.source.write_wav(a.wav, y, 8000)
         print(f"wrote {a.wav} ({len(y)/8000:.1f} s at 8 kHz)")
 
 

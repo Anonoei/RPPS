@@ -2,6 +2,7 @@
   "base": "crc",
   "type": "crc",
   "comment": "CRC-32/MPEG-2 (DVB/MPEG sections)",
+  "tags": ["mpeg-ts"],
   "width": 32,
   "poly": "0x4c11db7",
   "init": "0xffffffff",

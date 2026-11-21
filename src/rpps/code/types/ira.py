@@ -13,19 +13,18 @@ def ira_checks(n, k, table, group=360):
         raise ValueError(f"n-k={m} is not a multiple of the group size {group}")
     if len(table) * group != k:
         raise ValueError(f"{len(table)} table rows of {group} bits do not cover k={k}")
-    cols = [[] for _ in range(m)]
-    for i, row in enumerate(table):
-        for x in row:
-            addr = (np.asarray(x) + np.arange(group)*q) % m
-            for j, a in enumerate(addr):
-                cols[a].append(i*group + j)
-    checks = []
-    for c in range(m):
-        v = cols[c] + [k + c]
-        if c > 0:
-            v.append(k + c - 1)
-        checks.append(np.array(v, dtype=np.int64))
-    return checks
+    # Every (check, bit) edge in the order the table gives them, then each check's own parity bit and the one before it
+    # (the accumulator); a stable sort by check keeps that order within each check
+    j = np.arange(group, dtype=np.int64)
+    rows = [(i, int(x)) for i, row in enumerate(table) for x in row]
+    i_of = np.array([i for i, _ in rows], dtype=np.int64)[:, None]
+    x_of = np.array([x for _, x in rows], dtype=np.int64)[:, None]
+    c = np.arange(m, dtype=np.int64)
+    check = np.concatenate((((x_of + j*q) % m).ravel(), c, c[1:]))
+    bit = np.concatenate(((i_of*group + j).ravel(), k + c, k + c[1:] - 1))
+    flat = bit[np.argsort(check, kind="stable")]
+    ends = np.cumsum(np.bincount(check, minlength=m)).tolist()
+    return [flat[a:b] for a, b in zip([0] + ends[:-1], ends)]
 
 def ira_encode(bits, n, k, table, group=360):
     """Systematic encoder for the same construction: [information | parity]"""

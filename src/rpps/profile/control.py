@@ -4,17 +4,7 @@ A header step (a physical header, a link header) and a frame sync publish what t
 position it applies from. A profile's `controls` maps those fields, through an optional table, to parameters of other
 steps; a runner changes each parameter at the matching position of that step's input.
 
-What operators call (both directions):
-
-    publish(meta, op, {"modcod": 12, "pilots": 1}, at=<input position>, out=<index in this call's output>, span=None,
-            group=None)
-        at: absolute position in the op's input from which the fields apply. out: where that is in what the op gives in
-        this call (None: nothing it gives is affected). span: input items the fields hold for, after which they go back
-        to the controls' defaults (a PLCP rate holds for its payload only). group: publications made from one header
-        share it (default: `at`), so a runner that re-runs keeps them together
-    anchor(meta, op, at, out, rate=None)
-        a step that drops or inserts items says which output item an input position became, so positions translate
-        exactly through it
+What operators call (`publish`, `anchor`, both directions) is rpps.base.control.
 
 The profile side (`"controls"` in a profile, keyed by the header step's id):
 
@@ -24,6 +14,7 @@ The profile side (`"controls"` in a profile, keyed by the header step's id):
               "schedule": [{"modcod": 4}, {"modcod": 12}],        transmit: the fields of each frame in turn
               "frame": {"calc": "kbch - 80"},                     transmit: items at the first step per frame
               "reach": 64,                                        how far back (header input items) a field can apply
+              "on": "tx",                                         this entry drives only when transmitting ("rx", "both": default)
               "drive": {"map": {"name": "constellation"},         step id -> {parameter: source}: a field, a column of
                         "ldpc": {"name": "ldpc"},                   the key's row, or {"calc": ...} over both
                         "plscram": {"length": {"calc": "slots*90 + pilots*((slots - 1)//16)*36"}}}}}
@@ -43,40 +34,6 @@ from .. import _config
 from ..errors import ConfigError
 
 LIVE, RESTART = "live", "restart"
-
-# ---- What operators call
-
-class Control:
-    """The control path of one stream (`stream.control`)
-
-    published, anchors: what operators reported since the runner last collected them (the runner empties these)
-    log: every change the runner accepted, in order: {"step", "fields", "at", "targets"}
-    reports: what did not go as announced: late changes re-run or dropped, restarts, fields with no table row
-    rerun: re-runs done; buffer: the re-run buffer's current size, in items at its first step
-    """
-    __slots__ = ("published", "anchors", "log", "reports", "rerun", "buffer")
-    def __init__(self):
-        self.published, self.anchors, self.log, self.reports = [], [], [], []
-        self.rerun, self.buffer = 0, 0
-
-    def fields(self, step=None):
-        """The field sets published so far, oldest first: [(step id, fields, position)]"""
-        return [(e["step"], e["fields"], e["at"]) for e in self.log if step is None or e["step"] == step]
-
-def of(stream):
-    """The stream's Control, made on first use"""
-    if stream.control is None:
-        stream.control = Control()
-    return stream.control
-
-def publish(meta, op, fields, at, out=None, span=None, group=None):
-    """Fields an op decoded (or was given, transmitting), applying from absolute input position `at` onward (see module)"""
-    of(meta.stream).published.append((op, dict(fields), int(at), None if out is None else int(out),
-                                      None if span is None else int(span), int(at) if group is None else group))
-
-def anchor(meta, op, at, out, rate=None):
-    """Absolute input position `at` became item `out` of this call's output (a step that drops or inserts items)"""
-    of(meta.stream).anchors.append((op, int(at), int(out), rate))
 
 # ---- Tables
 
@@ -142,6 +99,9 @@ class Entry:
         self.schedule = [dict(f) for f in obj.get("schedule", [])]
         self.frame = obj.get("frame")
         self.reach = obj.get("reach")
+        self.on = obj.get("on", "both")
+        if self.on not in ("rx", "tx", "both"):
+            raise ConfigError(f"{where}: controls[{header!r}] 'on' is rx, tx or both, not {self.on!r}")
         self.drive = {sid: dict(ps) for sid, ps in obj["drive"].items()}
 
     def __repr__(self):

@@ -28,8 +28,8 @@ DELAY = BRANCHES*BRANCH_MULT*(BRANCHES - 1) # 10608 bytes: every byte is delayed
 
 # ------------------------------------------------------------------------------------------------ trellis
 
-_TCM = rp.code.load("block", "trellis/atsc_8vsb")._dec # 8 states: the precoder's last Z2 and the 4-state code
-_RS = rp.code.RS(207, 187)._dec # t = 10; rpps._native decodes the codewords in C++ on several threads (RPPS_NO_NATIVE=1: Python loops)
+_TCM = rp.code.load("block/trellis/atsc_8vsb").decoder # 8 states: the precoder's last Z2 and the 4-state code
+_RS = rp.code.RS(207, 187).decoder # t = 10; rpps._native decodes the codewords in C++ on several threads (RPPS_NO_NATIVE=1: Python loops)
 
 
 def rs_decode(cw):
@@ -116,7 +116,7 @@ def deinterleave(y):
 def reed_solomon(z, start=DELAY):
     """RS(207,187) on the deinterleaved stream. Returns (data (codewords, 187), errors per codeword (-1: uncorrectable))"""
     code = rp.code.RS(207, 187) # ATSC: GF(256) with 0x11D, roots alpha^0 .. alpha^19: the defaults
-    rs = code._dec # The byte-level code inside the pipeline stage: takes bytes (symbols=True), reports `errors` per codeword
+    rs = code.decoder # The byte-level code inside the pipeline stage: takes bytes (symbols=True), reports `errors` per codeword
     cw = z[start:start + (len(z) - start)//207*207]
     out = rs.decode(cw.astype(np.int64), symbols=True)
     return np.asarray(out).reshape(-1, 187).astype(np.uint8), np.asarray(rs.errors)

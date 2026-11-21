@@ -1,5 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
+from ..base import axes
 
 def get_eye(syms, sps):
     N = len(syms)
@@ -92,8 +92,7 @@ def get_eye_mf(syms, sps, phase, beta, span=8, width=1.0, derotate=None, lock=No
     return mesh/np.max([mesh.real, mesh.imag])
 
 def I(ax, syms, sps):
-    if ax is None:
-        fig, ax = plt.subplots(1)
+    ax = axes(ax)
     eye_list = get_eye(syms, sps)
     x_len = eye_list.shape[1]
     alpha = (1/eye_list.shape[0]) * 30
@@ -115,8 +114,7 @@ def I(ax, syms, sps):
     return lines
 
 def Q(ax, syms, sps):
-    if ax is None:
-        fig, ax = plt.subplots(1)
+    ax = axes(ax)
     eye_list = get_eye(syms, sps)
     x_len = eye_list.shape[1]
     alpha = (1/eye_list.shape[0]) * 30
@@ -142,8 +140,7 @@ def IQ(ax, syms, sps, phase=None, width=1.0, derotate=None, beta=None, lock=None
     width: how many symbols (sps) wide the eye is, derotate: modulation order, see get_eye_at (both need phase)
     lock: modulation order, see lock_phase (with beta only)
     beta: RRC rolloff, draws the eye through the matched filter (see get_eye_mf) instead of the raw samples"""
-    if ax is None:
-        fig, ax = plt.subplots(1)
+    ax = axes(ax)
     if phase is None:
         sps = int(round(sps, 0))
         eye_list = get_eye(syms, sps)

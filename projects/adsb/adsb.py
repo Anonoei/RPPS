@@ -22,7 +22,7 @@ import radio_io
 import rpps as rp
 
 FS = 2e6
-_CRC = rp.link.load("crc", "crc24_mode_s")._enc
+_CRC = rp.link.load("crc/crc24_mode_s").encoder
 CHARS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ##### ###############0123456789######"
 
 

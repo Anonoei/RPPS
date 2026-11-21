@@ -1,11 +1,7 @@
-import json
-import warnings
 import numpy as np
 import pytest
 
 import rpps as rp
-from rpps import _config
-from rpps.errors import ConfigError
 from rpps.signal.filters import iir
 
 def lfilter_ref(b, a, x):
@@ -171,6 +167,7 @@ def test_tf2sos_errors_and_high_order_warning():
 
 # ---- Against scipy, when it is there
 
+@pytest.mark.oracle
 @pytest.mark.parametrize("kind", ["butter", "cheby1", "cheby2"])
 @pytest.mark.parametrize("pass_,cut", [("lowpass", 0.12), ("highpass", 0.12), ("bandpass", [0.1, 0.2]), ("bandstop", [0.1, 0.2])])
 @pytest.mark.parametrize("n", [1, 2, 5, 8])

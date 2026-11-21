@@ -5,7 +5,7 @@ Usage: python projects/dvbs2/dvbs2_capture.py [file.cs16 [sample rate]] [blocks]
 Each carrier the survey finds is shifted to baseband and decimated (rp.signal.channelize), resampled to 4 samples per
 symbol, and handed to the profile from raw samples: its own matched filter, timing (Oerder & Meyr) and carrier
 (8th power) estimators, frame sync, PLS and the rest. The symbol rate and roll-off are what a channel plan would give;
-here they come from rpps.analysis.modulation.detect on the first stretch of the carrier. The carrier's frequency offset
+here they come from rpps.sync.detect on the first stretch of the carrier. The carrier's frequency offset
 and the clock error are left in: the profile finds them.
 """
 import re
@@ -35,7 +35,7 @@ def main():
         src = rp.source.File("ci32t", path, Fs=Fs)
         x = np.concatenate([np.asarray((rp.Data(b.data, Fs=Fs, stream=st) + ch.front).data)
                             for st in [rp.base.Stream(Fs)] for i, b in zip(range(blocks), src(1024*16))])
-        det = rp.analysis.modulation.detect(x[:2**16], ch.Fs)
+        det = rp.sync.detect(x[:2**16], ch.Fs)
         if det is None or det.mod not in ("qpsk", "8psk"):
             print(f"signal {j}: {s.mid/1e6:+.3f} MHz: not QPSK/8PSK ({det and det.mod})", flush=True)
             continue

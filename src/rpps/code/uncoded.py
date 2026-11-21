@@ -1,7 +1,6 @@
 from ..base import Mod, Digital, dtype
 from ..base.rpps import Pipe
 from ..base.types import Category, Rep
-from ..base.data import expect
 
 class Uncoded(Pipe):
     """No channel code: the channel bits are the data bits. The code step of a link that has no FEC (ADS-B, many
@@ -30,10 +29,3 @@ class Uncoded(Pipe):
             return data.derive(data.data, Category.CODE, dtype.LLR, Mod, rep=Rep.DATA)
         return data.derive(data.bits(), Category.CODE, dtype.BITS, Digital, rep=Rep.DATA)
 
-    def __rmul__(self, data):
-        expect(self, data, self.takes(True), True)
-        return self.encode(data)
-
-    def __rtruediv__(self, data):
-        expect(self, data, self.takes(False), False)
-        return self.decode(data)

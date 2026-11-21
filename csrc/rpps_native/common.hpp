@@ -9,9 +9,13 @@
 
 #include <complex>
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <stdexcept>
 #include <string>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
 namespace py = pybind11;
 
@@ -19,6 +23,21 @@ namespace rpps {
 
 using cf32 = std::complex<float>;
 using cf64 = std::complex<double>;
+
+// Index of the lowest set bit of x (x != 0)
+inline int ctz64(uint64_t x) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_ctzll(x);
+#elif defined(_MSC_VER) && defined(_M_X64)
+    unsigned long i;
+    _BitScanForward64(&i, x);
+    return static_cast<int>(i);
+#else
+    int i = 0;
+    while (!(x & 1)) { x >>= 1; i++; }
+    return i;
+#endif
+}
 
 template <typename T>
 using carray = py::array_t<T, py::array::c_style | py::array::forcecast>;
@@ -50,5 +69,6 @@ void register_framesync(py::module_ &m);
 void register_firdec(py::module_ &m);
 void register_carrier(py::module_ &m);
 void register_resample(py::module_ &m);
+void register_analysis(py::module_ &m);
 
 } // namespace rpps

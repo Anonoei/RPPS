@@ -30,7 +30,7 @@ class Profile:
 
     def _build(self):
         """The steps, built (each runner builds its own: header-driven control changes their operators)"""
-        ctx = {"params": self.params, "defaults": self.obj.get("defaults", {}), "overrides": self._sync, "objects": {}}
+        ctx = _steps.context(self.params, self.obj.get("defaults", {}), self._sync)
         specs = list(self.obj["steps"])
         # A step can refer to one after it (a pilot equalizer to its carriers): build those first
         early = {i: _steps.build(s, None, ctx) for i, s in enumerate(specs) if s.get("symbol") == "carriers"}
@@ -48,18 +48,22 @@ class Profile:
     def _fuse(steps):
         """A matched filter right before a timing that is known (not estimated) is evaluated by it, at the instants it samples:
         the step of the filter keeps no operator (Oerder & Meyr needs the filter's output at every sample, so nothing fuses)"""
-        from .steps import _KnownTiming
+        from ..sync.time import Known
+        from ..wave import Matched
         for a, b in zip(steps, steps[1:]):
-            if (a.category == "wave" and a.kind == "shape" and len(a.rx) == 1 and getattr(a.rx[0][1], "matched", False)
-                    and b.category == "sync" and b.kind == "timing" and len(b.rx) == 1 and isinstance(b.rx[0][1], _KnownTiming)):
+            if (a.category == "wave" and a.kind == "shape" and len(a.rx) == 1 and isinstance(a.rx[0][1], Matched) and a.rx[0][1].unit
+                    and b.category == "sync" and b.kind == "timing" and len(b.rx) == 1 and isinstance(b.rx[0][1], Known)):
                 b.rx[0][1].fuse(a.rx[0][1])
                 a.rx = []
 
-    def rx(self, start=Rep.SAMPLES, applied=(), parallel=None):
+    def rx(self, start=Rep.SAMPLES, applied=(), parallel=None, source=None):
         """Receive runner. start: the representation the source gives (a demodulator's timed symbols are SYMBOLS): the steps
         before it are skipped. applied: sync kinds the source has done already (`{"timing"}`): skipped too.
+        source: an rp.source.Source, which says both (its REP and APPLIED).
         parallel: an `rp.parallel.Parallel` (where and how the profile's parallel region runs, frame by frame); the profile
         must have one (`"parallel"` in its definition)"""
+        if source is not None:
+            start, applied = source.REP, source.APPLIED
         slots = []
         for st in self._build():
             if st.takes.value < start.value or (st.category == "sync" and st.kind in applied):
@@ -97,10 +101,8 @@ def load(name, sync=None, **params):
     file = _config.find("profile", name)
     if file is None:
         raise FileNotFoundError(f"profile/{name}: not found, have {_config.ls('profile')}")
-    obj = _config.read(file)
-    values = {**_config.declared(obj), **params}
-    resolved = _config.resolve(obj, params, f"profile/{name}")
-    return Profile(name, resolved, sync=sync, params=values)
+    resolved = _config.resolve(_config.read(file), params, f"profile/{name}")
+    return Profile(name, resolved, sync=sync, params=_config.declared(resolved))
 
 def ls():
     """The profiles there are: {family: [modes]}"""

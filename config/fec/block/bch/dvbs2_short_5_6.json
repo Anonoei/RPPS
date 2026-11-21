@@ -1,0 +1,7 @@
+{
+  "base": "block",
+  "extends": "dvbs2_short",
+  "comment": "DVB-S2 short frame outer BCH, LDPC rate 5/6 (kldpc=13320): GF(2^14), g1 = 1+x+x^3+x^5+x^14; needs the matching LDPC table to decode behind it",
+  "n": 13320,
+  "k": 13152
+}

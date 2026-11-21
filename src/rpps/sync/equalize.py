@@ -100,7 +100,7 @@ class LMS(_Equalizer):
             det = meta.stream.det
             if det is None:
                 return samples[:0]
-            from ..analysis.modulation import candidates  # Late: analysis imports sync
+            from .acquire import candidates
             st.points = candidates([det.mod])[det.mod].astype(np.complex64)
         return super().step(samples, st, meta)
 
@@ -177,13 +177,18 @@ class BlockLS(Stage):
                 st.w = st.w/np.sqrt(max(np.mean(np.abs(X[:, h])**2), 1e-30))
                 st.scaled = True
             w = st.w
+            XH = X.conj().T
+            R = XH @ X # The normal equations' matrix: the same for every iteration of the window, only the decisions change
             for _ in range(self.iters):
                 y = X @ w
                 d = self._decide(y)
                 good = float(np.mean(np.abs(y - d) < self.dmin/2))
                 if good < self.gate:
                     break
-                w = np.linalg.lstsq(X, d, rcond=None)[0]
+                try:
+                    w = np.linalg.solve(R, XH @ d)
+                except np.linalg.LinAlgError: # (a window of zeros)
+                    w = np.linalg.lstsq(X, d, rcond=None)[0]
             else:
                 st.w = self.blend*st.w + (1 - self.blend)*w
                 st.windows += 1

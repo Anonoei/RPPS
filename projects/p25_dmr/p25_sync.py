@@ -94,11 +94,11 @@ def nid(sn, i):
     return int(w[:12], 2), int(w[12:16], 2), int(_BCH.errors[0])
 
 
-# --- trunking signalling blocks (TSDU): 196 bits = 98 dibits, interleaved, 1/2-rate trellis coded -> 12 bytes (10 data + CRC-16). Layout checked against OP25's p25p1_fdma.cc: status dibits dropped
-# (every 36th), blocks start 112 bits after the sync; the interleave takes dibit pairs from four columns that start at dibits 0, 26, 50 and 74.
-_DEINTERLEAVE = rp.code.load("interleave", "p25_tsbk")._enc # 98 dibits from four columns (interleave/block/p25_tsbk)
-_TRELLIS = rp.code.load("block", "trellis/p25_1_2")._dec # rate 1/2 trellis code, Viterbi decoded
-_CRC = rp.link.load("crc", "crc16_gsm")._enc # CRC-CCITT, inverted remainder
+# --- trunking signalling blocks (TSDU): 196 bits = 98 dibits, interleaved, 1/2-rate trellis coded -> 12 bytes (10 data + CRC-16), TIA-102.BAAA-A section 7: status dibits dropped
+# (2 bits after every 70), blocks start 112 bits after the sync; the interleave (Table 7-4) takes dibit pairs from four columns that start at dibits 0, 26, 50 and 74.
+_DEINTERLEAVE = rp.code.load("interleave/p25_tsbk").encoder # 98 dibits from four columns (interleave/block/p25_tsbk)
+_TRELLIS = rp.code.load("block/trellis/p25_1_2").decoder # rate 1/2 trellis code, Viterbi decoded
+_CRC = rp.link.load("crc/crc16_gsm").encoder # CRC-CCITT, inverted remainder
 
 
 def frame_bits(sn, i, nblocks=3):
@@ -126,11 +126,13 @@ def tsbk_blocks(bits, nblocks=3):
 
 
 class Tsbk:
-    """Collects the standard (MFID 0) trunking broadcasts of a control channel: channel tables, system / site identity, adjacent sites, voice grants. Layouts as OP25's trunking.py"""
+    """Collects the standard (MFID 0) trunking broadcasts of a control channel: channel tables, system / site identity, adjacent sites, voice grants. Field layouts from TIA-102.AABC-B
+    (abbreviated formats: 4.2.1 GRP_V_CH_GRANT, 4.2.2 GRP_V_CH_GRANT_UPDT, 6.2.2 ADJ_STS_BCST, 6.2.9 IDEN_UP, 6.2.11 NET_STS_BCST, 6.2.15 RFSS_STS_BCST, 6.2.29 IDEN_UP_VU; fields 2.3.x).
+    IDEN_UP_TDMA (0x33) and its channel types are not in revision B (added with the TDMA addendum, AABC-C-1): its layout and SLOTS are not checked against a copy of the standard"""
     def __init__(self):
         self.iden = {}; self.sys = {}; self.rfss = set(); self.adj = set(); self.grants = Counter(); self.opts = {}; self.other = Counter()
 
-    SLOTS = [1, 1, 1, 2, 4, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2] # slots per carrier by the 4-bit channel type of IDEN_UP_TDMA (types 0-2 are FDMA / phase 1, 3 is the phase 2 two-slot carrier)
+    SLOTS = [1, 1, 1, 2, 4, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2] # slots per carrier by the 4-bit channel type of IDEN_UP_TDMA (types 0-2 are FDMA / phase 1, 3 is the phase 2 two-slot carrier; not checked against AABC-C-1)
 
     def freq(self, ch):
         t = self.iden.get((ch >> 12) & 0xf)
@@ -160,7 +162,7 @@ class Tsbk:
         elif op == 0x00: # group voice channel grant: service options, channel, group, source unit
             self.grants[((v >> 56) & 0xffff, (v >> 40) & 0xffff, (v >> 16) & 0xffffff)] += 1
             self.opts.setdefault((v >> 40) & 0xffff, Counter())[(v >> 72) & 0xff] += 1 # service options: 0x80 emergency, 0x40 encrypted (protected), 0x20 duplex, 0x10 packet mode, 0x07 priority
-        elif op == 0x02: # group voice channel grant update: two (channel, group) pairs, no source unit (layout as I remember TIA-102.AABC / OP25; not checked against a copy of the standard)
+        elif op == 0x02: # group voice channel grant update: two (channel, group) pairs at octets 2-5 and 6-9, no source unit (AABC-B Figure 4.2.2-1)
             self.grants[((v >> 64) & 0xffff, (v >> 48) & 0xffff, 0)] += 1; self.grants[((v >> 32) & 0xffff, (v >> 16) & 0xffff, 0)] += 1
         else:
             self.other[f"op {op:#x}"] += 1

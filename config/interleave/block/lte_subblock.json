@@ -2,6 +2,7 @@
   "base": "interleave",
   "type": "block",
   "comment": "LTE sub-block interleaver for convolutionally coded channels (36.212 5.1.4.2.1): 32 columns, <NULL> filler at the front, inter-column permutation of Table 5.1.4-2. length: bits of one encoder output stream (D)",
+  "tags": ["lte"],
   "params": {
     "length": {
       "default": 40

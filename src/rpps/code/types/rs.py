@@ -14,6 +14,10 @@ class rs(_code):
     puncture: positions of the n-symbol codeword that are not sent (negative counts from the end, so [-4, -3, -2, -1]
     drops the last four parity symbols). They are decoded as erasures; a word has n - len(puncture) symbols on the wire.
 
+    basis: "conventional" (the polynomial basis: a symbol's bits are its coefficients) or "dual": the bits are the symbol in
+    the Berlekamp dual basis of {1, beta, ..., beta^(m-1)}, beta = alpha^`beta`: bit j (most significant first) is
+    Tr(z beta^j). CCSDS sends RS(255, 223) that way, beta = alpha^117 (131.0-B, Annex F). Symbols given with symbols=True
+    are field elements (conventional) either way.
     encode/decode take bits (or symbols with symbols=True) of whole codewords as sent.
     decode(..., erasures=...) also takes symbols known to be unreliable: a (words, sent symbols) bool array, or one
     list of positions per word. e erasures and r errors are corrected while 2r + e <= n - k.
@@ -26,9 +30,9 @@ class rs(_code):
     @classmethod
     def from_config(cls, log, obj):
         return cls(log, obj["k"], obj["n"], obj.get("m", 8), _int(obj.get("poly", 0x11D)), obj.get("fcr", 0), obj.get("prim", 1),
-                   obj.get("puncture"))
+                   obj.get("puncture"), obj.get("basis", "conventional"), obj.get("beta"))
 
-    def __init__(self, log, num: int, den: int, m=8, poly=0x11D, fcr=0, prim=1, puncture=None):
+    def __init__(self, log, num: int, den: int, m=8, poly=0x11D, fcr=0, prim=1, puncture=None, basis="conventional", beta=None):
         n = den
         if n > 2**m - 1:
             raise ValueError(f"RS({n}, {num}) is longer than GF(2^{m}) allows ({2**m - 1})")
@@ -50,25 +54,55 @@ class rs(_code):
             root = self.gf.pow_alpha((fcr + i)*prim)
             g = self.gf.polymul(g, np.array([1, root]))
         self.gen = g
+        self.basis = basis
+        self._to_dual = self._from_dual = None
+        if basis == "dual":
+            if beta is None:
+                raise ValueError("RS dual basis: needs \"beta\", the power of alpha whose powers it is the dual of")
+            self._to_dual = self.dual_table(int(beta))
+            self._from_dual = np.argsort(self._to_dual)
+            if not np.array_equal(np.sort(self._to_dual), np.arange(2**m)):
+                raise ValueError(f"RS dual basis: alpha^{beta}'s powers are not a basis")
+        elif basis != "conventional":
+            raise ValueError(f"RS basis {basis!r}: conventional or dual")
+
+    def dual_table(self, beta):
+        """Each field element (conventional) in the dual basis of {1, b, ..., b^(m-1)}, b = alpha^beta: bit j, most
+        significant first, is the trace of z b^j"""
+        m, size = self.m, 2**self.m
+        z = np.arange(size)
+        out = np.zeros(size, dtype=np.int64)
+        for j in range(m):
+            y = np.where(z == 0, 0, self.gf.exp[(self.gf.log[z] + beta*j) % (size - 1)]) # z b^j
+            t = np.zeros(size, dtype=np.int64)
+            for _ in range(m): # trace: y + y^2 + y^4 + ...
+                t ^= y
+                y = np.where(y == 0, 0, self.gf.exp[(2*self.gf.log[y]) % (size - 1)])
+            out |= (t & 1) << (m - 1 - j)
+        return out
 
     def to_symbols(self, bits):
         bits = np.asarray(bits).astype(np.uint8)
         bits = bits[:len(bits)//self.m*self.m]
-        return (bits.reshape(-1, self.m) * (1 << np.arange(self.m-1, -1, -1))).sum(axis=1)
+        s = (bits.reshape(-1, self.m) * (1 << np.arange(self.m-1, -1, -1))).sum(axis=1)
+        return s if self._from_dual is None else self._from_dual[s]
 
     def to_bits(self, symbols):
         s = np.asarray(symbols, dtype=np.int64)
+        if self._to_dual is not None:
+            s = self._to_dual[s]
         return ((s[:, None] >> np.arange(self.m-1, -1, -1)) & 1).astype(bool).reshape(-1)
 
-    def syndromes(self, words):
-        """Syndromes (W, nroots) of full-length codewords (W, n): S_i = r(alpha^((fcr+i)*prim))"""
+    def syndromes(self, words, count=None):
+        """Syndromes (W, nroots) of full-length codewords (W, n): S_i = r(alpha^((fcr+i)*prim)); only the first `count`"""
         words = np.asarray(words)
+        count = self.nroots if count is None else min(int(count), self.nroots)
         if _accel.native is not None:
             return _accel.native.gf_syndromes(np.ascontiguousarray(words, dtype=np.int64), self.gf.exp, self.gf.log,
-                                              self.nroots, self.fcr, self.prim)
+                                              count, self.fcr, self.prim)
         e = np.arange(words.shape[1] - 1, -1, -1) # Power of x at each position
-        S = np.zeros((len(words), self.nroots), dtype=np.int64)
-        for i in range(self.nroots):
+        S = np.zeros((len(words), count), dtype=np.int64)
+        for i in range(count):
             S[:, i] = self.gf.evaluate(words, e*(self.fcr + i)*self.prim)
         return S
 
@@ -133,9 +167,13 @@ class rs(_code):
                 order = self.sent[np.argsort(rel[w], kind="stable")] # Least reliable first
                 order = [int(p) for p in order if int(p) not in base]
                 for extra in range(2, self.nroots - len(base) + 1, 2):
-                    fixed = self._correct(cw[w], S[w], base | set(order[:extra]))
-                    if fixed is not None:
+                    erased = base | set(order[:extra])
+                    trial = cw[w].copy()
+                    fixed = self._correct(trial, S[w], erased)
+                    if fixed is not None and self._trusted(cw[w], trial, erased):
+                        cw[w] = trial
                         break
+                    fixed = None
             self.errors[w] = -1 if fixed is None else fixed
         out = cw[:, :self.num].reshape(-1)
         return out if symbols else self.to_bits(out)
@@ -159,12 +197,22 @@ class rs(_code):
                     mask = base.copy()
                     mask[order[:extra]] = True
                     one, err = nat.cyclic_decode(cw[w:w+1], mask[None].astype(np.uint8), *args)
-                    if err[0] >= 0:
+                    if err[0] >= 0 and self._trusted(cw[w], one[0], set(np.nonzero(mask)[0].tolist())):
                         out[w], errors[w] = one[0], err[0]
                         break
         self.errors = errors.astype(int)
         res = out[:, :self.num].reshape(-1)
         return res if symbols else self.to_bits(res)
+
+    RETRY_MARGIN = 2 # Parity symbols a soft retry must leave unused: erasing enough positions decodes any word to *some*
+                     # codeword, so a retry is kept only when the checks it did not spend (each passes a wrong word 1 time
+                     # in the field size) vouch for it
+
+    def _trusted(self, received, decoded, erased):
+        """A soft retry's word, kept when f erasures and e errors outside them leave RETRY_MARGIN checks: 2e + f + margin <= nroots"""
+        changed = np.nonzero(np.asarray(received) != np.asarray(decoded))[0]
+        e = sum(1 for p in changed.tolist() if p not in erased)
+        return 2*e + len(erased) + self.RETRY_MARGIN <= self.nroots
 
     def _correct(self, word, S, erasures=()):
         """Fix one full-length word in place. Returns the number of changed symbols, None if it can't be corrected"""

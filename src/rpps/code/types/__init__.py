@@ -13,5 +13,7 @@ from .cyclic import cyclic
 from .syndrome import syndrome
 from .repeat import repeat
 from .rs import rs
+from .polar import polar
+from .rm import rm
 from .viterbi import viterbi
 from .trellis import Trellis, bcjr, bcjr_conv, trellis

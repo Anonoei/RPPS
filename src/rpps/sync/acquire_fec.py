@@ -1,22 +1,23 @@
-"""AcquireFEC: which code timed symbols carry, found as the stream arrives (the scans are in rpps.analysis.fec)"""
+"""AcquireFEC: which code timed symbols carry, found as the stream arrives (the scans are in rpps.analysis.identify)"""
 from types import SimpleNamespace
 
 import numpy as np
 
 from ..base import Stage
-from ..analysis.fec import identify, cached_code, CodeDetection, _hard, _mismatch
+from ..symbol.mapping import hard_bits
+from ..code.coding import mismatch, cached
 
 class AcquireFEC(Stage):
     """Identify the code the symbols carry, then turn them to the map its decoder uses
 
         rx = front + rp.sync.Acquire() + rp.sync.time.Mat() + rp.sync.phase.FFCarrier() + rp.sync.AcquireFEC()
         out = blk + rx
-        fec = out.stream.est.get("fec")           # an rpps.analysis.fec.CodeDetection, once there is one
+        fec = out.stream.est.get("fec")           # an rpps.analysis.identify.CodeDetection, once there is one
         dec = fec.rx()                             # once fec.complete: the decoder (a profile runner), bits = dec(out)
 
     Takes timed, carrier-corrected symbols (after `phase.FFCarrier`, with the modulation from `Acquire` in meta.stream.det)
     and gives the same symbols, turned and conjugated so the decoder's map is the right one (the carrier phase has an
-    M-fold ambiguity, and the IQ sense is unknown). Codes are the configured ones (`rpps.analysis.fec.identify`).
+    M-fold ambiguity, and the IQ sense is unknown). Codes are the configured ones (`rpps.analysis.identify.identify`).
 
     Acquisition: symbols are held until `skip` + `window` have arrived, and the code is identified on those `window`
     (at absolute positions, so the result is the same however the stream was cut). While more symbols could tell more
@@ -58,6 +59,7 @@ class AcquireFEC(Stage):
         st.count += len(y)
         if st.count < self.skip + st.length:
             if self.name not in meta.stream.est: # Still acquiring: say so (found and complete False), and how far it got
+                from ..analysis.identify import CodeDetection # The scans are blind analysis: loaded when first needed
                 meta.stream.est[self.name] = CodeDetection(mod=det.mod)
             if meta.stream.est[self.name].report is None: # (an answer so far keeps the symbols it was found on)
                 meta.stream.est[self.name].n = st.count
@@ -65,6 +67,7 @@ class AcquireFEC(Stage):
         x = np.concatenate(st.held)
         st.held = [x]
         win = x[self.skip:self.skip + st.length]
+        from ..analysis.identify import identify # (blind analysis, loaded when first needed)
         fec = identify(win, det.mod, self.names, blind=False)
         last = 2*st.length > self.max_wait - self.skip
         if not last and not fec.complete:
@@ -80,7 +83,7 @@ class AcquireFEC(Stage):
         if not fec.found:
             return x
         from .. import symbol
-        st.c = symbol.load(fec.mod)
+        st.c = symbol.load_or_generate(fec.mod)
         bps = st.c.bits_per_symbol
         # Out from the window the code was identified on: before it the sync was settling (a symbol slipped there would
         # give a decoder that aligns once, on what comes first, another alignment than the one found and tracked here)
@@ -89,7 +92,7 @@ class AcquireFEC(Stage):
             e = next((fec.offset + k*fec.period for k in range(bps) if (fec.offset + k*fec.period) % bps == 0), None)
             st.drop += 0 if e is None else e//bps
         if fec.kind == "conv" and not fec.differential:
-            st.code = cached_code("conv", fec.name)
+            st.code = cached(f"conv/{fec.name}")
         st.out = st.drop
         return self._emit(x[st.drop:], st)
 
@@ -99,11 +102,11 @@ class AcquireFEC(Stage):
         """Re-encoding mismatch of symbols w (input symbol `start` on) on the decoder's map, the code's period starting
         where it did at acquisition, moved by the symbol slips seen since (st.shift) and `shift` more bits"""
         fec = st.fec
-        bits = _hard(w, st.c.points, fec.target.arr)
+        bits = hard_bits(w, st.c.points, fec.target.arr)
         a = (fec.offset - (start - self.skip)*st.c.bits_per_symbol + st.shift + shift) % fec.period
         seg = bits[a:]
         seg = seg[:len(seg)//fec.period*fec.period]
-        k, n = _mismatch(st.code, seg)
+        k, n = mismatch(st.code, seg)
         return k/max(n, 1)
 
     def _emit(self, y, st):

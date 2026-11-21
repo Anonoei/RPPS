@@ -3,6 +3,7 @@
   "type": "recurrence",
   "comment": "CCSDS pseudo-randomizer 1+x^3+x^5+x^7+x^8: the register's output bits from its seed, as a recurrence",
   "ref": "CCSDS 131.0-B",
+  "tags": ["ccsds"],
   "sequences": [
     {
       "length": 8,

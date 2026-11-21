@@ -1,5 +1,5 @@
-"""Filter definitions, config/filter/<category>/<group>/<name>.json (`rp.signal.filters.load("fir", "taps/name")`), and pulses,
-config/pulse/<type>/<name>.json (`rp.signal.filters.load("pulse", "rrc/0p35")`): two resources
+"""Filter definitions, config/filter/<category>/<group>/<name>.json (`rp.signal.filters.load("fir/taps/name")`), and pulses,
+config/pulse/<type>/<name>.json (`rp.signal.filters.load("pulse/rrc/0p35")`): two resources
 
 All frequencies are fractions of the sample rate (0.5 is Nyquist), or Hz with "units": "hz". FIR and shaping filters build their
 taps when a stream starts, from its `Fs` and `sps` (`stage.taps(Fs=..., sps=...)` shows them). "gain" scales any of them;
@@ -71,7 +71,7 @@ class Designed(FIR):
 def builtin(name):
     """A window function of the code, by name (see `Window.s()`)"""
     if name not in _windows.s:
-        raise ConfigError(f"No window {name!r}: not a preset ({sorted(_config.ls('filters').get('window', []))}) and not built in ({_windows.s})")
+        raise ConfigError(f"No window {name!r}: not a preset ({sorted(_config.ls('filter').get('window', []))}) and not built in ({_windows.s})")
     return _windows.get(name)
 
 def _window_def(name, obj):
@@ -286,9 +286,15 @@ def ls(path=None):
     """List the filter and pulse definitions: {"fir/windowed": [names], "pulse/rrc": [...], "window/kaiser": [...]}"""
     return {**_config.ls("filter", path), **{f"pulse/{k}": v for k, v in _config.ls("pulse", path).items()}}
 
-def load(kind: str, ref: str, path=None):
+KINDS = ("fir", "iir", "window", "pulse")
+
+def load(ref: str, path=None, **params):
     """Load a filter, config/filter/<kind>/<family>/<name>.json, or a pulse, config/pulse/<family>/<name>.json:
-    `load("fir", "taps/name")`, `load("pulse", "rrc/0p35")`. kind: fir | iir | window | pulse"""
+    `load("fir/taps/moving_average_4")`, `load("pulse/rrc/0p35")`. kind: fir | iir | window | pulse.
+    params: values of the definition's "params" (see rp._config.resolve)"""
+    kind, _, rest = str(ref).strip("/").partition("/")
+    if kind not in KINDS or not rest:
+        raise ConfigError(f"{ref}: give <kind>/<family>/<name>, kind one of {KINDS}")
     if kind == "pulse":
-        return _config.load("pulse", ref, None, path)
-    return _config.load("filter", ref, kind, path)
+        return _config.load("pulse", rest, None, path, params=params)
+    return _config.load("filter", rest, kind, path, params=params)

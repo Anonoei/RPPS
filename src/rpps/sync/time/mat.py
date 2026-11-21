@@ -4,6 +4,7 @@ import numpy as np
 
 from ...base import Meta, Stage
 from ...signal.filters.shaping import rrc_pulse
+from ...math.interp import peak
 
 def matrix_mf(x, centres, sps, beta=0.2, span=8):
     """Matched filter + symbol sampling as a (banded) matrix: y = W @ x
@@ -14,10 +15,28 @@ def matrix_mf(x, centres, sps, beta=0.2, span=8):
     """
     S = span * sps
     j0 = np.ceil(centres - S).astype(np.int64)
-    idx = j0[:, None] + np.arange(int(np.ceil(2*S)) + 2)
-    w = rrc_pulse((idx - centres[:, None]) / sps, beta)
+    lags = np.arange(int(np.ceil(2*S)) + 2)
+    idx = j0[:, None] + lags
+    w = _rrc_rows(j0 - np.asarray(centres, dtype=np.float64), lags, sps, beta)
     w /= np.sqrt(np.sum(w**2, axis=1, keepdims=True))
     return np.sum(w * x[idx], axis=1)
+
+def _rrc_rows(off, lags, sps, beta):
+    """rrc_pulse((off[:, None] + lags) / sps, beta), with the sines and cosines of the rows (N) and of the lags (L)
+    combined by angle addition instead of N L of each: the same values to rounding. The two limits of the formula
+    (t = 0, |t| = 1/(4 beta)) are left to rrc_pulse where a point falls on them"""
+    t = (off[:, None] + lags)/sps
+    if beta == 0:
+        return rrc_pulse(t, beta)
+    a, b = np.pi*(1 - beta)/sps, np.pi*(1 + beta)/sps
+    sa = (np.sin(a*off)[:, None]*np.cos(a*lags) + np.cos(a*off)[:, None]*np.sin(a*lags)) # sin(pi (1 - beta) t)
+    cb = (np.cos(b*off)[:, None]*np.cos(b*lags) - np.sin(b*off)[:, None]*np.sin(b*lags)) # cos(pi (1 + beta) t)
+    edge = (np.abs(t) < 1e-9) | (np.abs(np.abs(t) - 1/(4*beta)) < 1e-9)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        w = (sa + 4*beta*t*cb)/(np.pi*t*(1 - (4*beta*t)**2))
+    if edge.any():
+        w[edge] = rrc_pulse(t[edge], beta)
+    return w
 
 def centres_in(n, t0, sps, span=8):
     """Symbol centres t0 + k*sps whose whole support fits in n samples"""
@@ -41,16 +60,13 @@ def best_tau(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
         k0 = int(np.ceil((lo + S + 5 - tau)/sps))
         c = centres_in(hi, tau + k0*sps, sps, span)
         energy[g] = np.mean(np.abs(matrix_mf(seg, c, sps, beta, span))**2) if len(c) else 0.0
-    g = int(np.argmax(energy))
-    a, b, c_ = energy[(g-1) % grid], energy[g], energy[(g+1) % grid]
-    den = a - 2*b + c_
-    d = 0.0 if den == 0 else 0.5*(a - c_)/den
-    return ((g + d)*sps/grid) % sps, float(b)
+    g, d = peak(energy, circular=True, log=False)
+    return ((g + d)*sps/grid) % sps, float(energy[g])
 
 class Mat(Stage):
     """Matrix matched filter and symbol timing
 
-    Needs meta.stream.det (see rpps.analysis.modulation) for beta and the timing offset. Symbols are
+    Needs meta.stream.det (see rpps.sync.detect) for beta and the timing offset. Symbols are
     taken from a lattice t_next + k*sps in the (fractional) sps of Meta, then the lattice is nudged by a
     block-wise energy-maximum estimate (`track` = fraction of it applied) to follow the clock.
 

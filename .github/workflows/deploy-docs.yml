@@ -40,15 +40,19 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[viz,docs]"
 
+      # pdoc writes the package under docs/rpps and the lunr search (doc-search.html, index.js) beside it in docs/,
+      # so the whole of docs/ is published, with a redirect at its root
       - name: Build docs
-        run: python -m pdoc -o docs --html --force --template-dir pdoc_templates src/rpps
+        run: |
+          python -m pdoc -o docs --html --force --template-dir pdoc_templates src/rpps
+          echo '<!doctype html><meta http-equiv="refresh" content="0; url=rpps/">' > docs/index.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './docs/rpps'
+          path: './docs'
 
   deploy:
     name: Deploy

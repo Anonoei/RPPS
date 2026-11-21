@@ -1,11 +1,141 @@
-"""Acquire: streaming modulation/baud/cfo detection (the estimators are in rpps.analysis.modulation)"""
+"""Acquisition: symbol rate, timing, modulation, frequency offset and phase from baseband samples, once (`detect`) and
+as the stream arrives (`Acquire`)
+
+Everything here is feed-forward: symbol rate and timing from the matrix matched filter,
+frequency/phase from the M-th power of the symbols, modulation from the likelihood of the
+corrected symbols under each candidate constellation.
+"""
 from types import SimpleNamespace
 
 import numpy as np
 
 from ..base import Stage
-from ..analysis.rate import find_baud
-from ..analysis.modulation import detect
+from ..math.interp import peak
+from ..math.prob import mixture_variance
+from .rate import find_baud
+from .time.mat import matrix_mf, centres_in, best_tau
+from .quality import measure
+
+class Detection:
+    """Result of `detect`. Stored in meta.stream.det
+
+    line: strength of the symbol-rate line the rate came from, over its local floor (noise peaks at about 3-4; a rate
+        taken from a weaker line is a guess)"""
+    __slots__ = (
+        "mod", "baud", "sps", "beta", "tau",
+        "cfo", "phase", "M", "gain",
+        "scores", "n", "esn0", "ebn0", "line"
+    )
+    def __init__(self, **kw):
+        for k in self.__slots__:
+            setattr(self, k, kw.get(k))
+
+    def __str__(self):
+        q = "" if self.esn0 is None else f", Es/N0 {self.esn0:.1f} dB, Eb/N0 {self.ebn0:.1f} dB"
+        return (f"{self.mod}: baud {self.baud:.1f}, sps {self.sps:.4f}, beta {self.beta}, "
+                f"cfo {self.cfo:.1f} Hz, margin {self.margin:.3f} nats/sym{q}")
+
+    __repr__ = __str__
+
+    @property
+    def margin(self):
+        """Score lead of the detected modulation over the runner-up"""
+        s = sorted(self.scores.values(), reverse=True)
+        return s[0] - s[1] if len(s) > 1 else np.inf
+
+def symmetry(points, tol=1e-3, max_order=16):
+    """Order M of the rotational symmetry of a point set (the M-th power removes the modulation)"""
+    pts = np.asarray(points)
+    for M in range(max_order, 1, -1):
+        rot = pts * np.exp(2j*np.pi/M)
+        if all(np.min(np.abs(rot[i] - pts)) < tol for i in range(len(pts))):
+            return M
+    return 1
+
+def candidates(names=None):
+    """Load candidate constellations from config/constellation: {name: unit-rms points}"""
+    from .. import symbol  # Late: symbol imports after sync
+    if names is None: # The PSK family's own point sets: a child (a labelling or a rotation of a parent) is not another modulation
+        from .. import _config
+        names = [n for n in symbol.ls().get("psk", []) if "extends" not in _config.read_raw(_config.find("constellation", f"psk/{n}"))]
+    out = {}
+    for name in names:
+        pts = np.asarray(symbol.load_or_generate(name).points, dtype=np.complex128)
+        out[name] = pts / np.sqrt(np.mean(np.abs(pts)**2))
+    return out
+
+def correct(y, pts, M, pad=4):
+    """Feed-forward frequency + phase correction for a candidate. Returns (symbols, cfo cycles/symbol, phase)"""
+    n = len(y)
+    cfo = 0.0
+    if M > 1:
+        spec = np.abs(np.fft.fft(y**M * np.hanning(n), pad*n))
+        k, d = peak(spec, circular=True)
+        f = (k + d)/(pad*n)
+        cfo = (f - (1 if f > 0.5 else 0))/M
+    y1 = y * np.exp(-2j*np.pi*cfo*np.arange(n))
+    phase = 0.0
+    if M > 1:
+        phase = (np.angle(np.sum(y1**M)) - np.angle(np.mean(pts**M)))/M
+    return y1 * np.exp(-1j*phase), cfo, phase
+
+def score(y, pts, iters=8):
+    """Mean log-likelihood per symbol under equiprobable points with Gaussian noise (sigma estimated)"""
+    d2 = np.abs(y[:, None] - pts[None, :])**2
+    var = mixture_variance(d2, iters)
+    logp = -d2/(2*var)
+    m = logp.max(axis=1)
+    ll = m + np.log(np.sum(np.exp(logp - m[:, None]), axis=1)) - np.log(len(pts)) - np.log(2*np.pi*var)
+    return float(np.mean(ll))
+
+def refine_timing(x, sps, beta, span, rounds=2):
+    """Refine sps from the drift of the best timing between the start and end of x. Returns (sps, tau)"""
+    n = len(x)
+    seg = max(n//8, int(60*sps))
+    if seg*2 < n:
+        for _ in range(rounds):
+            a, _e = best_tau(x, sps, beta, span, 0, seg)
+            b, _e = best_tau(x, sps, beta, span, n-seg, n)
+            drift = (b - a + sps/2) % sps - sps/2 # Timing moved by this much...
+            sps += drift/((n - seg)/sps) # ...over this many symbols
+    tau, _e = best_tau(x, sps, beta, span)
+    return sps, tau
+
+def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None):
+    """Find symbol rate, timing, modulation, frequency offset and phase from baseband samples
+
+    x: complex baseband at Fs, with the signal of interest centred and filtered
+    names: candidate modulations, default everything in config/constellation
+    betas: RRC roll-offs to try
+    baud: the symbol rate when already known (a channel plan, rpps.analysis.spectrum.cyclic): timing refines it, no search
+    Returns a Detection; its tau is relative to x[0].
+    """
+    cands = candidates(names)
+    baud0, line = (float(baud), None) if baud else find_baud(x, Fs)
+    best = None
+    for beta in betas:
+        sps, tau = refine_timing(x, Fs/baud0, beta, span)
+        c = centres_in(len(x), tau + np.ceil((span*sps + 5 - tau)/sps)*sps, sps, span)
+        y = matrix_mf(x, c, sps, beta, span)
+        gain = np.sqrt(np.mean(np.abs(y)**2))
+        y = y / gain
+        scores, fits = {}, {}
+        for name, pts in cands.items():
+            M = symmetry(pts)
+            yc, cfo, phase = correct(y, pts, M)
+            scores[name] = score(yc, pts)
+            fits[name] = (M, cfo, phase)
+        top = max(scores, key=scores.get)
+        if best is None or scores[top] > best[0]:
+            M, cfo, phase = fits[top]
+            q = measure(correct(y, cands[top], M)[0], cands[top])
+            baud = Fs/sps
+            best = (scores[top], Detection(
+                mod=top, baud=baud, sps=sps, beta=beta, tau=tau,
+                cfo=cfo*baud, phase=phase, M=M, gain=gain,
+                scores=scores, n=len(y), esn0=q.esn0_db, ebn0=q.ebn0_db, line=line
+            ))
+    return best[1]
 
 class Acquire(Stage):
     """Detect as soon as the signal is there, then keep refining as the stream grows
@@ -21,9 +151,16 @@ class Acquire(Stage):
 
     lock: symbol-rate line strength required to detect
     max_wait: samples after which to detect regardless
+    min_samples: samples held before the first try, whatever the line: the rate search goes down to Fs/16, so this is at
+        least 64 symbols (a narrow signal decimated far, a carrier, gives a few samples a block, and a line in a few hundred
+        samples is no rate)
+    baud: the symbol rate when known (a channel plan, rpps.analysis.spectrum.cyclic): no waiting for a line, no rate search
     """
-    __slots__ = ("lock", "max_wait", "history", "names", "betas")
-    def __init__(self, lock=5.0, max_wait=2**17, history=2**16, names=None, betas=(0.2, 0.25, 0.35)):
+    __slots__ = ("lock", "max_wait", "history", "names", "betas", "min_samples", "baud")
+    def __init__(self, lock=5.0, max_wait=2**17, history=2**16, names=None, betas=(0.2, 0.25, 0.35), min_samples=1024,
+                 baud=None):
+        self.baud = baud
+        self.min_samples = min_samples
         self.lock = lock
         self.max_wait = max_wait
         self.history = history
@@ -42,13 +179,14 @@ class Acquire(Stage):
         st.chunks = [x]
         det = meta.stream.det
         if det is None:
-            if st.count < self.max_wait and find_baud(x, meta.Fs)[1] < self.lock:
+            if st.count < self.min_samples or (not self.baud and st.count < self.max_wait and
+                                               find_baud(x, meta.Fs)[1] < self.lock):
                 return samples[:0] # Nothing there (yet)
-            det = detect(x, meta.Fs, self.names, self.betas)
+            det = detect(x, meta.Fs, self.names, self.betas, baud=self.baud)
             st.next = 2*st.count
         elif st.count >= st.next: # Refine: same modulation and roll-off
             scores = det.scores
-            det = detect(x, meta.Fs, [det.mod], (det.beta,))
+            det = detect(x, meta.Fs, [det.mod], (det.beta,), baud=self.baud and det.baud)
             det.scores = scores
             st.next = 2*st.count
         else:

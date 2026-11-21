@@ -50,7 +50,7 @@ def test_tailbiting_encoder(rng):
     code = rp.code.Conv(gens, 7, termination="tailbiting")
     for n in (7, 40, 64):
         msg = bits(rng, n).astype(int)
-        assert np.array_equal(code._enc.encode(msg), _circular_encode(msg, gens, 7))
+        assert np.array_equal(code.encoder.encode(msg), _circular_encode(msg, gens, 7))
 
 @pytest.mark.parametrize("decoder", ["viterbi", "bcjr"])
 def test_tailbiting_decodes_noisy_frames(decoder, rng):
@@ -58,9 +58,9 @@ def test_tailbiting_decodes_noisy_frames(decoder, rng):
     good = 0
     for _ in range(20):
         msg = bits(rng, 40)
-        cw = code._enc.encode(msg)
+        cw = code.encoder.encode(msg)
         llr = 2*((1 - 2.0*cw) + rng.normal(0, 0.7, len(cw)))/0.49
-        good += np.array_equal(code._dec.decode(llr), msg)
+        good += np.array_equal(code.decoder.decode(llr), msg)
     assert good >= 19
 
 def test_tailbiting_in_a_pipeline(rng):
@@ -71,15 +71,13 @@ def test_tailbiting_in_a_pipeline(rng):
     assert np.array_equal((rp.Data(cw, flush=True) / code).data, msg)
 
 def test_termination_names_and_octal_generators(rng):
-    obj = {"base": "conv", "type": "split",
-           "encode": {"type": "conv", "num": 1, "den": 2, "constraint": 7, "generator": ["0o133", "0o171"], "termination": "zero"},
-           "decode": {"type": "viterbi", "num": 1, "den": 2, "generator": ["0o133", "0o171"]}}
+    obj = {"base": "conv", "constraint": 7, "generator": ["0o133", "0o171"], "termination": "zero"}
     a = rp.code.serial.init("t", obj)
-    b = rp.code.load("conv", "k7_133_171/1_2")
-    assert np.array_equal(a._enc.generator, b._enc.generator)
-    assert a._enc.terminated and a._dec.terminated # The decoder takes the encoder's termination and constraint
+    b = rp.code.load("conv/k7_133_171/1_2")
+    assert np.array_equal(a.encoder.generator, b.encoder.generator)
+    assert a.encoder.terminated and a.decoder.terminated # One set of keys: the decoder has the encoder's termination
     msg = bits(rng, 50)
-    assert np.array_equal(a._dec.decode(a._enc.encode(msg)), msg)
+    assert np.array_equal(a.decoder.decode(a.encoder.encode(msg)), msg)
     with pytest.raises(ValueError):
         rp.code.Conv([0o133, 0o171], 7, termination="circular")
 
@@ -87,7 +85,7 @@ def test_termination_names_and_octal_generators(rng):
 
 @pytest.mark.parametrize("ncbps,nbpsc", [(48, 1), (96, 2), (192, 4), (288, 6)])
 def test_wifi_interleaver(ncbps, nbpsc, rng):
-    il = rp.code.load("interleave", "wifi_ofdm", ncbps=ncbps, nbpsc=nbpsc)._enc
+    il = rp.code.load("interleave/wifi_ofdm", ncbps=ncbps, nbpsc=nbpsc).encoder
     s = max(nbpsc//2, 1)
     k = np.arange(ncbps)
     i = (ncbps//16)*(k % 16) + k//16                   # 17-17
@@ -99,7 +97,7 @@ def test_wifi_interleaver(ncbps, nbpsc, rng):
 
 def test_p25_tsbk_interleave():
     order = [d for r in range(12) for d in (2*r, 2*r + 1, 26 + 2*r, 27 + 2*r, 50 + 2*r, 51 + 2*r, 74 + 2*r, 75 + 2*r)] + [24, 25]
-    il = rp.code.load("interleave", "p25_tsbk")._enc
+    il = rp.code.load("interleave/p25_tsbk").encoder
     rx = np.arange(98*2) # Dibits as pairs of positions
     assert np.array_equal(il.decode(rx).reshape(98, 2)[:, 0]//2, order)
 
@@ -110,7 +108,7 @@ def test_lte_subblock(D):
     y = [None]*(R*32 - D) + list(range(D))
     want = [y[r*32 + P[c]] for c in range(32) for r in range(R)]
     want = [v for v in want if v is not None]
-    il = rp.code.load("interleave", "lte_subblock", length=D)._enc
+    il = rp.code.load("interleave/lte_subblock", length=D).encoder
     assert list(il.encode(np.arange(D))) == want
 
 def test_block_interleaver_rejects_non_permutation():

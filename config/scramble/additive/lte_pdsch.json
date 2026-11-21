@@ -2,6 +2,7 @@
   "base": "scramble",
   "type": "additive",
   "comment": "LTE PDSCH scrambling (36.211 6.3.1): c_init = n_RNTI 2^14 + q 2^13 + floor(ns/2) 2^9 + N_ID^cell (SI-RNTI 0xFFFF for system information)",
+  "tags": ["lte"],
   "params": {
     "pci": {
       "comment": "physical cell id",

@@ -1,3 +1,5 @@
+import functools
+
 import numpy as np
 
 from ... import _accel
@@ -22,30 +24,13 @@ class bchgf(_code):
         self.m, self.t, self.poly = m, t, poly
         self.gf = GF(m, poly)
         self.size, self.exp, self.log = self.gf.size, self.gf.exp, self.gf.log
-        self.gen = self._generator()
+        self.gen = _generator(m, poly, t)
         if len(self.gen) - 1 != n - k:
             raise ValueError(f"BCH generator has degree {len(self.gen)-1}, but n-k={n-k}")
         self.errors = None
 
     def mul(self, a, b):
         return self.gf.mul(a, b)
-
-    def _generator(self):
-        """Binary generator polynomial, highest degree first"""
-        seen, g = set(), np.array([1], dtype=np.int64)
-        for i in range(1, 2*self.t, 2):
-            if i in seen:
-                continue
-            conj, e = [], i
-            while e not in conj:
-                conj.append(e)
-                e = (e*2) % (self.size - 1)
-            seen.update(conj)
-            mp = np.array([1], dtype=np.int64) # Product of (x + alpha^e) over the conjugates
-            for e in conj:
-                mp = self.gf.polymul(mp, np.array([1, self.exp[e]]))
-            g = self.gf.polymul(g, mp)
-        return g.astype(np.uint8)
 
     def encode(self, bits):
         u = np.asarray(bits, dtype=np.uint8).reshape(-1, self.num)
@@ -93,3 +78,24 @@ class bchgf(_code):
         """Error positions of one word from its syndromes, or None if uncorrectable"""
         found = cyclic.correct(self.gf, S, self.den, 2*self.t, self.t, fcr=1, binary=True)
         return None if found is None else found[0]
+
+@functools.lru_cache(maxsize=None)
+def _generator(m, poly, t):
+    """Binary generator polynomial of the t-error BCH code over GF(2^m), highest degree first (cached: read-only)"""
+    gf = GF(m, poly)
+    seen, g = set(), np.array([1], dtype=np.int64)
+    for i in range(1, 2*t, 2):
+        if i in seen:
+            continue
+        conj, e = [], i
+        while e not in conj:
+            conj.append(e)
+            e = (e*2) % (gf.size - 1)
+        seen.update(conj)
+        mp = np.array([1], dtype=np.int64) # Product of (x + alpha^e) over the conjugates
+        for e in conj:
+            mp = gf.polymul(mp, np.array([1, gf.exp[e]]))
+        g = gf.polymul(g, mp)
+    g = g.astype(np.uint8)
+    g.flags.writeable = False
+    return g

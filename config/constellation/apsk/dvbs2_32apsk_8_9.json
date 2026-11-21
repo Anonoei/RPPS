@@ -1,0 +1,10 @@
+{
+  "base": "constellation",
+  "extends": "apsk/dvbs2_32apsk",
+  "comment": "DVB-S2 32APSK for code rate 8/9: gamma1 = 2.54, gamma2 = 4.33",
+  "ref": "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10",
+  "params": {
+    "gamma1": 2.54,
+    "gamma2": 4.33
+  }
+}

@@ -1,10 +1,9 @@
 import numpy as np
-import matplotlib.pyplot as plt
+from ..base import axes
 
 def survey(ax, sv, chosen=None):
     """The spectrum of a rp.analysis.Survey with every signal shaded and numbered (the chosen one stands out)"""
-    if ax is None:
-        fig, ax = plt.subplots(layout="constrained")
+    ax = axes(ax, layout="constrained")
     ax.clear()
     x = (sv.freq + sv.cf)/1e6
     ax.plot(x, sv.db, "-", c="c", lw=0.8)

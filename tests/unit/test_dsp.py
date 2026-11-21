@@ -44,22 +44,21 @@ def test_mixture_variance(rng):
 # --- dsp ------------------------------------------------------------------------------------------------
 
 def test_dsp_exports():
-    assert callable(rp.analysis.psd) and callable(rp.analysis.find_baud) and callable(rp.analysis.find_signals)
-    assert callable(rp.analysis.stft.stft) and callable(rp.analysis.stft.psd)
+    assert callable(rp.analysis.psd) and callable(rp.sync.find_baud) and callable(rp.analysis.find_signals)
     assert not hasattr(rp.utils, "psd") and hasattr(rp.utils, "arg_freq")
 
 @pytest.mark.parametrize("sps", [6, 8, 10])
 def test_find_baud(sps, rng):
     Fs = 1e6
     x = qpsk_baseband(rng, 4000, sps, Fs, cfo=2e3)
-    baud, strength = rp.analysis.find_baud(x, Fs)
+    baud, strength = rp.sync.find_baud(x, Fs)
     assert baud == pytest.approx(Fs/sps, rel=0.005)
     assert strength > 5
-    assert rp.analysis.find_baud(x[:100], Fs) == (0.0, 0.0) # Too short to say
+    assert rp.sync.find_baud(x[:100], Fs) == (0.0, 0.0) # Too short to say
 
 def test_find_baud_on_noise_is_weak(rng):
     n = (rng.normal(size=20000) + 1j*rng.normal(size=20000)).astype(np.complex64)
-    assert rp.analysis.find_baud(n, 1e6)[1] < 5
+    assert rp.sync.find_baud(n, 1e6)[1] < 5
 
 def test_psd_peak_at_tone():
     Fs, N = 1e6, 4096
@@ -68,15 +67,6 @@ def test_psd_peak_at_tone():
     p = rp.analysis.psd(x, Fs)
     freqs = np.fft.fftshift(np.fft.fftfreq(N, 1/Fs))
     assert freqs[np.argmax(p)] == pytest.approx(f, abs=Fs/N)
-
-def test_stft_shapes_and_tone(rng):
-    Fs, nfft = 1e5, 256
-    x = np.exp(2j*np.pi*10e3/Fs*np.arange(8192)).astype(np.complex64)
-    snips = rp.analysis.stft.stft(x, nfft, 0.5, "hann")
-    assert snips.shape[0] == nfft and snips.shape[1] > 20
-    ps = rp.analysis.stft.psd(snips, Fs)
-    assert ps.shape == snips.shape
-    assert (np.argmax(ps, axis=0) == np.argmax(ps[:, 0])).all() # The tone stays in one bin
 
 def test_find_signals_locates_a_band(rng):
     Fs, N = 1e6, 1 << 18
@@ -152,7 +142,7 @@ def test_duty_sees_bursts(rng):
     assert len(found) == 1 and found[0].duty == pytest.approx(0.5, abs=0.15)
 
 def test_reject_spur_bauds():
-    from rpps.analysis.signal import Signal, reject_spur_bauds
+    from rpps.analysis.spectrum.signal import Signal, reject_spur_bauds
     def sig(width, baud):
         s = Signal(0.0, width, 0.0, 0.0)
         s.baud_est = baud
@@ -201,7 +191,6 @@ def test_signal_fields_and_survey_pick(rng):
     assert a.duty > 0.9 and a.resolved
     assert sv.pick(near=140e3) is b and sv.pick(freq=100e6 - 190e3) is a and sv.pick(index=1) is b
     assert sv.pick(strongest=True) in sv
-    assert a.baud == a.width # The old alias
 
 def test_signal_channel_isolates_and_decimates(rng):
     Fs = 1e6
@@ -237,3 +226,54 @@ def test_signal_esn0_from_the_in_band_snr():
     s = rp.analysis.Signal(0.0, 3.0e6, -100.0, 20.0, 9.6)
     assert s.esn0_db(2.5e6) == pytest.approx(9.6 + 10*np.log10(3.0/2.5))
     assert s.esn0_db() is None # No baud known
+
+def test_baseband_one_call():
+    Fs, n = 1e6, 200000
+    t = np.arange(n)/Fs
+    x = (np.exp(2j*np.pi*201e3*t) + np.exp(2j*np.pi*-300e3*t)).astype(np.complex64) # the channel at 200 kHz, a tone 1 kHz up; another far off
+    y, Fs_out = rp.signal.baseband(x, Fs, 200e3, 20e3)
+    assert Fs_out < 100e3 and abs(len(y) - n*Fs_out/Fs) < 200
+    mid = y[len(y)//4:3*len(y)//4]
+    f = np.angle(np.mean(mid[1:]*np.conj(mid[:-1])))*Fs_out/(2*np.pi)
+    assert f == pytest.approx(1e3, abs=5) and np.mean(np.abs(mid)) == pytest.approx(1.0, rel=0.05)
+
+def test_a_carrier_on_a_raised_floor_has_its_snr_over_that_floor():
+    # A satellite transponder: its noise and intermodulation raise the floor 12 dB across 40 MHz, and the carriers sit on
+    # it. Their SNR is over that floor (what the demodulator sees), and the raised band is marked as holding them
+    import rpps as rp
+    rng = np.random.default_rng(3)
+    Fs, n = 100e6, 2**20
+    t = np.arange(n)/Fs
+    noise = lambda: (rng.standard_normal(n) + 1j*rng.standard_normal(n))/np.sqrt(2)
+    lp = rp.signal.filters.low_pass_kaiser(20e6, 2e6, 60, Fs)
+    ped = np.convolve(noise(), np.asarray(lp.filt), mode="same")
+    ped *= np.sqrt(10**1.2/np.mean(np.abs(ped)**2)*0.4) # 12 dB over the thermal floor in its band (40 of 100 MHz)
+    q = rp.symbol.load("qpsk").points
+    def carrier(f, baud, cnr_db):
+        sps = int(Fs/baud)
+        up = np.zeros(n, complex); up[::sps] = q[rng.integers(0, 4, len(up[::sps]))]
+        x = np.convolve(up, rp.signal.filters.rrc_pulse(np.arange(-8*sps, 8*sps + 1)/sps, 0.35), mode="same")
+        # The pedestal's density is 10**1.2 x the thermal one; the carrier's power over it in its band is cnr
+        x *= np.sqrt(10**(cnr_db/10)*10**1.2*(baud/Fs)/np.mean(np.abs(x)**2))
+        return x*np.exp(2j*np.pi*f*t)
+    x = noise() + ped + carrier(-10e6, 1e6, 15.0) + carrier(5e6, 1e6, 20.0)
+    sv = rp.analysis.survey(x.astype(np.complex64), Fs=Fs, baud=False)
+    near = lambda f: min(sv, key=lambda s: abs(s.mid - f))
+    a, b = near(-10e6), near(5e6)
+    assert abs(a.esn0_db(1e6) - 15.0) < 1.0 and abs(b.esn0_db(1e6) - 20.0) < 1.0 # Not 12 dB more, over the thermal floor
+    big = max(sv, key=lambda s: s.width)
+    assert big.width > 30e6 and big.holds >= 2
+
+def test_carriers_narrower_than_the_edge_window_are_not_boxed_with_their_gaps(rng):
+    # 383 kHz carriers 750 kHz apart at 100 MS/s, strong and weak by turns: narrower than the edge step's +-w (0.5% of
+    # the band), so a strong one's steps are found out in its weak neighbours' skirts and box it with its gaps (1.3 MHz)
+    Fs = 100e6
+    mids = 6.385e6 + 750e3*np.arange(5)
+    lvs = np.array([12.0, 20.0, 12.0, 20.0, 12.0])
+    def row(f):
+        return ((np.abs(f[:, None] - mids[None, :]) < 192e3)*lvs[None, :]).max(axis=1)
+    found = rp.analysis.find_signals(shaped_psd(rng, 1 << 20, Fs, row), Fs)
+    for m in mids[lvs == 20]:
+        s = min(found, key=lambda s: abs(s.mid - m))
+        assert s.mid == pytest.approx(m, abs=60e3) and s.width == pytest.approx(383e3, rel=0.15)
+    assert all(s.width < 600e3 for s in found)

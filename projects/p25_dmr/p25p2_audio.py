@@ -7,7 +7,7 @@ ID says unencrypted (0x80). Anything else is reported and skipped; no key is use
 phase 2 call has been recorded yet). Meant to be upstreamed into RPPS.
 """
 import argparse
-import wave
+import rpps as rp
 from collections import Counter
 
 import numpy as np
@@ -67,8 +67,7 @@ def main(argv=None):
     for lch, parts in audio.items():
         if parts and a.wav:
             y = np.concatenate(parts); y = y*(24000/max(1.0, np.abs(y).max())); path = a.wav.replace(".wav", f"_slot{lch}.wav")
-            with wave.open(path, "wb") as w:
-                w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000); w.writeframes(y.astype(np.int16).tobytes())
+            rp.source.write_wav(path, y.astype(np.int16), 8000)
             print(f"wrote {path} ({len(y)/8000:.1f} s)")
     if not any(audio.values()):
         print("no unencrypted voice on this carrier")

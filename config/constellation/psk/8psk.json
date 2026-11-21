@@ -1,15 +1,8 @@
 {
   "base": "constellation",
-  "comment": "8PSK, Gray",
-  "points": [
-    {"mag": 1, "pha": 22.5},
-    {"mag": 1, "pha": 67.5},
-    {"mag": 1, "pha": 112.5},
-    {"mag": 1, "pha": 157.5},
-    {"mag": 1, "pha": 202.5},
-    {"mag": 1, "pha": 247.5},
-    {"mag": 1, "pha": 292.5},
-    {"mag": 1, "pha": 337.5}
+  "comment": "8PSK, Gray: one ring of 8 at 22.5 + 45k degrees",
+  "rings": [
+    {"n": 8, "pha": 22.5}
   ],
   "maps": [
     {

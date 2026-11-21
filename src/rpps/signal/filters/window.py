@@ -11,15 +11,13 @@ class Window(Filter):
             self.w = self.window(self.N, *args, **kwargs)
 
     def __call__(self, N):
-        return self.window(N)
-
-    def run(self, N):
+        """The window's N weights"""
         return self.window(N)
 
     def step(self, samples, st, meta: Meta):
         """Weight each block by the window (one window per block: N, or the block's length)"""
         if self.N is None:
-            return samples * self.run(len(samples))
+            return samples * self.window(len(samples))
         if len(samples) != self.N:
             raise ValueError(f"Window of {self.N} was given a block of {len(samples)}")
         return samples * self.w

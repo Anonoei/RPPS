@@ -2,6 +2,7 @@
   "base": "interleave",
   "type": "block",
   "comment": "IEEE 802.11a/g OFDM interleaver (17.3.5.7): coded bit k of a symbol goes to position j after both permutations. ncbps: coded bits per symbol (48, 96, 192, 288), nbpsc: bits per subcarrier (1, 2, 4, 6)",
+  "tags": ["ieee-802.11a"],
   "params": {
     "ncbps": {
       "default": 48

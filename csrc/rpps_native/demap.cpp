@@ -22,7 +22,7 @@ constexpr double CUT = 40.0; // exponents beyond this (relative to a sum's large
 // Loops over symbols are written to vectorise (arrays of one point's distances, no branches); on x86 the compiler also
 // builds an AVX2 version and picks it when the CPU has it.
 #if defined(__GNUC__) && defined(__x86_64__) && !defined(__clang__)
-#define RPPS_CLONES __attribute__((target_clones("avx2,fma", "default")))
+#define RPPS_CLONES __attribute__((target_clones("avx2", "default")))
 #else
 #define RPPS_CLONES
 #endif

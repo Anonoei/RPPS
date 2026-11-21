@@ -1,0 +1,6 @@
+{
+  "base": "conv",
+  "extends": "k7_133_171_145_133",
+  "comment": "DAB mother code rate 1/4, K=7: 133, 171, 145, 133 octal, outputs x0..x3, zero-terminated (DAB punctures it by the PI vectors of clause 11.1.2)",
+  "tags": ["dab"]
+}
