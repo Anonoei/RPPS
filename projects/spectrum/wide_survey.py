@@ -6,7 +6,7 @@
     python projects/spectrum/wide_survey.py report runs/a                  # confirmed emitters grouped by what is allocated there
     python projects/spectrum/wide_survey.py report runs/b --compare runs/a  # what is new, what is gone, what is in both
 
-A sweep is 20 MS/s tiles of 16 MHz; per tile the gain is stepped down the ladder until nothing clips (a detection setting: not the per-band gain search of gain_search.py), the DC spike
+A sweep is 20 MS/s tiles of 16 MHz; per tile the gain is the highest that doesn't clip (pysdrlib's find_gain) (a detection setting: not the per-band gain search of gain_search.py), the DC spike
 of the tile is masked, the power spectrum is stitched. Why two passes: the HackRF has spurs tied to its tiling (multiples of 20 MHz) and edge artifacts of each tile. A real signal sits at the same absolute
 frequency whatever the tile grid, so a detection counts only where both passes show it (the lower of the two excesses is kept). Detection: the 50 kHz-binned power over its 20th-percentile floor
 in a 10 MHz window, more than 8 dB, runs joined across gaps of up to 3 bins. Widths are underestimates for wide signals (the floor window eats the plateau: a 6 MHz TV channel reads as 1.5 MHz).
@@ -44,12 +44,9 @@ def sweep(sdr, lo, hi, gain=None):
     while cf - STEP/2 < hi:
         sdr.set_rx_freq(cf, flush=True)
         if gain is not None:
-            radio_io.set_gain(sdr, gain); time.sleep(0.03) # a fixed, lower gain: at the ladder's high gains the HackRF makes broad plateaus around its tuned frequency that follow the tuning
+            radio_io.set_gain(sdr, gain) # a fixed, lower gain: at the ladder's high gains the HackRF makes broad plateaus around its tuned frequency that follow the tuning
         else:
-            for g in radio_io.LADDER:
-                radio_io.set_gain(sdr, g); time.sleep(0.03)
-                if radio_io.clipped(radio_io.grab(sdr, 2**18)) < 1e-4:
-                    break
+            sdr.find_gain(count=2**18, max_clip=1e-4, confirm=0) # the highest gain that doesn't clip
         x = radio_io.grab(sdr, 2**21)
         seg = x[:len(x)//NFFT*NFFT].reshape(-1, NFFT)*np.hanning(NFFT)
         P = np.mean(np.abs(np.fft.fftshift(np.fft.fft(seg, axis=1), axes=1))**2, 0)

@@ -43,7 +43,7 @@ def main(argv=None):
             sdr.set_rx_freq(cf, flush=True)
             best = None
             for g in GAINS:
-                radio_io.set_gain(sdr, g); time.sleep(0.05)
+                radio_io.set_gain(sdr, g)
                 x = radio_io.grab(sdr, int(FS*0.4)); clip = radio_io.clipped(x)
                 if clip > 1e-4:
                     continue

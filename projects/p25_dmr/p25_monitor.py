@@ -420,14 +420,9 @@ class Monitor:
 
 def radio_source(cf, fs, gain, stop, remote=None):
     import radio_io
-    sdr = radio_io.open_radio(cf, fs, remote=remote); radio_io.set_gain(sdr, gain); sdr.start_rx(); sdr.get_samples()
+    sdr = radio_io.open_radio(cf, fs, remote=remote); radio_io.set_gain(sdr, gain); sdr.start_rx()
     try:
-        while not stop.is_set():
-            b = sdr.get_samples()
-            if len(b):
-                yield np.asarray(b, np.complex64)
-            else:
-                time.sleep(0.002)
+        yield from radio_io.blocks(sdr, 2**16, stop)
     finally:
         try:
             sdr.stop_rx(); sdr.close()  # releases the radio (for a remote one: the server's device)

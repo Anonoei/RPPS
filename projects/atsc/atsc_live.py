@@ -40,6 +40,7 @@ import radio_io
 import ts_info
 
 FS = 20e6
+BLOCK = 2**17 # samples a read of the running stream takes (6.6 ms at FS)
 CF_OFFSET = 8.0 # tune centre above the channel's lower edge [MHz]: the DC spike is 2 MHz outside the channel, the whole channel inside the HackRF's filter
 PILOT_MIN = 10.0 # dB over the data around the pilot to call a channel a station
 FIELD_S = ap.FIELD*ap.SEG/ap.SYMBOL_RATE # one field: 24.2 ms
@@ -68,8 +69,7 @@ def centre(ch):
 # ------------------------------------------------------------------------------------------------ radios
 
 class Radio:
-    """A radio (local, or a pysdrlib server's with `remote`; `driver` picks which, see radio_io.driver_name): tune with a flush of the stale samples, per-channel gain, grab, read"""
-    STALE = 0.45 # seconds of samples still queued from the old frequency after a retune (a remote HackRF has ~0.25 s in its pipeline)
+    """A radio (local, or a pysdrlib server's with `remote`; `driver` picks which, see radio_io.driver_name): tune (what was queued from the old frequency is skipped), per-channel gain, grab, blocks"""
 
     def __init__(self, remote=None, driver=None, channels=None, serial=None, label=None, program="RPPS atsc"):
         """channels: the TV channels this will tune across: a remote server is told the span and the sample rate it needs, so it hands out a radio that can (and not, say, an HF-only one)"""
@@ -78,20 +78,16 @@ class Radio:
         self.sdr = radio_io.open_radio(cf=500e6, fs=FS, remote=remote, driver=driver, program=program, serial=serial, label=label,
                                        need=dict(freq=(min(cfs), max(cfs)), rate=FS), want=dict(freq=cfs[0], rate=FS))
         self.sdr.start_rx()
+        self.dropped = 0 # samples lost (pysdrlib's RxMeta.dropped of the blocks read)
         self.lock = threading.RLock() # one user of the radio at a time
         self.name = f"{getattr(self.sdr, 'id', None) or radio_io.driver_name(driver, remote)} " + (f"at {remote}" if remote else "(local)")
         self.cf = 500e6
 
-    @property
-    def dropped(self):
-        return getattr(self.sdr, "dropped_blocks", 0)
-
     def tune(self, cf, gain=None):
-        self.sdr.set_rx_freq(cf); self.cf = cf
+        """Retune (and set the gain): the next read is all at the new setting, after its settling (pysdrlib's flush, local or remote)"""
+        self.sdr.set_rx_freq(cf, flush=True); self.cf = cf
         if gain is not None:
             radio_io.set_gain(self.sdr, gain)
-        time.sleep(0.05)
-        self.grab(self.STALE)
 
     def gain(self, g):
         radio_io.set_gain(self.sdr, g)
@@ -99,8 +95,11 @@ class Radio:
     def grab(self, seconds):
         return radio_io.grab(self.sdr, int(FS*seconds))
 
-    def get_samples(self):
-        return self.sdr.get_samples()
+    def blocks(self, n, stop):
+        """Blocks of `n` samples, in order, until `stop` is set; samples lost on the way are counted in `dropped`"""
+        for x, m in radio_io.blocks(self.sdr, n, stop, meta=True):
+            self.dropped += m.dropped
+            yield x
 
     def close(self):
         try:
@@ -111,8 +110,6 @@ class Radio:
 
 class ReplayRadio:
     """No radio: a capture file stands in for one channel's air, paced like a real stream (`speed` x real time), other channels are noise"""
-    STALE = 0.0
-
     def __init__(self, path, channel, cf_mhz, speed=1.0):
         self.x = np.memmap(path, np.complex64, "r")
         self.channel = channel; self.file_cf = cf_mhz*1e6; self.speed = speed
@@ -142,12 +139,11 @@ class ReplayRadio:
         self.t = time.monotonic()
         return self._next(n)
 
-    def get_samples(self):
-        now = time.monotonic(); n = int((now - self.t)*FS*(self.speed or 50)); n = min(n, int(FS*0.5))
-        if n < 100000:
-            return np.zeros(0, np.complex64)
-        self.t = now
-        return self._next(n)
+    def blocks(self, n, stop):
+        """Blocks of `n` samples, paced at `speed` x real time (0: 50x), until `stop` is set"""
+        while not stop.is_set():
+            time.sleep(n/FS/(self.speed or 50))
+            yield self._next(n)
 
     def close(self):
         pass
@@ -463,11 +459,8 @@ class Watcher:
             self.radio.tune(centre(self.ch), st_gain)
             n_chunk = int(FS*self.chunk); n_over = int(FS*OVERLAP_FIELDS*FIELD_S)
             buf = []; have = 0; start = 0; d0 = self.radio.dropped; self.stats.state = "capturing"
-            while not self.stop_flag.is_set():
-                b = self.radio.get_samples()
-                if not len(b):
-                    time.sleep(0.005); continue
-                buf.append(np.asarray(b, np.complex64)); have += len(b)
+            for b in self.radio.blocks(BLOCK, self.stop_flag):
+                buf.append(b); have += len(b)
                 if have >= n_chunk + n_over:
                     x = np.concatenate(buf)
                     chunk, rest = x[:n_chunk + n_over], x[n_chunk:] # the next chunk starts n_chunk in, so it repeats the overlap
@@ -629,7 +622,7 @@ def format_stats(w):
     rs = f"{100*s.rs_ok:.0f}%" if s.rs_ok is not None else "-"
     snr = f"{s.snr:.1f} dB" if s.snr is not None else "-"
     lat = f"{s.latency:.0f} s" if s.latency else "-"
-    return f"{s.state:12s} program {s.program or '-'}  RS ok {rs}  SNR {snr}  chunks {s.chunks} (skipped {s.skipped}, failed {s.failed})  decode latency {lat}  dropped blocks {s.dropped}  out {s.bytes/1e6:.1f} MB"
+    return f"{s.state:12s} program {s.program or '-'}  RS ok {rs}  SNR {snr}  chunks {s.chunks} (skipped {s.skipped}, failed {s.failed})  decode latency {lat}  dropped samples {s.dropped}  out {s.bytes/1e6:.1f} MB"
 
 
 def cmd_watch(a):
