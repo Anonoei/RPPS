@@ -216,6 +216,20 @@ def test_signal_channel_isolates_and_decimates(rng):
     assert abs(f[np.argmax(p)]) < 40e3 # Brought to baseband
     assert p[np.abs(f) < 35e3].sum() > 50*p[np.abs(f) > 90e3].sum() # The neighbour is gone
 
+@pytest.mark.parametrize("Fs, mid, width", [(20e6, 3e6, 200e3), (2e6, 0.0, 500e3), (10e6, -1e6, 25e3)])
+def test_channel_settle_is_the_start_up_transient(Fs, mid, width):
+    """Channel.settle: the first output samples of a new stream, before every filter is full, and no more (a carrier at
+    the channel's centre is flat from there on); delay is what meta.delay gains"""
+    from rpps.analysis.spectrum.signal import Signal
+    ch = Signal(mid, width, 0, 0, Fs=Fs).channel()
+    x = np.exp(2j*np.pi*mid/Fs*np.arange(int(Fs*0.01))).astype(np.complex64)
+    out = rp.Data(x, Fs=Fs) + ch.front
+    assert out.meta.delay == pytest.approx(ch.delay)
+    y = np.abs(out.data)
+    level = np.median(y[len(y)//2:])
+    off = np.nonzero(np.abs(y - level) > 1e-3*level)[0]
+    assert off.max() < ch.settle <= off.max() + 8 # all of the transient, a few samples spare at most
+
 def test_survey_from_a_file_keeps_its_place(rng, tmp_path):
     Fs = 1e6
     x = two_bands(rng, 1 << 17, Fs, -200e3, 150e3, 60e3)

@@ -2,8 +2,12 @@ import numpy as np
 
 from collections import namedtuple
 
-Channel = namedtuple("Channel", "front Fs decimation")
-Channel.__doc__ = """What brings a Signal to baseband: `block + channel.front` is the signal at Fs `Fs` (the capture's Fs / `decimation`)"""
+Channel = namedtuple("Channel", "front Fs decimation delay settle")
+Channel.__doc__ = """What brings a Signal to baseband: `block + channel.front` is the signal at Fs `Fs` (the capture's Fs / `decimation`)
+
+delay: the front's group delay [s] (what a block's `meta.delay` gains through it)
+settle: output samples a new stream starts with before every filter is full of signal (its start-up transient: the
+    filters are linear phase, so twice the delay); a display drops these from a stream's first block"""
 
 class Signal:
     """A signal found in a spectrum
@@ -49,7 +53,7 @@ class Signal:
 
         Shift + multi-stage decimation (rp.signal.channelize), then a sharp filter at the low rate to drop the neighbours
         the decimation lets through: passband to `guard`*width/2 (the pulse skirts reach past the 99% width).
-        Returns Channel(front, Fs, decimation): `block + channel.front`.
+        Returns Channel(front, Fs, decimation, delay, settle): `block + channel.front`.
         """
         from ...signal.filters import low_pass_kaiser
         from ...signal import channelize as _channel
@@ -60,7 +64,9 @@ class Signal:
         if self.width*guard < Fs:
             sel = low_pass_kaiser(0.5*self.width*guard, 0.2*self.width, atten_db, Fs)
             front = Pipeline(front, sel)
-        return Channel(front, Fs, D)
+        from ...base import Data
+        delay = (Data(np.zeros(1, np.complex64), Fs=self.Fs) + front).meta.delay # (a stream of its own: front holds no state)
+        return Channel(front, Fs, D, delay, int(np.ceil(2*delay*Fs)))
 
     def esn0_db(self, baud=None):
         """Es/N0 [dB] from the in-band SNR: the noise in the signal's width (snr) is that density times width, the
