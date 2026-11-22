@@ -87,11 +87,22 @@ class Measurements:
 TONE_FRACTION = 0.5 # A tone holding this much of the audio's power is a test tone: SINAD is measured against it
 
 def _band(x, Fs, lo, hi):
-    """x with only the frequencies in [lo, hi] Hz kept (a mask on its spectrum: no delay, no state)"""
+    """x with only the frequencies in [lo, hi] Hz kept (a mask on its spectrum: no delay, no state); x itself when that is
+    all of them"""
+    if lo <= -Fs/2 and hi >= Fs/2:
+        return x
     X = np.fft.fft(x)
     f = np.fft.fftfreq(len(x), 1/Fs)
     X[(f < lo) | (f > hi)] = 0
     return np.fft.ifft(X)
+
+def _band_real(a, Fs, hi):
+    """Real a with only the frequencies up to hi Hz kept (as _band, on the half spectrum); a itself when that is all"""
+    if hi >= Fs/2:
+        return a
+    A = np.fft.rfft(a)
+    A[np.fft.rfftfreq(len(a), 1/Fs) > hi] = 0
+    return np.fft.irfft(A, len(a))
 
 def _tone(audio, Fs):
     """(tone Hz, SINAD dB) when one tone holds TONE_FRACTION of the audio's power, else (None, None)"""
@@ -119,10 +130,14 @@ def demod(x, Fs, kind="fm", bw=None, audio_bw=None):
     PM the phase deviation [rad] (unwrapped, the carrier's offset and phase taken out), AM the envelope over the carrier
     less one (1.0 is 100% modulation), SSB the real signal. audio_Fs = Fs/D, the whole
     decimation D that keeps audio_bw with some room.
+    A channel as wide as Fs, and audio as wide as Fs/2, are not filtered (the whole span shown); complex64 samples are
+    worked in single precision (PM's unwrapped phase in double: a long ramp would lose its resolution).
     """
     if kind not in ("fm", "pm", "am", "usb", "lsb"):
         raise ValueError(f"kind must be fm, pm, am, usb or lsb, not {kind!r}")
-    x = np.asarray(x, dtype=np.complex128)
+    x = np.asarray(x)
+    if x.dtype != np.complex64:
+        x = x.astype(np.complex128)
     if len(x) < 2:
         raise ValueError(f"{len(x)} samples: nothing to demodulate")
     bw = min(float(bw or {"fm": 200e3, "pm": 25e3, "am": 10e3}.get(kind, 2800.0)), Fs)
@@ -142,7 +157,7 @@ def demod(x, Fs, kind="fm", bw=None, audio_bw=None):
             m.deviation_hz = float(np.percentile(np.abs(audio), 99.9))
             m.deviation_rms_hz = float(np.sqrt(np.mean(audio**2)))
         elif kind == "pm":
-            ph = np.unwrap(np.angle(y))
+            ph = np.unwrap(np.angle(y).astype(np.float64))
             n = np.arange(len(ph))
             slope, icpt = np.polyfit(n, ph, 1) # The carrier: its offset (a phase ramp) and its phase
             m.offset_hz = float(slope*Fs/(2*np.pi))
@@ -155,7 +170,7 @@ def demod(x, Fs, kind="fm", bw=None, audio_bw=None):
             m.depth = float((hi - lo)/(hi + lo)) if hi + lo > 0 else 0.0
             carrier = float(np.mean(env))
             audio = env/carrier - 1 if carrier > 0 else env
-        audio = _band(audio, Fs, -audio_bw, audio_bw).real
+        audio = _band_real(audio, Fs, audio_bw)
     D = max(1, int(Fs // (2.5*audio_bw)))
     audio = audio[::D].astype(np.float32)
     m.tone_hz, m.sinad_db = _tone(audio, Fs/D)

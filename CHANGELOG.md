@@ -145,6 +145,15 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   `csrc/rpps_native` has now (`rpps._accel.stale`); rebuild with `python builder.py -c`. Installed packages are not checked.
 
 ### Fixed
+- **Faster `Lock.update` and `wave.demod`** (a display following a signal every frame):
+  - `best_tau` reads each candidate timing's symbol instants off the matched filter with a 12-tap windowed sinc instead
+    of upsampling the whole output 16 times by FFT: `track_timing` about 5x faster (8 -> 1.5 ms a block of 8192 samples
+    at 20 samples a symbol), and a followed rate no longer biased by the linear read between upsampled points (50007 ->
+    50001 Bd on a 50 kBd signal).
+  - `sync.candidates` reads each constellation once per config search path: a recheck no longer finds the files every block.
+  - `wave.demod` skips the channel filter when `bw` is Fs and the audio filter when `audio_bw` is Fs/2 (the whole span),
+    filters the audio on the half spectrum, and keeps complex64 input in single precision: FM over the whole span 20 -> 4 ms
+    for 50000 samples.
 - `analysis.spectrum.burst`: a long burst type (thousands of symbols, where the gate can open tens of symbols from the
   start) got no preamble of its own and was acquired on another kind's; `burst_kinds` now aligns with a near and a wider
   search. A burst far off carrier (a large share of a turn a symbol) was acquired on data; each burst's blind carrier

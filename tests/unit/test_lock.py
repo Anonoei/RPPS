@@ -105,3 +105,10 @@ def test_a_change_of_modulation_at_low_snr_goes_stale():
     moved = lk.update(psk(16384, 8.0, M=8, esn0_db=10, seed=3))
     assert moved.stale and "looks like 8psk" in moved.stale
     assert lk.update(psk(16384, 8.0, M=8, esn0_db=10, seed=3), recheck=False).stale is None # (Es/N0 alone misses it)
+
+def test_candidates_are_read_once():
+    from rpps.sync.acquire import candidates
+    a, b = candidates(), candidates()
+    assert list(a) == list(b) and all(a[k] is b[k] for k in a) # (Lock.update rechecks them every block)
+    assert all(not v.flags.writeable for v in a.values())
+    assert all(abs(np.mean(np.abs(v)**2) - 1) < 1e-12 for v in a.values())

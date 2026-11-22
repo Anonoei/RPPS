@@ -4,7 +4,7 @@ import numpy as np
 
 from ...base import Meta, Stage
 from ...signal.filters.shaping import rrc_pulse
-from ...math.interp import peak
+from ...math.interp import peak, fractional, REACH
 
 def matrix_mf(x, centres, sps, beta=0.2, span=8):
     """Matched filter + symbol sampling as a (banded) matrix: y = W @ x
@@ -51,10 +51,10 @@ def best_tau(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
     The symbol lattice is tau + k*sps in absolute sample index, so results from different
     segments of x are comparable. Returns (tau, mean |y|^2)
 
-    The matched filter runs once, as a convolution; its output is band-limited, so it is interpolated `grid` times finer
-    by FFT (in chunks: memory stays small whatever the length) and each candidate timing reads its energy off that. A
-    segment too short for the convolution's edges takes the filter matrix for each candidate (`_best_tau_rows`), which
-    gives the same answer.
+    The matched filter runs once, as a convolution; its output is band-limited, so each of the `grid` candidate timings
+    reads it at its own symbol instants with a 12-tap windowed sinc (math.interp.fractional: -56 dB at 2 samples a
+    symbol), in chunks. A segment too short for the convolution's edges takes the filter matrix for each candidate
+    (`_best_tau_rows`), which gives the same answer.
     """
     hi = len(x) if hi is None else hi
     L = int(np.ceil(span*sps))
@@ -63,47 +63,24 @@ def best_tau(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
     h = rrc_pulse(np.arange(-L, L + 1)/sps, beta)
     h /= np.sqrt(np.sum(h**2))
     z = np.convolve(np.asarray(x[lo:hi], dtype=np.complex128), h, mode="valid") # z[i]: output at sample lo + L + i
-    energy, count = np.zeros(grid), np.zeros(grid)
+    z = z.astype(np.complex64) # (the interpolator's native path; its error is far above single precision's)
+    taps = 2*REACH
+    t0, t1 = lo + L + REACH, lo + L + len(z) - REACH - 1 # Absolute positions the interpolator reads whole
     taus = np.arange(grid)*sps/grid
-    margin = int(np.ceil(max(4*sps, 32))) # Interpolation wraps at a chunk's ends: only its middle is read
-    step = max(TAU_CHUNK, 8*margin)
-    for a in range(0, len(z), step):
-        b = min(a + step, len(z))
-        c0, c1 = max(a - margin, 0), min(b + margin, len(z))
-        # Readable span: inside this chunk's share, and clear of the whole output's ends (no neighbour there to wrap from)
-        r0 = max(a, margin) if a == 0 else a
-        r1 = min(b, len(z) - margin) if b == len(z) else b
-        if r1 <= r0:
-            continue
-        zu = _upsample_power(z[c0:c1], grid)
-        t0, t1 = lo + L + r0, lo + L + r1 # Absolute sample positions read here
-        for g, tau in enumerate(taus):
-            k = np.arange(np.ceil((t0 - tau)/sps), np.ceil((t1 - tau)/sps))
-            # Between the interpolated points linearly: rounding to the nearest would make the energy a step function of
-            # tau and sps, and a lock following them would jump on the smallest change of input
-            pos = (tau + k*sps - lo - L - c0)*grid
-            i0 = np.floor(pos).astype(np.int64)
-            ok = (i0 >= 0) & (i0 + 1 < len(zu))
-            i0, f = i0[ok], pos[ok] - i0[ok]
-            energy[g] += np.sum(zu[i0]*(1 - f) + zu[i0 + 1]*f)
-            count[g] += len(i0)
+    ks = [np.arange(np.ceil((t0 - tau)/sps), np.ceil((t1 - tau)/sps)) for tau in taus]
+    pos = np.concatenate([tau + k*sps for tau, k in zip(taus, ks)]) - (lo + L)
+    count = np.array([len(k) for k in ks], dtype=np.float64)
+    which = np.repeat(np.arange(grid), [len(k) for k in ks])
+    energy = np.zeros(grid)
+    for a in range(0, len(pos), TAU_CHUNK):
+        y = fractional(z, pos[a:a + TAU_CHUNK], taps)
+        energy += np.bincount(which[a:a + TAU_CHUNK], weights=(y.real.astype(np.float64)**2 + y.imag.astype(np.float64)**2),
+                              minlength=grid)
     energy = np.divide(energy, count, out=np.zeros(grid), where=count > 0)
     g, d = peak(energy, circular=True, log=False)
     return ((g + d)*sps/grid) % sps, float(energy[g])
 
-TAU_CHUNK = 8192 # Matched-filter samples interpolated at a time by best_tau
-
-def _upsample_power(z, U):
-    """|z|^2 at U times the rate, by zero-padding z's spectrum"""
-    n = len(z)
-    Z = np.fft.fft(z)
-    pad = np.zeros(n*U, complex)
-    half = (n + 1)//2
-    pad[:half], pad[n*U - (n - half):] = Z[:half], Z[half:]
-    if n % 2 == 0: # The Nyquist bin splits between the two ends
-        pad[half] = Z[half]/2
-        pad[n*U - (n - half)] = Z[half]/2
-    return np.abs(np.fft.ifft(pad)*U)**2
+TAU_CHUNK = 1 << 16 # Symbol instants interpolated at a time by best_tau
 
 def _best_tau_rows(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
     """best_tau by the filter matrix, rebuilt for each candidate timing: for segments too short to convolve"""
