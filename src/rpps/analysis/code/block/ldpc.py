@@ -3,6 +3,9 @@
     H, holds = rp.analysis.code.block.ldpc.staircase(words, k)          # dual-diagonal parity (DVB-S2, 802.11n, 802.16e, 5G NR)
     H, holds, rounds = rp.analysis.code.block.ldpc.progressive(llr)     # checks found, frames cleaned with them, more found, ...
     r = rp.analysis.code.block.ldpc.roots(words)                        # a binary cyclic code's roots: BCH and its distance
+    z = rp.analysis.code.block.ldpc.circulant_size(words, k)            # quasi-cyclic: the circulant size
+    V, c, holds = rp.analysis.code.block.ldpc.qc_generator(words, k, z) # its generator, (k/z) x ((n-k)/z) circulants
+    H, rank = rp.analysis.code.block.ldpc.qc_checks(V, z)               # and sparse checks from it
 
 staircase: an IRA code's parity part is dual-diagonal: parity bit j is parity bit j-1 plus a sum of information bits, the
 row of A in H = [A | staircase]. With k information bits first, d_j = p_j + p_{j-1} is a linear function of them, the same
@@ -14,6 +17,11 @@ progressive: the checks one search finds (rpps.analysis.code.block.linear.sparse
 on the partial H), the decoded frames have fewer errors, and the next search finds checks the first could not, until no
 new ones come (Cluzeau 2006, block code reconstruction with iterative decoding; the ISIT 2024 progressive QC-LDPC
 reconstruction reaches ~100x the bit error rate of one search).
+
+quasi-cyclic (qc_generator, qc_checks): a QC code's generator is circulants, so each word gives z equations at once and a
+few dozen words solve it (k/z + 9 of them, where a dense search for dual words needs over k); the sparse checks are then
+found in the generator itself, as sums of a few shifted parity blocks whose information dependences nearly cancel (an
+LDPC code's dense generator hides them from a word-level search unless words are many).
 
 roots: a binary cyclic code of length n | 2^m - 1 is its generator's roots: every codeword c has c(beta^j) = 0 at them
 (the Vandermonde parity checks). Evaluated at every beta^j, words of the code are zero at the roots and a fraction 2^-m
@@ -87,6 +95,168 @@ def staircase(words, k, rel=None, trials=16, verify=256, seed=0, extra=()):
             H[j, k + j - 1] ^= 1
     holds = 1.0 - ((words[test].astype(np.int32) @ H.T.astype(np.int32)) % 2).mean(axis=0)
     return H, holds
+
+def _qc_system(U, z):
+    """The equations of a quasi-cyclic generator: for words U (W, kb, z) of information blocks, row (w, o) has the
+    coefficients of V[b, s] (b * z + s: parity bit o of a block is sum over b, s of u[b, (o - s) % z] V[b, s]) and a one
+    for the block's constant c[o]. (W * z, kb * z + z)"""
+    W, kb, _ = U.shape
+    idx = (np.arange(z)[:, None] - np.arange(z)[None, :]) % z # (o, s) -> t
+    A = U[:, :, idx] # (W, kb, o, s)
+    A = A.transpose(0, 2, 1, 3).reshape(W*z, kb*z)
+    return np.concatenate((A, np.tile(np.eye(z, dtype=np.uint8), (W, 1))), axis=1)
+
+def qc_generator(words, k, z, rel=None, trials=8, verify=256, seed=0):
+    """The generator of a quasi-cyclic code (circulant size z) from aligned words (W, n) with the k information bits
+    first: parity bit o of parity block J is sum over information blocks b and s of u[b, (o - s) % z] V[b, J, s], plus
+    c[J z + o] (zero for a linear code; a coset's constant otherwise). A shift of every information block by one shifts
+    every parity block by one, so the k x (n - k) generator is (k/z) x ((n - k)/z) circulants, each one row of z bits:
+    each word gives z equations in the k + z unknowns of a parity block, and the coefficients are the same for every
+    parity block, so one elimination over about k/z + 9 words solves them all. Noisy bits: the most reliable words, several
+    subsets, each parity block's solution kept by how many held-out equations it satisfies.
+    Returns (V (k/z, (n-k)/z, z) uint8, c (n - k,) uint8, holds ((n-k)/z,): the fraction of held-out parity bits each
+    block's solution predicts)"""
+    words = np.asarray(words, dtype=np.uint8)
+    W, n = words.shape
+    if k % z or (n - k) % z:
+        raise ValueError(f"k = {k} and n - k = {n - k} are not multiples of z = {z}")
+    kb, mb = k//z, (n - k)//z
+    order = np.argsort(_expected_errors(rel), kind="stable") if rel is not None else np.arange(W)
+    use = kb + 9
+    if W < use + 8:
+        raise ValueError(f"need about {use + 8} words for k = {k}, z = {z}, have {W}")
+    pool, test = order[:max(use, W - verify)], order[max(use, W - verify):]
+    U = words[:, :k].reshape(W, kb, z)
+    Y = words[:, k:].reshape(W, mb, z).transpose(0, 2, 1).reshape(W*z, mb) # row (w, o), column J
+    rng = np.random.default_rng(seed)
+    At = _qc_system(U[test], z)
+    Yt = Y.reshape(W, z, mb)[test].reshape(-1, mb)
+    best = np.full(mb, -1.0)
+    X = np.zeros((k + z, mb), np.uint8)
+    for t in range(trials):
+        sub = pool[:use] if t == 0 else rng.choice(pool[:min(len(pool), 3*use)], use, replace=False)
+        Xt, ok = _solve(_qc_system(U[sub], z), Y.reshape(W, z, mb)[sub].reshape(-1, mb))
+        if not ok:
+            continue
+        held = 1.0 - ((At.astype(np.int32) @ Xt.astype(np.int32) + Yt) % 2).mean(axis=0)
+        better = held > best
+        X[:, better], best[better] = Xt[:, better], held[better]
+    if np.all(best < 0):
+        raise ValueError("the information blocks do not have full rank over the words: not k information bits first, "
+                         "or too few different words")
+    V = X[:k].reshape(kb, z, mb).transpose(0, 2, 1).copy()
+    c = X[k:].T.reshape(-1).copy()
+    return V, c, best
+
+def circulant_size(words, k, sizes=None, rel=None, hold=0.95, **kw):
+    """The circulant size of a quasi-cyclic code: the smallest z (of `sizes`, default every common divisor of k and n - k
+    from 2) whose qc_generator predicts held-out words (every parity block's fraction >= hold), or None. kw: its"""
+    n = np.asarray(words).shape[1]
+    if sizes is None:
+        g = np.gcd(k, n - k)
+        sizes = [z for z in range(2, g + 1) if g % z == 0]
+    for z in sizes:
+        try:
+            _, _, holds = qc_generator(words, k, z, rel=rel, **kw)
+        except ValueError:
+            continue
+        if np.all(holds >= hold):
+            return z
+    return None
+
+def _qc_dependence(V, z):
+    """D[J, o]: the information bits parity bit (J, o) depends on, as a k-bit row"""
+    kb, mb, _ = V.shape
+    t = np.arange(z)
+    D = np.zeros((mb, z, kb*z), np.uint8)
+    for o in range(z):
+        D[:, o] = V[:, :, (o - t) % z].transpose(1, 0, 2).reshape(mb, kb*z)
+    return D
+
+def qc_checks(V, z, max_weight=8, quads=True, reps=12, seed=0):
+    """Sparse parity checks of the quasi-cyclic code qc_generator found: H ((n - k), n) over [information k | parity
+    n - k], full rank when they are found, lightest block rows first.
+
+    A block row of checks is a sum of shifted parity blocks whose information dependences cancel but for a few bits:
+    x^a p_J1 + x^b p_J2 (+ x^c p_J3 (+ x^d p_J4)) = a sparse sum of information bits, for every shift together (z checks).
+    LDPC codes have them with few terms (the generator, H_p^-1 H_u, is dense: a search for sparse dual words in the words
+    themselves needs many), so: every pair and triple of parity blocks over all shifts, and quadruples by meeting in the
+    middle (pairs whose dependences nearly agree: locality-sensitive hashing on `reps` random 40-bit projections), each
+    kept when its information part has at most `max_weight` bits and it adds rank. Returns (H, rank)"""
+    V = np.asarray(V, dtype=np.uint8)
+    kb, mb, _ = V.shape
+    k, m = kb*z, mb*z
+    D = _qc_dependence(V, z)
+    pad = (-k) % 64
+    Dp = np.packbits(np.concatenate((D, np.zeros((mb, z, pad), np.uint8)), axis=2), axis=2).view(np.uint64)
+    def weight(x):
+        return np.unpackbits(np.ascontiguousarray(x).view(np.uint8), axis=-1).sum(axis=-1)
+    rels = [] # (weight, ((J, shift), ...))
+    for J1 in range(mb):
+        for J2 in range(J1 + 1, mb):
+            w = weight(Dp[J1, 0][None] ^ Dp[J2])
+            for o in np.flatnonzero(w <= max_weight):
+                rels.append((int(w[o]), ((J1, 0), (J2, int(o)))))
+    for J3 in range(mb):
+        for J1 in range(mb):
+            for J2 in range(J1 + 1, mb):
+                if J3 in (J1, J2):
+                    continue
+                w = weight(Dp[J3, 0][None, None] ^ Dp[J1][:, None] ^ Dp[J2][None, :])
+                for a, b in zip(*np.nonzero(w <= max_weight)):
+                    rels.append((int(w[a, b]), ((J3, 0), (J1, int(a)), (J2, int(b)))))
+    if quads and mb >= 4:
+        rng = np.random.default_rng(seed)
+        seen = set()
+        for _ in range(reps):
+            proj = rng.choice(k, min(40, k), replace=False)
+            P = D[:, :, proj] # (mb, z, 40)
+            buckets = {}
+            for J1 in range(mb):
+                for J2 in range(J1 + 1, mb):
+                    keys = np.packbits(P[J1][:, None, :] ^ P[J2][None, :, :], axis=2)
+                    for a in range(z):
+                        for b in range(z):
+                            buckets.setdefault(keys[a, b].tobytes(), []).append((J1, a, J2, b))
+            for lst in buckets.values():
+                if len(lst) < 2 or len(lst) > 64:
+                    continue
+                for i in range(len(lst)):
+                    for j in range(i + 1, len(lst)):
+                        p, q = lst[i], lst[j]
+                        if len({p[0], p[2], q[0], q[2]}) < 4:
+                            continue
+                        terms = tuple(sorted(((p[0], p[1]), (p[2], p[3]), (q[0], q[1]), (q[2], q[3]))))
+                        base = tuple((J, (s - terms[0][1]) % z) for J, s in terms) # one per block row
+                        if base in seen:
+                            continue
+                        seen.add(base)
+                        w = int(weight(Dp[p[0], p[1]] ^ Dp[p[2], p[3]] ^ Dp[q[0], q[1]] ^ Dp[q[2], q[3]]))
+                        if w <= max_weight:
+                            rels.append((w, base))
+    rels.sort(key=lambda r: (r[0] + len(r[1]), r[1]))
+    basis, rows = {}, []
+    for _, terms in rels:
+        for kk in range(z):
+            h = np.zeros(k + m, np.uint8)
+            v = np.zeros(k, np.uint8)
+            for J, s in terms:
+                o = (s + kk) % z
+                h[k + J*z + o] ^= 1
+                v ^= D[J, o]
+            h[:k] = v
+            x = int.from_bytes(np.packbits(h).tobytes(), "big") # a new direction? (elimination on leading bits)
+            while x:
+                lead = x.bit_length()
+                if lead not in basis:
+                    basis[lead] = x
+                    rows.append(h)
+                    break
+                x ^= basis[lead]
+        if len(rows) >= m:
+            break
+    H = np.array(rows, dtype=np.uint8) if rows else np.zeros((0, k + m), np.uint8)
+    return H, len(rows)
 
 def posterior(H, llr, iters=20, alpha=0.8):
     """A-posteriori LLRs of words (B, n) through the checks H (c, n) by normalized min-sum, flooding (all checks at once):
