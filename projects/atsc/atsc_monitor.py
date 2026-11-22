@@ -320,11 +320,7 @@ class Watch:
                 self.rx = atsc_rx.Receiver(live.centre(self.ch), live.lower_edge(self.ch)*1e6, FS, on_ts=self._on_ts).start()
                 self.dropped0 = self.radio.dropped; mon.log("watch", f"channel {self.ch}: receiver started (gain {gain:.2f})")
                 n = 0
-                while not self.stop_flag.is_set():
-                    b = self.radio.get_samples()
-                    if not len(b):
-                        time.sleep(0.003); continue
-                    b = np.asarray(b, np.complex64)
+                for b in self.radio.blocks(live.BLOCK, self.stop_flag):
                     self.rx.push(b); n += 1
                     self._ring_step(b)
                     if n % 8 == 0:
@@ -375,7 +371,7 @@ class Watch:
         self.psi.add(ts, err, pid)
         if self.rx and self.rx.stats.get("lost", 0) > self.lost_seen: # say why the receiver let go
             self.lost_seen = self.rx.stats["lost"]; s = self.rx.stats
-            self.mon.log("error", f"channel {self.ch}: lock lost (#{self.lost_seen}); last regions (field-sync corr, sync offset, SNR dB, lag s): {s.get('loss_trace')}; radio dropped blocks {self.radio.dropped - self.dropped0}, overruns {s.get('overruns', 0)}")
+            self.mon.log("error", f"channel {self.ch}: lock lost (#{self.lost_seen}); last regions (field-sync corr, sync offset, SNR dB, lag s): {s.get('loss_trace')}; radio dropped samples {self.radio.dropped - self.dropped0}, overruns {s.get('overruns', 0)}")
         now = time.time()
         if self.keep is None:
             tbl = self.psi.refresh()

@@ -112,7 +112,7 @@ def main(argv=None):
             if a.tune:
                 best = None
                 for g in radio_io.GAINS_FINE:
-                    radio_io.set_gain(sdr, g); time.sleep(0.05)
+                    radio_io.set_gain(sdr, g)
                     x = radio_io.grab(sdr, int(FS*6)); n, _ = decode(x.astype(np.complex64)); c = radio_io.clipped(x)
                     print(f"gain {radio_io.describe(sdr)}: {n:3d} valid messages in 6 s, clipped {c:.0e}", flush=True)
                     if c < 1e-3 and (best is None or n > best[0]):

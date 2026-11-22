@@ -13,11 +13,11 @@ HackRF (which splits it over amp / LNA / VGA) and on a B210 (0-76 dB), so a ladd
 A radio with two receive channels (B210) can use the second: with $RPPS_CHANNELS=2 `start_rx` streams both, and `capture_clean` and gain_search.search try two gains at once, one per channel.
 That needs the same signal on both inputs (a splitter from one antenna to TX/RX and RX2; $RPPS_ANTENNA=name sets channel 0's input, and channel 1's is the other of TX/RX, RX2).
 
-`capture_clean` implements the rule used for bursty signals: take the highest gain on a ladder that does not clip, checked over a window long enough to contain bursts.
+`capture_clean` implements the rule used for bursty signals: take the highest gain that does not clip (pysdrlib's `find_gain`), checked over a window long enough to contain bursts.
+`blocks` reads a running stream in fixed blocks for the live monitors.
 """
 import os
 import sys
-import time
 
 import numpy as np
 import pysdrlib
@@ -141,9 +141,9 @@ def dual(sdr):
     """True when the receive stream carries two channels"""
     return len(sdr.rx_channels) > 1
 
-def set_gain(sdr, gain, channel=0):
-    """Set a channel's receive gain, a fraction 0-1 of the radio's range"""
-    sdr.set_rx_gain(gain, **({"channel": channel} if channel else {}))
+def set_gain(sdr, gain, channel=0, flush=True):
+    """Set a channel's receive gain, a fraction 0-1 of the radio's range. flush: while receiving, the next read starts after the change has settled (pysdrlib discards what came before)"""
+    sdr.set_rx_gain(gain, channel=channel, flush=flush)
 
 def gain_db(sdr, channel=0):
     """The gain in effect on a channel in dB, the total over its stages (0.0 if the radio does not say)"""
@@ -154,53 +154,56 @@ def grab(sdr, n):
     """`n` samples (channel 0) from the running stream, starting now. Lost samples are reported by pysdrlib itself (`pysdrlib.warn.Dropped`, counts in `sdr.stats`)"""
     if dual(sdr):
         return grab2(sdr, n)[0]
-    sdr.get_samples() # drop what queued while we were busy
-    out, k = [], 0
-    while k < n:
-        b = sdr.get_samples()
-        if len(b):
-            out.append(b); k += len(b)
-        else:
-            time.sleep(0.001)
-    return np.concatenate(out)[:n]
+    sdr.flush() # drop what queued while we were busy
+    return sdr.read(n)
 
 def grab2(sdr, n):
     """`n` samples of both channels, the same instants, starting now: a (2, n) array"""
-    chs = sdr.rx_channels
-    for ch in chs:
-        sdr.read_available(channel=ch) # drop what queued while we were busy
-    return sdr.read(n, channel=chs)
+    sdr.flush()
+    return sdr.read(n, channel=sdr.rx_channels)
+
+def blocks(sdr, n, stop=None, timeout=1.0, meta=False):
+    """Blocks of `n` samples (channel 0) from the running stream, in order, until `stop` (a threading.Event) is set. A wait of `timeout`
+    seconds with nothing arriving only checks `stop` again; a radio that stops delivering raises pysdrlib's StreamStalled (or Lost).
+    meta: yield (samples, RxMeta) pairs (`m.dropped`: samples lost before or inside the block)"""
+    while stop is None or not stop.is_set():
+        try:
+            x, m = sdr.read(n, timeout=timeout, meta=True)
+        except pysdrlib.err.Timeout:
+            continue
+        yield (x, m) if meta else x
 
 def clipped(x):
     return float(np.mean((np.abs(x.real) > 0.98) | (np.abs(x.imag) > 0.98)))
 
 def capture_clean(sdr, fs, seconds, check_seconds=0.3, limit=2e-5, final_limit=1e-4, ladder=LADDER):
-    """Highest ladder rung (gain fraction) whose clipping over `check_seconds` is below `limit`; capture `seconds`; if the capture itself clipped more than `final_limit`
-    (a burst the check window missed) step down and capture again. Returns (samples, gain fraction, clipped fraction).
-    With two channels streaming (see `start_rx`) two rungs are checked at a time, one on each channel, so the search takes half as many windows."""
-    two = dual(sdr)
+    """The highest gain whose clipping over `check_seconds` is below `limit` (pysdrlib's `find_gain`); capture `seconds`; if the capture itself clipped more than `final_limit`
+    (a burst the check window missed) step down a ladder rung (1/12 of the range) and capture again. Returns (samples, gain fraction, clipped fraction).
+    With two channels streaming (see `start_rx`, the same signal on both) two `ladder` rungs are checked at a time, one on each channel, so the search takes half as many windows."""
+    if not dual(sdr):
+        g = sdr.find_gain(count=int(fs*check_seconds), max_clip=limit, confirm=0) # the capture below is the longer look
+        while True:
+            x = grab(sdr, int(fs*seconds))
+            c = clipped(x)
+            if c < final_limit or g <= 0:
+                return x, g, c
+            g = max(0.0, round(g - 1/12, 4))
+            set_gain(sdr, g)
     start = 0
     for _ in range(len(ladder)):
         i = start
         while i < len(ladder):
-            if two:
-                j = min(i + 1, len(ladder) - 1)
-                set_gain(sdr, ladder[i]); set_gain(sdr, ladder[j], channel=1); time.sleep(0.03)
-                w = grab2(sdr, int(fs*check_seconds))
-                if clipped(w[0]) < limit:
-                    break
-                if clipped(w[1]) < limit:
-                    i = j
-                    break
-                i += 2
-            else:
-                set_gain(sdr, ladder[i]); time.sleep(0.03)
-                if clipped(grab(sdr, int(fs*check_seconds))) < limit:
-                    break
-                i += 1
+            j = min(i + 1, len(ladder) - 1)
+            set_gain(sdr, ladder[i]); set_gain(sdr, ladder[j], channel=1)
+            w = grab2(sdr, int(fs*check_seconds))
+            if clipped(w[0]) < limit:
+                break
+            if clipped(w[1]) < limit:
+                i = j
+                break
+            i += 2
         start = min(i, len(ladder) - 1)
-        if two:
-            set_gain(sdr, ladder[start]); time.sleep(0.03)
+        set_gain(sdr, ladder[start])
         x = grab(sdr, int(fs*seconds))
         c = clipped(x)
         if c < final_limit or start == len(ladder) - 1:

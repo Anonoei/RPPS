@@ -41,7 +41,7 @@ import radio_io  # noqa: E402
 import wide_survey  # noqa: E402
 
 BIN = 50e3; D0, D1 = -130.0, -10.0          # 50 kHz bins whatever the sample rate; the dB range the quantised bytes cover
-DEFAULTS = dict(step=16.0, fs=0.0, dwell=dict(unit="samples", value=2**19), settle=0.04, gain=None, alt=True, alt_fs=True, alt_gain=True, flatten=True, match=True, headroom=0.5, peak_decay=0.25)   # fs 0 = automatic: the tile width / 0.8, at most 20 MS/s
+DEFAULTS = dict(step=16.0, fs=0.0, dwell=dict(unit="samples", value=2**19), settle=0.0, gain=None, alt=True, alt_fs=True, alt_gain=True, flatten=True, match=True, headroom=0.5, peak_decay=0.25)   # fs 0 = automatic: the tile width / 0.8, at most 20 MS/s
 KEEP = 240                                  # sweeps kept for the spectrogram
 
 
@@ -258,20 +258,13 @@ class Sweeper:
                 self.sdr = None; time.sleep(3)
 
     def capture_psd(self, nsamp, nf):
-        """Power spectrum (nf bins, centred) averaged over nsamp samples; the samples are processed as they arrive, so a long dwell needs no memory"""
-        self.sdr.get_samples()   # what queued up during the retune is from the old frequency
-        win = np.hanning(nf); acc = np.zeros(nf); cnt = 0; got = 0; left = np.empty(0, np.complex64); t_last = time.time()
+        """Power spectrum (nf bins, centred) averaged over nsamp samples, read a block at a time so a long dwell needs no memory. Three seconds with no samples raises pysdrlib's Timeout (run() reopens the radio)"""
+        win = np.hanning(nf); acc = np.zeros(nf); cnt = 0; got = 0
+        per = max(1, 2**17//nf)   # FFT frames per read
         while got < nsamp:
-            b = self.sdr.get_samples()
-            if not len(b):
-                if time.time() - t_last > 3:
-                    raise RuntimeError("no samples from the radio for 3 s")
-                time.sleep(0.001); continue
-            t_last = time.time(); got += len(b)
-            x = np.concatenate((left, b)) if len(left) else b; m = len(x)//nf
-            if m:
-                acc += np.sum(np.abs(np.fft.fft(x[:m*nf].reshape(m, nf)*win, axis=1))**2, 0); cnt += m
-            left = x[m*nf:]
+            m = max(1, min(per, (nsamp - got)//nf))
+            x = self.sdr.read(m*nf, timeout=3.0)
+            acc += np.sum(np.abs(np.fft.fft(x.reshape(m, nf)*win, axis=1))**2, 0); cnt += m; got += m*nf
         return np.fft.fftshift(acc/max(cnt, 1))
 
     def source_name(self):
@@ -287,7 +280,7 @@ class Sweeper:
     def ok_at(self, headroom):
         """Predicate for GainHold: set the gain, look at 2**17 samples; acceptable when nothing clips and the peak is under `headroom` of full scale"""
         def ok(g):
-            radio_io.set_gain(self.sdr, g); time.sleep(0.03); self.last_gain = g
+            radio_io.set_gain(self.sdr, g); self.last_gain = g
             x = radio_io.grab(self.sdr, 2**17)
             return radio_io.clipped(x) < 1e-4 and float(max(np.abs(x.real).max(), np.abs(x.imag).max())) < headroom
         return ok
@@ -313,7 +306,7 @@ class Sweeper:
             self.live = np.zeros(n, np.uint8); live = self.live
         nf = int(round(fs*1e6/BIN)); nsamp = self.dwell_samples(fs)
         if self.cur_fs != fs:
-            self.sdr.set_rx_sample_rate(fs*1e6); self.cur_fs = fs; time.sleep(0.05)
+            self.sdr.set_rx_sample_rate(fs*1e6, flush=True); self.cur_fs = fs
         tiles = []; a = lo - shift   # the tile grid of this sweep starts `shift` below the range
         while a < hi:
             tiles.append(a + step/2); a += step
@@ -326,14 +319,16 @@ class Sweeper:
             if self.stop.is_set() or self.restart:
                 return
             tt = time.time(); gain = p["gain"]
-            self.sdr.set_rx_freq(cf*1e6); time.sleep(p["settle"])
+            self.sdr.set_rx_freq(cf*1e6, flush=True)   # the next read is at the new frequency, after its settling
+            if p["settle"]:   # and the extra settle time asked for
+                self.sdr.read(int(p["settle"]*fs*1e6), timeout=3.0)
             if gain is not None:
-                radio_io.set_gain(self.sdr, gain); time.sleep(0.03)
+                radio_io.set_gain(self.sdr, gain)
             else:
                 self.last_gain = None
                 gain = holder.pick(self.ok_at(p["headroom"]))
                 if self.last_gain != gain:
-                    radio_io.set_gain(self.sdr, gain); time.sleep(0.03)
+                    radio_io.set_gain(self.sdr, gain)
             P = self.capture_psd(nsamp, nf)
             db = 10*np.log10(P + 1e-20) - radio_io.gain_db(self.sdr)   # relative to the input at 0 dB gain
             tmpl = shape.template() if flat else None
@@ -483,7 +478,7 @@ def main(argv=None):
     ap.add_argument("--tile", type=float, default=16.0, help="tile width [MHz] (1-20); the sample rate follows unless --fs is given")
     ap.add_argument("--fs", type=float, default=0.0, help="sample rate [MS/s] (within the radio's rates, default: tile / 0.8)")
     ap.add_argument("--dwell-samples", type=int, help="samples averaged per tile (default 524288)"); ap.add_argument("--dwell-seconds", type=float, help="time averaged per tile, instead of --dwell-samples")
-    ap.add_argument("--settle", type=float, default=0.04, help="wait after each retune [s]")
+    ap.add_argument("--settle", type=float, default=0.0, help="extra wait after each retune, beyond the radio's own settling that pysdrlib skips [s] (default 0)")
     ap.add_argument("--headroom", type=float, default=0.5, help="auto gain: the largest peak amplitude allowed, as a fraction of full scale (0.1-1; lower keeps overload products out)")
     ap.add_argument("--peak-decay", type=float, default=0.25, help="peak hold falls by this many dB per sweep (0 holds for ever)")
     ap.add_argument("--no-alt-fs", action="store_true", help="do not alternate the sample rate between sweeps (the artifact test then only has the shifted grid)")

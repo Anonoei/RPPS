@@ -17,7 +17,6 @@ for you to listen to; nothing is uploaded. A 10 s window sees a channel only if 
 import argparse
 import os
 import sys
-import time
 import rpps as rp
 
 import numpy as np
@@ -122,7 +121,7 @@ def main(argv=None):
             while cf - FS/2 < bhi*1e6:
                 sdr.set_rx_freq(cf, flush=True)
                 if gain is not None:
-                    radio_io.set_gain(sdr, gain); time.sleep(0.05)
+                    radio_io.set_gain(sdr, gain)
                     x = radio_io.grab(sdr, int(FS*a.seconds)); clip = radio_io.clipped(x); g = gain
                     if clip > 1e-4: # a strong signal in this window: back off from the tuned setting
                         x, g, clip = radio_io.capture_clean(sdr, FS, a.seconds, check_seconds=0.5)
