@@ -149,3 +149,36 @@ def test_candidates_are_read_once():
     assert list(a) == list(b) and all(a[k] is b[k] for k in a) # (Lock.update rechecks them every block)
     assert all(not v.flags.writeable for v in a.values())
     assert all(abs(np.mean(np.abs(v)**2) - 1) < 1e-12 for v in a.values())
+
+# ---- what an analyser shows of a lock
+
+def test_lock_matched_errors_summary_reference():
+    x = psk(40000, 5.3, M=4, tau=1.3, cfo=4e-4, esn0_db=25, seed=4)
+    lk = rp.sync.Lock.find(x, 1e6)
+    assert lk.x is not None and len(lk.x) == len(x)
+    t, z = lk.matched(8)
+    assert np.allclose(z[::8], lk.symbols, atol=1e-9) and t[0] == 0 and t[8] == pytest.approx(1.0) # instants: the symbols
+    assert len(z) == 8*(len(lk.symbols) - 1) + 1
+    t1, z1 = lk.matched()
+    assert np.allclose(z1, lk.symbols, atol=1e-9)
+    s = lk.summary()
+    assert s.mer_db == pytest.approx(lk.quality.esn0_db, abs=1.0) # MER and Es/N0 agree at this SNR
+    assert s.evm_rms_pct == pytest.approx(lk.quality.evm_pct, rel=0.05)
+    assert abs(s.gain_imbalance_db) < 0.1 and abs(s.quad_error_deg) < 0.5 and s.iq_offset_db < -40
+    E = lk.errors()
+    assert np.array_equal(E.ideal, lk.decisions()) and len(E) == len(lk.symbols)
+    # The ideal waveform, matched-filtered at the instants, gives the decisions; the received one differs from it by
+    # the noise in the whole sample band (Es/N0 25 dB at 5.3 samples a symbol: about 13% rms)
+    r, xr = lk.reference(), lk.derotated()
+    from rpps.sync.time.mat import matrix_mf
+    assert np.max(np.abs(matrix_mf(r, lk.centres, lk.det.sps, lk.det.beta, lk.span) - lk.decisions())) < 0.02
+    cut = int(2*lk.span*lk.det.sps)
+    err = np.sqrt(np.mean(np.abs(xr[cut:-cut] - r[cut:-cut])**2)/np.mean(np.abs(r[cut:-cut])**2))
+    assert 0.08 < err < 0.2
+
+def test_lock_followed_keeps_its_block():
+    x = psk(60000, 4.0, seed=5)
+    lk = rp.sync.Lock.find(x[:20000], 1e6)
+    nxt = lk.update(x[30000:40000])
+    assert nxt.x is not None and len(nxt.x) == 10000
+    assert np.allclose(nxt.matched(4)[1][::4], nxt.symbols, atol=1e-9)

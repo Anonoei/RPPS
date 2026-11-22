@@ -45,6 +45,12 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- **What an analyser shows of a lock:** `rp.sync.Lock` keeps its block (`lk.x`) and gives `decisions()`, `errors()`
+  (per symbol: error vector, EVM and magnitude error as a percentage of the constellation's rms, phase error in degrees),
+  `summary()` (EVM rms and peak, MER, magnitude and phase error, and from a fit of the symbols as kI I + kQ Q + c: IQ
+  offset, gain imbalance and quadrature error), `derotated()` (x as the symbols see it), `matched(up)` (the matched
+  filter between the symbols, `up` points a symbol: eye diagrams; its instants are the symbols) and `reference()` (the
+  decided symbols through the ideal pulse). The measures are `rp.sync.quality.errors` and `summary` for any symbols.
 - `Signal.channel()` gives the front end's `delay` [s] and `settle`: the output samples a new stream starts with before
   every filter is full (its start-up transient), so a display drops exactly those.
 - **More effort knobs, measured** (`tools/effort_bench.py`: the lowest Es/N0 each chain decodes at, and its speed, per

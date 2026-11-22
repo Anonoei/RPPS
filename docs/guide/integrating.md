@@ -7,12 +7,14 @@ stage's state) can change.
 | Where | What |
 | --- | --- |
 | `rp.Data`, `rp.Stage`, `rp.Pipe`, `rp.Pipeline` | the data and the operators (`*`, `/`, `+`) |
-| `rp.sync.Lock`, `rp.errors.NoLock` | a signal's symbols as a snapshot: `Lock.find(x, Fs)`, `lock.update(block)` (`recheck`: other modulations), `lock.stale`, `lock.refine(longer)` |
+| `rp.sync.Lock`, `rp.errors.NoLock` | a signal's symbols as a snapshot: `Lock.find(x, Fs)`, `lock.update(block)` (`recheck`: other modulations), `lock.stale`, `lock.refine(longer)`; NoLock (with its reason) for anything that holds no symbols |
+| `lock.decisions()`, `errors()`, `summary()`, `derotated()`, `matched(up)`, `reference()` | what an analyser shows of the lock's block: each symbol's error, the error summary (EVM, MER, IQ offset, gain imbalance, quadrature error), the matched filter between the symbols (eye), the ideal waveform |
 | `rp.sync.detect`, `rp.sync.Detection`, `rp.sync.Acquire` | acquisition once, and as a stream stage |
 | `rp.sync.best_tau`, `rp.sync.track_timing`, `rp.sync.matrix_mf`, `rp.sync.centres_in`, `rp.sync.find_baud` | timing and rate |
-| `rp.sync.quality.measure` | Es/N0, Eb/N0, EVM of symbols |
+| `rp.sync.quality.measure`, `errors`, `summary` | Es/N0, Eb/N0, EVM of symbols; each one's error; an analyser's error summary |
 | `rp.analysis.find_signals`, `rp.analysis.survey`, `Survey`, `Signal` | the signals in a capture; `Survey.match` keeps their ids |
 | `rp.analysis.measure_band` | a band given by hand, measured as a found one (a `Signal`) |
+| `Signal.channel()` | the filters that bring a signal to baseband: `front`, `Fs`, `decimation`, `delay`, `settle` (its start-up transient, in output samples) |
 | `rp.analysis.spectrum.cyclic`: `alpha_profile`, `features`, `ORDER_NAMES`; `rp.analysis.spectrum.scf.coherence` | cyclic features: symbol rate and modulation order lines, spectral coherence |
 | `rp.signal.filters.rrc_pulse` | the root raised cosine pulse at any (fractional) time |
 | `rp.wave.demod`, `rp.wave.FMDemod`, `AMDemod`, `SSBDemod` | analog audio (FM, PM, AM, SSB), one block or a stream |

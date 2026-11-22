@@ -50,7 +50,8 @@ locked loop around a detector from `time.ted`: `ted="zx"` zero crossing, `"el"` 
 - `detect`, `Detection`, `rate.find_baud`: the feed-forward estimates `Acquire` runs (rate, timing, modulation, offset,
   phase); blind analysis uses them too.
 - `quality`: Es/N0, Eb/N0 and EVM of locked symbols, once (`measure`), over a window (`Track`) or on the stream
-  (`Monitor`, `{"sync": "quality"}`).
+  (`Monitor`, `{"sync": "quality"}`); each symbol's error (`errors`) and an analyser's error summary (`summary`: EVM, MER,
+  magnitude and phase error, IQ offset, gain imbalance, quadrature error).
 
 **`AcquireFEC`** does for the code what `Acquire` does for the modulation: on timed, carrier-corrected symbols it finds
 the configured code, bit map and alignment (`analysis.identify`: convolutional codes, RS behind a Forney interleaver,
