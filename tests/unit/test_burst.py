@@ -77,3 +77,25 @@ def test_burst_kinds_when_the_gate_misses_by_tens_of_symbols():
         B.append(SimpleNamespace(symbols=s, start=0, stop=len(s)))
     kinds, member = burst.burst_kinds(B, 1.0, pts)
     assert len(kinds) == 1 and len(kinds[0]) >= 60 and member == [0]*8
+
+def test_bursts_far_off_carrier():
+    """Bursts 30 kHz off at 250 kBd (0.75 rad a symbol, too much for the preamble search's pieces): each burst's blind
+    offset comes off first, so every one is acquired and its offset reported in full"""
+    rng = np.random.default_rng(11)
+    q = rp.symbol.load("qpsk").points
+    fs, baud = 2e6, 250e3
+    pre = q[rng.integers(0, 4, 48)]
+    x = np.zeros(int(0.04*fs), complex)
+    at, offs = 2000, []
+    for i in range(8):
+        syms = np.concatenate((pre, q[rng.integers(0, 4, 700)]))
+        w = FR.word_waveform(syms, fs/baud)
+        f = 30e3 + rng.uniform(-1e3, 1e3)
+        w = w*np.exp(1j*rng.uniform(0, 2*np.pi) + 2j*np.pi*f/fs*np.arange(len(w)))
+        x[at:at + len(w)] += w
+        offs.append(f)
+        at += len(w) + 800
+    x += 0.05*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    r = burst.demodulate(x, fs, mod="qpsk", baud=baud, preamble=pre)
+    assert len(r.bursts) == 8 and all(b.ok for b in r.bursts)
+    assert all(abs(b.cfo - f) < 300 for b, f in zip(r.bursts, offs)) and np.median([b.evm for b in r.bursts]) < 0.2
