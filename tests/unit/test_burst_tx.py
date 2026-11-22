@@ -41,6 +41,19 @@ def test_out_of_order_and_outside():
     with pytest.raises(ValueError, match="no burst"):
         rp.sync.BurstTx().take()
 
+def test_a_flush_ends_the_stream():
+    """After take(flush=True) the next burst starts a new stream, its `at` from that stream's start (an `at` between the
+    last start and the flushed end once reached past the samples handed out)"""
+    btx = rp.sync.BurstTx(gap_s=100e-6)
+    btx.add(burst(100), at=0)
+    btx.add(burst(100), at=1e-3)
+    first = btx.take(flush=True)
+    assert len(first) == 1200 and [s for s, _, _ in btx.sent] == [0, 1000] # sent still readable after the flush
+    btx.add(burst(100), at=1.05e-3)
+    second = btx.take(flush=True)
+    assert second.stream is not first.stream and second.meta.pos == 0 and len(second) == 1250
+    assert btx.sent == [(1050, 100, 0.0)]
+
 def test_ramp():
     btx = rp.sync.BurstTx(ramp_s=10e-6)
     btx.add(burst(100))

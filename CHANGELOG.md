@@ -183,6 +183,13 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   is shown and every package has a docstring.
 
 ### Fixed
+- `rp.sync.BurstTx` (a burst profile's `p.tx()`): a burst added after `take(flush=True)` with an `at` before the
+  flushed end failed inside numpy. A flush now ends the stream: the next burst starts a new one, its `at` from that
+  stream's start (`sent` is still readable until then); a start in samples already handed out is refused by name.
+- `rp.profile.Decoder.feed`: a step back of more than the block (a seek without `reset()`, file playback) was cut as an
+  overlap, so every block was dropped until the index passed the old one; it now starts over. A long gap or a seek
+  gives the frames the profile held instead of dropping them. `reset()` and a restart forget the block times and the
+  last good message (messages took times from the old stream, `status` said "lost" from it).
 - **Faster `Lock.update` and `wave.demod`** (a display following a signal every frame):
   - `best_tau` reads each candidate timing's symbol instants off the matched filter with a 12-tap windowed sinc instead
     of upsampling the whole output 16 times by FFT: `track_timing` about 5x faster (8 -> 1.5 ms a block of 8192 samples

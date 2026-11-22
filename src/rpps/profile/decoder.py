@@ -14,7 +14,8 @@ wide), holding the samples until it can, and feeds them through once it has.
 
 Blocks need not follow on: `start` is the caller's index of each block's first sample. An overlap is cut off; a gap up to
 `fill` seconds is filled with zeros (the profile's loops coast, frames keep their place, the frames in it are lost); a
-longer one starts the profile's stream over (a measured rate is kept). Work is about proportional to the samples fed (and
+longer one, or a step back of more than the block, is a seek: the frames the profile holds come out, and its
+stream starts over (a measured rate is kept). Work is about proportional to the samples fed (and
 the zeros of a filled gap); `status["load"]` is the time a feed took over the time its samples span.
 
 One Decoder for one signal; not thread-safe. A retune, a new sample rate or another signal: `reset()` or a new Decoder.
@@ -66,16 +67,17 @@ class Decoder:
                              f"{self.Fs/1e6:g} MHz")
         if self.req["baud"] is None and self.bw is None:
             self.bw = self.Fs
-        self._anchors, self._load = [], None
+        self._load = None
         self._counts = {"messages": 0, "good": 0, "failed": 0}
-        self._last_good = None
         self.reset()
 
     # ---- the stream
 
     def reset(self):
         """Start the profile's stream over (a seek, a pause, a retune): the next block starts a new one. A measured rate
-        is kept"""
+        is kept; the times blocks were given and the last good message are forgotten. Frames the profile holds are
+        dropped: `close()` first to have them"""
+        self._anchors, self._last_good = [], None
         self._front = self._rx = self._stream = None
         self._next = None      # The caller's index the next sample should have
         self._seg = None       # The caller's index of the profile stream's first sample
@@ -121,27 +123,28 @@ class Decoder:
         if start is None:
             start = self._next if self._next is not None else 0
         start = int(start)
-        if time is not None:
-            self._anchors = (self._anchors + [(start, float(time))])[-64:]
+        msgs = []
         if self._next is not None and start != self._next: # Not where the last block ended
             gap = start - self._next
-            if gap < 0: # An overlap: what was fed already is cut off
+            if gap < 0 and -gap <= len(x): # An overlap: what was fed already is cut off
                 x = x[min(-gap, len(x)):]
                 start = self._next
-            elif gap <= self.fill*self.Fs and (self._rx is not None):
+            elif 0 < gap <= self.fill*self.Fs and self._rx is not None:
                 x = np.concatenate((np.zeros(gap, np.complex64), x.astype(np.complex64)))
                 start = self._next
-            else:
-                self._restart()
+            else: # A long gap, or a seek back
+                msgs = self._restart()
+        if time is not None:
+            self._anchors = (self._anchors + [(start, float(time))])[-64:]
         if self._seg is None:
             self._seg = start
         self._next = start + len(x)
         if self._rx is None: # The rate is not known yet: measure it on what has come
             x = self._measure(x, start)
             if self._rx is None:
-                return []
+                return msgs
             start = self._seg
-        msgs = self._run(x, flush)
+        msgs += self._run(x, flush)
         span = len(samples)/self.Fs
         if span > 0:
             load = (_time.perf_counter() - t_wall)/span
@@ -155,12 +158,16 @@ class Decoder:
         return self._run(np.zeros(0, np.complex64), True)
 
     def _restart(self):
+        """The profile's stream over, at a long gap or a seek: the frames it holds come out first (returned)"""
+        out = self._run(np.zeros(0, np.complex64), True) if self._rx is not None else []
         keep = self._rx is not None or self.req["baud"] is not None
         self._front = self._rx = self._stream = None
         self._next = self._seg = None
         self._held, self._held_at = [], None
+        self._anchors, self._last_good = [], None
         if keep:
             self._build()
+        return out
 
     def _run(self, x, flush):
         from ..base import Data
