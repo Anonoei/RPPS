@@ -11,7 +11,7 @@ RF Parameter Processor Suite: a generic signal processor/generator library.
 python3 -m pip install rpps          # rpps[viz] adds matplotlib for rp.viz
 ```
 Definitions (codes, scramblers, modulations, whole signals) ship with the package. The per-sample loops and decoders run
-in C++ with a Python fallback; from a checkout, `python builder.py -c` builds them (pybind11 and a C++17 compiler).
+in C++ with a Python fallback; from a checkout, `python tools/builder.py -c` builds them (pybind11 and a C++17 compiler).
 
 ## Usage
 Everything is driven by operators: `*` encodes / modulates / scrambles, `/` undoes it, `+` runs a DSP stage. The data

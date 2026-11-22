@@ -13,19 +13,19 @@ categories' contracts, the streaming rules) is [`rpps.base`](api/base.md); read 
 | What agents need first | `AGENTS.md`; `llms.txt` / `llms-full.txt` are generated from it and the docstrings |
 | Definition file formats | `docs/guide/definitions.md` |
 
-Python blocks in README.md and `docs/` run in `tests/unit/test_docs.py` unless they hold `# docs: skip`. `python builder.py
+Python blocks in README.md and `docs/` run in `tests/unit/test_docs.py` unless they hold `# docs: skip`. `python tools/builder.py
 -d` builds the site with `--strict`, so a broken snippet path or docstring cross-reference fails the build.
 
 ## Setup and workflow
 
 ```
 git clone https://github.com/Anonoei/RPPS && cd RPPS
-python builder.py -s        # pip install -e ".[dev]"
-python builder.py -c        # build the C++ kernels in place (C++17 compiler)
-python builder.py -t        # pytest
+python tools/builder.py -s        # pip install -e ".[dev]"
+python tools/builder.py -c        # build the C++ kernels in place (C++17 compiler)
+python tools/builder.py -t        # pytest
 ```
 
-`builder.py -h` lists the rest: `-d` docs (API pages, llms.txt, then `zensical build` into `site/`; `zensical serve` to preview), `-b` sdist and wheel (then `twine check`), `-l` local install, `-v M|m|p` version
+`tools/builder.py -h` lists the rest: `-d` docs (API pages, llms.txt, then `zensical build` into `site/`; `zensical serve` to preview), `-b` sdist and wheel (then `twine check`), `-l` local install, `-v M|m|p` version
 bump and `-u` upload (both dry runs without `-r`; upload goes to TestPyPI without it).
 
 `pyproject.toml` is the only place that names a dependency, CI included: `[build-system]` (setuptools, numpy, pybind11),
@@ -48,7 +48,8 @@ examples/            one script per recommended way of doing a thing, each check
 docs/                the guides (markdown; docs/api/ and the llms files are generated)
 projects/            worked examples on real signals (FM, ADS-B, ATSC, LTE, P25 ...), each with a README
 data/                captures (git-ignored)
-builder.py, setup.py local build helper; setup.py builds the native module and copies config/
+tools/               builder.py (the local build helper), gen_docs.py (API pages and llms files for the site)
+setup.py             builds the native module and copies config/
 ```
 
 `python -m rpps` has `ls`, `show <ref>`, `steps`, `rx`, `tx`, `survey`, `profile`, `solve` and `fmt`. In code,
@@ -133,11 +134,11 @@ python -m pytest tests/unit/test_remez.py                    # one file
 | Workflow | When | Does |
 |---|---|---|
 | `tests.yml` | push to `main` / `dev`, pull requests | fast tests on Python 3.12-3.14, Ubuntu and Windows (`-n auto`; Windows 30 min, Ubuntu 20); the oracle tests on 3.12; a no-kernel job; sdist → wheel and the examples in a clean venv; the docs build |
-| `deploy-docs.yml` | push to `main` | `python builder.py -d` (Zensical) to GitHub Pages |
+| `deploy-docs.yml` | push to `main` | `python tools/builder.py -d` (Zensical) to GitHub Pages |
 | `python-publish.yml` | a GitHub release | cibuildwheel (CPython 3.12-3.14; Linux x86_64 and arm64, Windows; each wheel must carry `rpps._native`), checks the tag against the version, publishes by trusted publishing |
 
 To release: move CHANGELOG.md's "Unreleased" under the new version (every rename or removal under **Breaking**, with
-what replaces it); `python builder.py -v p` (or `m`, `M`) previews the bump, `-r` makes it (edits `pyproject.toml` and
+what replaces it); `python tools/builder.py -v p` (or `m`, `M`) previews the bump, `-r` makes it (edits `pyproject.toml` and
 `src/rpps/__init__.py`, commits, does not tag); merge to `main`; publish a GitHub release tagged exactly `v<version>`.
 
 

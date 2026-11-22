@@ -1,5 +1,5 @@
 # Documentation site: guides in docs/, API reference from the package docstrings (mkdocstrings).
-# `python builder.py -d` writes docs/api/ and the llms files, then builds into site/.
+# `python tools/builder.py -d` writes docs/api/ and the llms files, then builds into site/.
 [project]
 site_name = "RPPS"
 site_description = "RF Parameter Processor Suite: a generic signal processor/generator library"

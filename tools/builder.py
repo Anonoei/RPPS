@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 """Local build helper. Dependencies, extras and tool versions live in pyproject.toml; this only runs the steps.
 
-    python builder.py -s            install the package and the dev extras (editable)
-    python builder.py -c            build the C++ kernels in place
-    python builder.py -t            run the tests
-    python builder.py -d            build the docs into site/ (API pages and llms files first)
-    python builder.py -b            build the sdist and wheel into dist/
-    python builder.py -v p          dry run of a patch version bump (add -r to do it)
-    python builder.py -u            upload dist/ to TestPyPI (add -r for PyPI)
+    python tools/builder.py -s            install the package and the dev extras (editable)
+    python tools/builder.py -c            build the C++ kernels in place
+    python tools/builder.py -t            run the tests
+    python tools/builder.py -d            build the docs into site/ (API pages and llms files first)
+    python tools/builder.py -b            build the sdist and wheel into dist/
+    python tools/builder.py -v p          dry run of a patch version bump (add -r to do it)
+    python tools/builder.py -u            upload dist/ to TestPyPI (add -r for PyPI)
 
 Releases are tagged vMAJOR.MINOR.PATCH from a GitHub release, which runs python-publish.yml.
 """
@@ -18,7 +18,7 @@ import subprocess
 import sys
 import tomllib
 
-ROOT = pathlib.Path(__file__).resolve().parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def run(*cmd: str) -> None:
@@ -61,7 +61,7 @@ def cmd_test(args) -> None:
 
 
 def cmd_docs(args) -> None:
-    run(sys.executable, "scripts/gen_docs.py")      # docs/api/*.md, docs/llms.txt, docs/llms-full.txt
+    run(sys.executable, str(ROOT / "tools" / "gen_docs.py"))      # docs/api/*.md, docs/llms.txt, docs/llms-full.txt
     py("zensical", "build", "--strict")
 
 

@@ -36,7 +36,7 @@ def _check_checkout():
     from pathlib import Path
     why = stale(native, Path(__file__).resolve().parents[2] / "csrc" / "rpps_native")
     if why:
-        warnings.warn(f"rpps._native is stale ({why}): rebuild it with `python builder.py -c`", RuntimeWarning)
+        warnings.warn(f"rpps._native is stale ({why}): rebuild it with `python tools/builder.py -c`", RuntimeWarning)
 
 _check_checkout()
 
