@@ -323,21 +323,42 @@ class Lock:
         gives about `symbols`; exactly for no carrier offset, the offset turning inside the filter otherwise)"""
         return self.x*self._turn(np.arange(len(self.x)))
 
-    def matched(self, up=1):
+    def matched(self, up=1, exact=False):
         """The matched filter's output between the symbols, `up` points a symbol: (t, z). t: time in symbols from the
-        first symbol instant (centres[0]); z: the output corrected as the symbols are, so z[::up] is `symbols`. From the
-        first symbol to the last; the eye diagram of the block is z against t modulo a symbol or two"""
+        first symbol instant (centres[0]); z: the output corrected as the symbols are, z[::up] being `symbols`. From the
+        first symbol to the last; the eye diagram of the block is z against t modulo a symbol or two.
+
+        The filter runs once over the block, at its sample rate, and its output (band-limited) is read between the samples
+        by a 12-tap windowed sinc (rpps.math.interp.fractional): about 1e-3 rms of the symbols' scale from the filter's own
+        rows (a few 1e-3 at most, at 2 samples a symbol), the instants exact. exact: the filter itself at every point (its matrix, one row a point: slow for a dense eye)"""
         up = int(up)
         if up < 1:
             raise ValueError("matched: up is a whole number of points a symbol, 1 or more")
         d, c = self.det, self.centres
         pos = c[0] + np.arange((len(c) - 1)*up + 1)*(d.sps/up)
         pos[::up] = c # (the instants themselves, to the last bit)
-        z = np.empty(len(pos), np.complex128)
-        step = max(1, 2**20//int(2*self.span*d.sps + 2)) # Rows of the filter matrix a time
-        for a in range(0, len(pos), step):
-            p = pos[a:a + step]
-            z[a:a + step] = matrix_mf(self.x, p, d.sps, d.beta, self.span)*self._turn(p)
+        if exact:
+            z = np.empty(len(pos), np.complex128)
+            step = max(1, 2**20//int(2*self.span*d.sps + 2)) # Rows of the filter matrix a time
+            for a in range(0, len(pos), step):
+                p = pos[a:a + step]
+                z[a:a + step] = matrix_mf(self.x, p, d.sps, d.beta, self.span)*self._turn(p)
+            return (pos - c[0])/d.sps, z
+        from ..signal.filters import rrc_pulse
+        from ..math.interp import fractional_edge
+        L = int(np.ceil(self.span*d.sps))
+        h = rrc_pulse(np.arange(-L, L + 1)/d.sps, d.beta)
+        h /= np.sqrt(np.sum(h**2))
+        x = np.asarray(self.x, dtype=np.complex128)
+        n = len(x) + len(h) - 1
+        if len(h) > 64: # by FFT
+            N = 1 << int(np.ceil(np.log2(n)))
+            y = np.fft.ifft(np.fft.fft(x, N)*np.fft.fft(h, N))[:n]
+        else:
+            y = np.convolve(x, h)
+        # y[i]: the filter's output at sample i - L of x (zeros beyond x); read at pos
+        z = fractional_edge(y.astype(np.complex64), pos + L, 12).astype(np.complex128)*self._turn(pos)
+        z[::up] = self.symbols
         return (pos - c[0])/d.sps, z
 
     def reference(self):
