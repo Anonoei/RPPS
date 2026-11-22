@@ -18,6 +18,13 @@ def test_fm_tone_deviation_offset_and_sinad():
     assert m.tone_hz == pytest.approx(1e3, abs=20) and m.sinad_db > 20
     assert aFs <= Fs and aFs >= 2*15e3 and len(audio) == int(np.ceil(len(t)/(Fs/aFs)))
 
+def test_pm_phase_deviation_and_offset():
+    x = np.exp(1j*(2*np.pi*2e3*t + 0.8*np.sin(2*np.pi*1.5e3*t) + 0.3)) + noise(0.01) # 0.8 rad at 1.5 kHz, 2 kHz off
+    audio, aFs, m = rp.wave.demod(x, Fs, "pm")
+    assert m.offset_hz == pytest.approx(2e3, abs=5) and m.phase_dev_rad == pytest.approx(0.8, rel=0.05)
+    assert m.phase_dev_rms_rad == pytest.approx(0.8/np.sqrt(2), rel=0.05) and m.tone_hz == pytest.approx(1.5e3, abs=20)
+    assert np.max(np.abs(audio)) == pytest.approx(0.8, rel=0.1) # Radians
+
 def test_am_depth():
     x = (1 + 0.5*np.cos(2*np.pi*800*t)) + noise(0.005)
     audio, aFs, m = rp.wave.demod(x, Fs, "am")
@@ -34,4 +41,4 @@ def test_noise_has_no_tone_and_bad_kind_is_refused():
     _, _, m = rp.wave.demod(noise(1.0), Fs, "fm")
     assert m.tone_hz is None and m.sinad_db is None
     with pytest.raises(ValueError, match="kind"):
-        rp.wave.demod(noise(1.0), Fs, "pm")
+        rp.wave.demod(noise(1.0), Fs, "qam")

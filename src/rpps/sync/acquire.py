@@ -157,11 +157,13 @@ class Lock:
     found: the Detection of the full search the lock started from
     symbols: matched-filtered, frequency and phase corrected, unit rms, at `centres` (sample positions in the block)
     points: the constellation (unit rms). quality: rpps.sync.quality.Quality of the symbols
-    stale: why the lock no longer fits (Es/N0 fell `drop_db` below the search's, or the rate moved more than `drift`
-        from it), None while it does
+    stale: why the lock no longer fits (Es/N0 fell `drop_db` below the search's, the rate moved more than `drift` from
+        it, or another of the searched modulations now fits better), None while it does
     """
     __slots__ = ("det", "found", "symbols", "centres", "points", "quality", "stale", "Fs", "span", "drop_db", "drift")
     MIN_SYMBOLS = 16 # Fewer symbols in a block are no measurement
+    RECHECK_MARGIN = 0.05 # nats/symbol another modulation must lead by to call the lock stale (a QPSK lock on 8PSK at
+    # 6 dB Es/N0: 8PSK leads by about 0.1; the right one leads the next by 0.13 there, more above)
 
     @classmethod
     def find(cls, x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None, lock=5.0, min_samples=1024,
@@ -189,16 +191,20 @@ class Lock:
             raise NoLock(f"{len(x)} samples hold fewer than {cls.MIN_SYMBOLS} symbols at {det.baud:.6g} Bd")
         return lk
 
-    def update(self, x, rounds=1):
+    def update(self, x, rounds=1, recheck=True):
         """The same signal in a new block x (anywhere in the stream: consecutive or not): timing and rate followed from
         this lock's (`track_timing`, `rounds` times), cfo and phase measured afresh, no search. Returns a new Lock;
-        raises NoLock when x holds too few symbols"""
+        raises NoLock when x holds too few symbols
+
+        recheck: score the other modulations the search tried on these symbols (the same matched filter output), and
+        call the lock stale when one fits better by RECHECK_MARGIN: at low SNR a change of modulation can cost less Es/N0
+        than `drop_db`"""
         x = np.asarray(x)
         d = self.det
         sps, tau = track_timing(x, d.sps, d.beta, self.span, rounds)
         det = Detection(mod=d.mod, baud=self.Fs/sps, sps=sps, beta=d.beta, tau=tau, M=d.M, scores=self.found.scores,
                         line=self.found.line)
-        lk = self._make(x, self.Fs, det, self.points, self.span, self.found, self.drop_db, self.drift)
+        lk = self._make(x, self.Fs, det, self.points, self.span, self.found, self.drop_db, self.drift, recheck)
         if lk is None:
             raise NoLock(f"{len(x)} samples hold fewer than {self.MIN_SYMBOLS} symbols at {det.baud:.6g} Bd")
         return lk
@@ -216,7 +222,7 @@ class Lock:
         return lk
 
     @classmethod
-    def _make(cls, x, Fs, det, points, span, found, drop_db, drift):
+    def _make(cls, x, Fs, det, points, span, found, drop_db, drift, recheck=False):
         """The lock for block x at det's rate, roll-off and timing: symbols, cfo, phase, gain and quality filled in"""
         sps, tau = det.sps, det.tau
         c = centres_in(len(x), tau + np.ceil((span*sps + 5 - tau)/sps)*sps, sps, span)
@@ -237,6 +243,14 @@ class Lock:
                 lk.stale = f"Es/N0 {q.esn0_db:.1f} dB, {found.esn0 - q.esn0_db:.1f} dB under the search's"
             elif abs(det.sps/found.sps - 1) > drift:
                 lk.stale = f"rate {det.baud:.6g} Bd, {abs(det.sps/found.sps - 1)*1e6:.0f} ppm from the search's"
+            elif recheck and found.scores and len(found.scores) > 1:
+                own = score(syms, points)
+                others = {}
+                for name, pts in candidates([n for n in found.scores if n != det.mod]).items():
+                    others[name] = score(correct(y/gain, pts, symmetry(pts))[0], pts)
+                best = max(others, key=others.get)
+                if others[best] > own + cls.RECHECK_MARGIN:
+                    lk.stale = f"looks like {best} now ({others[best] - own:.2f} nats/symbol over {det.mod})"
         return lk
 
     def __repr__(self):

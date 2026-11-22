@@ -29,5 +29,5 @@ from . import result, identify
 from . import signal_profile
 from . import catalogue
 from .signal_profile import profile, SignalProfile
-from .spectrum.signal import Signal, Survey, Channel, find_signals, survey, welch, noise_floor
+from .spectrum.signal import Signal, Survey, Channel, find_signals, measure_band, survey, welch, noise_floor
 from .spectrum.psd import psd, vbw, vbw_calc

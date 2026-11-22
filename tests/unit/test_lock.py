@@ -95,3 +95,13 @@ def test_refine_corrects_a_rate_update_cannot_follow():
     fixed = off.refine(x[:160000])
     assert abs(fixed.det.baud/(Fs/sps) - 1) < 1e-4 and fixed.found is fixed.det and fixed.stale is None
     assert fixed.quality.esn0_db > 15
+
+def test_a_change_of_modulation_at_low_snr_goes_stale():
+    """At 10 dB a QPSK lock fed 8PSK loses only about 5 dB of Es/N0, under drop_db: the other searched modulations,
+    scored on the same symbols, say so"""
+    Fs = 1e6
+    lk = rp.sync.Lock.find(psk(16384, 8.0, M=4, esn0_db=10, seed=1), Fs, baud=Fs/8)
+    assert lk.update(psk(16384, 8.0, M=4, esn0_db=10, seed=2)).stale is None
+    moved = lk.update(psk(16384, 8.0, M=8, esn0_db=10, seed=3))
+    assert moved.stale and "looks like 8psk" in moved.stale
+    assert lk.update(psk(16384, 8.0, M=8, esn0_db=10, seed=3), recheck=False).stale is None # (Es/N0 alone misses it)

@@ -64,14 +64,17 @@ class SSBDemod(FIR):
 class Measurements:
     """What `demod` measured on its block
 
-    kind: fm, am, usb or lsb. power_db: power in the channel (bw) [dB]
-    offset_hz: FM's carrier offset from 0 Hz (the mean instantaneous frequency); None for the others
+    kind: fm, pm, am, usb or lsb. power_db: power in the channel (bw) [dB]
+    offset_hz: FM and PM's carrier offset from 0 Hz (FM: the mean instantaneous frequency, PM: the slope of the phase);
+        None for the others
     deviation_hz / deviation_rms_hz: FM peak (99.9th percentile) and rms deviation from that mean
+    phase_dev_rad / phase_dev_rms_rad: PM peak (99.9th percentile) and rms phase deviation [rad]
     depth: AM modulation depth, (max - min)/(max + min) of the envelope (0.1th and 99.9th percentiles)
     tone_hz / sinad_db: the audio's strongest tone, and the power of everything over everything but it, when one tone
         holds most of the audio (a test tone); None otherwise
     """
-    __slots__ = ("kind", "power_db", "offset_hz", "deviation_hz", "deviation_rms_hz", "depth", "tone_hz", "sinad_db")
+    __slots__ = ("kind", "power_db", "offset_hz", "deviation_hz", "deviation_rms_hz", "phase_dev_rad", "phase_dev_rms_rad",
+                 "depth", "tone_hz", "sinad_db")
     def __init__(self, kind, **kw):
         self.kind = kind
         for k in self.__slots__[1:]:
@@ -109,19 +112,21 @@ def demod(x, Fs, kind="fm", bw=None, audio_bw=None):
     """Demodulate one block of analog signal, centred at 0 Hz, and measure it: for a display that wants each frame on its own
     (the stream stages `FMDemod`, `AMDemod` and `SSBDemod` carry state and filter delay from block to block instead)
 
-    kind: "fm", "am", "usb" or "lsb". bw: the channel [Hz] (default: FM 200 kHz, AM 10 kHz, SSB 2.8 kHz; capped at Fs)
-    audio_bw: the audio kept [Hz] (default: FM 15 kHz, AM bw/2, SSB bw)
+    kind: "fm", "pm", "am", "usb" or "lsb". bw: the channel [Hz] (default: FM 200 kHz, PM 25 kHz, AM 10 kHz, SSB 2.8 kHz;
+    capped at Fs)
+    audio_bw: the audio kept [Hz] (default: FM 15 kHz, PM and AM bw/2, SSB bw)
     Returns (audio, audio_Fs, Measurements). audio is float32 in the signal's own units: FM the frequency deviation [Hz],
-    AM the envelope over the carrier less one (1.0 is 100% modulation), SSB the real signal. audio_Fs = Fs/D, the whole
+    PM the phase deviation [rad] (unwrapped, the carrier's offset and phase taken out), AM the envelope over the carrier
+    less one (1.0 is 100% modulation), SSB the real signal. audio_Fs = Fs/D, the whole
     decimation D that keeps audio_bw with some room.
     """
-    if kind not in ("fm", "am", "usb", "lsb"):
-        raise ValueError(f"kind must be fm, am, usb or lsb, not {kind!r}")
+    if kind not in ("fm", "pm", "am", "usb", "lsb"):
+        raise ValueError(f"kind must be fm, pm, am, usb or lsb, not {kind!r}")
     x = np.asarray(x, dtype=np.complex128)
     if len(x) < 2:
         raise ValueError(f"{len(x)} samples: nothing to demodulate")
-    bw = min(float(bw or {"fm": 200e3, "am": 10e3}.get(kind, 2800.0)), Fs)
-    audio_bw = min(float(audio_bw or {"fm": 15e3, "am": bw/2}.get(kind, bw)), Fs/2)
+    bw = min(float(bw or {"fm": 200e3, "pm": 25e3, "am": 10e3}.get(kind, 2800.0)), Fs)
+    audio_bw = min(float(audio_bw or {"fm": 15e3, "pm": bw/2, "am": bw/2}.get(kind, bw)), Fs/2)
     m = Measurements(kind)
     if kind in ("usb", "lsb"):
         y = _band(x, Fs, 0.0, bw) if kind == "usb" else _band(x, Fs, -bw, 0.0)
@@ -136,6 +141,14 @@ def demod(x, Fs, kind="fm", bw=None, audio_bw=None):
             audio = f - m.offset_hz
             m.deviation_hz = float(np.percentile(np.abs(audio), 99.9))
             m.deviation_rms_hz = float(np.sqrt(np.mean(audio**2)))
+        elif kind == "pm":
+            ph = np.unwrap(np.angle(y))
+            n = np.arange(len(ph))
+            slope, icpt = np.polyfit(n, ph, 1) # The carrier: its offset (a phase ramp) and its phase
+            m.offset_hz = float(slope*Fs/(2*np.pi))
+            audio = ph - (slope*n + icpt)
+            m.phase_dev_rad = float(np.percentile(np.abs(audio), 99.9))
+            m.phase_dev_rms_rad = float(np.sqrt(np.mean(audio**2)))
         else:
             env = np.abs(y)
             lo, hi = np.percentile(env, (0.1, 99.9))
