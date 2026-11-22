@@ -54,7 +54,7 @@ Full design: the `rpps.base` docstring (model, rule, categories, contracts, grey
 | `config/<resource>/` | JSON definitions: constellation, pulse, filter, sequence, scramble, fec, interleave, crc, frame, header, table, profile; `tags.json` |
 | `csrc/rpps_native/` | C++17 kernels (pybind11); the Python loop in the calling stage is the reference |
 | `docs/` | the site: guides (`docs/guide/`), examples index, contributing, roadmap; `docs/api/` and `docs/llms*.txt` are generated |
-| `tools/` | `builder.py` (setup, kernels, tests, docs, release), `gen_docs.py` (API pages, llms files) |
+| `tools/` | `builder.py` (setup, kernels, tests, docs, release), `gen_docs.py` (API pages, llms files), benchmarks (`*_bench.py`, `tpc_ber.py`) |
 | `examples/` | one self-checking script per recommended usage; the guides embed them; `tests/unit/test_examples.py` runs them |
 | `tests/unit/` | the suite; `conftest.py` gives `rng`, `bits`, `awgn`, `shaped`, `cpfsk` |
 | `projects/` | worked receivers on real signals, each with a README |

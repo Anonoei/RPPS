@@ -211,7 +211,7 @@ def _tpc_words(code, W, ebn0, seed):
 def test_turbo_product_code_soft_beats_hard(ebn0, soft_max):
     """Chase-Pyndiah on LLRs decodes the (64,57)^2 code far below the hard iterative decoder. 32 words (104k bits) per point;
     over 20 seeds (chase 4, 4 iterations): soft at most 1.2e-4 at 3.25 dB and no errors at 3.75 dB; hard 1.8e-2 .. 3.6e-2.
-    The AFF3CT reference (chase 5, 8 iterations) is 1.2e-3 at 2.75 dB and 1.2e-5 at 3.0 dB (tests/tpc_ber.py)"""
+    The AFF3CT reference (chase 5, 8 iterations) is 1.2e-3 at 2.75 dB and 1.2e-5 at 3.0 dB (tools/tpc_ber.py)"""
     tpc = rp.code.load("block/product/tpc_64_57_sq")
     hard = rp.code.init("hard", {**rp._config.read(rp._config.find("fec", "block/product/tpc_64_57_sq")), "chase": None})
     msg, llr = _tpc_words(tpc, 32, ebn0, 7)

@@ -1,8 +1,8 @@
 """Throughput of RPPS stages, Python loops vs the C++ kernels (rpps._native), and of a chain threaded vs not
 
-    python tests/bench_stages.py              # every stage, 1 M samples
-    python tests/bench_stages.py -n 4000000 --block 65536
-    python tests/bench_stages.py --blocks     # block-rate sync stages, filters, TX shaping: best of 5 at two block sizes
+    python tools/bench_stages.py              # every stage, 1 M samples
+    python tools/bench_stages.py -n 4000000 --block 65536
+    python tools/bench_stages.py --blocks     # block-rate sync stages, filters, TX shaping: best of 5 at two block sizes
 """
 import argparse
 import time

@@ -1,6 +1,6 @@
 """Throughput of FractionalPolyphase (20 MS/s -> 10.7622 MS/s, with the channel moved to baseband), against what it replaces
 
-    python tests/resample_bench.py [seconds of air] [block]
+    python tools/resample_bench.py [seconds of air] [block]
 
 Native kernel (threaded), the Python reference (RPPS_NO_NATIVE), and, when projects/atsc/atsc_front.py is still there, its ctypes helper.
 Each is run once to warm up and the second run is timed; the figure is CPU-seconds per second of air, wall and with the threads summed.

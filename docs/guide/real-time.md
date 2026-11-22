@@ -12,7 +12,7 @@ print(out.stream.load())             # time each stage takes, as a fraction of r
   (Viterbi, trellis, BCJR / turbo, LDPC, Reed-Solomon, BCH, polar) run in C++ (`rpps._native`, built with the package)
   and release the GIL, so threads run them in parallel; batches of codewords are spread over the cores (`RPPS_THREADS`
   sets how many). Without a compiler RPPS uses its Python loops, the reference (`RPPS_NO_NATIVE=1` forces them).
-  Compare with `python tests/bench_stages.py`.
+  Compare with `python tools/bench_stages.py`.
 - **Frame-parallel profiles.** After frame sync and the header, a profile's per-frame work can run on threads or
   processes in batches: [Profiles](profiles.md#more-than-one-core), [`rpps.parallel`](../api/parallel.md).
 - **Effort.** `rp.set_effort("fast" | "balanced" | "max")`, `with rp.effort(...)`, `RPPS_EFFORT` or

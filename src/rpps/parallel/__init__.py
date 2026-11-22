@@ -22,7 +22,7 @@ The unit is the **batch**, not the thread: N frames through one program pays on 
 - Processes use `fork` where available, else `spawn` (scripts need a `__main__` guard); each builds its region from a
   picklable `RegionSteps`.
 - On `dvbs2/normal` the output equals the serial runner's bit for bit, for any block cut, worker count and batch size.
-  Measure with `python tests/parallel_bench.py 64 4`.
+  Measure with `python tools/parallel_bench.py 64 4`.
 - A parallel region's kernels decode inside: each frame result is its message (`"frame"`, `crc_ok` False when dropped),
   without the header fields a serial runner gives.
 """

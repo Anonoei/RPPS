@@ -10,7 +10,7 @@ the serial runner's, bit for bit, for any block cut, worker count and batch size
 
 Here: DVB-S2 normal frames (QPSK 1/2 and 8PSK 3/4 alternating, pilots on, each frame's own MODCOD from its header),
 received serially and in parallel. Each runner is run once to warm up the shared tables and the second run is timed,
-as tests/parallel_bench.py does in more detail. The `__main__` guard is needed: process workers import this file.
+as tools/parallel_bench.py does in more detail. The `__main__` guard is needed: process workers import this file.
 """
 import sys
 import time

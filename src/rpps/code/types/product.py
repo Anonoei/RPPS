@@ -25,7 +25,7 @@ class product(_code):
     After a decode `errors` is the bits corrected per word, -1 where a row or column still fails its check.
     """
     # Per half iteration, the last repeated. ALPHA is Pyndiah's ramp held at 0.5 (as AFF3CT): rising on to his 1.0 makes
-    # words that fail diverge past 4 iterations (tests/tpc_ber.py). The first half iteration has no extrinsic yet.
+    # words that fail diverge past 4 iterations (tools/tpc_ber.py). The first half iteration has no extrinsic yet.
     ALPHA = (0.0, 0.2, 0.3, 0.5) # Weight of the extrinsic in the next decoder input
     BETA = (0.2, 0.4, 0.6, 0.8, 1.0) # Extrinsic of a bit with no competing candidate (mean |W| is 1)
     BATCH = 32 # Words decoded together

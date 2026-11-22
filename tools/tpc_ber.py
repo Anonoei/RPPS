@@ -1,7 +1,7 @@
 """BER / FER of the turbo product code (64,57)^2 (`block/product/tpc_64_57_sq`, Chase-Pyndiah) over BPSK / AWGN, per iteration count
 
-    python tests/tpc_ber.py                          # chase 4 and 5, 1 / 2 / 4 / 8 iterations, 2.5 .. 3.5 dB
-    python tests/tpc_ber.py --words 400 --chase 5 --iters 8 --ebn0 2.5 2.75 3.0
+    python tools/tpc_ber.py                          # chase 4 and 5, 1 / 2 / 4 / 8 iterations, 2.5 .. 3.5 dB
+    python tools/tpc_ber.py --words 400 --chase 5 --iters 8 --ebn0 2.5 2.75 3.0
 
 Reference: AFF3CT error_rate_references, TURBO_PROD/AWGN/BPSK/BCH1/Turbo_prod_BCH_64_57_p5_i8.txt (extended BCH (64,57)
 squared, chase 5, 8 iterations, alpha 0.5 on every half iteration): BER 1.2e-2 / 1.2e-3 / 1.2e-5 at 2.5 / 2.75 / 3.0 dB.
