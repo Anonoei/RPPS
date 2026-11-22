@@ -7,7 +7,7 @@ stage's state) can change.
 | Where | What |
 | --- | --- |
 | `rp.Data`, `rp.Stage`, `rp.Pipe`, `rp.Pipeline` | the data and the operators (`*`, `/`, `+`) |
-| `rp.sync.Lock`, `rp.errors.NoLock` | a signal's symbols as a snapshot: `Lock.find(x, Fs)`, `lock.update(block)` (`recheck`: other modulations), `lock.stale`, `lock.refine(longer)`; NoLock (with its reason) for anything that holds no symbols |
+| `rp.sync.Lock`, `rp.errors.NoLock` | a signal's symbols as a snapshot: `Lock.find(x, Fs)`, `lock.update(block)` (`recheck`: other modulations), `lock.follow(next_block, at=pos)` (contiguous blocks, their symbols joined with no slip), `lock.stale`, `lock.refine(longer)`; NoLock (with its reason) for anything that holds no symbols |
 | `lock.decisions()`, `errors()`, `summary()`, `derotated()`, `matched(up)`, `reference()` | what an analyser shows of the lock's block: each symbol's error, the error summary (EVM, MER, IQ offset, gain imbalance, quadrature error), the matched filter between the symbols (eye), the ideal waveform |
 | `rp.sync.detect`, `rp.sync.Detection`, `rp.sync.Acquire` | acquisition once, and as a stream stage |
 | `rp.sync.best_tau`, `rp.sync.track_timing`, `rp.sync.matrix_mf`, `rp.sync.centres_in`, `rp.sync.find_baud` | timing and rate |

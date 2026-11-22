@@ -9,7 +9,8 @@ import pytest
 
 import rpps as rp
 from rpps.base.data import Mod
-from rpps.base.kernel import Form, Batch
+from rpps.base.kernel import Form, Batch, to_host
+import fakedevice
 from rpps.parallel.kernel import LoopKernel, kernel_of
 from rpps.profile.steps import DECODE, ENCODE, STAGE
 
@@ -31,7 +32,27 @@ def both(op, how, X, f, live=None, rtol=1e-5, atol=1e-4):
     else:
         np.testing.assert_array_equal(got.x, ref.x)
     assert tuple(got.form[:4]) == tuple(ref.form[:4])
+    dev = on_device(k, mk())
+    assert list(dev.bad) == list(got.bad) and dev.x.shape == got.x.shape and dev.x.dtype == got.x.dtype
+    if got.x.dtype.kind in "fc":
+        np.testing.assert_allclose(dev.x, got.x, rtol=rtol, atol=atol)
+    else:
+        np.testing.assert_array_equal(dev.x, got.x)
     return k, got, ref
+
+def on_device(k, b):
+    """A kernel on the pretend device (tests/unit/fakedevice.py), as a plan runs it there: uploaded, run (a host kernel
+    between explicit transfers), downloaded once. Anything implicit raises"""
+    from rpps.base.kernel import ToDevice, ToHost
+    xp = fakedevice
+    b = ToDevice().run(xp, b)
+    if k.where == "host":
+        b = ToDevice().run(xp, k.run(np, ToHost().run(xp, b)))
+    else:
+        b = k.run(xp, b)
+    b.x = to_host(b.x)
+    assert type(b.x) is np.ndarray and type(b.bad) is np.ndarray
+    return b
 
 def noisy_symbols(c, n, rows, noise, seed):
     rng = np.random.default_rng(seed)

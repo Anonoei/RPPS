@@ -182,7 +182,7 @@ class Source:
         s = self.stream
         s.blocks += 1
         if self.Fs:
-            s.air += len(samples) / self.Fs
+            s.add_air(len(samples) / self.Fs)
         k = 1.0 + self.ppm*1e-6
         return Data(samples, flush=flush, Fs=self.Fs*k, sps=self.sps, cf=self.cf*k, stream=s)
 

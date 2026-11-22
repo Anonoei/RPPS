@@ -5,8 +5,9 @@ import pytest
 import rpps as rp
 from rpps.sync.time.mat import best_tau, _best_tau_rows
 
-def psk(n, sps, M=4, beta=0.35, tau=0.0, cfo=0.0, esn0_db=20.0, seed=0):
-    """n samples of M-PSK through an RRC at a fractional sps, the first symbol at tau, a carrier offset [cycles/sample]"""
+def psk(n, sps, M=4, beta=0.35, tau=0.0, cfo=0.0, esn0_db=20.0, seed=0, sent=False):
+    """n samples of M-PSK through an RRC at a fractional sps, the first symbol at tau, a carrier offset [cycles/sample]
+    sent: also the symbols, as (instants, symbols)"""
     rng = np.random.default_rng(seed)
     k = np.arange(-20, int(n/sps) + 20)
     sym = np.exp(2j*np.pi*rng.integers(0, M, len(k))/M + 1j*np.pi/M*(M == 4))
@@ -20,7 +21,8 @@ def psk(n, sps, M=4, beta=0.35, tau=0.0, cfo=0.0, esn0_db=20.0, seed=0):
             x[j0:j1] += s*rp.signal.filters.rrc_pulse((t[j0:j1] - c)/sps, beta)
     x *= np.exp(2j*np.pi*cfo*t)
     n0 = np.mean(np.abs(x)**2)*sps/10**(esn0_db/10)
-    return x + np.sqrt(n0/2)*(rng.standard_normal(n) + 1j*rng.standard_normal(n))
+    x = x + np.sqrt(n0/2)*(rng.standard_normal(n) + 1j*rng.standard_normal(n))
+    return (x, (tau + k*sps, sym)) if sent else x
 
 @pytest.mark.parametrize("sps", [2.0, 3.37, 7.91])
 def test_best_tau_by_convolution_matches_the_filter_matrix(sps):
@@ -194,3 +196,43 @@ def test_lock_followed_keeps_its_block():
     nxt = lk.update(x[30000:40000])
     assert nxt.x is not None and len(nxt.x) == 10000
     assert np.allclose(nxt.matched(4)[1][::4], nxt.symbols, atol=1e-9)
+
+
+def _joined(lk, blocks, n_blk):
+    """The symbols of a lock and of follow over each next block, joined, and the last lock"""
+    out = [lk.symbols]
+    for i, b in enumerate(blocks):
+        lk = lk.follow(b, at=(i + 1)*n_blk)
+        assert lk.stale is None, lk.stale
+        out.append(lk.symbols)
+    return np.concatenate(out), lk
+
+@pytest.mark.parametrize("sps, n_blk, ppm, cfo", [(10.0, 4096, 30, 2e-4), (4.37, 2000, -40, -3e-4), (7.91, 8192, 0, 1e-3)])
+def test_follow_joins_the_blocks_with_no_slip(sps, n_blk, ppm, cfo):
+    """Contiguous blocks, a clock off by ppm and a carrier offset: the joined symbols are the sent ones, in order, one
+    rotation throughout (no symbol dropped or repeated at any seam), over 6 seeds"""
+    for seed in range(6):
+        x, (t, sent) = psk(120000, sps*(1 + ppm*1e-6), tau=0.3*sps, cfo=cfo, esn0_db=15, seed=seed, sent=True)
+        blocks = [x[a:a + n_blk] for a in range(n_blk, len(x) - n_blk + 1, n_blk)]
+        lk = rp.sync.Lock.find(x[:n_blk], 1.0, baud=1/sps, at=0)
+        s, last = _joined(lk, blocks, n_blk)
+        k0 = int(np.argmin(np.abs(t - lk.centres[0]))) # the sent symbol at the first centre
+        ref = sent[k0:k0 + len(s)]
+        d = rp.sync.quality.decide(s, lk.points)
+        rot = np.exp(1j*np.angle(np.mean(ref*np.conj(d))))
+        assert np.mean(np.abs(d*rot - ref) > 1e-3) < 1e-3 # every block: same order, same rotation
+        assert abs(last.det.sps/(sps*(1 + ppm*1e-6)) - 1) < 1e-3 # one block's estimate: worst 5.2e-4 over 20 seeds
+
+def test_follow_refuses_a_block_that_is_not_the_next():
+    x = psk(30000, 8.0, esn0_db=20)
+    lk = rp.sync.Lock.find(x[:8192], 1.0, baud=1/8, at=0)
+    with pytest.raises(rp.errors.NoLock, match="not the next block"):
+        lk.follow(x[9000:17000], at=9000)
+    assert lk.follow(x[8192:16384], at=8192).end == 16384
+    assert rp.sync.Lock.find(x[:8192], 1.0, baud=1/8).follow(x[8192:16384]).end is None # no positions: not checked
+
+def test_follow_calls_a_timing_jump_stale():
+    x = psk(40000, 8.0, esn0_db=25)
+    lk = rp.sync.Lock.find(x[:8192], 1.0, baud=1/8)
+    jumped = lk.follow(np.concatenate((x[8192 + 4:16384], np.zeros(4)))) # half a symbol missing at the seam
+    assert jumped.stale is not None and "slip" in jumped.stale

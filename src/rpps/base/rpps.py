@@ -1,6 +1,13 @@
 """RPPS parent classes"""
 import numpy as np
 
+from .meta import timed
+
+def _stream_of(data):
+    """The Stream a block belongs to (its time goes there), None for what is not a block"""
+    meta = getattr(data, "meta", None)
+    return getattr(meta, "stream", None)
+
 
 def align(ctx, key, x, block, pad, log=None):
     """Whole blocks of x for a stage that works on `block` items at a time
@@ -71,12 +78,12 @@ class Pipe:
         """data * pipe: encode, after checking the pipe takes what data is"""
         from .data import expect
         expect(self, data, self.takes(True), True)
-        return self.encode(data)
+        return timed(_stream_of(data), self, self.encode, data)
     def __rtruediv__(self, data):
         """data / pipe: decode, after checking the pipe takes what data is"""
         from .data import expect
         expect(self, data, self.takes(False), False)
-        return self.decode(data)
+        return timed(_stream_of(data), self, self.decode, data)
 
     def __mul__(self, other):
         if isinstance(other, Pipe):

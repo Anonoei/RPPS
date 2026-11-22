@@ -10,12 +10,11 @@ Every block carries three tags (see rpps.base.types):
     Digital  bits and bytes
 """
 
-from time import perf_counter
 
 import numpy as np
 
 from .types import Category, Rep, dtype, REP_OF
-from .meta import Meta, forward
+from .meta import Meta, forward, timed
 from .rpps import FLUSH
 from ..errors import StreamError
 
@@ -85,11 +84,8 @@ class _Data:
         meta.refresh()
         meta.flush = self.flush
         st = meta.state_of(stage)
-        t = perf_counter()
-        out = stage.step(self._data, st, meta)
         stream = meta.stream
-        busy = stream.busy
-        busy[stage] = busy.get(stage, 0.0) + perf_counter() - t
+        out = timed(stream, stage, stage.step, self._data, st, meta)
         out = np.asarray(out)
         if out.dtype in (np.complex128, np.float64): # Samples are single precision throughout
             out = out.astype(np.complex64 if out.dtype.kind == "c" else np.float32)

@@ -6,6 +6,29 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 
 ## Unreleased
 
+### Added
+- **`rp.sync.Lock.follow(x, at=pos)`:** the block right after a lock's, its symbols joining on with no symbol dropped
+  or repeated at the seam, the carrier phase on the same branch of its M-fold symmetry; so a display gathering symbols
+  over contiguous blocks locks only the new block (1.5 ms for 2500 samples, against 21 ms for `update` over 41000).
+  `find` and `update` take `at` too; a block that isn't the next raises NoLock, and a timing jump over 0.3 symbol
+  makes the lock stale.
+- **Channels in shared memory:** `rp.source.ShmSink(name or [names])` publishes blocks (a channelizer's columns, one
+  channel each) to pysdrlib's shared-memory rings at their positions, with a JSON manifest per channel (rate, centre,
+  width, parent span, time anchors, generation) and an index (`rp.source.read_index`); `rp.source.Shm(name)` reads one
+  from another process, with gaps and missed samples counted in `meta.pos` and `stream.dropped`, and starts over on a
+  retune. Example: `examples/channel_shm.py`.
+- **Load covers everything, and as one number:** `stream.load()` now times pipes (`/`, `*`: decoders) as well as
+  stages, and a parallel region's workers; `stream.load(window=s)` over the last `s` seconds of signal;
+  `stream.realtime(window=None)` the busiest thread's load (<= 1.0 keeps up).
+- **GPU-ready parallel region, vendor neutral:** `rp.parallel.Parallel(..., xp=xp)` runs a region's kernels on an
+  array module such as CuPy (CUDA or ROCm/HIP); `rpps._accel.device()` picks it (`RPPS_DEVICE=none|cuda|hip`). A plan
+  uploads a batch once, downloads it once, and moves it explicitly around kernels that need numpy (`to:host`,
+  `to:device` in `describe()`); kernel constants go to a device once (`Kernel.const`).
+
+### Changed
+- `stream.busy` holds each operator's own time (what it runs inside it is counted for the inner operator, not twice)
+  and includes pipes.
+
 ## 0.6.0 (2026-11-22)
 
 ### Breaking

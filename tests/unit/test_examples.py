@@ -10,7 +10,7 @@ import pytest
 EXAMPLES = Path(__file__).resolve().parents[2]/"examples"
 
 FAST = ["quickstart", "list_definitions", "operators", "soft_decisions", "channel_and_sync", "profile_loopback",
-        "own_definitions", "streaming_io", "integrating"]
+        "own_definitions", "streaming_io", "integrating", "channel_shm"]
 KERNELS = ["parallel_rx"] # seconds with the C++ kernels, minutes without
 SLOW = ["unknown_signal"] # tens of seconds even with them
 

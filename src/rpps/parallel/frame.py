@@ -40,7 +40,7 @@ class Frame:
 class Result:
     """What a frame gave. status DROPPED: the frame could not be processed (a gap of `n_out` items at `pos_out`), why in
     `reports`, which go to the stream's control reports in order. pos: where the frame started, in the region's input
-    (its message is placed from there)"""
+    (its message is placed from there). spent: {kernel: seconds} this frame's share of its batch's time (the region's load)"""
     seq: int
     data: np.ndarray
     pos_out: int = 0
@@ -49,6 +49,7 @@ class Result:
     reports: list = field(default_factory=list)
     tags: tuple = ()
     pos: int = 0
+    spent: dict = field(default_factory=dict)
 
     @staticmethod
     def dropped(frame, why):
