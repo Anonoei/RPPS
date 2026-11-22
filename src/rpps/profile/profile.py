@@ -127,26 +127,115 @@ class Profile:
                 b.rx[0][1].fuse(a.rx[0][1])
                 a.rx = []
 
-    def rx(self, start=Rep.SAMPLES, applied=(), parallel=None, source=None):
+    # ---- message kinds
+
+    @staticmethod
+    def _emits(st):
+        """The kind of message a step gives (rpps.profile.message), None for none: its `"message"` cut's kind, else its id
+        when an operator of it emits (`EMITS`)"""
+        if st.spec.get("message"):
+            return st.spec["message"].get("kind") or st.id
+        if any(getattr(op, "EMITS", False) for _, op in st.rx):
+            return st.id
+        return None
+
+    def kinds(self, parallel=False):
+        """{kind: step id} of the messages the receive side gives. parallel: as run with its parallel region, whose kernels
+        give one `"frame"` message a frame in place of what the region's steps would emit"""
+        region = {st.id for st in self.region.steps} if parallel and self.region is not None else set()
+        out = {}
+        for st in self.flat(self.steps):
+            k = self._emits(st)
+            if k is not None and st.id not in region:
+                out[k] = st.id
+        if region:
+            out["frame"] = self.region.steps[-1].id
+        return out
+
+    def needed(self, kinds, parallel=False):
+        """The step ids the messages of `kinds` need: their emitters, and every header whose fields drive a needed step (and
+        so on). Raises ConfigError for a kind the profile doesn't give"""
+        have = self.kinds(parallel)
+        kinds = set(kinds)
+        unknown = kinds - set(have)
+        if unknown:
+            raise ConfigError(f"profile {self.name}: no message kinds {sorted(unknown)} (gives {sorted(have)})")
+        need = {have[k] for k in kinds}
+        grew = True
+        while grew:
+            grew = False
+            for e in self.controls.values():
+                if e.header not in need and any(sid in need for sid in e.drive):
+                    need.add(e.header)
+                    grew = True
+        return need
+
+    def _prune(self, steps, need):
+        """steps, without what the needed steps don't need: a chain ends at its last needed step (those before it feed it),
+        a branch step keeps the branches that have one (it goes when none has)"""
+        if steps and steps[-1].category == "branch":
+            br = steps[-1]
+            nested = {}
+            for name, chain in br.obj.items():
+                chain = self._cut(chain, need)
+                if chain:
+                    nested[name] = chain
+            if nested:
+                import copy
+                br = copy.copy(br)
+                br.obj = nested
+                return list(steps[:-1]) + [br]
+            steps = steps[:-1]
+        return self._cut(steps, need)
+
+    @staticmethod
+    def _cut(chain, need):
+        last = max((i for i, st in enumerate(chain) if st.id in need), default=-1)
+        return list(chain[:last + 1])
+
+    # ---- runners
+
+    def rx(self, start=Rep.SAMPLES, applied=(), parallel=None, source=None, kinds=None):
         """Receive runner. start: the representation the source gives (a demodulator's timed symbols are SYMBOLS): the steps
         before it are skipped. applied: sync kinds the source has done already (`{"timing"}`): skipped too.
         source: an rp.source.Source, which says both (its REP and APPLIED).
         parallel: an `rp.parallel.Parallel` (where and how the profile's parallel region runs, frame by frame); the profile
-        must have one (`"parallel"` in its definition)"""
+        must have one (`"parallel"` in its definition)
+        kinds: the message kinds wanted (`kinds()`), None for all: only those come out of `take_messages()`, and only the
+        steps they need run (`needed`): branches none of them needs are not built, a chain ends at its last needed step
+        (the runner's output is that step's). A parallel region runs whole or not at all: not when none of it is needed"""
         if source is not None:
             start, applied = source.REP, source.APPLIED
+        if parallel is not None and self.region is None:
+            raise ConfigError(f"profile {self.name}: has no parallel region (no \"parallel\" in its definition)")
         keep = lambda st: st.category == "branch" or not (st.takes.value < start.value or (st.category == "sync" and st.kind in applied))
-        steps = [st for st in self._build() if keep(st)]
+        if kinds is None:
+            prune = lambda steps: steps
+        else:
+            kinds = frozenset(kinds)
+            need = self.needed(kinds, parallel is not None)
+            if parallel is not None:
+                if need & {st.id for st in self.region.steps}:
+                    need |= {st.id for st in self.region.steps}
+                else:
+                    parallel = None # (nothing of the region is needed: it isn't run)
+            prune = lambda steps: self._prune(steps, need)
+        steps = prune([st for st in self._build() if keep(st)])
+        if not steps:
+            raise ConfigError(f"profile {self.name}: no step left to receive {sorted(kinds)} with")
         if steps[-1].category == "branch":
-            return self._branch_rx(steps, parallel)
-        k = next((i for i, st in enumerate(steps) if st.category == "sync" and st.kind == "burst"), None)
-        if k is not None:
-            return self._burst_rx(steps, k, keep, parallel)
+            run = self._branch_rx(steps, parallel)
+        elif (k := next((i for i, st in enumerate(steps) if st.category == "sync" and st.kind == "burst"), None)) is not None:
+            run = self._burst_rx(steps, k, lambda: prune([st for st in self._build() if keep(st)]), parallel)
+        else:
+            run = self._chain_rx(steps, parallel)
+        run.kinds = kinds
+        return run
+
+    def _chain_rx(self, steps, parallel):
         slots = self._slots(steps)
         if parallel is None:
             return Runner(slots, f"{self.name} rx", self.controls, "rx", profile=self.name)
-        if self.region is None:
-            raise ConfigError(f"profile {self.name}: has no parallel region (no \"parallel\" in its definition)")
         from ..parallel.runner import ParallelRunner
         first = self.region.steps[0].id
         from ..parallel.worker import RegionSteps
@@ -160,7 +249,7 @@ class Profile:
             slots += [Slot(how, op, st, len(slots) + i) for i, (how, op) in enumerate(st.rx)]
         return slots
 
-    def _burst_rx(self, steps, k, keep, parallel):
+    def _burst_rx(self, steps, k, build, parallel):
         """The receive side of a profile with a burst step (rpps.profile.burst): the steps after it built anew per burst"""
         from .burst import BurstRunner
         where = f"profile {self.name}"
@@ -170,7 +259,7 @@ class Profile:
             raise ConfigError(f"{where}: one burst step")
         pre = Runner(self._slots(steps[:k]), f"{self.name} rx", self.controls, "rx", profile=self.name) if k else None
         def make_post():
-            post = [st for st in self._build() if keep(st)][k + 1:]
+            post = build()[k + 1:]
             return Runner(self._slots(post), f"{self.name} rx (burst)", self.controls, "rx", profile=self.name)
         return BurstRunner(pre, steps[k].obj, make_post, f"{self.name} rx")
 

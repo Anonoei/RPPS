@@ -44,6 +44,7 @@ from ..base.control import publish, anchor, emit
 class Header(Pipe):
     CATEGORY = Category.LINK
     SCOPE, SCOPE_NEEDS = FRAME, ("length",) # A frame's own header and payload, when a control gives its length
+    EMITS = True # Every frame, good or failed, is a message (rpps.profile.message)
 
     def __init__(self, name, fields, order="msb", crc=None, payload=None, preamble=None, framed=False, fcs=None):
         self.name = name

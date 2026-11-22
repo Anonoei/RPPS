@@ -34,15 +34,17 @@ class Decoder:
     cf: the samples' centre frequency [Hz] (for Message.freq, and the params that follow from it: BLE's channel, NR's fc);
     baud: the symbol rate, for a profile that leaves it open; bw: the channel's width when there is no rate to work it out
     from (for measuring one: the selected signal's width); sync: the profile's sync settings; fill: the longest gap filled
-    with zeros [s]; params: the profile's params (those `cf` would give, given here, win)
-    Raises ValueError when Fs can't hold what the profile needs.
+    with zeros [s]; kinds: the message kinds wanted (ProfileInfo.kinds), None for all: only the steps they need run
+    (Profile.rx), and `status` counts only those; params: the profile's params (those `cf` would give, given here, win)
+    Raises ValueError when Fs can't hold what the profile needs, ConfigError for a kind it doesn't give.
     """
     WINDOW = 2.0 # A good message within this many messages' worth of samples (min_samples)...
     WINDOW_S = 2.0 # ...or seconds, whichever is longer, is "locked" (a bursty signal: squitters, advertisements)
 
-    def __init__(self, name, Fs, offset=0.0, cf=None, baud=None, bw=None, sync=None, fill=0.05, **params):
+    def __init__(self, name, Fs, offset=0.0, cf=None, baud=None, bw=None, sync=None, fill=0.05, kinds=None, **params):
         self.name, self.Fs, self.offset, self.cf = name, float(Fs), float(offset), cf
         self.sync, self.fill = sync, float(fill)
+        self.kinds = None if kinds is None else frozenset(kinds)
         self._given = dict(params)
         desc = _info(name, baud=baud, **params) # Checks the params and the rate
         self.info = desc
@@ -54,6 +56,9 @@ class Decoder:
                 if k not in params:
                     params[k] = _config.evaluate(e, values, f"profile/{name} from_cf")
             desc = _info(name, baud=baud, **params)
+        if self.kinds is not None and not self.kinds <= set(desc.kinds): # (before a rate is measured)
+            from ..errors import ConfigError
+            raise ConfigError(f"profile {name}: no message kinds {sorted(self.kinds - set(desc.kinds))} (gives {desc.kinds})")
         self.params, self.req = params, desc.requires
         self.bw = float(bw) if bw is not None else self.req["bw"]
         if self.bw is not None and self.bw > self.Fs:
@@ -98,7 +103,7 @@ class Decoder:
         from ..base import Pipeline
         self._front = Pipeline(*stages)
         self._Fs_req = Fs_req
-        self._rx = load(self.name, sync=self.sync, **self.params).rx()
+        self._rx = load(self.name, sync=self.sync, **self.params).rx(kinds=self.kinds)
         self._stream = None
         self._delay = None
 

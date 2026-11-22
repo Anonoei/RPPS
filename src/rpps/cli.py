@@ -108,7 +108,7 @@ def cmd_rx(args):
         sync[kind] = {"method": method}
     rp.set_effort(args.effort)
     p = rp.profile.load(args.profile, sync=sync or None, **params)
-    rx = p.rx()
+    rx = p.rx(kinds=args.kinds.split(",") if args.kinds else None)
     src = rp.source.File(args.fmt, args.file, Fs=args.fs, cf=args.cf, sps=args.sps or p.params.get("sps", 0.0))
     bits = []
     n_msgs = 0
@@ -362,6 +362,8 @@ def main(argv=None):
     p_rx.add_argument("--out", help="write the bits out as bytes here")
     p_rx.add_argument("--branch", help="a profile that branches: the branch whose bits go out (default: the last)")
     p_rx.add_argument("--messages", action="store_true", help="print every frame decoded, one JSON line each (to stdout)")
+    p_rx.add_argument("--kinds", metavar="KIND,...", help="only these message kinds, and only the steps they need "
+                      "(default: all; rp.profile.info(name).kinds lists them)")
     p_rx.set_defaults(fn=cmd_rx)
 
     p_tx = sub.add_parser("tx", help="transmit data with a profile into a sample file")

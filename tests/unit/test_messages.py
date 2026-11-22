@@ -6,9 +6,9 @@ import pytest
 
 import rpps as rp
 
-def run(p, x, Fs, sps, delay=0.0, cuts=None, cf=0.0):
+def run(p, x, Fs, sps, delay=0.0, cuts=None, cf=0.0, kinds=None):
     """The messages of a capture through a profile's receiver, cut into blocks"""
-    rx, st, msgs, i = p.rx(), None, [], 0
+    rx, st, msgs, i = p.rx(kinds=kinds), None, [], 0
     cuts = cuts or [len(x)]
     for k, n in enumerate(cuts):
         d = rp.Data(x[i:i + n], Fs=Fs, sps=sps, delay=delay, cf=cf, stream=st, flush=k == len(cuts) - 1)
@@ -83,9 +83,9 @@ def test_ble_packets_are_messages_placed_in_the_capture(ble):
         assert m.fields["type"] == 2 and m.fields["txadd"] == 1 and m.payload == np.packbits(pdu).tobytes()
         assert 0 <= m.sample - start < 4*(8 + 32 + 16 + 8) # After the preamble and access address, at 4 samples a bit
 
-def runner_messages(name, x, Fs, block, **params):
+def runner_messages(name, x, Fs, block, kinds=None, **params):
     """Messages of a branching profile run block by block on a capture (rp.source.Memory)"""
-    rx, msgs = rp.profile.load(name, **params).rx(), []
+    rx, msgs = rp.profile.load(name, **params).rx(kinds=kinds), []
     for d in rp.source.Memory(x, Fs=Fs)(block):
         rx(d)
         msgs += rx.take_messages()
@@ -210,3 +210,62 @@ def test_dvbs2_bbframes_serial_and_parallel():
     assert len(par) == 4 and all(m.crc_ok for m in par)
     assert [m.payload for m in par] == [m.payload for m in serial]
     assert all(abs(a.sample - b.sample) <= 4*90 for a, b in zip(par, serial)) # (within a PL header)
+
+
+# ---- per-kind filtering: only the kinds asked for, and only the steps they need
+
+def same(msgs):
+    return [(m.kind, m.sample, m.fields, m.payload, m.crc_ok) for m in msgs]
+
+def test_the_kinds_each_profile_gives():
+    kinds = lambda name, **kw: sorted(rp.profile.load(name).kinds(**kw))
+    assert kinds("adsb/mode_s") == ["frame"]
+    assert kinds("dvbs/qpsk") == ["packet"]
+    assert kinds("ccsds/tm_rs") == ["frame"]
+    assert kinds("lte/downlink") == ["pbch", "pcfich", "pdcch", "pdsch"]
+    assert kinds("dvbs2/normal") == ["bbheader", "pls"]
+    assert kinds("dvbs2/normal", parallel=True) == ["frame", "pls"] # (the region's kernels give one message a frame)
+
+def test_a_kind_needs_its_step_and_the_headers_that_drive_it():
+    p = rp.profile.load("lte/downlink")
+    assert p.needed({"pbch"}) == {"pbch"}
+    assert p.needed({"pdcch"}) == {"pbch", "pcfich", "pdcch"}
+    assert p.needed({"pdsch"}) == {"pbch", "pcfich", "pdcch", "pdsch"}
+    rx = p.rx(kinds={"pbch"})
+    assert list(rx.chains) == ["pbch"]
+    with pytest.raises(rp.errors.ConfigError, match="no message kinds"):
+        p.rx(kinds={"mib"})
+
+def test_lte_kinds_decode_as_they_do_with_every_step():
+    from rpps.grid import lte
+    sib = np.random.default_rng(2).integers(0, 2, 224).astype(np.uint8)
+    x = lte.tx.channel(lte.tx.downlink(pci=10, ports=1, n_rb=6, frames=4, sib=sib), cfo=1.2e3, fs=1.92e6, delay=700,
+                       snr_db=20, seed=3)
+    full = runner_messages("lte/downlink", x, 1.92e6, 20000, n_rb=6)
+    for kinds in ({"pbch"}, {"pdcch"}, {"pdsch"}):
+        got = runner_messages("lte/downlink", x, 1.92e6, 20000, kinds=kinds, n_rb=6)
+        assert got and same(got) == same(m for m in full if m.kind in kinds)
+
+def test_dvbs2_pl_headers_alone_skip_the_payload():
+    p = rp.profile.load("dvbs2/normal", sync={"timing": {"method": "known"}})
+    t = rp.profile.table("dvbs2/modcod")
+    dfl = [t.row({**f, "short": 0})["kbch"] - 80 for f in S2_FRAMES]
+    data = np.random.default_rng(4).integers(0, 2, sum(dfl)).astype(bool)
+    o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=S2_FRAMES)
+    x = (np.concatenate((o.data, np.zeros(200, np.complex64)))*np.exp(0.7j)).astype(np.complex64)
+    rx = p.rx(kinds={"pls"})
+    assert [s.step.id for s in rx.slots][-1] == "pls" # (no descrambling, demapping, LDPC, BCH)
+    full = run(p, x, o.Fs, 4, o.delay)
+    got = run(p, x, o.Fs, 4, o.delay, kinds={"pls"})
+    assert len(got) >= 4 and same(got) == same(m for m in full if m.kind == "pls")
+    par = p.rx(kinds={"pls"}, parallel=rp.parallel.Parallel("inline")) # (none of the region needed: not run)
+    assert type(par) is rp.profile.runner.Runner
+
+def test_one_stream_of_several():
+    p = rp.profile.load("dvbs2/mis")
+    rx = p.rx(kinds={"bb_b"})
+    assert list(rx.chains) == ["b"]
+
+def test_a_burst_profile_keeps_its_kinds(ble):
+    p, x, pdus, starts = ble
+    assert same(run(p, x, 4e6, 4, kinds={"pdu"})) == same(run(p, x, 4e6, 4))

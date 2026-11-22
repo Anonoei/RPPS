@@ -21,6 +21,7 @@ def test_every_profile_says_what_it_needs():
             assert r["Fs"] is None and r["bw"] is None
         else:
             assert r["Fs"] >= r["bw"] > 0
+        assert i.kinds or i.name.startswith(("ieee80211b/1m", "ieee80211b/2m", "ieee802154/")) # (no frame step of their own)
         json.dumps(i.to_dict())
 
 def test_requires_follow_the_params_and_baud():
@@ -132,6 +133,15 @@ def test_lte_through_a_resampler():
     assert sib1 and all(m.payload == np.packbits(sib).tobytes() for m in sib1)
     assert any(m.kind == "pbch" and m.crc_ok and m.fields["pci"] == 10 for m in msgs)
     assert dec.status["state"] == "locked"
+    mibs = [m for m in msgs if m.kind == "pbch"]
+    dec = rp.profile.Decoder("lte/downlink", Fs=3.84e6, offset=400e3, n_rb=6, kinds={"pbch"}) # (the MIB alone: no PDSCH)
+    only = []
+    for a in range(0, len(y), 40000):
+        only += dec.feed(y[a:a + 40000], start=a)
+    assert [(m.sample, m.fields) for m in only] == [(m.sample, m.fields) for m in mibs]
+    assert dec.status["state"] == "locked" and dec.status["messages"] == len(mibs)
+    with pytest.raises(ConfigError, match="no message kinds"):
+        rp.profile.Decoder("lte/downlink", Fs=3.84e6, n_rb=6, kinds={"sib1"})
 
 def test_ax25_from_an_fm_channel():
     """AX.25 takes an FM channel's audio: the Decoder demodulates the channel before the profile"""

@@ -331,6 +331,16 @@ through the maps of the steps before it, drops what a re-run span emitted after 
 decode inside: each frame result is its message (`"frame"`, crc_ok False when dropped), without the header fields a serial
 runner gives.
 
+**Only some kinds:** `profile.kinds()` gives `{kind: step id}` (an operator that emits says so with `EMITS = True`; a
+`"message"` cut's kind is its own), `rp.profile.info(name).kinds` the same list for a menu. `profile.rx(kinds={"pbch"})`
+(also `Decoder(..., kinds=)`, `rpps rx --kinds pbch,pcfich`) hands out only those, and builds only what they need
+(`profile.needed(kinds)`): their steps, and every header whose fields drive a needed step, and so on (LTE's PDSCH needs the
+PDCCH, which needs the PCFICH, which needs the PBCH). A branch none of whose steps is needed is not built; a chain (the trunk,
+a branch, the steps of a burst) ends at its last needed step, so the runner's output is that step's (DVB-S2's `pls` alone:
+no descrambling, LDPC or BCH). A parallel region runs whole, or not at all when none of it is needed; with one, its
+`"frame"` is a kind (`kinds(parallel=True)`) in place of those its steps emit. A kind the profile doesn't give is a
+ConfigError.
+
 **What a profile needs:** `"requires"`, beside `params`, as strings over the params and `baud`, evaluated in order (each may
 use those before): `baud` (symbols, chips or subcarrier spacing; null where the standard leaves the rate open), `Fs`, `bw`
 (the channel taken), `min_samples` (enough for one message); `input` ("audio": an FM channel's audio, AX.25), `from_cf`

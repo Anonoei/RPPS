@@ -80,6 +80,7 @@ class _Channel(Pipe):
     rpps.grid.nr)"""
     CATEGORY = Category.SYMBOL
     CONTROLS = {}
+    EMITS = True # Every decode is a message (rpps.profile.message)
     frame_len = staticmethod(frame_len)
     unpack = staticmethod(unpack)
 
