@@ -180,7 +180,7 @@ SYMBOLS; `BitStage` takes channel or data bits and keeps their form.
 |---|---|
 | `source` | files and their formats, WAV, SigMF, sockets, radios through pysdrlib (imported only when used); sinks |
 | `signal` | `filters` (FIR, IIR, windows, pulses, fractional delay, polyphase channelizer), `sample` (resampling), `channelize`, `DCBlock`, `Deemphasis`, `Conjugate`, `channel` (the simulated medium) |
-| `sync` | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `AcquireFEC`, `acquire_code`, `Squelch`, `PeakAGC`, `Burst` (splits a stream into bursts), `BurstTx` (places them), `Preamble`, `PreambleTx`, `ToneLock`. Second class: `time.MM` (Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `CMA` |
+| `sync` | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `AcquireFEC`, `acquire_code`, `Squelch`, `PeakAGC`, `Burst` (splits a stream into bursts), `BurstTx` (places them), `Preamble` (`attach_tx()`: its `PreambleTx`), `ToneLock`. Second class: `time.MM` (Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `CMA` |
 | `wave` | `Shape`/`Matched`, `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod` |
 | `symbol` | `Constellation` (PSK, QAM, APSK, ASK), `Differential`, `Spread`/`Despread`, `Carriers`, `Header`, `Pilots`, `PhaseScramble` |
 | `code` | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), `Line`, `Marker`, `Uncoded` |
@@ -291,7 +291,7 @@ Transmitting, the burst step is the mirror (rpps.profile.burst.BurstTxRunner, rp
 through steps built anew for it, and the step places it on one output stream: `gap_s` after the one before or at `at=`,
 with `ramp_s` ramps, `freq=` from the centre (or the step's `hop`, cycled) at the stream's rate `Fs`. Bursts on different
 carriers may overlap (MF-TDMA). A call gives what no later burst can reach any more: the samples up to its start.
-`"attach": true` on a preamble step sends its waveform before each burst (rpps.sync.PreambleTx), for a preamble no later
+`"attach": true` on a preamble step sends its waveform before each burst (`Preamble.attach_tx()`), for a preamble no later
 step sends.
 
 **Branches:** a last step `{"branch": "channels", "order": [...], "frame": N, "branches": {name: [steps]}}` fans the
