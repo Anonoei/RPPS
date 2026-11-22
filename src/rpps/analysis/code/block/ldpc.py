@@ -53,6 +53,15 @@ def _solve(U, D):
         return None, False
     return R[:k, k:], True
 
+def _solve_partial(U, D):
+    """A solution X of U X = D over GF(2) when U may be rank deficient: the free unknowns zero (a column of U that never
+    varies, as a header's constant bits, has no say). (X (k x c), rank)"""
+    r, k = U.shape
+    R, piv = rref(np.concatenate((U, D), axis=1).astype(np.uint8), pivot_cols=k)
+    X = np.zeros((k, D.shape[1]), np.uint8)
+    X[piv] = R[:len(piv), k:]
+    return X, len(piv)
+
 def staircase(words, k, rel=None, trials=16, verify=256, seed=0, extra=()):
     """Rows of an IRA code's H from aligned words (W, n) whose first k positions are the information bits and the rest
     the parity bits in accumulator order. extra: parity positions (indices into the parity part) that some rows also
@@ -113,7 +122,9 @@ def qc_generator(words, k, z, rel=None, trials=8, verify=256, seed=0):
     every parity block by one, so the k x (n - k) generator is (k/z) x ((n - k)/z) circulants, each one row of z bits:
     each word gives z equations in the k + z unknowns of a parity block, and the coefficients are the same for every
     parity block, so one elimination over about k/z + 9 words solves them all. Noisy bits: the most reliable words, several
-    subsets, each parity block's solution kept by how many held-out equations it satisfies.
+    subsets, each parity block's solution kept by how many held-out equations it satisfies. Information bits that never
+    vary (a header's constants) leave the system short of rank: their share falls to the constant, which the held-out
+    words, having the same constants, still bear out.
     Returns (V (k/z, (n-k)/z, z) uint8, c (n - k,) uint8, holds ((n-k)/z,): the fraction of held-out parity bits each
     block's solution predicts)"""
     words = np.asarray(words, dtype=np.uint8)
@@ -135,15 +146,10 @@ def qc_generator(words, k, z, rel=None, trials=8, verify=256, seed=0):
     X = np.zeros((k + z, mb), np.uint8)
     for t in range(trials):
         sub = pool[:use] if t == 0 else rng.choice(pool[:min(len(pool), 3*use)], use, replace=False)
-        Xt, ok = _solve(_qc_system(U[sub], z), Y.reshape(W, z, mb)[sub].reshape(-1, mb))
-        if not ok:
-            continue
+        Xt, rk = _solve_partial(_qc_system(U[sub], z), Y.reshape(W, z, mb)[sub].reshape(-1, mb))
         held = 1.0 - ((At.astype(np.int32) @ Xt.astype(np.int32) + Yt) % 2).mean(axis=0)
         better = held > best
         X[:, better], best[better] = Xt[:, better], held[better]
-    if np.all(best < 0):
-        raise ValueError("the information blocks do not have full rank over the words: not k information bits first, "
-                         "or too few different words")
     V = X[:k].reshape(kb, z, mb).transpose(0, 2, 1).copy()
     c = X[k:].T.reshape(-1).copy()
     return V, c, best
