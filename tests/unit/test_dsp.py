@@ -293,3 +293,15 @@ def test_carriers_narrower_than_the_edge_window_are_not_boxed_with_their_gaps(rn
         s = min(found, key=lambda s: abs(s.mid - m))
         assert s.mid == pytest.approx(m, abs=60e3) and s.width == pytest.approx(383e3, rel=0.15)
     assert all(s.width < 600e3 for s in found)
+
+def test_a_band_given_by_hand_measures_as_a_found_one(rng):
+    Fs = 1e6
+    x = two_bands(rng, 1 << 17, Fs, -200e3, 150e3, 60e3)
+    found = rp.analysis.find_signals(x, Fs, cf=100e6)[1]
+    typed = rp.analysis.measure_band(x, Fs, 100e6 + 150e3, 60e3, cf=100e6)
+    assert typed.power is not None and typed.Fs == Fs and typed.freq == pytest.approx(100e6 + 150e3, abs=1e3)
+    assert typed.power == pytest.approx(found.power, abs=0.5) and typed.snr == pytest.approx(found.snr, abs=1.0)
+    assert typed.duty > 0.9 and not typed.clipped
+    quiet = rp.analysis.measure_band(x, Fs, 100e6 + 400e3, 60e3, cf=100e6) # Only noise there
+    assert quiet.snr < typed.snr - 20
+    assert rp.analysis.measure_band(x, Fs, 100e6 + 490e3, 60e3, cf=100e6).clipped

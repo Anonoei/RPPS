@@ -41,6 +41,13 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   and `qc_checks` finds sparse checks in the generator itself: sums of two to four shifted parity blocks whose
   information dependences nearly cancel. An LDPC code's dense generator hides those from a word-level search unless the
   words are many.
+- `Lock.update(..., recheck=True)` scores the other modulations the search tried on the same symbols and calls the
+  lock stale when one fits better (a QPSK lock on 8PSK at 10 dB loses only some 5 dB of Es/N0).
+- `rp.analysis.measure_band(x, Fs, freq, bw, cf)`: a band given by hand measured as `find_signals` measures what it
+  finds (power, SNR, height, duty), as a `Signal`.
+- `rp.wave.demod(..., kind="pm")`: the phase, carrier offset and phase removed, with peak and rms phase deviation.
+- The stable API also holds `rrc_pulse`, `spectrum.cyclic` (`alpha_profile`, `features`, `ORDER_NAMES`) and
+  `spectrum.scf.coherence`.
 - `rp.sync.Lock`: a signal's symbols as a snapshot, for programs that seek, pause and retune. `Lock.find(x, Fs)` searches
   (raises `rp.errors.NoLock` with the reason), `lock.update(block)` follows rate, timing, cfo and phase on any later block,
   consecutive or not, with no search; `lock.stale` says when to search again; `lock.refine(longer)` searches the rate

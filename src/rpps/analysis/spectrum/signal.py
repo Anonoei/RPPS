@@ -378,6 +378,58 @@ def _edge_boxes(pw, nfft, K=31, inner=0.06, T=EDGE_DB, w_frac=0.005, min_w=2.0, 
 
 HOLD_DB = 10.0 # dB: a signal inside a wider band holds it up (a raised floor) only standing this far above its own floor
 
+def _spectrum(samps, Fs, nfft, edge):
+    """The averaged spectrum and its noise floor, as find_signals and measure_band see them.
+    Returns (nfft, averages K, power per bin, per-segment power, dB, floor dB)"""
+    samps = np.asarray(samps)
+    N = len(samps)
+    if nfft is None:
+        nfft = 1 << int(np.clip(np.floor(np.log2(max(N//16, 64))), 6, 16))
+    seg, wp = _segments(samps, nfft, 0.5)
+    K = len(seg)
+    pw = np.fft.fftshift(seg.sum(axis=0)/(K*wp*Fs))
+    segs = np.fft.fftshift(seg/(wp*Fs), axes=1)
+    db = 10*np.log10(pw + 1e-30)
+    inner = slice(int(max(edge, 0.05)*nfft), nfft - int(max(edge, 0.05)*nfft)) # Not the receiver filter's roll-off
+    kf = max(3, nfft//128)
+    low = 10*np.log10(np.convolve(pw[inner], np.ones(kf)/kf, mode="same") + 1e-30)[kf:-kf]
+    floor = _quiet_level(low) # Start from the quiet part: signals can fill the band
+    for _ in range(3): # The smoothed spectrum is steady, so a tight band above the start holds just the noise
+        floor = float(np.median(low[low < floor + 1.0]))
+    return nfft, K, pw, segs, db, floor
+
+def _duty(segs, e0, e1, noise_p):
+    """Fraction of the time a band is on (find_signals' Signal.duty), None when too weak or narrow to tell"""
+    on = segs[:, e0:e1+1].sum(axis=1) # Band power in each time segment, against the noise in the same band
+    mean_p = on.mean()
+    # Bursty if the band power swings between noise and a level above it. Halfway between noise and the average
+    # is the dividing line; a continuous signal stays above it, so a weak one isn't mistaken for bursts. Too few
+    # bins or too weak to tell the swing from the estimate's own scatter: no answer
+    scatter = mean_p*np.sqrt(2/(e1 - e0 + 1))
+    return float(np.mean(on > (noise_p + mean_p)/2)) if mean_p - noise_p > 4*scatter else None
+
+def measure_band(samps, Fs, freq, bw, cf=0.0, nfft=None, edge=0.02):
+    """A band given by hand (a channel plan, a band a user typed) measured as find_signals measures what it finds: a
+    Signal with power, SNR, height, peak and duty filled in, so typed and found signals compare alike
+
+    freq: the band's centre [Hz, absolute: cf + offset], bw: its width [Hz], cf: the capture's centre frequency.
+    The noise is the capture's floor (the band may be all signal); the band is cut to the capture's edges (clipped)."""
+    nfft, K, pw, segs, db, floor = _spectrum(samps, Fs, nfft, edge)
+    bin_hz = Fs/nfft
+    mid = freq - cf
+    e0 = int(np.clip(np.floor((mid - bw/2)/bin_hz + nfft/2), 0, nfft - 1))
+    e1 = int(np.clip(np.ceil((mid + bw/2)/bin_hz + nfft/2) - 1, e0, nfft - 1))
+    clipped = mid - bw/2 < -Fs/2 or mid + bw/2 > Fs/2
+    band = pw[e0:e1+1]
+    local = 10**(floor/10)
+    n = e1 - e0 + 1
+    snr = 10*np.log10(max(np.sum(band - local), 1e-30)/(local*n))
+    sig = Signal(((e0 + e1 + 1)/2 - nfft/2)*bin_hz, n*bin_hz, floor, float(db[e0:e1+1].max() - floor), float(snr),
+                 lo=(e0 - nfft/2)*bin_hz, hi=(e1 + 1 - nfft/2)*bin_hz, power=float(10*np.log10(band.sum()*bin_hz + 1e-30)),
+                 peak_freq=float((e0 + int(np.argmax(band)) - nfft/2)*bin_hz), duty=_duty(segs, e0, e1, local*n),
+                 resolved=n >= 8, clipped=clipped, Fs=Fs, cf=cf, bin_hz=bin_hz)
+    return sig
+
 def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occupied=0.99, min_bins=4, edge=0.02,
                  cf=0.0, split_db=3.0, min_across=8, min_band_snr_db=None, edges=True, edge_db=EDGE_DB, nested=True):
     """Find signals in a spectrum
@@ -405,21 +457,7 @@ def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occ
     nested: keep the bands that hold other signals (Signal.holds, a transponder's pedestal). False: only the signals
     Returns a Survey (a list of Signal sorted by frequency, ids 0, 1... in that order).
     """
-    samps = np.asarray(samps)
-    N = len(samps)
-    if nfft is None:
-        nfft = 1 << int(np.clip(np.floor(np.log2(max(N//16, 64))), 6, 16))
-    seg, wp = _segments(samps, nfft, 0.5)
-    K = len(seg)
-    pw = np.fft.fftshift(seg.sum(axis=0)/(K*wp*Fs))
-    segs = np.fft.fftshift(seg/(wp*Fs), axes=1)
-    db = 10*np.log10(pw + 1e-30)
-    inner = slice(int(max(edge, 0.05)*nfft), nfft - int(max(edge, 0.05)*nfft)) # Not the receiver filter's roll-off
-    kf = max(3, nfft//128)
-    low = 10*np.log10(np.convolve(pw[inner], np.ones(kf)/kf, mode="same") + 1e-30)[kf:-kf]
-    floor = _quiet_level(low) # Start from the quiet part: signals can fill the band
-    for _ in range(3): # The smoothed spectrum is steady, so a tight band above the start holds just the noise
-        floor = float(np.median(low[low < floor + 1.0]))
+    nfft, K, pw, segs, db, floor = _spectrum(samps, Fs, nfft, edge)
     k = max(3, nfft//1024*2 + 1)
     smooth_sigma = 4.34*np.sqrt(1.5/(K*k)) # Of the spectrum smoothed over k bins (neighbouring bins are correlated)
     thr = floor + (min_snr_db if min_snr_db is not None else max(4*smooth_sigma, MARGIN))
@@ -494,13 +532,7 @@ def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occ
         n = max(e1 - e0 + 1, 1)
         band = pw[e0:e1+1]
         snr = 10*np.log10(max(np.sum(band - local), 1e-30)/(local*len(band)))
-        on = segs[:, e0:e1+1].sum(axis=1) # Band power in each time segment, against the noise in the same band
-        noise_p, mean_p = local*len(band), on.mean()
-        # Bursty if the band power swings between noise and a level above it. Halfway between noise and the average
-        # is the dividing line; a continuous signal stays above it, so a weak one isn't mistaken for bursts. Too few
-        # bins or too weak to tell the swing from the estimate's own scatter: no answer
-        scatter = mean_p*np.sqrt(2/len(band))
-        duty = float(np.mean(on > (noise_p + mean_p)/2)) if mean_p - noise_p > 4*scatter else None
+        duty = _duty(segs, e0, e1, local*len(band))
         if min_band_snr_db is not None and snr < min_band_snr_db:
             continue
         out.append(Signal(

@@ -104,12 +104,15 @@ can change.
 | Where | What |
 | --- | --- |
 | `rp.Data`, `rp.Stage`, `rp.Pipe`, `rp.Pipeline` | the data and the operators (`*`, `/`, `+`) |
-| `rp.sync.Lock`, `rp.errors.NoLock` | a signal's symbols as a snapshot: `Lock.find(x, Fs)`, `lock.update(block)`, `lock.stale`, `lock.refine(longer)` |
+| `rp.sync.Lock`, `rp.errors.NoLock` | a signal's symbols as a snapshot: `Lock.find(x, Fs)`, `lock.update(block)` (`recheck`: other modulations), `lock.stale`, `lock.refine(longer)` |
 | `rp.sync.detect`, `rp.sync.Detection`, `rp.sync.Acquire` | acquisition once, and as a stream stage |
 | `rp.sync.best_tau`, `rp.sync.track_timing`, `rp.sync.matrix_mf`, `rp.sync.centres_in`, `rp.sync.find_baud` | timing and rate |
 | `rp.sync.quality.measure` | Es/N0, Eb/N0, EVM of symbols |
 | `rp.analysis.find_signals`, `rp.analysis.survey`, `Survey`, `Signal` | the signals in a capture; `Survey.match` keeps their ids |
-| `rp.wave.demod`, `rp.wave.FMDemod`, `AMDemod`, `SSBDemod` | analog audio, one block or a stream |
+| `rp.analysis.measure_band` | a band given by hand, measured as a found one (a `Signal`) |
+| `rp.analysis.spectrum.cyclic`: `alpha_profile`, `features`, `ORDER_NAMES`; `rp.analysis.spectrum.scf.coherence` | cyclic features: symbol rate and modulation order lines, spectral coherence |
+| `rp.signal.filters.rrc_pulse` | the root raised cosine pulse at any (fractional) time |
+| `rp.wave.demod`, `rp.wave.FMDemod`, `AMDemod`, `SSBDemod` | analog audio (FM, PM, AM, SSB), one block or a stream |
 | `rp.profile.ls`, `rp.profile.load` | the shipped profiles |
 | `rp.source.formats` | sample formats, by pysdrlib's names |
 
