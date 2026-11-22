@@ -176,6 +176,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   `csrc/rpps_native` has now (`rpps._accel.stale`); rebuild with `python tools/builder.py -c`. Installed packages are not checked.
 
 ### Changed
+- `rp.source.Sink` leaves scaling to pysdrlib's `FileSink(scale=True)` (the inverse of `File`'s) instead of its own:
+  the same bytes in every format.
 - **Documentation in one place per kind, built with Zensical:** the site (https://anonoei.github.io/RPPS/) has guides
   (`docs/guide/`: the data model, receiving, profiles, definitions, unknown signals, real time, building on RPPS) that
   embed the tested `examples/` scripts, and an API reference rendered from the docstrings by mkdocstrings, replacing

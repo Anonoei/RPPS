@@ -356,14 +356,13 @@ class Sink:
     """Write blocks to a file with pysdrlib's FileSink: `block >> sink` or `blocks >> sink`
 
     The file is opened when the sink is made. Use it as a context manager (or `close()`) to finish the file.
-    scale: samples in [-1, 1) are scaled up to the format's integers, which FileSink itself doesn't do
+    scale: samples in [-1, 1) are stored at the format's full scale (FileSink's `scale`, the inverse of File's)
     clip: saturate what is out of range instead of failing (FileSink counts it in `clipped` and warns when closed)
     """
     def __init__(self, fmt, path, scale=True, append=False, clip=True):
         self.fmt = fmts.get(fmt)
-        self.scale = self.fmt.full_scale if scale else 1.0
         import pysdrlib
-        self._sink = pysdrlib.FileSink(path, self.fmt.name, append=append, open=True, clip=clip)
+        self._sink = pysdrlib.FileSink(path, self.fmt.name, append=append, open=True, clip=clip, scale=scale)
 
     @property
     def path(self):
@@ -379,10 +378,7 @@ class Sink:
         return self._sink.clipped
 
     def write(self, data):
-        x = np.asarray(data.data if isinstance(data, base.data._Data) else data)
-        if self.scale != 1.0:
-            x = x * self.scale
-        self._sink.write(x)
+        self._sink.write(np.asarray(data.data if isinstance(data, base.data._Data) else data))
         return self
 
     def close(self):
