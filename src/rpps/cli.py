@@ -97,7 +97,8 @@ def cmd_show(args):
 
 
 def cmd_rx(args):
-    """Receive a capture with a profile: the data bits out, as bytes (most significant bit first) to --out"""
+    """Receive a capture with a profile: the data bits out, as bytes (most significant bit first) to --out; --messages:
+    every frame decoded, one JSON line each (rp.profile.Message)"""
     import numpy as np
     import rpps as rp
     params = _params(args.param)
@@ -110,8 +111,13 @@ def cmd_rx(args):
     rx = p.rx()
     src = rp.source.File(args.fmt, args.file, Fs=args.fs, cf=args.cf, sps=args.sps or p.params.get("sps", 0.0))
     bits = []
+    n_msgs = 0
     for block in src(args.block):
         out = rx(block)
+        if args.messages:
+            for m in rx.take_messages():
+                print(json.dumps(m.to_dict()))
+                n_msgs += 1
         if isinstance(out, dict): # A profile that branches: one branch's output
             name = args.branch or list(out)[-1]
             if name not in out:
@@ -121,7 +127,10 @@ def cmd_rx(args):
             x = np.asarray(o.data)
             bits.append(x < 0 if x.dtype.kind == "f" else x.astype(bool))
     bits = np.concatenate(bits) if bits else np.zeros(0, bool)
-    print(f"{args.file}: {len(bits)} bits out of {args.profile}" + (f" ({args.branch})" if args.branch else ""))
+    if args.messages:
+        print(f"{args.file}: {n_msgs} messages, {len(bits)} bits out of {args.profile}", file=sys.stderr)
+    else:
+        print(f"{args.file}: {len(bits)} bits out of {args.profile}" + (f" ({args.branch})" if args.branch else ""))
     if args.out:
         Path(args.out).write_bytes(np.packbits(bits).tobytes())
         print(f"wrote {args.out}")
@@ -352,6 +361,7 @@ def main(argv=None):
                       help="speed against recovered SNR (default: balanced; see rpps._effort)")
     p_rx.add_argument("--out", help="write the bits out as bytes here")
     p_rx.add_argument("--branch", help="a profile that branches: the branch whose bits go out (default: the last)")
+    p_rx.add_argument("--messages", action="store_true", help="print every frame decoded, one JSON line each (to stdout)")
     p_rx.set_defaults(fn=cmd_rx)
 
     p_tx = sub.add_parser("tx", help="transmit data with a profile into a sample file")

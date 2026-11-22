@@ -113,7 +113,8 @@ can change.
 | `rp.analysis.spectrum.cyclic`: `alpha_profile`, `features`, `ORDER_NAMES`; `rp.analysis.spectrum.scf.coherence` | cyclic features: symbol rate and modulation order lines, spectral coherence |
 | `rp.signal.filters.rrc_pulse` | the root raised cosine pulse at any (fractional) time |
 | `rp.wave.demod`, `rp.wave.FMDemod`, `AMDemod`, `SSBDemod` | analog audio (FM, PM, AM, SSB), one block or a stream |
-| `rp.profile.ls`, `rp.profile.load` | the shipped profiles |
+| `rp.profile.ls`, `rp.profile.load`, `rp.profile.info`, `rp.profile.catalogue` | the shipped profiles, and what each needs (`requires`) |
+| `rp.profile.Decoder`, `rp.profile.Message`, `runner.take_messages()` | a selected signal's frames, decoded, one record each |
 | `rp.source.formats` | sample formats, by pysdrlib's names |
 
 `import rpps` loads numpy and RPPS only (about 0.2 s): no scipy, matplotlib or pysdrlib until something asks for them

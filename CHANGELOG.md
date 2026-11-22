@@ -36,6 +36,18 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- **Decoded messages:** every frame a profile receives is also an `rp.profile.Message` (kind, fields, payload, crc_ok,
+  sample, time, freq, quality), from `runner.take_messages()`, placed in the stream the runner was given. Link headers,
+  HDLC, the DVB-S2 PL header, the LTE and NR channels emit them; DVB-S TS packets (with PID) and CCSDS transfer frames are
+  cut by the runner (`"message"` on a step); failed frames come too, `crc_ok` False. `rpps rx --messages` prints them as
+  JSON lines.
+- **What a profile needs:** `"requires"` in every profile (baud, Fs, bw, min_samples, input, from_cf);
+  `rp.profile.info(name, baud=, **params)` and `rp.profile.catalogue()` describe them (`ProfileInfo`).
+- **`rp.profile.Decoder(name, Fs, offset, cf, baud, bw, **params)`:** a selected signal's samples to the profile's
+  messages: shift, staged decimation and a fractional resampler to the profile's rate (an FM demodulator for AX.25's
+  audio), the rate measured first where the standard leaves it open. `feed(samples, start=, time=)` takes blocks that need
+  not follow on (an overlap is cut, a short gap filled, a long one starts over); `status` says "measuring", "searching",
+  "locked" or "lost", why, and the load.
 - `analysis.code.block.ldpc`: blind quasi-cyclic codes. `qc_generator` solves the generator's circulants from about
   k/z + 9 words (each word gives z equations; the reliable words solve, held-out ones check), `circulant_size` finds z,
   and `qc_checks` finds sparse checks in the generator itself: sums of two to four shifted parity blocks whose
@@ -129,6 +141,7 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   `csrc/rpps_native` has now (`rpps._accel.stale`); rebuild with `python builder.py -c`. Installed packages are not checked.
 
 ### Fixed
+- An HDLC frame step flushed with fewer bits held than a flag raised instead of giving nothing.
 - `analysis.code.block.linear.sparse_checks` returned nothing when given fewer than k + 16 words (all went to the solve,
   none were left to verify on). It now keeps some aside first.
 - Pipelined (`.pipelined`, `.threaded`), a stage after `Acquire` could take a refinement made for a later block, its
