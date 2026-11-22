@@ -62,3 +62,18 @@ def test_burst_kinds_each_on_its_own_preamble():
     kinds = [b.kind for b in r.bursts]
     assert len(set(kinds[0::2])) == 1 and len(set(kinds[1::2])) == 1 and kinds[0] != kinds[1] # Each type its own kind
     assert np.median([b.evm for b in r.bursts]) < 0.2
+
+def test_burst_kinds_when_the_gate_misses_by_tens_of_symbols():
+    """A long burst's gate can open tens of symbols from its start: the preamble is still found (a wider alignment)"""
+    from types import SimpleNamespace
+    rng = np.random.default_rng(9)
+    pts = np.exp(1j*np.pi/4*np.array([1, 3, 5, 7]))
+    uw = pts[rng.integers(0, 4, 64)]
+    B = []
+    for i in range(8):
+        lead = rng.integers(0, 25) # symbols of noise before the preamble: the gate opened that early
+        s = np.concatenate((0.3*(rng.standard_normal(lead) + 1j*rng.standard_normal(lead)), uw, pts[rng.integers(0, 4, 4000)]))
+        s = s*np.exp(1j*rng.uniform(0, 2*np.pi)) # each burst its own phase
+        B.append(SimpleNamespace(symbols=s, start=0, stop=len(s)))
+    kinds, member = burst.burst_kinds(B, 1.0, pts)
+    assert len(kinds) == 1 and len(kinds[0]) >= 60 and member == [0]*8
