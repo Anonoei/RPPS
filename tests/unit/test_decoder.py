@@ -91,6 +91,34 @@ def test_blocks_with_gaps_and_overlaps():
     assert good and all(any(0 <= m.sample - s <= 28 and m.payload == p for s, p in want.items()) for m in good)
     assert len({m.sample for m in good}) == len(good) # (no frame twice from an overlap)
 
+def test_a_seek_back_starts_over():
+    """File playback seeking back without reset(): a step back of more than a block is a seek, not an overlap to cut, so
+    the frames decode again instead of every block being dropped until the index passes the old one"""
+    x, payloads, _ = adsb_capture(np.random.default_rng(3))
+    want = [np.packbits(b).tobytes() for b in payloads]
+    dec = rp.profile.Decoder("adsb/mode_s", Fs=2e6)
+    first = []
+    for a in range(0, len(x), 4000):
+        first += dec.feed(x[a:a + 4000], start=a)
+    again = []
+    for a in range(0, len(x), 4000): # from the start again
+        again += dec.feed(x[a:a + 4000], start=a)
+    again += dec.close()
+    assert [m.payload for m in again if m.crc_ok][-3:] == want
+
+def test_a_long_gap_keeps_held_frames_and_reset_forgets_times():
+    x, payloads, starts = adsb_capture(np.random.default_rng(4), frames=1)
+    want = np.packbits(payloads[0]).tobytes()
+    end = int(starts[0]) + 300 # the frame whole, not yet given out by the profile
+    dec = rp.profile.Decoder("adsb/mode_s", Fs=2e6, fill=0.001)
+    held = dec.feed(x[:end], start=0, time=10.0)
+    out = dec.feed(np.zeros(4000, np.complex64), start=end + 100000, time=99.0) # far past fill: a new stream
+    got = [m for m in held + out if m.crc_ok]
+    assert [m.payload for m in got] == [want] and got[0].time == pytest.approx(10.0 + got[0].sample/2e6)
+    assert dec.status["state"] == "searching" # the last good message belonged to the stream before
+    dec.reset()
+    assert dec._anchors == [] and dec.status["state"] == "searching"
+
 def test_a_rate_too_low_is_refused():
     with pytest.raises(ValueError, match="needs"):
         rp.profile.Decoder("ble/adv", Fs=1e6)

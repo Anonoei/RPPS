@@ -175,7 +175,8 @@ class BurstTx(Pipe):
     sample (every burst on one carrier has the phase of one continuous carrier). Bursts may overlap: they add (carriers
     of an MF-TDMA network share a slot; a burst may also start inside the one before).
 
-    `sent`: (start sample, samples, freq) of every burst added."""
+    `sent`: (start sample, samples, freq) of every burst added. `take(flush=True)` ends the stream: the next `add` starts
+    a new one (as `reset()`), its `at` from that stream's start, and `sent` its record."""
     CATEGORY = Category.SYNC
 
     def __init__(self, Fs=None, gap_s=0.0, ramp_s=0.0, hop=None):
@@ -198,6 +199,7 @@ class BurstTx(Pipe):
         self._buf, self._base = np.zeros(0, np.complex128), 0 # Samples not handed out yet, from absolute position _base
         self._start, self._end = None, 0 # The last burst's start and end
         self._stream = None
+        self._ended = False # Flushed: the next burst starts a new stream
         self.sent = []
 
     def takes(self, encode=True):
@@ -205,6 +207,8 @@ class BurstTx(Pipe):
 
     def add(self, burst, at=None, freq=None):
         """Place one whole burst (a Data of samples). Its samples come out of `take`"""
+        if self._ended:
+            self.reset()
         x = np.asarray(burst.data).astype(np.complex128)
         Fs_in = burst.meta.Fs
         if self._Fs is None:
@@ -222,6 +226,8 @@ class BurstTx(Pipe):
             raise ValueError("BurstTx: at is from the stream's start, not before it")
         if self._start is not None and start < self._start:
             raise ValueError(f"BurstTx: bursts come in the order of their starts ({start} is before {self._start})")
+        if start < self._base:
+            raise ValueError(f"BurstTx: sample {start} was handed out already (the stream is out to {self._base})")
         if freq:
             x = x*np.exp(2j*np.pi*freq/Fs*(start + np.arange(len(x))))
         need = start + len(x) - self._base
@@ -247,6 +253,7 @@ class BurstTx(Pipe):
         out, self._buf, self._base = self._buf[:n], self._buf[n:], end
         d = Data(out.astype(np.complex64), flush=flush, Fs=self._Fs, sps=self._sps, cf=self._cf, stream=self._stream)
         self._stream = d.stream
+        self._ended = flush
         return d
 
     def _ramp(self, x, Fs):
