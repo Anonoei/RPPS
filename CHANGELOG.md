@@ -38,6 +38,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 ## 0.6.0 (2026-11-22)
 
 ### Breaking
+- **RPPS is licensed under the GPL, version 3 or later** (GPL-3.0-or-later), from this release; 0.5.0 and earlier stay
+  MIT. A program that distributes RPPS, or a work based on it, does so under the GPL's terms.
 - **`stream.dropped` counts source samples**, a radio's overruns and a threaded source's discarded blocks alike (it
   counted blocks for `Blocks.threaded(drop=True)`).
 - `ldpc.min_sum(llr)` is `ldpc.propagate(llr)`: the layered schedule runs min-sum or sum-product (the definition's
