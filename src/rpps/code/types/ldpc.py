@@ -32,9 +32,17 @@ def qc_checks(base, z):
 
 _LAYERS = {} # (N, M, edges) -> the code's check layers: one colouring per code per process
 
+_PHI_SMALL, _PHI_TOP, _PHI_RES = 0.25, 16.0, 64.0
+_PHI_GRID = np.arange(int(_PHI_TOP*_PHI_RES) + 1)/_PHI_RES
+_PHI_TABLE = -np.log(np.tanh(0.5*np.maximum(_PHI_GRID, 1e-9)))
+
 def _phi(x):
-    """-log(tanh(x/2)), its own inverse: the sum-product check update in the log domain, clamped as the C++ kernel does"""
-    return -np.log(np.tanh(0.5*np.clip(x, 1e-9, 30.0)))
+    """-log(tanh(x/2)), its own inverse: the sum-product check update in the log domain, as the C++ kernel computes it:
+    the series -log(x/2) + x^2/24 below 0.25 (x at least 1e-9), a table every 1/64 interpolated linearly up to 16 (error
+    under 5e-4), its last value past it"""
+    small = np.maximum(x, 1e-9)
+    with np.errstate(invalid="ignore"):
+        return np.where(x < _PHI_SMALL, -np.log(0.5*small) + small*small/24.0, np.interp(x, _PHI_GRID, _PHI_TABLE))
 
 @register("ldpc")
 class ldpc(_code):

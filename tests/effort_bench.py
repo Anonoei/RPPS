@@ -13,6 +13,33 @@ frame errors. Eb/N0 = Es/N0 - 10 log10(bits per symbol x rate). Speed: informati
 demapping and decoding, best of 3 over one batch, at the threshold (where `max` iterates most) and 1 dB above it.
 The timing rows (OerderMeyr) are the EVM floor of a noiseless QPSK stream at 2 and 4 samples a symbol, and its symbols a
 second.
+
+Findings (2026-11-22, native kernels, one thread, FER 1e-1, 20 errors a point; speeds on a noisy box, +-30%):
+
+    chain                          Es/N0 threshold dB       Eb/N0 dB (balanced)    Mbit/s at threshold (1 dB above)
+                                   fast   balanced  max                            fast         balanced     max
+    LDPC 64800 1/2, QPSK           1.08   0.94      0.75    0.94                   2.2 (4.8)    1.2 (3.6)    0.96 (2.8)
+    LDPC 16200 3/5, 8PSK           6.16   6.09      5.62    3.54                   7.7 (16)     2.7 (6.3)    0.79 (3.9)
+    turbo LTE K=6144, QPSK         -0.84  -1.31     -1.62   0.45                   1.6          0.85         0.10
+    turbo LTE K=40, QPSK           -0.34  -0.41     -0.49   1.76                   0.47         0.24         0.073
+    polar NR DCI (63, 432), QPSK   -4.97  -5.25     -5.67   2.18                   0.22         0.12         0.032
+    polar NR PBCH, QPSK            -8.50  -8.85     -9.32   2.45                   0.19         0.097        0.029
+    polar (256,128)+CRC16, QPSK    1.29   1.13      0.90    1.71                   0.92         0.38         0.098
+    TPC (64,57)^2, BPSK            2.81   2.16      1.69    3.16                   0.36 (0.62)  0.13 (0.26)  0.032 (0.11)
+    conv K7 1/2 Viterbi, QPSK      3.61   3.61      3.61    3.61                   7.9          5.6          5.6
+
+    timing at 2 sps: EVM floor -28.0 / -48.5 / -55.4 dB, 13 Msym/s at every level; at 4 sps -51.6 / -51.6 / -57.7 dB
+
+- Where max pays: LDPC sum-product (0.19 dB on 1/2 QPSK, 0.47 dB on 3/5 8PSK, where min-sum's error grows with the
+  check degree), polar lists of 32 (0.25-0.5 dB), TPC Chase 5 x 16 (0.47 dB), turbo log-MAP x4 (0.3 dB at 6144, 0.08
+  at 40), each at 2-10x the time near the threshold.
+- Sum-product per iteration: 4.1x min-sum's time with log(tanh) per edge, 1.7x with phi tabulated (the kernel's and
+  _phi's), and it converges in fewer iterations: 50 sum-product iterations decode below what 200 min-sum ones do.
+- Exact demapping buys nothing measurable on Gray QPSK (max-log is exact) or DVB-S2 8PSK (0.0 dB) and costs ~30% of a
+  Viterbi chain: the demapper is fast's main gain where the decoder has no knob.
+- Not tied to effort: the matched filter's span (25 symbols; 12 is 1.3-2x the filter speed at an EVM floor of -45 to
+  -56 dB, but the filter runs at 90-150 Msps, never a chain's limit), min-sum's alpha (DVB-S2 16200 1/2 is best at
+  0.85, 64800 1/2 at 0.8, and both fail every word at 0.75 or less: no safe value to move to).
 """
 import argparse
 import time

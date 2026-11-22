@@ -18,11 +18,35 @@ namespace {
 
 constexpr double INF = std::numeric_limits<double>::infinity();
 
-// phi(x) = -log(tanh(x/2)), its own inverse: the sum-product check update in the log domain. x clamped where the
-// result is past any LLR in use (phi(1e-9) = 21.4, phi(30) = 1.9e-13)
-inline double phi(double x) {
-    x = std::min(std::max(x, 1e-9), 30.0);
-    return -std::log(std::tanh(0.5*x));
+// phi(x) = -log(tanh(x/2)), its own inverse: the sum-product check update in the log domain, as rpps/code/types/ldpc.py
+// _phi computes it. Below PHI_SMALL its series -log(x/2) + x^2/24 (x clamped at 1e-9: phi 21.4); from there to PHI_TOP
+// linear interpolation in a table every 1/PHI_RES (error under 5e-4); past PHI_TOP the table's last value (phi(16) 2e-7).
+// Twice to four times the speed of log(tanh) per edge.
+constexpr double PHI_SMALL = 0.25, PHI_TOP = 16.0, PHI_RES = 64.0;
+constexpr int PHI_N = static_cast<int>(PHI_TOP*PHI_RES) + 1;
+
+const std::vector<double> &phi_table() {
+    static const std::vector<double> t = [] {
+        std::vector<double> v(PHI_N);
+        for (int i = 0; i < PHI_N; i++) {
+            const double x = std::max(i/PHI_RES, 1e-9);
+            v[static_cast<size_t>(i)] = -std::log(std::tanh(0.5*x));
+        }
+        return v;
+    }();
+    return t;
+}
+
+inline double phi(const double *table, double x) {
+    if (x < PHI_SMALL) {
+        x = std::max(x, 1e-9);
+        return -std::log(0.5*x) + x*x/24.0;
+    }
+    if (x >= PHI_TOP) return table[PHI_N - 1];
+    const double u = x*PHI_RES;
+    const long long i = static_cast<long long>(u);
+    const double f = u - static_cast<double>(i);
+    return table[i] + f*(table[i + 1] - table[i]);
 }
 
 // Layered decoding (rpps/code/types/ldpc.py layered): the checks in `rows` order (a colouring's layers one after the
@@ -47,6 +71,7 @@ py::tuple ldpc_layered(carray<double> llr, carray<int64_t> var_a, carray<int64_t
     py::array_t<bool> hard({B, N});
     py::array_t<bool> conv(static_cast<py::ssize_t>(B));
     const double *ch_all = llr.data();
+    const double *ptab = phi_table().data(); // (built before the threads start)
     bool *hd = hard.mutable_data(), *cv = conv.mutable_data();
     {
         py::gil_scoped_release nogil;
@@ -66,13 +91,13 @@ py::tuple ldpc_layered(carray<double> llr, carray<int64_t> var_a, carray<int64_t
                             const double v = total[var[e0 + j]] - r[e0 + j];
                             q[j] = v;
                             if (v < 0) negs++;
-                            p[j] = phi(std::fabs(v));
+                            p[j] = phi(ptab, std::fabs(v));
                             sum += p[j];
                         }
                         const double total_sign = (negs % 2 == 1) ? -1.0 : 1.0;
                         for (long long j = 0; j < d; j++) {
                             const double s = total_sign * (q[j] < 0 ? -1.0 : 1.0);
-                            const double nr = s*phi(sum - p[j]);
+                            const double nr = s*phi(ptab, sum - p[j]);
                             r[e0 + j] = nr;
                             total[var[e0 + j]] = q[j] + nr;
                         }
