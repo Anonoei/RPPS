@@ -395,7 +395,11 @@ class Device(Source):
                         yield self._block(x[at:])
             except err.Lost as e: # The device (or a shared-memory publisher) is gone: the stream ends here
                 self.lost = str(e)
-                tail = getattr(e, "samples", None) # (what was there short of a whole block, where pysdrlib gives it)
+                tail = getattr(e, "samples", None) # (what was there short of a whole block: pysdrlib gives it with the error)
+                tm = getattr(e, "meta", None)
+                if tm is not None and base is not None: # placed by its index, a gap before it counted as any other
+                    s.pos = max(s.pos, base + tm.index)
+                    s.dropped += tm.dropped
                 yield self._block(np.zeros(0, np.complex64) if tail is None else np.asarray(tail, np.complex64), flush=True)
                 if self._opened:
                     self.close()
