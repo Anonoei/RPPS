@@ -29,13 +29,17 @@ from .worker import PlanWorker
 @dataclass
 class Parallel:
     """How a parallel region runs: executor ("inline", "thread", or an Executor), its keyword arguments, and batching:
-    frames that arrive in one call (up to max_batch, of one key) run as one batch"""
+    frames that arrive in one call (up to max_batch, of one key) run as one batch. xp: the array module the kernels run on
+    (None: numpy; a device's, such as CuPy, with the inline or thread executor: a device does not cross a fork)"""
     executor: object = "inline"
     max_batch: int = 16
     kw: dict = None
+    xp: object = None
 
-    def __init__(self, executor="inline", max_batch=16, **kw):
-        self.executor, self.max_batch, self.kw = executor, max_batch, kw
+    def __init__(self, executor="inline", max_batch=16, xp=None, **kw):
+        self.executor, self.max_batch, self.kw, self.xp = executor, max_batch, kw, xp
+        if xp is not None and (executor == "process" or type(executor).__name__ == "ProcessExecutor"):
+            raise ValueError("a device array module runs in this process: use the inline or thread executor")
 
 class ParallelRunner(Runner):
     """A Runner whose slots from `region_slot` on run frame by frame on an executor. Same contract as Runner"""
@@ -44,11 +48,12 @@ class ParallelRunner(Runner):
         if direction != "rx":
             raise ValueError("a parallel region is a receive-side thing")
         self.stop = next(i for i, s in enumerate(self.slots) if s.step.id == region_first)
-        self.sched = Scheduler(parallel.executor, PlanWorker(make_steps, direction), parallel.max_batch, False,
+        self.sched = Scheduler(parallel.executor, PlanWorker(make_steps, direction, parallel.xp if parallel.xp is not None else np), parallel.max_batch, False,
                                **(parallel.kw or {}))
         self._pend, self._pend_pos, self._cur = [], None, {}
         self._fseq, self._out_next, self._tags = 0, None, None
         self.frames = 0
+        self._spent = {} # {kernel: seconds} the region's workers spent
 
     def close(self):
         self.sched.close()
@@ -102,6 +107,16 @@ class ParallelRunner(Runner):
     def _emit(self, D, results):
         meta = D.meta.fork()
         region = self.slots[self.stop]
+        st = self._stream
+        key, spent = f"parallel:{region.step.id}", self._spent
+        for r in results: # The region's time, its workers' (in this process or another), is its load over their number
+            t = sum(r.spent.values())
+            if t:
+                st.busy[key] = st.busy.get(key, 0.0) + t
+                st.thread_of[key] = "parallel"
+                for k, v in r.spent.items():
+                    spent[k] = spent.get(k, 0.0) + v
+        st.lanes["parallel"] = getattr(self.sched.executor, "workers", 1)
         for r in results:
             for rep in r.reports:
                 self._report(rep.pop("what"), **rep)
@@ -120,5 +135,6 @@ class ParallelRunner(Runner):
         self._out_next = (self._out_next or 0) + len(arr)
         ctx = dict(D.ctx)
         ctx[FLUSH] = D.flush
-        self._stream.est["parallel"] = {"frames": self.frames, "in_flight": self.sched.pending, "latency": "one frame"}
+        self._stream.est["parallel"] = {"frames": self.frames, "in_flight": self.sched.pending, "latency": "one frame",
+                                        "spent": dict(spent)}
         return cls(arr, cat, dt, ctx, meta, rep)

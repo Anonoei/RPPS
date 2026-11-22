@@ -30,6 +30,8 @@ class LoopKernel(Kernel):
         self.step, self.live, self.direction = step, live, direction
         self.name = f"loop:{step.id}"
 
+    where = "host" # (the operators run on numpy)
+
     def shape(self, n_in):
         return None
 

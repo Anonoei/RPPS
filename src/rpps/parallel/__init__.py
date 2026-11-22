@@ -25,6 +25,29 @@ The unit is the **batch**, not the thread: N frames through one program pays on 
   Measure with `python tools/parallel_bench.py 64 4`.
 - A parallel region's kernels decode inside: each frame result is its message (`"frame"`, `crc_ok` False when dropped),
   without the header fields a serial runner gives.
+
+## Devices (GPUs)
+
+Vendor neutral: CUDA and ROCm/HIP alike, through CuPy (built for either, one API); nothing here names a vendor, and no
+kernel branches on one. `rpps._accel.device()` gives `(xp, "cuda" | "hip")` or `(numpy, None)`;
+`Parallel("thread", xp=xp)` runs the region's plans on it (inline or thread executors only: a device does not cross a
+fork).
+
+- **Hand-off.** A batch is stacked on the host and the plan moves it: one upload at its start, one download at its end,
+  and a `to:host` / `to:device` pair around each run of kernels that need numpy (`Kernel.where == "host"`: the
+  decoders, a `LoopKernel`). Every crossing is a kernel, so `BatchPlan.describe()` shows the cost; nothing converts
+  implicitly. Constants go to a device once (`Kernel.const`). `bad`, `why`, `notes` and `code_failed` stay on the host.
+- **Instructions**, each with the numpy run as its oracle: (1) array code over `xp`, which most kernels are and which
+  runs on CuPy unchanged; (2) hand-written device kernels for loops (layered LDPC, Viterbi ACS) in a portable subset of
+  CUDA C that HIP compiles as it is (wavefront width a parameter, not 32), compiled at run time by CuPy (NVRTC or
+  hiprtc) and looked up as `rpps._native` is; (3) `describe()`, the export for an FPGA or HLS flow.
+- **Getting results back.** The download at the plan's end gives numpy; results are built on the host and the
+  `Scheduler` puts them in order, as for any executor. A dedicated device executor (later) overlaps the next batch's
+  upload with this one's work on device streams, with `Scheduler(eager=False)` so batches fill.
+- **Checked without a GPU.** `tests/unit/fakedevice.py` is numpy behind an array type that refuses what CuPy refuses
+  (no implicit conversion, no numpy array mixed in); every kernel and the DVB-S2 region run on it in the suite.
+- **What moves next:** batch decoders on the device (FEC is most of the time), then the front's block estimators (the
+  front, with its per-sample loops, stays on the CPU).
 """
 from .frame import Frame, Result, OK, DROPPED
 from .executor import Executor, InlineExecutor, ThreadExecutor, ProcessExecutor, make

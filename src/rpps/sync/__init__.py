@@ -18,7 +18,7 @@ and its rate across windows and gates outliers; the correction is evaluated per 
 | carrier phase per frame | `PilotPhase` (pilot blocks), `phase.FFCarrier` (Viterbi & Viterbi) | `carrier: pilots`, `carrier: ff` |
 | frame starts | `FrameSync` (a preamble and the best word of a header code), `Delimiter` (a word among bits) | `frame`, `delimit` |
 | alignment on bits | `Align` (markers, patterns, polarity), `Puncture` (puncture phase) | `align`, `puncture` |
-| modulation, rate, offset | `Acquire` (`detect` once), `Lock` (a snapshot: `Lock.find`, `lock.update`); code phase and Doppler: `acquire_code` | |
+| modulation, rate, offset | `Acquire` (`detect` once), `Lock` (a snapshot: `Lock.find`, `lock.update`; contiguous blocks joined: `lock.follow`); code phase and Doppler: `acquire_code` | |
 | channel code, bit map, alignment | `AcquireFEC` | |
 | bursts | `Burst` splits a stream into bursts, `BurstTx` places them; `Preamble` finds each one's preamble (`attach_tx()`: its `PreambleTx`) | `burst`, `preamble` |
 | a pilot tone | `ToneLock` (FM stereo's 19 kHz, ATSC's pilot) | |

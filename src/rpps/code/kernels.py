@@ -23,6 +23,8 @@ class BlockDecode(Kernel):
         self.coder, self.block, self.soft, self.category, self.rep = coder, int(block), bool(soft), category, rep
         self.name = f"decode:{name}"
 
+    where = "host" # (the decoders are C++ and numpy; a device decoder is a kernel of its own)
+
     def shape(self, n_in):
         return None # a code says how many items a block gives, not every coder how its input and output relate
 
@@ -85,7 +87,7 @@ class XorMask(Kernel):
 
     def run(self, xp, b):
         L = b.x.shape[1]
-        m = xp.asarray(self.mask[np.arange(L) % len(self.mask)])[None, :]
+        m = self.const(xp, L, lambda: self.mask[np.arange(L) % len(self.mask)])[None, :]
         if b.form.dt == dtype.LLR and self.rep == Rep.DATA: # Descrambling (encoding decides first, as the operator does)
             b.x = (b.x*(1.0 - 2.0*m)).astype(b.x.dtype)
             b.form = Form(Mod, self.category, dtype.LLR, self.rep, *b.form[4:])

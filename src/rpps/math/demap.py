@@ -53,6 +53,7 @@ def _llr_rows(xp, y, points, labels, masks, noise_var=None, maxlog=False, iters=
     """`llr_rows` in array operations (the reference for the C++ kernel, and what runs on another array module)"""
     n, L = y.shape
     bps = labels.shape[1]
+    points, labels, masks = xp.asarray(points), xp.asarray(labels), xp.asarray(masks) # (no copy when they are there already)
     if L == 0:
         return xp.zeros((n, 0), dtype=np.float32)
     d2, dmin = distances(xp, y, points)
@@ -72,14 +73,14 @@ def _llr_rows(xp, y, points, labels, masks, noise_var=None, maxlog=False, iters=
     # point's shift keeps in range (the shift cancels in the ratio). Where a sum underflows (a symbol far from every point of
     # a bit value) the log-sum-exp is done the long way, so the result is the same at any noise level
     ex = xp.exp(-(d2 - dmin[:, :, None])/nv[:, None, None])
-    S = ex @ xp.asarray(masks)                                                # (rows, L, 2*bits): zeros then ones
+    S = ex @ masks                                                            # (rows, L, 2*bits): zeros then ones
     S0, S1 = S[:, :, :bps], S[:, :, bps:]
     tiny = 1e-250
     out = (xp.log(xp.maximum(S0, tiny)) - xp.log(xp.maximum(S1, tiny))).astype(np.float32)
     ii, jj, kk = xp.nonzero((S0 < tiny) | (S1 < tiny))
     if len(ii):
         lp = -d2[ii, jj, :]/nv[ii][:, None]                                    # (m, points)
-        one = xp.asarray(labels[:, kk].T)                                      # (m, points): which points carry a 1
+        one = labels[:, kk].T                                                  # (m, points): which points carry a 1
         out[ii, jj, kk] = (_lse_where(xp, lp, ~one) - _lse_where(xp, lp, one)).astype(np.float32)
     return out.reshape(n, L*bps)
 

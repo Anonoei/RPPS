@@ -3,11 +3,16 @@
 A `BatchPlan` is what a worker compiles for a `Frame.key` (the parameters the front resolved, and the frame's shape) and runs
 on every batch with that key. It chains the region's kernels, checks the lengths between them where they are known, keeps the
 time each spent, and describes itself in a form a device backend can build (`describe`).
+
+On an array module other than numpy (a device), the plan uploads a batch once at its start and downloads it once at its end,
+and puts a `ToHost` / `ToDevice` pair around each run of kernels that need numpy (`Kernel.where == "host"`): every crossing is a
+kernel of its own, in `describe()`, and nothing moves implicitly.
 """
 import time
 
 from ..errors import ConfigError
 from ..profile import control as _ctl
+from ..base.kernel import ToDevice, ToHost
 from .kernel import kernel_of
 
 class BatchPlan:
@@ -36,10 +41,26 @@ class BatchPlan:
     def __repr__(self):
         return "<BatchPlan " + " > ".join(k.name for k in self.kernels) + ">"
 
-def compile(steps, params, direction="rx", key=None):
+def placed(kernels, xp):
+    """`kernels` with the transfers a device needs: in from the host, out to it, and around every host kernel (none on numpy)"""
+    import numpy as np
+    if xp is np:
+        return list(kernels)
+    out, dev = [], False
+    for k in kernels:
+        want = k.where != "host"
+        if want != dev:
+            out.append(ToDevice() if want else ToHost())
+            dev = want
+        out.append(k)
+    if dev:
+        out.append(ToHost())
+    return out
+
+def compile(steps, params, direction="rx", key=None, xp=None):
     """The plan of `steps` (built steps, in order) for `params` ({step id: {parameter: value}}). A parameter a step takes live
     is applied to every frame as its start; one it takes by restart builds the step again with it (what a header did to
-    a runner)"""
+    a runner). xp: the array module the plan runs on (numpy when None): a device's gets its transfers (`placed`)"""
     kernels = []
     for st in steps:
         p = params.get(st.id, {})
@@ -53,4 +74,4 @@ def compile(steps, params, direction="rx", key=None):
             if k not in st.controls:
                 raise ConfigError(f"step {st.id!r} cannot be controlled on {k!r} (it takes {sorted(st.controls)})")
         kernels.append(kernel_of(st, live, direction))
-    return BatchPlan(kernels, key)
+    return BatchPlan(kernels if xp is None else placed(kernels, xp), key)

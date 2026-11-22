@@ -2,6 +2,9 @@
 
 Users don't build these: give `rp.Data` an Fs / sps / cf and the stages take care of the rest.
 """
+import threading
+from collections import deque
+from time import perf_counter
 
 def forward(to, name, doc=None):
     """A read-only property that reads `name` of the object in attribute `to`: self.Fs is self.state.Fs"""
@@ -40,8 +43,11 @@ class Stream:
     states: the carried state of each stage (filter history, oscillator phase, loop filters...), keyed by the stage,
         so a stage object is reusable and the same stage in two streams has two states
     det: detection result (baud, modulation, timing, cfo...), see rpps.sync.detect
-    busy: seconds each stage spent in `step`; air: seconds of signal the source produced. busy/air (`load`) over 1
-        means that stage can't keep up in real time
+    busy: seconds each operator spent on this stream's blocks (a stage's `step`, a pipe's encode or decode), its own time
+        only (what it ran inside it is the inner one's); air: seconds of signal the source produced. busy/air (`load`)
+        is the operator's share of real time: 1.0 exactly keeps up, over 1 it can't. `realtime()` is the one number
+    lanes: {thread: how many run its work at once} (a parallel region's workers); a thread not named is one
+    thread_of: {operator: the thread it ran on}: what `realtime` adds up per thread
     dropped: source samples lost: a radio's overruns (`Device`, as pysdrlib reports them) and blocks a threaded source
         discarded because the stages fell behind (`Blocks.threaded(drop=True)`, counted at the source's rate)
     pos: items the source has produced so far: the absolute position of its next block
@@ -58,7 +64,8 @@ class Stream:
     here is the latest: a stage reads its block's (`Meta.det`), which Acquire stamps, so a stage running behind Acquire
     in another thread uses the detection its block went through with, not one made for a later block.
     """
-    __slots__ = ("states", "det", "blocks", "src_Fs", "src_sps", "gen", "busy", "air", "dropped", "pos", "t0", "out_pos", "in_pos", "est", "control")
+    __slots__ = ("states", "det", "blocks", "src_Fs", "src_sps", "gen", "busy", "air", "dropped", "pos", "t0", "out_pos", "in_pos", "est", "control",
+                 "thread_of", "lanes", "_snaps")
     def __init__(self, Fs=None):
         self.states = {}
         self.det = None
@@ -67,6 +74,9 @@ class Stream:
         self.src_sps = None # sps at the source, once a stage has learned it (Acquire): the next blocks start from it
         self.gen = 0 # Bumped when src_sps changes
         self.busy = {}
+        self.thread_of = {}
+        self.lanes = {}
+        self._snaps = deque(maxlen=1024) # (air, busy) every SNAP seconds of signal: what `load(window)` measures over
         self.air = 0.0
         self.dropped = 0
         self.pos = 0
@@ -76,9 +86,40 @@ class Stream:
         self.est = {}
         self.control = None
 
-    def load(self):
-        """Fraction of real time each stage takes: {stage: busy/air}. Over 1.0, it is too slow for a live source"""
-        return {st: t/self.air for st, t in self.busy.items()} if self.air > 0 else {}
+    SNAP = 0.02 # [s] of signal between the snapshots `load(window)` looks back through (1024 of them: 20 s)
+
+    def add_air(self, seconds):
+        """The source made `seconds` more of signal (a source calls this per block)"""
+        self.air += seconds
+        if not self._snaps or self.air - self._snaps[-1][0] >= self.SNAP:
+            self._snaps.append((self.air, dict(self.busy))) # (dict() of a dict is one step under the GIL: safe while stages run)
+
+    def load(self, window=None):
+        """Share of real time each operator takes, {operator: busy/air}: 1.0 exactly keeps up, over 1 it falls behind.
+
+        window: None, since the stream started; seconds, over about the last `window` seconds of signal (what a live view
+        wants: a stage that slows down shows at once)"""
+        busy, air = dict(self.busy), self.air
+        if window is not None and self._snaps:
+            a0, b0 = self._snaps[0]
+            for a, b in reversed(self._snaps):
+                if air - a >= window:
+                    a0, b0 = a, b
+                    break
+            if air - a0 > 0:
+                return {op: (t - b0.get(op, 0.0))/(air - a0) for op, t in busy.items()}
+        return {op: t/air for op, t in busy.items()} if air > 0 else {}
+
+    def realtime(self, window=None):
+        """The stream's load as one number: per thread, the sum of the loads of what ran on it (divided by the thread's
+        `lanes`), and the busiest thread's. Serial work is one thread (the sum); `Blocks.pipelined` gives a thread per
+        stage (the slowest); a parallel region counts its workers' time over their number. <= 1 keeps up in real time.
+        0.0 before the source has made any signal"""
+        per = {}
+        for op, v in self.load(window).items():
+            t = self.thread_of.get(op)
+            per[t] = per.get(t, 0.0) + v
+        return max((v/self.lanes.get(t, 1) for t, v in per.items()), default=0.0)
 
     def restart(self):
         """Forget everything but the source's rate: the next block starts a new stream"""
@@ -189,3 +230,24 @@ class Meta:
 
     def __str__(self):
         return f"Meta: Fs{self.state.Fs}, sps{self.state.sps}, cf{self.state.cf}"
+
+_tls = threading.local()
+
+def timed(stream, op, fn, *args):
+    """fn(*args), its time charged to `op` in `stream.busy`: its own time only (an operator timed inside it takes its own
+    off), so nothing is counted twice. stream None: run, not charged"""
+    if stream is None:
+        return fn(*args)
+    stack = _tls.__dict__.setdefault("stack", [])
+    stack.append(0.0)
+    t = perf_counter()
+    try:
+        return fn(*args)
+    finally:
+        spent = perf_counter() - t
+        inner = stack.pop()
+        if stack:
+            stack[-1] += spent
+        busy = stream.busy
+        busy[op] = busy.get(op, 0.0) + spent - inner
+        stream.thread_of[op] = threading.get_ident()
