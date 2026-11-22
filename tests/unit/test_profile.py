@@ -1,4 +1,4 @@
-"""Profiles: a whole signal from one config file (README.dev.md, Profiles)"""
+"""Profiles: a whole signal from one config file (rpps.profile)"""
 import numpy as np
 import pytest
 
@@ -73,7 +73,7 @@ def test_any_block_cut_on_receive():
         assert np.array_equal(got, ref[:len(got)]) and len(got) >= len(ref) - 64
 
 def test_a_runner_adds_to_blocks_like_a_stage():
-    """`src(n) + p.rx()` (the README's receive loop) gives what calling the runner on each block does"""
+    """`src(n) + p.rx()` (the receive loop the guides use) gives what calling the runner on each block does"""
     rng = np.random.default_rng(2)
     p = rp.profile.load("ieee80211b/2m", sync=KNOWN)
     wave = p.tx()(rp.Data(rng.integers(0, 256, 30).astype(np.uint8), Fs=1e6, sps=1))

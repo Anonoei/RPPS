@@ -1,4 +1,4 @@
-"""`import rpps` stays cheap: numpy and RPPS, not the optional heavy packages (README: What other programs can build on)"""
+"""`import rpps` stays cheap: numpy and RPPS, not the optional heavy packages (docs/guide/integrating.md)"""
 import subprocess
 import sys
 

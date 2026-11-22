@@ -1,4 +1,4 @@
-"""What each step of a profile builds (README.dev.md, Profiles)
+"""What each step of a profile builds (rpps.profile)
 
 A step is one dict with one category key, `{"<category>": "<kind>", ...its parameters}`, in receive order. Building it
 gives a Step: the operators it runs on receive and on transmit, and the representations it takes and gives on receive.
@@ -94,7 +94,7 @@ def register_step(category, kind):
 
 def register_sync_method(kind, method):
     """Register a method of a sync kind ("timing", "carrier", "equalize"): builder(m, rep, ctx) -> the stage, where m is the
-    step merged with the profile's defaults and the load-time overrides (README.dev.md, Sync methods)"""
+    step merged with the profile's defaults and the load-time overrides (rpps.sync)"""
     def deco(builder):
         table = METHODS.setdefault(kind, {})
         if method in table:
@@ -226,7 +226,7 @@ def _sync_method(kind, spec, ctx):
     return chosen
 
 _SYNC_DEFAULTS = {
-    "timing": {"method": "oerder_meyr"}, # first class: block estimation tracked across windows (README.dev.md, Sync methods)
+    "timing": {"method": "oerder_meyr"}, # first class: block estimation tracked across windows (rpps.sync)
     "carrier": {"method": "mpower"},     # first class likewise; the loops (mm, gardner, costas) are there by name
     "align": {"method": "align"},
     "puncture": {"method": "reencode"},

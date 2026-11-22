@@ -8,7 +8,7 @@ from .conv import termination_of, generators_of
 class viterbi(_code):
     """Viterbi decoder for feed-forward convolutional codes (rate 1/n, any constraint length)
 
-    generator: (n, K) taps. generator[j][i] multiplies the input delayed by i, the same convention as `conv`
+    generator: (n, K) taps. `generator[j][i]` multiplies the input delayed by i, the same convention as `conv`
     puncture: optional (n, P) 0/1 pattern, 1 = bit was sent. Punctured positions are decoded as erasures
     invert: optional n 0/1 flags: outputs the encoder sent inverted (their values are turned back before decoding)
     terminated: the encoder was flushed with K-1 zeros, so the path ends in state 0 (and the tail is dropped).

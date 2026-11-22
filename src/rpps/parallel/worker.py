@@ -1,4 +1,4 @@
-"""The worker of a parallel region: batches of frames through a plan (README.dev.md, Parallelism)
+"""The worker of a parallel region: batches of frames through a plan (rpps.parallel)
 
     worker(frames) -> [Result]       frames share a key; one plan per key, compiled on first use and kept
 

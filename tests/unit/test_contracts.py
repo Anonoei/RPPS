@@ -1,4 +1,4 @@
-"""Every category's contract (README.dev.md, Contracts and Type tags), checked over every registered implementation"""
+"""Every category's contract (rpps.base, Contracts and Type tags), checked over every registered implementation"""
 import numpy as np
 import pytest
 

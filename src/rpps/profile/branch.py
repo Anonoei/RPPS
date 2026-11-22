@@ -1,4 +1,4 @@
-"""A profile's receive side that fans out: one trunk, then branches that read the same blocks (README.dev.md, Profiles)
+"""A profile's receive side that fans out: one trunk, then branches that read the same blocks (rpps.profile)
 
     "steps": [ ...trunk steps...,
                {"branch": "channels", "order": ["pcfich", "pdcch", "pdsch"],

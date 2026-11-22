@@ -20,7 +20,7 @@ import numpy as np
 import rpps as rp
 
 def main(frames=8, workers=4):
-    # Timing known: the transmitter's. The carrier and frame sync still run (README.dev.md "Parallelism")
+    # Timing known: the transmitter's. The carrier and frame sync still run (rpps.parallel)
     p = rp.profile.load("dvbs2/normal", sync={"timing": {"method": "known"}})
     table = rp.profile.table("dvbs2/modcod")
     fields = [{"modcod": (4, 12)[i % 2], "pilots": 1} for i in range(frames)] # one header per frame

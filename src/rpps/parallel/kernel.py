@@ -1,4 +1,4 @@
-"""Running a step on a batch when its operators give no kernel (the protocol is rpps.base.kernel; README.dev.md, Parallelism)
+"""Running a step on a batch when its operators give no kernel (the protocol is rpps.base.kernel; rpps.parallel)
 
 A region frame is whole, so what an operator does to it is a function of the frame and of the parameters controls gave it: no
 state across calls. A `Kernel` is that function over a batch of frames, one frame per row of an `[N, L]` array:

@@ -1,4 +1,4 @@
-"""Imports run down the chain (README.dev.md, Where things are)
+"""Imports run down the chain (rpps, Where things are)
 
 The data-path packages and what they stand on never import the packages built on them: blind analysis (outside the data
 path), profiles and the parallel runner (which put operators together). An operator calls rpps.base.control and its

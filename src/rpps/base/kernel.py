@@ -1,4 +1,4 @@
-"""Kernels: the batch face of an operator, beside the operator it belongs to (README.dev.md, Parallelism)
+"""Kernels: the batch face of an operator, beside the operator it belongs to (rpps.parallel)
 
 A region frame is whole, so what an operator does to it is a function of the frame and of the parameters controls gave it: no
 state across calls. A `Kernel` is that function over a batch of frames, one frame per row of an `[N, L]` array:

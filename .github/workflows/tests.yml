@@ -112,7 +112,7 @@ jobs:
           /tmp/clean/bin/python -c "import rpps, sys; assert 'matplotlib' not in sys.modules"
 
   docs:
-    # Same build as deploy-docs, so a docstring that breaks pdoc fails the pull request
+    # Same build as deploy-docs (strict), so a broken docstring cross-reference or snippet path fails the pull request
     name: Docs build
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -125,6 +125,6 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[viz,docs]"
-      - run: python -m pdoc -o docs --html --force --template-dir pdoc_templates src/rpps
-      - run: test -f docs/rpps/index.html
+          python -m pip install -e ".[docs]"
+      - run: python builder.py -d
+      - run: test -f site/api/base/index.html && test -s site/llms-full.txt

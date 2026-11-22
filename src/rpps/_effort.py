@@ -16,8 +16,25 @@ Levels (looked up when a stage or decoder runs, so a level can change mid-stream
                pulse's own floor at 2 samples per symbol
 
 A definition's settings stay the base: a level scales them (an LDPC definition with 50 iterations runs 50 balanced, 200
-max), and a value set on an operator is that operator's base. Measured gains (README.dev.md, Effort): LDPC 0.1-0.15 dB
-at max, turbo 0.1-0.2 dB, timing interpolation 0.9 dB at 2 samples per symbol and 20 dB Es/N0.
+max), and a value set on an operator is that operator's base. `rpps rx --effort` sets it from the shell.
+
+| Setting | fast | max | Measured (max against balanced) |
+|---|---|---|---|
+| LDPC / turbo iterations | x0.5 | x4, stopping early | LDPC 1/2 at 0.9 dB: FER 3/16 → 0/16 at 2x time; LTE turbo at 0.2 dB: 6/12 → 0/12 |
+| Max-log or exact (demapper, BCJR, turbo) | max-log | exact, no extrinsic scaling | turbo log-MAP 0.1-0.2 dB, 5-7x time |
+| Timing interpolation | cubic | 12-tap windowed sinc (balanced: 8 taps below 4 sps) | EVM floor at 2 sps: cubic -26 dB, 8 taps -48, 12 taps -55 (pulse truncation -56) |
+
+Other decoding behaviour worth knowing:
+
+- LDPC is layered normalized min-sum (checks coloured once per code), about half the iterations of flooding.
+- Soft values go as far as something uses them: additive descrambling flips LLR signs, Forney deinterleaving moves LLRs,
+  BCJR hands on a-posteriori LLRs (RS uses them for erasures, keeping two checks spare), differential decoding is the
+  product detector `y conj(y[n-1])`.
+- A decoder returns its status, it never keeps it (`decode(x, status=True)`). A code step puts the errors on its output
+  (`data.errors`, not carried further) and sets `data.failed` from them (the last code with a verdict decides); later
+  steps carry `failed`, and a link header drops a frame with any failed item whatever its CRC says. The parallel region
+  drops such rows.
+- Under 4 sps Oerder & Meyr takes its square-law line at twice the rate (at 2 sps it aliased onto its mirror).
 """
 import contextlib
 import os

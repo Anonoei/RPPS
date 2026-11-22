@@ -10,7 +10,21 @@
 The pulses are definitions (config/pulse: `halfsine`, `gaussian`, `rrc`, `rect`), loaded by rp.signal.filters.load:
 
     qpsk = rp.symbol.load("psk/qpsk")
-    wave = bits * qpsk + rp.wave.Shape(8, rp.signal.filters.load("pulse/halfsine")) + rp.wave.Stagger()   # O-QPSK
+    wave = bits * qpsk + rp.wave.Shape(8, rp.signal.filters.load("pulse/halfsine/halfsine")) + rp.wave.Stagger()   # O-QPSK
+
+## Wave pairs
+
+A profile's wave step runs as written on receive and inverted on transmit:
+
+| Step | Receive (as written) | Transmit (inverted) |
+|---|---|---|
+| `shape`, symbol pulse (rrc, rc, halfsine, rect) | `wave.Matched(pulse)`, unit gain at the instants | `wave.Shape(sps, pulse)`, polyphase |
+| `shape`, frequency pulse (gaussian, FSK rect) | none (the `fm` discriminator) | `wave.Shape(sps, pulse)` |
+| `stagger` | `Stagger("i", delay)` | `Stagger("q", delay)` |
+| `fm` | `FMDemod` + integrate over the symbol | `FM(h, step)` |
+| `ofdm` | remove CP + FFT | IFFT + CP |
+
+Whether a pulse is a symbol or a frequency pulse is the pulse definition's `kind`, not the profile's.
 """
 from .shape import Shape, Matched
 from .stagger import Stagger

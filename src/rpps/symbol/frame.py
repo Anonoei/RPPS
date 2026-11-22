@@ -1,4 +1,4 @@
-"""Known structure among the symbols of a frame (README.dev.md, symbol): physical headers, pilot blocks, phase scrambling
+"""Known structure among the symbols of a frame (rpps.symbol): physical headers, pilot blocks, phase scrambling
 
 These work frame by frame. A frame starts wherever a profile applies a change to them (rpps.profile.control): a frame
 sync publishes each frame's start, a header publishes what follows it, and each step restarts its frame there. Used on
@@ -240,7 +240,7 @@ class Pilots(_Frame):
 
     The frame has `slots` slots of `slot` symbols; with `pilots` on, a block of `length` pilots (each `value`) follows
     every `every` slots but the last (DVB-S2: 90, 16, 36, (1+j)/sqrt2). On receive, symbols past the end of a frame are
-    dropped (counted in stream.est[name]["extra"]): the next frame starts where a profile says."""
+    dropped (counted in `stream.est[name]["extra"]`): the next frame starts where a profile says."""
     CONTROLS = {"slots": "live", "pilots": "live"}
 
     def __init__(self, slot=90, every=16, length=36, value=(1 + 1j)/np.sqrt(2), slots=None, pilots=True, name="pilots"):

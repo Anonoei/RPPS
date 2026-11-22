@@ -1,0 +1,111 @@
+# Documentation site: guides in docs/, API reference from the package docstrings (mkdocstrings).
+# `python builder.py -d` writes docs/api/ and the llms files, then builds into site/.
+[project]
+site_name = "RPPS"
+site_description = "RF Parameter Processor Suite: a generic signal processor/generator library"
+site_url = "https://anonoei.github.io/RPPS/"
+repo_url = "https://github.com/Anonoei/RPPS"
+repo_name = "Anonoei/RPPS"
+docs_dir = "docs"
+site_dir = "site"
+nav = [
+  { "Home" = "index.md" },
+  { "Guides" = [
+    "guide/data-model.md",
+    "guide/receiving.md",
+    "guide/profiles.md",
+    "guide/definitions.md",
+    "guide/unknown-signals.md",
+    "guide/real-time.md",
+    "guide/integrating.md",
+  ] },
+  { "Examples" = "examples.md" },
+  { "API" = [
+    "api/index.md",
+    "api/rpps.md",
+    "api/source.md",
+    "api/signal.md",
+    "api/sync.md",
+    "api/wave.md",
+    "api/symbol.md",
+    "api/code.md",
+    "api/link.md",
+    "api/grid.md",
+    "api/profile.md",
+    "api/parallel.md",
+    "api/sequence.md",
+    "api/analysis.md",
+    "api/base.md",
+    "api/math.md",
+    "api/utils.md",
+    "api/viz.md",
+  ] },
+  { "Contributing" = "contributing.md" },
+  { "Roadmap" = "roadmap.md" },
+]
+
+[project.theme]
+language = "en"
+features = [
+  "content.code.copy",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to system preference"
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+def_list = {}
+footnotes = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.arithmatex.generic = true
+pymdownx.details = {}
+pymdownx.highlight.anchor_linenums = true
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.inlinehilite = {}
+pymdownx.tasklist.custom_checkbox = true
+pymdownx.superfences.custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
+# Guides embed the tested example scripts (--8<-- "examples/x.py"); a missing file fails the build
+pymdownx.snippets.base_path = ["."]
+pymdownx.snippets.check_paths = true
+
+[project.plugins.mkdocstrings.handlers.python]
+paths = ["src"]
+inventories = ["https://docs.python.org/3/objects.inv", "https://numpy.org/doc/stable/objects.inv"]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+docstring_style = "google"
+members_order = "source"
+filters = ["!^_"]
+show_submodules = false
+show_root_heading = true
+show_root_full_path = true
+show_signature_annotations = true
+separate_signature = true
+merge_init_into_class = true
+summary = true
