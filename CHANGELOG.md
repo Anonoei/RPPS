@@ -7,6 +7,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 ## Unreleased
 
 ### Added
+- **More of the stable API** (the Building on RPPS guide): `analysis.profile`, `source.Memory`, `waveform.classify`,
+  `cumulants.classify`, `fsk.analyze`, `hopping.track`, `burst.demodulate` and `framing.frames` `find`, `cut`,
+  `coherence`, `periods`: a change is called out, and a rename warns for a release.
 - **`rp.sync.Lock.follow(x, at=pos)`:** the block right after a lock's, its symbols joining on with no symbol dropped
   or repeated at the seam, the carrier phase on the same branch of its M-fold symmetry; so a display gathering symbols
   over contiguous blocks locks only the new block (1.5 ms for 2500 samples, against 21 ms for `update` over 41000).
