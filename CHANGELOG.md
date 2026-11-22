@@ -141,6 +141,12 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   `csrc/rpps_native` has now (`rpps._accel.stale`); rebuild with `python builder.py -c`. Installed packages are not checked.
 
 ### Fixed
+- `analysis.spectrum.burst`: a long burst type (thousands of symbols, where the gate can open tens of symbols from the
+  start) got no preamble of its own and was acquired on another kind's; `burst_kinds` now aligns with a near and a wider
+  search. A burst far off carrier (a large share of a turn a symbol) was acquired on data; each burst's blind carrier
+  offset now comes off before its preamble search, and the reported `cfo` includes it.
+- `analysis.code.block.ldpc.qc_generator` refused words whose information bits include constants (a header's): it now
+  solves with those unknowns free and lets the held-out words judge.
 - An HDLC frame step flushed with fewer bits held than a flag raised instead of giving nothing.
 - `analysis.code.block.linear.sparse_checks` returned nothing when given fewer than k + 16 words (all went to the solve,
   none were left to verify on). It now keeps some aside first.
