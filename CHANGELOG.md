@@ -35,7 +35,9 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   - LTE CRS channel estimation for every port and symbol in a few array operations; control-region maps cached.
   - Results unchanged: LTE outputs bit-identical on the band 13 capture.
   - NR: 3 s of a LEO pass in 2.3 s at 7.68 MS/s (was 22 s); live 2 s captures at 15.36 MS/s in about 2 s (was 15).
-  - LTE: about 1.1x real time at 15.36 MS/s (was 5x).
+  - LTE: about real time at 15.36 MS/s (was 5x).
+  - Cell search: the samples filtered and decimated once, each offset a turn (LTE) or a roll of their spectrum with
+    half-size inverse FFTs (NR): LTE 470 ms -> 90 ms, NR +-60 kHz 520 ms -> 250 ms.
 - **5G NR downlink to SIB1, through LEO Doppler (NTN):** the profile `nr/downlink` and `rpps.grid.nr` (15 kHz).
   - `NrCell`: PSS search over a wide carrier offset (default +-60 kHz), SSS, the block index and half frame from the PBCH
     DM-RS. Then every SS/PBCH block tracked by two second-order loops: the offset and its rate, the slot timing and the
