@@ -256,14 +256,17 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None,
             p = kinds[kind]
             pad = int(np.ceil(16*sps)) + len(p)
             a2, b2 = max(0, b.start - pad), min(len(x), b.stop + pad)
-            seg = x[a2:b2]
+            # The burst's own blind carrier offset off first: the preamble search correlates in pieces, which a carrier
+            # tens of kHz out (a large share of a turn a symbol) turns past finding
+            f0 = float(getattr(b.det, "cfo", 0.0) or 0.0) if b.det is not None else 0.0
+            seg = x[a2:b2]*np.exp(-2j*np.pi*f0/Fs*np.arange(b2 - a2)) if f0 else x[a2:b2]
             r = acquire(seg, Fs, p, baud, beta, search=(0, b.start - a2 + 4*len(p)*sps))
             if r is not None and (best is None or r[1] > best[0][1]):
-                best = (r, kind, a2, seg)
+                best = (r, kind, a2, seg, f0)
         if best is None:
             out.append(BurstResult(start=float(b.start), score=0.0, ok=False))
             continue
-        r, kind, a2, seg = best
+        r, kind, a2, seg, f0 = best
         pre = kinds[kind]
         t0, score, w, phase, gain = r
         if score < min_score:
@@ -280,7 +283,7 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None,
         dec = pts[idx]
         data = slice(len(pre), None)
         evm = float(np.sqrt(np.mean(np.abs(y[data] - dec[data])**2)/np.mean(np.abs(pts)**2))) if len(y) > len(pre) else 0.0
-        out.append(BurstResult(start=a2 + t0, symbols=y, bits=_bits(idx, con), cfo=w*baud/(2*np.pi), phase=phase, gain=gain,
+        out.append(BurstResult(start=a2 + t0, symbols=y, bits=_bits(idx, con), cfo=f0 + w*baud/(2*np.pi), phase=phase, gain=gain,
                                score=score, evm=evm, kind=kind, ok=True))
     # TDMA structure
     slots = []
