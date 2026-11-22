@@ -188,9 +188,14 @@ def burst_kinds(B, sps, pts, min_shared=16, min_group=3):
     types, each with its own unique word), groups of at least `min_group` with at least `min_shared` symbols in common.
     Most bursts first. A burst in no group has None (it is tried on every kind's)"""
     def shared(g):
-        n, d, _ = frames.preamble(g)
-        n2, d2, _ = shared_preamble(g)
-        return (n2, d2) if n2 > n else (n, d)
+        # The gate opens within a few symbols of a short burst's start, but a long burst's (thousands of symbols) can be
+        # tens of symbols out: each search a near one, then a wider one, the longest kept
+        best = (0, None)
+        for search in (8, 32):
+            for n, d, _ in (frames.preamble(g, search=search), shared_preamble(g, search=search)):
+                if n > best[0]:
+                    best = (n, d)
+        return best
     n, d = shared(B)
     if n >= min_shared or len(B) < 2*min_group:
         return ([preamble_symbols(d, pts)], [0]*len(B)) if n else ([], [None]*len(B))
