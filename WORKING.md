@@ -6,7 +6,7 @@ lands; this file says what is being built now, what is next and what is open. Up
 ## The last goal: done
 
 Burst and preamble steps in profiles, then LTE and 5G NR (NTN) downlinks through SIB1, with branches in one profile.
-Every phase is in CHANGELOG.md (Unreleased):
+Every phase is in CHANGELOG.md (0.6.0):
 
 | Phase | What | Commit |
 |---|---|---|

@@ -6,6 +6,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 
 ## Unreleased
 
+## 0.6.0 (2026-11-22)
+
 ### Breaking
 - `ldpc.min_sum(llr)` is `ldpc.propagate(llr)`: the layered schedule runs min-sum or sum-product (the definition's
   `"check"`, or the effort level's). `rpps._effort.iters(base)` is `scale("iters", base)`, `maxlog(base)` is
