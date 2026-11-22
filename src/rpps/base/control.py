@@ -1,4 +1,4 @@
-"""The control path, as operators see it (README.dev.md, Header-driven control)
+"""The control path, as operators see it (rpps.profile.control)
 
 A header step (a physical header, a link header) and a frame sync publish what they decoded, with the absolute stream
 position it applies from; a step that drops or inserts items anchors positions. They live on `meta.stream.control`.

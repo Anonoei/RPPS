@@ -1,5 +1,4 @@
-"""Parallel processing of frames: work units, executors, scheduler and the profile's parallel region (README.dev.md,
-Parallelism)"""
+"""Parallel processing of frames: work units, executors, scheduler and the profile's parallel region (rpps.parallel)"""
 import threading
 import time
 

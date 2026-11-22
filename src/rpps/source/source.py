@@ -166,7 +166,7 @@ class Source:
     """Parent of the things that produce blocks. Call it with a block length for the blocks
 
     REP: the representation its blocks are (SAMPLES; a demodulator's ring of timed symbols is SYMBOLS), and APPLIED the
-    sync it has done already ({"timing"}): `profile.rx(source=src)` skips the steps before and those (README.dev.md, source).
+    sync it has done already ({"timing"}): `profile.rx(source=src)` skips the steps before and those (rpps.base, Contracts).
     ppm: how far the radio's reference is off (+15: its clock runs 15 ppm fast). The sample rate and the tuned frequency
     both come from it, so blocks carry Fs and cf times (1 + ppm 1e-6): what was actually sampled, and where."""
     REP = Rep.SAMPLES

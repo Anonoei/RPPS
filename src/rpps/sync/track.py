@@ -1,4 +1,4 @@
-"""Block-rate tracking (README.dev.md, Sync methods): a slow loop run once per window over the window estimates
+"""Block-rate tracking (rpps.sync): a slow loop run once per window over the window estimates
 
 A first-class estimator measures a parameter on each window (block estimation); this carries the parameter and its rate
 from window to window, gating outliers, so a drifting clock or carrier is followed without a staircase: the value at
@@ -62,7 +62,7 @@ def miss(tr, t):
         tr.value, tr.at = at(tr, t), float(t)
         tr.missed += 1
 
-# ---- Windows at absolute stream positions (README.dev.md, streaming rule 5)
+# ---- Windows at absolute stream positions (rpps.sync, feedforward rules)
 
 def windows(st, x, meta, W):
     """Hold x and give each window ready: (a0, b, seg) for stream positions [a0, b) of [k*W, (k+1)*W). On a flush the

@@ -14,7 +14,7 @@ so they need no reference level and ignore an inverted signal.
 Decoding keeps soft values soft: an inversion negates LLRs, a differential code takes the box-plus of neighbours
 (sign times the smaller magnitude), Manchester the difference of the two halves. In a profile: {"code": "line", "name": "nrzi"}.
 Manchester as a pulse (first half +1, second -1, at the sample level) is `rp.signal.filters.ShapingBiphase` instead
-(README.dev.md, Grey areas): this is the bit-level form, 2 channel bits per data bit.
+(rpps.base, Grey areas): this is the bit-level form, 2 channel bits per data bit.
 """
 import numpy as np
 

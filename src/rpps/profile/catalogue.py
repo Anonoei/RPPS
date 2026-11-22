@@ -1,6 +1,6 @@
 """What a profile needs and gives, before it runs: for a program building a menu (rpps.profile.Decoder uses it too)
 
-Each profile's "requires" (config/profile, README.dev.md: Profiles) says, as expressions over its params and `baud`:
+Each profile's "requires" (config/profile, rpps.profile) says, as expressions over its params and `baud`:
 
     baud          its symbol rate (chips, subcarrier spacing), or null when the standard leaves it open (DVB-S, CCSDS):
                   given to the Decoder, or measured

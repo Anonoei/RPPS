@@ -1,4 +1,4 @@
-"""Sync on bits: Align (README.dev.md)"""
+"""Sync on bits: Align (rpps.sync)"""
 import numpy as np
 import pytest
 

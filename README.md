@@ -1,213 +1,63 @@
 # RPPS
- RF Parameter Processor Suite
+RF Parameter Processor Suite: a generic signal processor/generator library.
 
-RPPS is a generic signal processor/generator library.
- - [Documentation](https://anonoei.github.io/RPPS/)
- - [PyPI](https://pypi.org/project/rpps/)
+- [Documentation](https://anonoei.github.io/RPPS/): guides, examples and the API reference
+- [PyPI](https://pypi.org/project/rpps/)
+- For AI agents: [AGENTS.md](https://github.com/Anonoei/RPPS/blob/main/AGENTS.md), and
+  [llms-full.txt](https://anonoei.github.io/RPPS/llms-full.txt) (the whole library in one file)
+
+## Install
+```
+python3 -m pip install rpps          # rpps[viz] adds matplotlib for rp.viz
+```
+Definitions (codes, scramblers, modulations, whole signals) ship with the package. The per-sample loops and decoders run
+in C++ with a Python fallback; from a checkout, `python builder.py -c` builds them (pybind11 and a C++17 compiler).
 
 ## Usage
+Everything is driven by operators: `*` encodes / modulates / scrambles, `/` undoes it, `+` runs a DSP stage. The data
+carries its sample rate and the state of every stage from block to block.
 
-Everything is driven by operators: `*` encodes / modulates / scrambles, `/` undoes it, `+` runs a DSP stage.
-The data carries its sample rate and the state of every stage from block to block (see "Things that surprise people" below).
-[examples/](examples/README.md) has a runnable script for each of the things below, and more.
-
-### Bits to symbols and back ([file](https://github.com/Anonoei/RPPS/tree/main/examples/quickstart.py))
 ```python
 import rpps as rp
 
-mod = rp.symbol.load("psk/qpsk")       # first bit map; load("psk/qpsk", "R090 inverted") for a rotated / spectrally inverted one. Or rp.symbol.generate("16QAM"), rp.symbol.PSK(8), rp.symbol.APSK(32)
-ecc = rp.code.Hamming(7, 4)       # or rp.code.load("block/hamming/7_4")
+mod = rp.symbol.load("psk/qpsk")    # or rp.symbol.generate("16QAM"), rp.symbol.PSK(8), rp.symbol.APSK(32)
+ecc = rp.code.Hamming(7, 4)         # or rp.code.load("block/hamming/7_4")
 scr = rp.code.scram.load("v35")
 
 msg = rp.Data(b"Hello World!")
-syms = msg * scr * ecc * mod        # Scramble, encode, modulate
-out = syms / mod / ecc / scr        # Demodulate, decode, descramble
+syms = msg * scr * ecc * mod        # scramble, encode, modulate
+out = syms / mod / ecc / scr        # demodulate, decode, descramble
 assert out.as_bytes().hex == msg.as_bytes().hex
-
-# Pipes multiplied together make a reusable link, decoded in the opposite order
-link = scr * ecc * mod
-syms = msg * link
-out = syms / link
 ```
 
-### Receiving a signal
+Receiving: stages added together make a pipeline, and blocks flow through it with their state carried along.
 ```python
 # docs: skip
 src = rp.source.File("ci16t", "capture.cs16", Fs=100e6, cf=1.0e9)       # or rp.source.Device("hackrf", cf=..., Fs=...)
-rx = (rp.signal.filters.ShiftFreq(22.3e6)  + rp.signal.filters.low_pass(401, 3e6, 100e6) + rp.signal.sample.down.Decimate(8)
-      + rp.sync.Acquire() + rp.sync.time.Mat() + rp.sync.phase.FFCarrier())     # stages added together make a pipeline
-
-for out in src(16384) + rx:          # blocks flow through, state carried from one to the next
-    print(out.Fs, out.sps, out.det)  # rates follow the stages; Acquire's detection is on the data
-
-src(16384) + rx >> rp.source.Sink("cf32", "symbols.iq")       # or straight into a file
+rx = (rp.signal.filters.ShiftFreq(22.3e6) + rp.signal.filters.low_pass(401, 3e6, 100e6) + rp.signal.sample.down.Decimate(8)
+      + rp.sync.Acquire() + rp.sync.time.Mat() + rp.sync.phase.FFCarrier())
+for out in src(16384) + rx:
+    print(out.Fs, out.sps, out.det)
 ```
-A stage can also be applied by hand to a block: `blk + rp.signal.filters.ShiftFreq(1e3)`.
-`rp.signal.channel` has impairments to test against (`AWGN`, `CFO`, `Fading`, `Multipath`, `ClockDrift`...).
 
-### A known signal: profiles
-A profile is one JSON file that describes a whole signal, both directions: its steps in receive order (filters, sync,
-pulse, modulation, codes, framing) and the parameters a header may change along the way.
+A known signal is a profile: one JSON file describing it in both directions.
 ```python
 # docs: skip
-p = rp.profile.load("ble/adv", channel=38)                 # or dvbs2/normal, adsb/mode_s, ax25/afsk1200, ccsds/tm_rs, ieee80211b/long...
+p = rp.profile.load("ble/adv", channel=38)               # python -m rpps ls profile: the shipped ones
 for pdu in rp.source.File("cf32", "ch38.cf32", Fs=4e6, cf=2426e6)(65536) + p.rx():
-    print(pdu.as_bytes().hex, pdu.stream.est["ble_adv"]["last"])        # one per packet (its burst step): its payload if the CRC checks, its header
-wave = p.tx()(rp.Data(bytes(31)), fields={"type": 2})                   # the same file transmits: the steps inverted, in reverse
+    print(pdu.as_bytes().hex)
+wave = p.tx()(rp.Data(bytes(31)), fields={"type": 2})   # the same file transmits
 ```
-`python -m rpps ls profile` lists the shipped profiles, `python -m rpps steps` the step kinds and sync methods a profile
-can name, `python -m rpps rx ble/adv capture.cf32 --fs 4e6 --param channel=38` receives a file from the shell. A new signal
-is a new file in `config/profile/<family>/<mode>.json` (or in your own config directory, `rp.add_config_path`), built from
-the shipped definitions: constellations, pulses, codes, scramblers, sequences, headers. Writing one needs no code; see
-[README.dev.md](README.dev.md#profiles) for the format and the step kinds.
 
-### Things that surprise people
-- **What `rp.Data` makes of an array.** `bytes` and `uint8` arrays are bytes (`[0, 1, 1, 0]` as uint8 is 32 bits); bits
-  are `bool` (an int 0/1 array is an error, not bits); a float array is real samples, never LLRs; `complex64` with
-  `sps=1` is symbols, `complex128` stays samples. `Fs` defaults to 1.0.
-- **Partial blocks wait.** A code or constellation keeps what doesn't fill a block in the data's context until more
-  comes or the block is flushed: three bits through QPSK give one symbol, or two with `rp.Data(bits, flush=True)`.
-- **Two kinds of carried state.** A `Stage` (`+`) keeps its state in the stream: pass `stream=prev.stream` to go on.
-  A `Pipe` (`*`, `/`) keeps it in the context: `ctx=prev.ctx`. A fresh `rp.Data(chunk)` starts both over. Iterating a
-  source does this for you.
-- **Some state lives on the operator.** `Feedthrough.encode(array)` called directly moves the register (`reset()` starts
-  it over); `control()` changes the operator for everyone holding it. Decode status is not kept on the operator: it
-  comes with the output, `out.errors` after `data / code` (per codeword: corrections, -1 where it failed) or
-  `msg, errors = code.decoder.decode(x, status=True)`, so threads can share one loaded code.
-- **Bits to a link layer go through `rp.code.Uncoded()`.** `syms / qpsk / crc` is an error: channel bits are not data
-  bits until a code (or `Uncoded`) says so.
-- **LLRs are log(P0/P1)**: positive means 0, a hard decision is `llr < 0`.
-- **Bit order is most significant first** (bytes, constellation labels, RS symbols, markers), except HDLC bytes on the
-  wire (least significant first), recurrence `init` integers (`lsb` unless `"order": "msb"`) and headers that say `"lsb"`.
-- **Shapes and definitions are separate.** `rp.symbol.load("psk/qpsk")` reads a definition; `rp.symbol.generate("16QAM")`
-  makes a shape; DVB-S2's 16APSK is `rp.symbol.load("apsk/dvbs2_16apsk_3_4")`, not `generate("16APSK")`.
+From the shell: `python -m rpps ls` (definitions), `python -m rpps steps` (what a profile can name),
+`python -m rpps rx ble/adv capture.cf32 --fs 4e6 --param channel=38`.
 
-### Real time
-```python
-# docs: skip
-blocks = rp.source.Device("hackrf", cf=915e6, Fs=10e6)(65536).threaded(drop=True) # the radio is read in a thread of its own
-for out in blocks.pipelined(rx):     # and every stage of rx runs in its own thread
-    ...
-print(out.stream.load())             # time each stage takes, as a fraction of real time (over 1.0: too slow)
-```
-The per-sample loops (AGC, Costas, timing recovery, equalizers, IIR, demodulators) and the decoders (Viterbi, trellis,
-BCJR / turbo, LDPC, Reed-Solomon, BCH) run in C++ (`rpps._native`, built with the package) and release the GIL, so
-threads run them in parallel; batches of codewords are spread over the cores (`RPPS_THREADS` sets how many).
-Without a compiler RPPS uses its Python loops (the reference: `RPPS_NO_NATIVE=1` forces them). Compare with
-`python tests/bench_stages.py`.
-
-### What other programs can build on
-These are kept stable: a change to what they take or give is called out in the CHANGELOG, and a name is not moved without
-the old place going through a release that warns. Anything else (a module's other functions, `rpps._*`, a stage's state)
-can change.
-
-| Where | What |
-| --- | --- |
-| `rp.Data`, `rp.Stage`, `rp.Pipe`, `rp.Pipeline` | the data and the operators (`*`, `/`, `+`) |
-| `rp.sync.Lock`, `rp.errors.NoLock` | a signal's symbols as a snapshot: `Lock.find(x, Fs)`, `lock.update(block)` (`recheck`: other modulations), `lock.stale`, `lock.refine(longer)` |
-| `rp.sync.detect`, `rp.sync.Detection`, `rp.sync.Acquire` | acquisition once, and as a stream stage |
-| `rp.sync.best_tau`, `rp.sync.track_timing`, `rp.sync.matrix_mf`, `rp.sync.centres_in`, `rp.sync.find_baud` | timing and rate |
-| `rp.sync.quality.measure` | Es/N0, Eb/N0, EVM of symbols |
-| `rp.analysis.find_signals`, `rp.analysis.survey`, `Survey`, `Signal` | the signals in a capture; `Survey.match` keeps their ids |
-| `rp.analysis.measure_band` | a band given by hand, measured as a found one (a `Signal`) |
-| `rp.analysis.spectrum.cyclic`: `alpha_profile`, `features`, `ORDER_NAMES`; `rp.analysis.spectrum.scf.coherence` | cyclic features: symbol rate and modulation order lines, spectral coherence |
-| `rp.signal.filters.rrc_pulse` | the root raised cosine pulse at any (fractional) time |
-| `rp.wave.demod`, `rp.wave.FMDemod`, `AMDemod`, `SSBDemod` | analog audio (FM, PM, AM, SSB), one block or a stream |
-| `rp.profile.ls`, `rp.profile.load`, `rp.profile.info`, `rp.profile.catalogue` | the shipped profiles, and what each needs (`requires`) |
-| `rp.profile.Decoder`, `rp.profile.Message`, `runner.take_messages()` | a selected signal's frames, decoded, one record each |
-| `profile.kinds()`, `profile.rx(kinds=...)`, `Decoder(..., kinds=...)` | only some message kinds, and only the steps they need |
-| `rp.source.formats` | sample formats, by pysdrlib's names |
-
-`import rpps` loads numpy and RPPS only (about 0.2 s): no scipy, matplotlib or pysdrlib until something asks for them
-(`rp.viz`, a source), so programs can import it at start-up.
-
-## Install
-1. Run `python3 -m pip install rpps` (`rpps[viz]` adds matplotlib for `rp.viz`). From a checkout, `python builder.py -c`
-   (or `python setup.py build_ext -i`) builds the C++ kernels in place; it needs pybind11 and a C++17 compiler
-2. In your project, `import rpps as rp`
-
-Definitions (codes, scramblers, modulations) ship with the package. Add your own without touching it:
-`rp.add_config_path("my_config")` (laid out like `src/rpps/config`) or set `RPPS_CONFIG`.
-Logging is off until you ask: `rp.logger.enable("DEBUG")`.
-
-## Roadmap
- - [ ] [Source](https://github.com/Anonoei/RPPS/tree/main/src/rpps/source)
-   - [X] File, memory, radios (pysdrlib), WAV out
-   - [ ] (Linux only) tun/tap
-   - [X] Socket (UDP, TCP)
-   - [X] SigMF (capture metadata in and out), WAV in
-   - [X] `rpps tx`: a profile's transmission to a file
-   - [ ] Transmit to a radio
- - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/filters)
-   - [X] Pulse Shaping (rrc, rc, halfsine, gaussian, rect)
-   - [X] Window functions
-   - [X] Designed in a profile (lowpass, bandpass... in Hz), channelizer, resampler, spectral inversion
- - [X] [Sample](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/sample)
- - [ ] [Sync](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sync)
-   - [X] Frequency
-   - [X] Phase (M-th power, Costas, pilots)
-   - [X] Time (Oerder & Meyr, Mueller & Muller, Gardner, timing locked loop)
-   - [X] Frames: preambles among symbols, delimiter words among bits (fixed or header-driven length, polarity), repeating markers
-   - [X] Equalizers: block least squares, LMS, CMA; OFDM pilots and cyclic prefix
-   - [X] Per-burst acquisition (`sync.Burst`: each burst a stream of its own), preambles (`sync.Preamble`: known waveform or Schmidl-Cox, carrier offset)
-   - [X] Tone / pilot PLL (`sync.ToneLock`: FM stereo, ATSC pilot)
-   - [X] LTE cell search and resource grid (`grid.lte`: PSS/SSS, sample-clock tracking, channel of each antenna port)
-   - [ ] Decision-feedback equalizer
- - [ ] [Symbol and wave](https://github.com/Anonoei/RPPS/tree/main/src/rpps/symbol)
-   - [X] PSK, QAM, APSK, ASK, any point set from a file; differential coding; spreading (Barker, Gold, 802.15.4)
-   - [X] FSK, GFSK, MSK, C4FM (frequency pulses), O-QPSK, OFDM, AM, SSB, analog FM
-   - [ ] Coherent CPM (GMSK, SOQPSK by MLSE) in the data path
-   - [ ] VSB / PAM (ATSC 8VSB), chirp spread spectrum, space-time coding
- - [ ] [Code](https://github.com/Anonoei/RPPS/tree/main/src/rpps/code)
-   - [ ] Block
-     - [X] Repetition
-     - [X] Hamming (decoded on its syndrome trellis)
-     - [X] BCH
-     - [X] Reed-Solomon
-     - [X] LDPC (layered or flooding min-sum; DVB-S2 tables, quasi-cyclic matrices: IEEE 802.11n)
-     - [X] Golay, cyclic codes by generator polynomial, product codes (DMR BPTC), turbo (LTE), rate matching (LTE)
-     - [X] 5G NR polar (with its rate matching, CRC-aided list decoding) and NR LDPC (both base graphs, rate matching)
-     - [X] Polar (successive cancellation, list, CRC-aided)
-     - [ ] Polar: the 5G NR sequence and rate matching
-     - [X] Turbo product codes (Chase-Pyndiah)
-     - [X] Reed-Muller
-     - [X] Reed-Solomon dual basis (CCSDS)
-     - [ ] LDPC: 5G NR base graphs, CCSDS AR4JA, DVB-S2X
-     - [X] Turbo: CCSDS (rates 1/2 to 1/6), its permutation a definition
-     - [ ] Turbo: UMTS, DVB-RCS duo-binary
-   - [X] Convolutional
-     - [X] Viterbi (hard and soft)
-     - [X] BCJR / trellis (log-MAP, max-log-MAP)
-     - [X] Trellis codes on levels (ATSC, P25)
-     - [X] Trellis-coded modulation on constellation points
-   - [X] Soft decisions (demodulator LLRs into the decoders)
- - [ ] [Scramblers](https://github.com/Anonoei/RPPS/tree/main/src/rpps/code/scram)
-   - [X] fibonacci
-   - [X] galois
-   - [X] V.35
-   - [X] Line codes: NRZI, NRZ-M, Manchester, inversion; sync markers (CCSDS ASM, preambles) attached and stripped
-   - [X] Line codes: Bi-phi-M/S and delay modulation (IRIG-106)
-   - [ ] Line codes: 4B5B, 8b/10b
- - [ ] [Link](https://github.com/Anonoei/RPPS/tree/main/src/rpps/link)
-   - [X] CRC
-   - [X] HDLC (streaming, any block cut)
-   - [X] Headers: fields, a CRC over them or a frame check sequence over header and payload, header-driven lengths
-   - [ ] PPP, KISS, AX.25 addresses
-   - [ ] MPEG-TS packets, CCSDS transfer frames and space packets, FX.25
- - [ ] [Profiles](https://github.com/Anonoei/RPPS/tree/main/config/profile)
-   - [X] DVB-S, DVB-S2 (normal and short frames, APSK), IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
-   - [X] CCSDS concatenated (convolutional + Reed-Solomon)
-   - [X] LTE downlink to SIB1 (`lte/downlink`: MIB, CFI, DCI 1A, PDSCH, branches driving one another)
-   - [X] 5G NR downlink to SIB1 at 15 kHz, through LEO satellite Doppler (`nr/downlink`: SS/PBCH, MIB, CORESET 0, DCI 1_0, PDSCH)
-   - [X] DVB-S2 multiple input streams (`dvbs2/mis`)
-   - [ ] From definitions already shipped: CCSDS turbo, P25, DMR, IEEE 802.11a/g, 802.11n, ATSC 8VSB, GPS C/A, DAB
- - [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey
-
-## Contributing
-See [README.dev.md](README.dev.md) for the design, how the project is organized and implemented, and how to add to it.
- 1. `git clone https://github.com/Anonoei/RPPS`
- 2. `cd RPPS`
- 3. `git branch -c feature/<your feature>`
- 4. `python3 builder.py -s -c` installs rpps editable with its dev dependencies and builds the C++ kernels
- 5. run `python3 -m pytest` (add `-m "not slow"` to skip the chain tests)
- 6. Check out the `dev` branch for latest changes
+## Learn more
+| | |
+|---|---|
+| [Guides](https://anonoei.github.io/RPPS/guide/data-model/) | the data model, receiving, profiles, definitions, unknown signals, real time, building on RPPS |
+| [Examples](https://anonoei.github.io/RPPS/examples/) | one runnable, self-checking script per recommended way of doing a thing ([examples/](https://github.com/Anonoei/RPPS/tree/main/examples)) |
+| [API](https://anonoei.github.io/RPPS/api/) | every package; the design (model, categories, contracts, streaming rules) is `rpps.base` |
+| [projects/](https://github.com/Anonoei/RPPS/tree/main/projects) | worked receivers on real signals: FM, BLE, ADS-B, Wi-Fi, ATSC, LTE |
+| [Contributing](https://anonoei.github.io/RPPS/contributing/) | setup, tests, native kernels, CI, conventions |
+| [Roadmap](https://anonoei.github.io/RPPS/roadmap/) | what is built and what is not yet |

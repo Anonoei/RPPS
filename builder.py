@@ -4,7 +4,7 @@
     python builder.py -s            install the package and the dev extras (editable)
     python builder.py -c            build the C++ kernels in place
     python builder.py -t            run the tests
-    python builder.py -d            build the docs into docs/rpps
+    python builder.py -d            build the docs into site/ (API pages and llms files first)
     python builder.py -b            build the sdist and wheel into dist/
     python builder.py -v p          dry run of a patch version bump (add -r to do it)
     python builder.py -u            upload dist/ to TestPyPI (add -r for PyPI)
@@ -61,7 +61,8 @@ def cmd_test(args) -> None:
 
 
 def cmd_docs(args) -> None:
-    py("pdoc", "-o", "docs", "--html", "--force", "--template-dir", "pdoc_templates", f"src/{project_name()}")
+    run(sys.executable, "scripts/gen_docs.py")      # docs/api/*.md, docs/llms.txt, docs/llms-full.txt
+    py("zensical", "build", "--strict")
 
 
 def cmd_version(args) -> None:

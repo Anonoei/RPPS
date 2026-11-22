@@ -1,4 +1,4 @@
-"""Decoded messages: what a profile receives, one record a frame, for a program to show or keep (README.dev.md, Profiles)
+"""Decoded messages: what a profile receives, one record a frame, for a program to show or keep (rpps.profile)
 
 A step that knows where a frame starts and whether it checked out (a link header, an LTE channel) emits it with
 rp.base.control.emit; the runner places it in the stream it was given and keeps it until `runner.take_messages()`:

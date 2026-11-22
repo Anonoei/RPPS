@@ -2,7 +2,7 @@
 header remover
 
 Checked row for row against the operator run frame by frame (tests/unit/test_batch_kernels.py); they use only what
-numpy and cupy share, so `xp` can be either (README.dev.md, Parallelism)
+numpy and cupy share, so `xp` can be either (rpps.parallel)
 """
 import numpy as np
 

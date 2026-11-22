@@ -7,8 +7,8 @@ from ._code import _code, register
 class fsm(_code):
     """Trellis code given as a finite state machine: P25's 1/2 and 3/4 rate trellis codes, ATSC's 8VSB trellis code
 
-    Each step takes k input bits (most significant first) in state s, sends the n-bit word output[s][u] (most
-    significant first) and moves to next[s][u]. Tables are (states, 2^k), or flat lists of states*2^k (row = state).
+    Each step takes k input bits (most significant first) in state s, sends the n-bit word `output[s][u]` (most
+    significant first) and moves to `next[s][u]`. Tables are (states, 2^k), or flat lists of states*2^k (row = state).
         start: the state the encoder starts in (default 0); null: unknown (the decoder starts from any)
         tail: input words of zeros appended by the encoder (P25: one), decoded and dropped; end: the state the
               path must end in (null: any)
