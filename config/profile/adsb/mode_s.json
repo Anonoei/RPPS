@@ -9,6 +9,13 @@
       "comment": "samples per chip (half-microsecond): 1 at 2 MS/s"
     }
   },
+  "requires": {
+    "baud": "2e6",
+    "Fs": "baud*sps",
+    "bw": "2e6",
+    "min_samples": "Fs*200e-6",
+    "comment": "chips (half-microseconds) at 2 MS/s; a reply is 120 us"
+  },
   "defaults": {
     "timing": {
       "method": "known"

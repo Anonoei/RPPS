@@ -9,6 +9,13 @@
       "comment": "samples per chip pair (an I and a Q chip), even"
     }
   },
+  "requires": {
+    "baud": "1e6",
+    "Fs": "baud*sps",
+    "bw": "2e6",
+    "min_samples": "Fs*1e-3",
+    "comment": "chip pairs (an I and a Q chip) at 1 MHz: 2 Mchip/s"
+  },
   "defaults": {
     "carrier": {
       "method": "none"

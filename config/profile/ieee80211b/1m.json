@@ -9,6 +9,13 @@
       "comment": "samples per chip"
     }
   },
+  "requires": {
+    "baud": "11e6",
+    "Fs": "baud*sps",
+    "bw": "22e6",
+    "min_samples": "Fs*400e-6",
+    "comment": "chips at 11 Mchip/s"
+  },
   "steps": [
     {
       "wave": "shape",

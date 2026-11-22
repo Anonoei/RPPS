@@ -21,6 +21,13 @@
       "comment": "the second stream's"
     }
   },
+  "requires": {
+    "baud": null,
+    "Fs": "baud*sps",
+    "bw": "1.35*baud",
+    "min_samples": "2*sps*33282",
+    "comment": "any symbol rate: given, or measured; bw for the widest roll-off"
+  },
   "steps": [
     {
       "wave": "shape",

@@ -57,6 +57,6 @@ class PlanWorker:
                 r = Result.dropped(f, b.why.get(i, "failed" if b.bad[i] else "decoding failed"))
             else:
                 y = np.asarray(b.x[i])
-                r = Result(f.seq, y, f.pos_out, len(y), reports=list(b.notes.get(i, [])), tags=tuple(b.form[:4]))
+                r = Result(f.seq, y, f.pos_out, len(y), reports=list(b.notes.get(i, [])), tags=tuple(b.form[:4]), pos=f.pos)
             out.append(r)
         return out

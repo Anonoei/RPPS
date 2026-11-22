@@ -39,7 +39,8 @@ class Frame:
 @dataclass
 class Result:
     """What a frame gave. status DROPPED: the frame could not be processed (a gap of `n_out` items at `pos_out`), why in
-    `reports`, which go to the stream's control reports in order"""
+    `reports`, which go to the stream's control reports in order. pos: where the frame started, in the region's input
+    (its message is placed from there)"""
     seq: int
     data: np.ndarray
     pos_out: int = 0
@@ -47,11 +48,12 @@ class Result:
     status: str = OK
     reports: list = field(default_factory=list)
     tags: tuple = ()
+    pos: int = 0
 
     @staticmethod
     def dropped(frame, why):
         return Result(frame.seq, frame.data[:0], frame.pos_out, frame.n_out, DROPPED,
-                      [{"what": "dropped", "frame": frame.seq, "at": frame.pos, "note": str(why)}], frame.tags)
+                      [{"what": "dropped", "frame": frame.seq, "at": frame.pos, "note": str(why)}], frame.tags, frame.pos)
 
 def _freeze(v):
     if isinstance(v, dict):

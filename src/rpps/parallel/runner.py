@@ -101,9 +101,15 @@ class ParallelRunner(Runner):
 
     def _emit(self, D, results):
         meta = D.meta.fork()
+        region = self.slots[self.stop]
         for r in results:
             for rep in r.reports:
                 self._report(rep.pop("what"), **rep)
+            # Each frame is a message (the region's kernels decode its header inside: its fields stay there; a serial
+            # runner gives them). Dropped: crc_ok False
+            ok = r.status != DROPPED
+            self._message(region, "frame", {"seq": r.seq}, r.data if ok and np.asarray(r.data).dtype.kind in "biuf" else None,
+                          ok, r.pos)
         got = [r for r in results if r.status != DROPPED]
         if got:
             self._tags_out = got[-1].tags

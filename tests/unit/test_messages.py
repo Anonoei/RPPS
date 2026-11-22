@@ -120,3 +120,93 @@ def test_nr_mib_dci_and_sib1_are_messages():
     assert len(mib) == 5 and all(m.fields["pci"] == 17 and m.fields["k_ssb"] == 2 for m in mib)
     assert len(sib1) == 5 and all(m.payload == np.packbits(sib).tobytes() for m in sib1)
     assert all(m.fields["rnti"] == 0xFFFF for m in msgs if m.kind == "pdcch")
+
+KNOWN = {"timing": {"method": "known"}, "carrier": {"method": "none"}}
+
+def test_ax25_frames_are_messages_with_their_fcs():
+    rng = np.random.default_rng(13)
+    p = rp.profile.load("ax25/afsk1200", centre=0, sps=10)
+    pk = [bytes(rng.integers(0, 256, n).astype(np.uint8)) for n in (20, 45, 30)]
+    tx, s, waves = p.tx(), None, []
+    for i, f in enumerate(pk):
+        d = rp.Data(f, Fs=1200.0, sps=1, stream=s, flush=i == len(pk) - 1)
+        s = d.stream
+        o = tx(d)
+        waves.append(o.data)
+    x = np.concatenate([np.zeros(400, np.complex64)] + waves + [np.zeros(400, np.complex64)])
+    x = (x + 0.05*(rng.normal(size=len(x)) + 1j*rng.normal(size=len(x)))).astype(np.complex64)
+    for cuts in (None, [1000, 1, 2500, len(x) - 3501]):
+        msgs = run(p, x, o.Fs, o.sps, o.delay, cuts=cuts)
+        assert [m.payload for m in msgs] == pk and all(m.crc_ok and m.kind == "frame" for m in msgs)
+        assert [m.fields["bytes"] for m in msgs] == [20, 45, 30]
+        assert msgs[0].sample >= 400 and [m.sample for m in msgs] == sorted(m.sample for m in msgs)
+
+def test_ccsds_transfer_frames_are_messages():
+    rng = np.random.default_rng(14)
+    p = rp.profile.load("ccsds/tm_rs", sync=KNOWN, depth=2)
+    frames = rng.integers(0, 2, 3*8*223*2).astype(bool)
+    o = p.tx()(rp.Data(frames, Fs=1e6, sps=1, flush=True))
+    x = np.concatenate((np.zeros(37, np.complex64), -o.data, np.zeros(100, np.complex64)))
+    msgs = run(p, x, o.Fs, 4, o.delay, cuts=[4000, 3, 9000, len(x) - 13003])
+    per = 8*223*2
+    assert [m.kind for m in msgs] == ["frame"]*3 and all(m.crc_ok for m in msgs)
+    assert [m.payload for m in msgs] == [np.packbits(frames[i*per:(i + 1)*per]).tobytes() for i in range(3)]
+    span = 4*(32 + 8*255*2) # Samples a frame: its ASM and its codewords at 4 samples a bit
+    assert all(abs((m.sample - msgs[0].sample) - i*span) <= 4 for i, m in enumerate(msgs))
+
+def test_dvbs_transport_packets_are_messages_with_their_pid():
+    rng = np.random.default_rng(5)
+    p = rp.profile.load("dvbs/qpsk_3_4", sync=KNOWN)
+    pk = rng.integers(0, 256, (8*12, 188)).astype(np.uint8)
+    pk[:, 0] = 0x47
+    wave = p.tx()(rp.Data(pk.reshape(-1), Fs=1e6, sps=1, flush=True))
+    msgs = run(p, wave.data, wave.Fs, wave.sps, wave.delay)
+    assert len(msgs) >= len(pk) - 16 and all(m.kind == "packet" and m.bits == 1504 for m in msgs)
+    k = next(k for k in range(len(pk)) if msgs[0].payload == pk[k].tobytes())
+    for m, row in zip(msgs, pk[k:]):
+        assert m.payload == row.tobytes() and m.crc_ok
+        assert m.fields["pid"] == (int(row[1]) & 0x1F) << 8 | int(row[2]) and m.fields["tei"] == int(row[1]) >> 7
+
+def test_a_transfer_frame_past_correction_is_a_failed_message():
+    from rpps.base.types import Rep
+    rng = np.random.default_rng(15)
+    p = rp.profile.load("ccsds/tm_rs", sync=KNOWN, depth=2)
+    frames = rng.integers(0, 2, 3*8*223*2).astype(bool)
+    d = rp.Data(frames, Fs=1e6, sps=1, flush=True)
+    for op in [op for how, op in p.tx() if how == "*"][:-1]: # Down to channel bits
+        d = d*op
+    bits = np.asarray(d.data).copy()
+    per = 32 + 8*255*2
+    for k in rng.choice(np.arange(per + 32, 2*per - 16, 16), 60, replace=False): # 60 bad bytes in the second frame
+        bits[k:k + 16] ^= True
+    rx = p.rx(start=Rep.CHANNEL)
+    rx(rp.Data(bits, flush=True).derive(bits, rp.Category.CODE, rp.dtype.BITS, rep=Rep.CHANNEL))
+    assert [m.crc_ok for m in rx.take_messages()] == [True, False, True]
+
+S2_FRAMES = [{"modcod": 4, "pilots": 1}, {"modcod": 12, "pilots": 1}, {"modcod": 1, "pilots": 0}, {"modcod": 4, "pilots": 1}]
+
+def test_dvbs2_bbframes_serial_and_parallel():
+    """Serial, the BB header emits each frame with its fields; parallel, the region's kernels decode the header inside, so
+    each frame result is the message: the same payloads, near the same places"""
+    p = rp.profile.load("dvbs2/normal", sync={"timing": {"method": "known"}})
+    t = rp.profile.table("dvbs2/modcod")
+    dfl = [t.row({**f, "short": 0})["kbch"] - 80 for f in S2_FRAMES]
+    data = np.random.default_rng(4).integers(0, 2, sum(dfl)).astype(bool)
+    o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=S2_FRAMES)
+    x = (np.concatenate((o.data, np.zeros(200, np.complex64)))*np.exp(0.7j)).astype(np.complex64)
+    msgs = run(p, x, o.Fs, 4, o.delay)
+    pl = [m for m in msgs if m.kind == "pls"] # (the PL header step's id)
+    assert [m.fields["modcod"] for m in pl[:4]] == [f["modcod"] for f in S2_FRAMES] and all(m.crc_ok for m in pl[:4])
+    serial = [m for m in msgs if m.kind == "bbheader"]
+    assert len(serial) == 4 and all(m.crc_ok for m in serial)
+    cuts = np.cumsum([0] + dfl)
+    assert [m.payload for m in serial] == [np.packbits(data[a:b]).tobytes() for a, b in zip(cuts[:-1], cuts[1:])]
+    assert [m.bits for m in serial] == dfl
+    rx = p.rx(parallel=rp.parallel.Parallel("inline"))
+    rx(rp.Data(x, Fs=o.Fs, sps=4, delay=o.delay, flush=True))
+    par = rx.take_messages()
+    rx.close()
+    par = [m for m in par if m.kind == "frame"] # (the PL headers, before the region, are messages too)
+    assert len(par) == 4 and all(m.crc_ok for m in par)
+    assert [m.payload for m in par] == [m.payload for m in serial]
+    assert all(abs(a.sample - b.sample) <= 4*90 for a, b in zip(par, serial)) # (within a PL header)

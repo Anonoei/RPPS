@@ -127,6 +127,18 @@ class Runner:
                             self.span = i if self.span is None else min(self.span, i)
         self.ckpts, self.buf = [], []
         self._span_ops = set()
+        # Steps whose output is a run of fixed-size frames ({"message": {"bits": n, "kind": k, "check": true, "fields":
+        # [{"name", "from", "bits"}]}} in the profile: TS packets, transfer frames): the runner cuts it into messages, from
+        # the step's last op. check: a decoder before it reports failures (an RS), so no failed mask means all good
+        self._units = {}
+        if direction == "rx":
+            for sid, idx in self._step_slots.items():
+                spec = self.slots[idx[-1]].step.spec.get("message")
+                if spec:
+                    if self.span is not None and idx[-1] >= self.span:
+                        from ..errors import ConfigError
+                        raise ConfigError(f"{name}: step {sid!r} cuts messages inside the re-run span")
+                    self._units[idx[-1]] = [spec, None]
         self.stop = len(self.slots) # Slots this runner runs itself: a parallel runner stops where its region starts
 
     # ---- the operators
@@ -255,6 +267,8 @@ class Runner:
             ctl.published = [p for p in ctl.published if p[0] is not op]
             for _, fields, at, o, span, group in pubs:
                 self._accept(slot.index, fields, at, None if o is None else out.meta.pos + o, span, slot.step.id, group)
+        if slot.index in self._units: # (after the anchors: they place its frames)
+            self._cut_units(slot, out)
         return out
 
     # ---- messages
@@ -272,6 +286,30 @@ class Runner:
                     copy.copy(q) if q is not None else None)
         self.messages.append((self._mseq, slot.index, (slot.index, sample, kind), m))
         self._mseq += 1
+
+    def _cut_units(self, slot, out):
+        """A message step's output, cut into its frames: each one emitted from where it starts (a frame cut by a block
+        waits for the rest; a gap in the positions starts over)"""
+        spec, u = self._units[slot.index]
+        n = int(spec["bits"])
+        y = np.asarray(out.data)
+        y = (y < 0) if y.dtype.kind == "f" else y.astype(bool)
+        f = failed_of(out)
+        f = np.zeros(len(y), bool) if f is None else np.asarray(f, bool)
+        known = failed_of(out) is not None
+        if u is None or u[0] + len(u[1]) != out.meta.pos:
+            u = [out.meta.pos, y[:0], f[:0], known]
+        u = [u[0], np.concatenate((u[1], y)), np.concatenate((u[2], f)), u[3] or known]
+        while len(u[1]) >= n:
+            bits, bad = u[1][:n], u[2][:n]
+            fields = {fd["name"]: int(bits[fd["from"]:fd["from"] + fd["bits"]].astype(np.int64)
+                                      @ (1 << np.arange(fd["bits"] - 1, -1, -1)))
+                      for fd in spec.get("fields", ())}
+            at = slot.map.back(u[0]) # Where it starts, in the slot's input
+            # crc_ok: the failed mask's verdict; none at all after a checking decoder ("check": an RS) is all good
+            self._message(slot, spec.get("kind"), fields, bits, (not bad.any()) if u[3] or spec.get("check") else None, at)
+            u = [u[0] + n, u[1][n:], u[2][n:], u[3]]
+        self._units[slot.index][1] = u
 
     def take_messages(self):
         """The frames decoded since the last call, by position (each once: a re-run's second decode is not handed out
