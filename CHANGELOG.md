@@ -228,6 +228,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   is shown and every package has a docstring.
 
 ### Fixed
+- `analysis.spectrum.waveform.classify` judges the envelope of bursts inside them by the smoothed power
+  (`waveform.on_samples`), not by each sample's: filtered PSK in bursts was called constant envelope, its dips between
+  symbols dropped.
 - `analysis.modulation.cumulants.classify` takes about 2 ms instead of 0.5 s: the moment-cumulant formula merges
   partitions with the same moments once (C84: 109 terms, not 4140), each candidate's theory is computed once, and the
   power share is fitted for every share at once.
