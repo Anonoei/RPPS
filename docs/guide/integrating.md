@@ -21,6 +21,17 @@ stage's state) can change.
 | `profile.kinds()`, `profile.rx(kinds=...)`, `Decoder(..., kinds=...)` | only some message kinds, and only the steps they need |
 | `rp.source.formats` | sample formats, by pysdrlib's names |
 
+## A lock, and a profile's messages
+
+A display following one signal holds an `rp.sync.Lock`; a monitor decoding a band it picked holds an
+`rp.profile.Decoder`, fed blocks with where they start, and reads `Message` records back:
+
+```python
+--8<-- "examples/integrating.py"
+```
+
+## Import cost, logging, definitions
+
 `import rpps` loads numpy and RPPS only (about 0.2 s): no scipy, matplotlib or pysdrlib until something asks for them
 (`rp.viz`, a source), so programs can import it at start-up (`tests/unit/test_import_cost.py`).
 

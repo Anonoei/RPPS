@@ -82,7 +82,8 @@ Nothing under `src/` may import scipy (`test_numpy_only.py`).
 ## Conventions
 
 - **Operators first:** keep features inside `*`, `/`, `+`, `>>` rather than adding setup calls.
-- **No aliases:** a rename or move drops the old name and fixes the callers; one name per definition.
+- **No aliases:** a rename or move drops the old name and fixes the callers; one name per definition. The one exception
+  is the stable API (`docs/guide/integrating.md`): its old name stays one release, warning, then goes.
 - **Be explicit:** fix a caller rather than loosen a contract check.
 - **Python first, then C++:** write the stage in Python with a block-cut test; move hot loops to `csrc/` behind
   `rpps._accel.native`, keeping the Python loop as the reference the tests compare against.

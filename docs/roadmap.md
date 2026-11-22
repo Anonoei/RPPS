@@ -23,6 +23,8 @@ What is in each part of RPPS, and what is not yet.
     - [X] Per-burst acquisition (`sync.Burst`: each burst a stream of its own), preambles (`sync.Preamble`: known waveform or Schmidl-Cox, carrier offset)
     - [X] Tone / pilot PLL (`sync.ToneLock`: FM stereo, ATSC pilot)
     - [X] LTE cell search and resource grid (`grid.lte`: PSS/SSS, sample-clock tracking, channel of each antenna port)
+    - [X] NR cell search and SS/PBCH tracking through LEO Doppler and Doppler rate (`grid.nr`)
+    - [X] A snapshot lock for programs that seek and retune (`sync.Lock`: find once, follow any later block, say when stale)
     - [ ] Decision-feedback equalizer
 - [ ] [Symbol and wave](https://github.com/Anonoei/RPPS/tree/main/src/rpps/symbol)
     - [X] PSK, QAM, APSK, ASK, any point set from a file; differential coding; spreading (Barker, Gold, 802.15.4)
@@ -39,11 +41,10 @@ What is in each part of RPPS, and what is not yet.
         - [X] Golay, cyclic codes by generator polynomial, product codes (DMR BPTC), turbo (LTE), rate matching (LTE)
         - [X] 5G NR polar (with its rate matching, CRC-aided list decoding) and NR LDPC (both base graphs, rate matching)
         - [X] Polar (successive cancellation, list, CRC-aided)
-        - [ ] Polar: the 5G NR sequence and rate matching
         - [X] Turbo product codes (Chase-Pyndiah)
         - [X] Reed-Muller
         - [X] Reed-Solomon dual basis (CCSDS)
-        - [ ] LDPC: 5G NR base graphs, CCSDS AR4JA, DVB-S2X
+        - [ ] LDPC: CCSDS AR4JA, DVB-S2X
         - [X] Turbo: CCSDS (rates 1/2 to 1/6), its permutation a definition
         - [ ] Turbo: UMTS, DVB-RCS duo-binary
     - [X] Convolutional
@@ -71,7 +72,15 @@ What is in each part of RPPS, and what is not yet.
     - [X] LTE downlink to SIB1 (`lte/downlink`: MIB, CFI, DCI 1A, PDSCH, branches driving one another)
     - [X] 5G NR downlink to SIB1 at 15 kHz, through LEO satellite Doppler (`nr/downlink`: SS/PBCH, MIB, CORESET 0, DCI 1_0, PDSCH)
     - [X] DVB-S2 multiple input streams (`dvbs2/mis`)
+    - [X] Bursts (`{"sync": "burst"}`, preambles) received and transmitted (placed, ramped, hopping); branches driving one another
+    - [X] Decoded messages (`Message`), only the kinds wanted, what each profile needs (`requires`), `profile.Decoder` from a selected band
     - [ ] From definitions already shipped: CCSDS turbo, P25, DMR, IEEE 802.11a/g, 802.11n, ATSC 8VSB, GPS C/A, DAB
+- [X] [Parallel](https://github.com/Anonoei/RPPS/tree/main/src/rpps/parallel): a profile's per-frame work on threads or processes, batch kernels
+    - [ ] GPU and FPGA backends
+- [X] [Analysis](https://github.com/Anonoei/RPPS/tree/main/src/rpps/analysis): blind survey and identification of unknown signals
+    - [X] Signals in a capture (`survey`, `find_signals`, `measure_band`), symbol rate, modulation (PSK/QAM/APSK, FSK index, CPM/SOQPSK offline), OFDM and its pilots, TDMA bursts and their kinds
+    - [X] Codes: convolutional (mother code, puncturing, RSC and turbo, TCM), linear block, Reed-Solomon, polar, quasi-cyclic LDPC (generator and sparse checks); scramblers, interleavers, frame markers
+    - [X] Step by step through a receive chain to a profile, or what is still unsolved (`analysis.profile`, `rpps solve`)
 - [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey
 
 ## Not yet built

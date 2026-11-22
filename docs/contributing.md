@@ -146,7 +146,8 @@ what replaces it); `python tools/builder.py -v p` (or `m`, `M`) previews the bum
 ## Conventions
 
 - **Operators first:** keep features inside `*`, `/`, `+`, `>>` rather than adding setup calls.
-- **No aliases:** a rename or move drops the old name and fixes the callers.
+- **No aliases:** a rename or move drops the old name and fixes the callers. The one exception is the stable API
+  ([Building on RPPS](guide/integrating.md)): its old name stays one release, warning, then goes.
 - **Be explicit:** fix a caller rather than loosen a contract check.
 - **Category by what it takes and gives** (`rpps.base`, The rule).
 - **Read the standard** when a decode does not work, instead of guessing.
