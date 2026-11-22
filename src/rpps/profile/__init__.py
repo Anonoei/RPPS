@@ -14,6 +14,7 @@ control (`controls`, `publish`, tables) and rpps.profile.runner for how runners 
 from .profile import Profile, load, ls
 from .message import Message
 from .catalogue import ProfileInfo, info, catalogue
+from .decoder import Decoder
 from .runner import Runner
 from .parallel import Region
 from .steps import Step

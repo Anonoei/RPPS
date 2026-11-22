@@ -318,6 +318,27 @@ the PDSCH tries both, its CRC choosing.
 **Sources that start later in the chain:** the runner skips every receive step before what the source gives (`Source.REP`,
 `APPLIED`): timed symbols with the carrier on skip signal, wave and timing; a BBFRAME stream skips everything through code.
 
+**Messages:** every frame a profile receives is also a record, `rp.profile.Message` (rpps.profile.message): its kind (the
+step's id), the fields it decoded, its payload, `crc_ok` (None where there is no check), and where it starts in the stream
+the runner was given (`sample`, `time`, `freq`). A step that knows where a frame starts and whether it checked out emits it
+next to what it publishes, `rp.base.control.emit(meta, op, kind, fields, bits, ok, at)`: link headers (failed frames too),
+the HDLC frame step, the DVB-S2 PL header, the LTE and NR channels. A step whose output is a run of fixed-size frames with no
+step of their own (TS packets after DVB-S's RS, CCSDS transfer frames) says so in the profile and the runner cuts them:
+`{"code": "scramble", ..., "message": {"kind": "packet", "bits": 1504, "check": true, "fields": [{"name": "pid", "from": 11,
+"bits": 13}]}}` (`check`: a decoder before it marks its failures, so none marked is good). The runner places each message
+through the maps of the steps before it, drops what a re-run span emitted after its checkpoint, and hands each out once from
+`runner.take_messages()`; burst and branch runners place their children's in the outer stream. A parallel region's kernels
+decode inside: each frame result is its message (`"frame"`, crc_ok False when dropped), without the header fields a serial
+runner gives.
+
+**What a profile needs:** `"requires"`, beside `params`, as strings over the params and `baud`, evaluated in order (each may
+use those before): `baud` (symbols, chips or subcarrier spacing; null where the standard leaves the rate open), `Fs`, `bw`
+(the channel taken), `min_samples` (enough for one message); `input` ("audio": an FM channel's audio, AX.25), `from_cf`
+(params the carrier gives: `{"channel": "37 if abs(cf - 2402e6) < 1e6 else ..."}`). Strings, not `{"expr": ...}`: they are
+evaluated when asked (`rp.profile.info(name, baud=, **params)`, `catalogue()`), not when the profile loads. `rp.profile.Decoder`
+(rpps.profile.decoder) reads them to bring a selected signal to the profile: shift and staged decimation, an FM demodulator
+for audio, a fractional resampler to `Fs`; a rate left open is given or measured (`Lock.find`) first.
+
 ### Wave pairs
 
 | Step | Receive (as written) | Transmit (inverted) |

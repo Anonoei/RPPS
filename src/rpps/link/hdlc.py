@@ -56,6 +56,8 @@ class hdlc(_code):
         # Flags: 01111110 patterns (LSB first: the flag byte's bits in transmission order)
         f = self.flag_bits
         n = len(f)
+        if len(b) < n: # Not even a flag
+            return [], 0
         win = np.lib.stride_tricks.sliding_window_view(b, n)
         starts = np.nonzero((win == f).all(axis=1))[0]
         frames, aborts = [], 0

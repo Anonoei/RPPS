@@ -64,3 +64,17 @@ def test_rx_gives_the_branch_asked_for(tmp_path, capsys):
     assert (tmp_path/"sib.bin").read_bytes() == np.packbits(np.tile(sib, 2)).tobytes() # Frames 0 and 2
     with pytest.raises(SystemExit, match="no branch"):
         cli.main(["rx", "lte/downlink", str(tmp_path/"lte.cf32"), "--fs", "1.92e6", "--param", "n_rb=6", "--branch", "nope"])
+
+def test_rx_prints_the_messages(tmp_path, capsys):
+    """--messages: every frame decoded, a JSON line each (the MIB, the CFI, the DCI, SIB1 of an LTE cell)"""
+    import json
+    from rpps.grid import lte
+    sib = np.random.default_rng(2).integers(0, 2, 224).astype(np.uint8)
+    x = lte.tx.channel(lte.tx.downlink(pci=10, ports=1, n_rb=6, frames=4, sib=sib), delay=700, snr_db=20)
+    x.tofile(tmp_path/"lte.cf32")
+    assert cli.main(["rx", "lte/downlink", str(tmp_path/"lte.cf32"), "--fs", "1.92e6", "--param", "n_rb=6", "--messages"]) == 0
+    lines = [json.loads(ln) for ln in capsys.readouterr().out.splitlines()]
+    kinds = {m["kind"] for m in lines}
+    assert {"pbch", "pcfich", "pdcch", "pdsch"} <= kinds
+    sib1 = [m for m in lines if m["kind"] == "pdsch" and m["crc_ok"]]
+    assert sib1 and all(m["payload"] == np.packbits(sib).tobytes().hex() for m in sib1)
