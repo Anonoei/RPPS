@@ -6,6 +6,9 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
 ## Unreleased
 
 ### Breaking
+- **A burst profile's `p.tx()` places the bursts:** a call gives the samples up to its burst's start (the gap before it),
+  not the burst; `tx.flush()` gives the rest. Send the packets and write what comes out (`examples/profile_loopback.py`).
+  `rpps tx --gap` is seconds, not samples.
 - **pysdrlib 0.5 is required.** **Sample formats follow pysdrlib 0.5's names** (SigMF's: the bits of I alone): `cf32` is two float32 (numpy complex64,
   a `.cfile`), `cf64` complex128, `ci16t` int16 pairs (a gqrx `.cs16`), `ci8t` int8 pairs. What RPPS called `cf64` is
   `cf32`, `ci32t` is `ci16t`, `ci16t` is `ci8t`. `rpps rx/tx/survey/profile --fmt` defaults to `cf32`.
@@ -128,6 +131,15 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
 - **Branches in profiles:** a last `{"branch": ...}` step fans the chain out into branches that read the same blocks
   (`rpps.profile.branch`), in order, each in its own stream; a header in one branch drives steps in the branches after
   it, at the trunk position of its fields; `frame` makes the branches read whole frames. Receive only.
+- **Burst transmission in profiles:** `p.tx()` of a profile with a burst step is a `BurstTxRunner`: a call sends one
+  burst, through steps built anew for it (no more `flush=True` a packet by hand), and gives the samples up to its start
+  (`flush=True` or `tx.flush()`: the rest). The burst step places the bursts (`rp.sync.BurstTx`): `gap_s` apart, or at
+  `at=` [s] (TDMA slots), with `ramp_s` raised-cosine power ramps, on a carrier each (`freq=`, or the step's `hop` list
+  cycled) on a stream of rate `Fs`: MF-TDMA carriers may share a slot (they add), and a hopping carrier keeps the phase
+  of one continuous oscillator. `tx.sent` records each burst's start, length and carrier. A preamble step with
+  `"attach": true` sends its own waveform (`rp.sync.PreambleTx`) before each burst. `ble/adv` sends 1 ms apart.
+  `rpps tx`: `--gap` is in seconds; `--hop`, `--rate-out`. Receiving MF-TDMA or hopping takes a channelizer before the
+  profile (a channelized burst step is not built).
 - **Burst demodulation in profiles:** a `{"sync": "burst"}` step; the steps after it are built anew for every burst
   (`rpps.profile.burst.BurstRunner`). A `{"sync": "preamble"}` step finds each burst's preamble, its waveform made by the
   profile's own transmit side; on real input (FSK) by the correlation coefficient, with the offset level taken off. Known

@@ -44,11 +44,11 @@ def test_tx_writes_what_rx_receives(tmp_path, capsys):
     payload = bytes(range(60))
     (tmp_path/"in.bin").write_bytes(payload)
     assert cli.main(["tx", "ble/adv", str(tmp_path/"ble.cf32"), "--rate", "1e6", "--in", str(tmp_path/"in.bin"),
-                     "--packet", "20", "--gap", "4000", "--field", "type=2"]) == 0
+                     "--packet", "20", "--field", "type=2"]) == 0
     assert "samples at 4e+06 Hz" in capsys.readouterr().out
     x = np.fromfile(tmp_path/"ble.cf32", np.complex64)
     p = rp.profile.load("ble/adv")
-    outs = p.rx()(rp.Data(np.concatenate((np.zeros(36, np.complex64), x)), Fs=4e6, sps=4, flush=True)) # one per packet
+    outs = p.rx()(rp.Data(x, Fs=4e6, sps=4, flush=True)) # one per packet (gap_s apart, the first after one too)
     bits = [np.asarray(o.data) < 0 if np.asarray(o.data).dtype.kind == "f" else np.asarray(o.data).astype(bool) for o in outs]
     got = np.packbits(np.concatenate(bits)).tobytes()
     assert got == payload
