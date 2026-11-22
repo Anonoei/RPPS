@@ -27,6 +27,9 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- `analysis.spectrum.burst`: bursts of several kinds, each with its own preamble (a TDMA network's burst types each carry
+  a unique word): when the bursts share fewer than `min_shared` symbols they are grouped by length, each group's own
+  preamble found (`burst_kinds`), and every burst acquired on its kind's (`BurstResult.kind`, `Bursts.preambles`).
 - **Speed: LTE and NR downlinks near real time.**
   - `polar_scl`, a C++ polar list decoder: about 20x the numpy one, the same paths and metrics. Polar's N is checked
     without building G.
@@ -92,6 +95,12 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   to DC); windows at absolute positions.
 - A source checkout warns on `import rpps` when the in-place `rpps._native` was built from other C++ sources than
   `csrc/rpps_native` has now (`rpps._accel.stale`); rebuild with `python builder.py -c`. Installed packages are not checked.
+
+### Fixed
+- `analysis.spectrum.waveform.on_off`: the period of bursts much shorter than their frame came out as the smallest lag
+  searched (inside a burst the autocorrelation is near 1 at every lag). It is now the earliest true peak, within 10% of
+  the highest, past the autocorrelation's first dip, per lag over its overlap, searched up to half the record (at most
+  0.5 s). The power is smoothed over at least 32 samples (a narrow cut's symbols swing at 2 us).
 
 ## 0.5.0 (2026-11-20)
 

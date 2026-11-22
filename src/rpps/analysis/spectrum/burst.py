@@ -11,7 +11,9 @@ timing, and is too short to train loops on: so each is acquired on its own, data
   1. rpps.analysis.framing.frames.bursts gates the bursts and acquires each blind (rate, modulation, offset); bursts too short
      for that keep only their span. The modulation is the bursts' majority, the rate their median (or `mod` / `baud`).
   2. The preamble: the leading run of symbols the bursts agree on, as phase steps (rpps.analysis.framing.frames.preamble, or
-     `shared_preamble` for a short one, whichever is longer), or `preamble` given. Its symbols are rebuilt from the steps and turned onto the constellation (one rotation for all
+     `shared_preamble` for a short one, whichever is longer), or `preamble` given. A network's burst types each carry a
+     unique word of their own: when the bursts share fewer than `min_shared` symbols, they are grouped by length and
+     each group's own preamble found (`burst_kinds`); each burst is acquired on its kind's. Its symbols are rebuilt from the steps and turned onto the constellation (one rotation for all
      bursts: the M-fold phase ambiguity is the same for every burst, so their bits agree with each other).
   3. In each burst the preamble is found by correlating its shaped waveform in pieces (the pieces' magnitudes added: a
      carrier offset costs little), then the fractional timing that best matches the preamble's phase steps (blind to
@@ -31,8 +33,9 @@ from ..framing import frames
 
 class BurstResult:
     """One burst: start (sample of its preamble's first symbol, fractional), symbols, bits, cfo (Hz), phase (rad), gain,
-    score (the preamble's correlation 0..1), evm (rms, of the data after the preamble), frame, slot, ok"""
-    __slots__ = ("start", "symbols", "bits", "cfo", "phase", "gain", "score", "evm", "frame", "slot", "ok")
+    score (the preamble's correlation 0..1), evm (rms, of the data after the preamble), frame, slot, kind (which of the
+    preambles it was acquired on), ok"""
+    __slots__ = ("start", "symbols", "bits", "cfo", "phase", "gain", "score", "evm", "frame", "slot", "kind", "ok")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
@@ -45,17 +48,19 @@ class BurstResult:
                 f"{100*self.evm:.1f}%{sl}>")
 
 class Bursts:
-    """`demodulate`: bursts [BurstResult], mod, baud, beta, preamble (symbols), frame (s, None), slots (offsets within
-    the frame, s)"""
-    __slots__ = ("bursts", "mod", "baud", "beta", "preamble", "frame", "slots")
+    """`demodulate`: bursts [BurstResult], mod, baud, beta, preamble (symbols: the most common kind's), preambles (every
+    kind's), frame (s, None), slots (offsets within the frame, s)"""
+    __slots__ = ("bursts", "mod", "baud", "beta", "preamble", "preambles", "frame", "slots")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
 
     def __str__(self):
         ok = [b for b in self.bursts if b.ok]
-        s = (f"{len(self.bursts)} bursts ({len(ok)} demodulated), {self.mod} at {self.baud/1e3:.3f} kBd, a "
-             f"{len(self.preamble)}-symbol preamble")
+        kinds = self.preambles or [self.preamble]
+        s = (f"{len(self.bursts)} bursts ({len(ok)} demodulated), {self.mod} at {self.baud/1e3:.3f} kBd, "
+             + (f"a {len(self.preamble)}-symbol preamble" if len(kinds) == 1 else
+                f"{len(kinds)} burst kinds (preambles of {', '.join(str(len(p)) for p in kinds)} symbols)"))
         if self.frame:
             s += f"; frame {self.frame*1e3:.3f} ms, {len(self.slots)} slots"
         if ok:
@@ -177,8 +182,42 @@ def track(y, points, k1=0.05, k2=0.002):
         ph += k1*e + nu
     return out
 
-def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None, slot_tol=4, min_score=0.5, **kw):
-    """Every burst of x, demodulated on its own from the shared preamble (see the module). kw: frames.gate's"""
+def burst_kinds(B, sps, pts, min_shared=16, min_group=3):
+    """(preambles [symbols], member [kind index or None per burst]): one shared by all the bursts, when they share at least
+    `min_shared` symbols; else one per group of bursts of a length (lengths within 16 symbols or 2 %: a network's burst
+    types, each with its own unique word), groups of at least `min_group` with at least `min_shared` symbols in common.
+    Most bursts first. A burst in no group has None (it is tried on every kind's)"""
+    def shared(g):
+        n, d, _ = frames.preamble(g)
+        n2, d2, _ = shared_preamble(g)
+        return (n2, d2) if n2 > n else (n, d)
+    n, d = shared(B)
+    if n >= min_shared or len(B) < 2*min_group:
+        return ([preamble_symbols(d, pts)], [0]*len(B)) if n else ([], [None]*len(B))
+    L = np.array([(b.stop - b.start)/sps for b in B])
+    order = np.argsort(L)
+    groups, cur = [], [order[0]]
+    for i, j in zip(order[:-1], order[1:]):
+        if L[j] - L[i] > max(16, 0.02*L[i]):
+            groups.append(cur); cur = []
+        cur.append(j)
+    groups.append(cur)
+    kinds, member = [], [None]*len(B)
+    for g in sorted((g for g in groups if len(g) >= min_group), key=len, reverse=True):
+        n, d = shared([B[i] for i in g])
+        if n >= min_shared:
+            for i in g:
+                member[i] = len(kinds)
+            kinds.append(preamble_symbols(d, pts))
+    if not kinds and n: # (no group of its own: what they all share, however short)
+        n, d = shared(B)
+        return [preamble_symbols(d, pts)], [0]*len(B)
+    return kinds, member
+
+def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None, slot_tol=4, min_score=0.5, min_shared=16, **kw):
+    """Every burst of x, demodulated on its own from its preamble (see the module). Bursts of several kinds, each with a
+    preamble of its own (burst_kinds: by length, when they share fewer than `min_shared` symbols), are each acquired on
+    their kind's. kw: frames.gate's"""
     from ... import symbol as rsym
     x = np.asarray(x, dtype=np.complex128)
     B = frames.bursts(x, Fs, baud=baud, **kw)
@@ -196,29 +235,34 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None,
         beta = float(np.median([b.det.beta for b in acq])) if acq else 0.35
     con = rsym.load(mod)
     pts = np.asarray(con.points, dtype=np.complex128)
-    if preamble is None:
-        n, d, _ = frames.preamble(B)
-        n2, d2, _ = shared_preamble(B)
-        if n2 > n:
-            n, d = n2, d2
-        if not n:
-            raise ValueError("the bursts share no preamble: give preamble (symbols)")
-        pre = preamble_symbols(d, pts)
-    else:
-        pre = np.asarray(preamble, dtype=np.complex128)
     sps = Fs/baud
+    if preamble is None:
+        kinds, member = burst_kinds(B, sps, pts, min_shared)
+        if not kinds:
+            raise ValueError("the bursts share no preamble: give preamble (symbols)")
+    else:
+        kinds, member = [np.asarray(preamble, dtype=np.complex128)], [0]*len(B)
+    pre = kinds[0]
     out = []
-    for b in B:
-        pad = int(np.ceil(16*sps)) + len(pre)
-        a2, b2 = max(0, b.start - pad), min(len(x), b.stop + pad)
-        seg = x[a2:b2]
-        r = acquire(seg, Fs, pre, baud, beta, search=(0, b.start - a2 + 4*len(pre)*sps))
-        if r is None:
+    for b, m in zip(B, member):
+        tries = [m] if m is not None else range(len(kinds)) # A burst of no group: every kind's preamble, the best kept
+        best = None
+        for kind in tries:
+            p = kinds[kind]
+            pad = int(np.ceil(16*sps)) + len(p)
+            a2, b2 = max(0, b.start - pad), min(len(x), b.stop + pad)
+            seg = x[a2:b2]
+            r = acquire(seg, Fs, p, baud, beta, search=(0, b.start - a2 + 4*len(p)*sps))
+            if r is not None and (best is None or r[1] > best[0][1]):
+                best = (r, kind, a2, seg)
+        if best is None:
             out.append(BurstResult(start=float(b.start), score=0.0, ok=False))
             continue
+        r, kind, a2, seg = best
+        pre = kinds[kind]
         t0, score, w, phase, gain = r
         if score < min_score:
-            out.append(BurstResult(start=a2 + t0, score=score, ok=False))
+            out.append(BurstResult(start=a2 + t0, score=score, kind=kind, ok=False))
             continue
         from ...sync.time.mat import centres_in
         c = centres_in(len(seg), t0, sps, 8)
@@ -231,8 +275,8 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None,
         dec = pts[idx]
         data = slice(len(pre), None)
         evm = float(np.sqrt(np.mean(np.abs(y[data] - dec[data])**2)/np.mean(np.abs(pts)**2))) if len(y) > len(pre) else 0.0
-        out.append(BurstResult(start=a2 + t0, symbols=y, bits=_bits(idx, con),
-                               cfo=w*baud/(2*np.pi), phase=phase, gain=gain, score=score, evm=evm, ok=True))
+        out.append(BurstResult(start=a2 + t0, symbols=y, bits=_bits(idx, con), cfo=w*baud/(2*np.pi), phase=phase, gain=gain,
+                               score=score, evm=evm, kind=kind, ok=True))
     # TDMA structure
     slots = []
     ok = [b for b in out if b.ok]
@@ -253,4 +297,4 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None,
             b.frame = int((s - t0 + tol)//frame)
             dist = [min(abs(p - q), frame - abs(p - q)) for q in slots]
             b.slot = int(np.argmin(dist))
-    return Bursts(bursts=out, mod=mod, baud=baud, beta=beta, preamble=pre, frame=frame, slots=slots)
+    return Bursts(bursts=out, mod=mod, baud=baud, beta=beta, preamble=kinds[0], preambles=kinds, frame=frame, slots=slots)

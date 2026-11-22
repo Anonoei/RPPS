@@ -37,3 +37,28 @@ def test_every_burst_on_its_own_carrier_and_phase():
         assert min(errs) == 0
         rot.add(int(np.argmin(errs)))
     assert len(rot) == 1
+
+def test_burst_kinds_each_on_its_own_preamble():
+    """A network's burst types (here two lengths), each with its own unique word: what all the bursts share is a symbol or
+    two, so each kind's preamble is found from its own bursts and every burst acquired on its kind's"""
+    rng = np.random.default_rng(3)
+    q = rp.symbol.load("qpsk").points
+    fs, baud = 2e6, 250e3
+    pres = [q[rng.integers(0, 4, 40)], q[rng.integers(0, 4, 40)]]
+    x = np.zeros(int(0.03*fs), complex)
+    sent, at = [], 2000
+    for i in range(12):
+        kind = i % 2
+        syms = np.concatenate((pres[kind], q[rng.integers(0, 4, 200 if kind == 0 else 450)]))
+        w = FR.word_waveform(syms, fs/baud)
+        w = w*np.exp(1j*rng.uniform(0, 2*np.pi) + 2j*np.pi*rng.uniform(-2e3, 2e3)/fs*np.arange(len(w)))
+        x[at:at + len(w)] += w
+        sent.append((kind, syms))
+        at += len(w) + 600
+    x += 0.06*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    r = burst.demodulate(x, fs)
+    assert len(r.preambles) == 2 and all(len(p) >= 32 for p in r.preambles)
+    assert len(r.bursts) == 12 and all(b.ok for b in r.bursts)
+    kinds = [b.kind for b in r.bursts]
+    assert len(set(kinds[0::2])) == 1 and len(set(kinds[1::2])) == 1 and kinds[0] != kinds[1] # Each type its own kind
+    assert np.median([b.evm for b in r.bursts]) < 0.2
