@@ -198,6 +198,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   line is taken (a constant), estimates that come out non-finite ("nothing like symbols here"). Their arithmetic runs
   under its own numpy error state, so a caller's `np.seterr(all="raise")` no longer turns an underflow into a
   `FloatingPointError`. `update` on zeros now says "all zero" (it said "fewer than 16 symbols").
+- `rp.analysis.spectrum.scf.coherence` of silence (all-zero samples) is 0, not NaN with a 0/0 warning (an empty channel
+  next to a signal already read 0); samples that are not finite are a `ValueError` saying so.
 - `rp.analysis.spectrum.cyclic.features` likewise: silence has no lines whatever `np.seterr` says, samples that are not
   finite are a `ValueError` saying so, and a sequence varying only by rounding (an exactly constant input) no longer
   shows a symbol-rate line found in its residue.
