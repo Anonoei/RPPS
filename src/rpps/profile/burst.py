@@ -17,6 +17,7 @@ class BurstRunner:
         self.pre, self.burst, self.make_post, self.name = pre, burst, make_post, name
         self.last = None
         self.bursts = 0
+        self._msgs, self._input = [], (1.0, 0.0, None)
 
     @property
     def ops(self):
@@ -33,15 +34,26 @@ class BurstRunner:
     def __call__(self, data, fields=None):
         if fields is not None:
             raise ConfigError(f"{self.name}: fields are for transmitting")
+        self._input = (data.meta.Fs or 1.0, data.meta.cf, data.meta.stream.t0)
         if self.pre is not None:
             data = self.pre(data)
         out = []
         for b in data + self.burst:
             run = self.make_post()
             out.append(run(b))
+            self._msgs += run.take_messages() # (a burst's positions are absolute in the burst step's input)
             self.last = run
             self.bursts += 1
         return out
+
+    def take_messages(self):
+        """The frames decoded since the last call, every burst's, placed in the stream given"""
+        Fs, cf, t0 = self._input
+        out = list(self.pre.take_messages()) if self.pre is not None else []
+        for m in self._msgs:
+            out.append(m.placed(self.pre.to_input(m.sample) if self.pre is not None else m.sample, Fs, cf, t0))
+        self._msgs = []
+        return sorted(out, key=lambda m: m.sample)
 
     def __radd__(self, data):
         """`block + runner`, as a runner goes where a stage does"""

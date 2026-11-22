@@ -144,14 +144,14 @@ class Profile:
             return self._burst_rx(steps, k, keep, parallel)
         slots = self._slots(steps)
         if parallel is None:
-            return Runner(slots, f"{self.name} rx", self.controls, "rx")
+            return Runner(slots, f"{self.name} rx", self.controls, "rx", profile=self.name)
         if self.region is None:
             raise ConfigError(f"profile {self.name}: has no parallel region (no \"parallel\" in its definition)")
         from ..parallel.runner import ParallelRunner
         first = self.region.steps[0].id
         from ..parallel.worker import RegionSteps
         make = RegionSteps(self.name, self.obj, self._sync, self.params, self.region.first)
-        return ParallelRunner(slots, f"{self.name} rx (parallel)", self.controls, "rx", make, first, parallel)
+        return ParallelRunner(slots, f"{self.name} rx (parallel)", self.controls, "rx", make, first, parallel, profile=self.name)
 
     @staticmethod
     def _slots(steps):
@@ -168,10 +168,10 @@ class Profile:
             raise ConfigError(f"{where}: a burst step and a parallel region together are not supported")
         if sum(st.kind == "burst" and st.category == "sync" for st in steps) > 1:
             raise ConfigError(f"{where}: one burst step")
-        pre = Runner(self._slots(steps[:k]), f"{self.name} rx", self.controls, "rx") if k else None
+        pre = Runner(self._slots(steps[:k]), f"{self.name} rx", self.controls, "rx", profile=self.name) if k else None
         def make_post():
             post = [st for st in self._build() if keep(st)][k + 1:]
-            return Runner(self._slots(post), f"{self.name} rx (burst)", self.controls, "rx")
+            return Runner(self._slots(post), f"{self.name} rx (burst)", self.controls, "rx", profile=self.name)
         return BurstRunner(pre, steps[k].obj, make_post, f"{self.name} rx")
 
     def _branch_rx(self, steps, parallel):
@@ -208,8 +208,8 @@ class Profile:
             exit_op = Exit(exit_params)
             trunk_steps.append(Step("signal", "exit", [(STAGE, exit_op)], [], steps[-1].takes, steps[-1].takes, {}, exit_op, EXIT,
                                     dict(exit_op.CONTROLS)))
-        trunk = Runner(self._slots(trunk_steps), f"{self.name} rx", entries, "rx") if trunk_steps else None
-        chains = {name: BranchChain(self._slots(chain), f"{self.name} rx {name}", self.controls, name, bus)
+        trunk = Runner(self._slots(trunk_steps), f"{self.name} rx", entries, "rx", profile=self.name) if trunk_steps else None
+        chains = {name: BranchChain(self._slots(chain), f"{self.name} rx {name}", self.controls, name, bus, profile=self.name)
                   for name, chain in nested.items()}
         return BranchRunner(trunk, chains, f"{self.name} rx", bus, list(nested), steps[-1].spec.get("frame"), exit_op, owner)
 
@@ -222,7 +222,7 @@ class Profile:
         slots = []
         for st in reversed(built):
             slots += [Slot(how, op, st, len(slots) + i) for i, (how, op) in enumerate(st.tx)]
-        return Runner(slots, f"{self.name} tx", self.controls, "tx")
+        return Runner(slots, f"{self.name} tx", self.controls, "tx", profile=self.name)
 
     def __repr__(self):
         return f"<Profile {self.name}: " + ", ".join(f"{s.category}:{s.kind}" for s in self.steps) + ">"

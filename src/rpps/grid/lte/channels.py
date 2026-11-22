@@ -22,7 +22,7 @@ import numpy as np
 from ...base.rpps import Pipe
 from ...base.types import Category, Rep, dtype
 from ...base.data import Digital
-from ...base.control import publish
+from ...base.control import publish, emit
 from . import phy
 from .grid import unpack, frame_len
 
@@ -164,10 +164,12 @@ class PBCH(_Channel):
                     fields = {"ports": ports, "n_rb": mib["n_rb"], "phich_ng": mib["phich_ng"],
                               "phich_duration": mib["phich_duration"], "sfn": mib["sfn_msb"]*4 + q}
                     publish(meta, self, fields, at=pos)
+                    emit(meta, self, None, {"pci": pci, "sf": 0, **fields}, b[:24], True, pos)
                     st.est["decoded"] += 1
                     st.est["last"] = fields
                     return b[:24]
         st.est["failed"] += 1
+        emit(meta, self, None, {"pci": pci, "sf": 0}, None, False, pos)
         return None
 
 
@@ -192,6 +194,7 @@ class PCFICH(_Channel):
         score = {cfi: float(np.sum(s*phy.sign(w))) for cfi, w in phy.CFI_WORDS.items()}
         cfi = max(score, key=score.get)
         publish(meta, self, {"cfi": cfi}, at=pos, span=frame_len(head["n_rb"]))
+        emit(meta, self, None, {"pci": pci, "sf": sf, "cfi": cfi}, None, None, pos) # (no check: the nearest code word)
         st.est["decoded"] += 1
         st.est["last"] = {"cfi": cfi}
         return [cfi >> 1 & 1, cfi & 1]
@@ -244,6 +247,10 @@ class PDCCH(_Channel):
         out, allocated = [], False
         for fmt, rnti, b in found:
             out.append(b)
+            fields = {"pci": head["pci"], "sf": head["sf"], "format": fmt, "rnti": rnti}
+            if fmt == "1A" and b[0] == 1:
+                fields.update(phy.parse_1a(b, n_rb))
+            emit(meta, self, None, fields, b, True, pos) # (its CRC, masked with the RNTI, matched)
             if fmt == "1A" and b[0] == 1 and not allocated: # (the first 1A allocates: one PDSCH a subframe here)
                 allocated = True
                 d = phy.parse_1a(b, n_rb)
@@ -286,4 +293,6 @@ class PDSCH(_Channel):
         ok = not crc_bits(b, "crc24_lte_a").any()
         st.est["decoded" if ok else "failed"] += 1
         st.est["last"] = {"tbs": tbs, "first": first, "count": count, "crc": bool(ok)}
+        emit(meta, self, None, {"pci": pci, "sf": sf, "rnti": int(self.rnti), "tbs": tbs, "first": first, "count": count,
+                                "mcs": int(self.mcs), "rv": int(self.rv)}, b[:tbs] if ok else None, bool(ok), pos)
         return b[:tbs] if ok else None

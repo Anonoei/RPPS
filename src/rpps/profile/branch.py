@@ -69,8 +69,8 @@ class Exit(Stage):
 
 class BranchChain(Runner):
     """One branch's runner: it also hands what its headers publish for other branches to the bus, at trunk positions"""
-    def __init__(self, slots, name, entries, branch, bus):
-        super().__init__(slots, name, entries, "rx")
+    def __init__(self, slots, name, entries, branch, bus, profile=None):
+        super().__init__(slots, name, entries, "rx", profile)
         self.branch, self.bus = branch, bus
 
     def _accept(self, origin, fields, at, out, span, step, group=None):
@@ -135,6 +135,7 @@ class BranchRunner:
         self.exit, self.owner = exit, owner or {} # The trunk's Exit (None: no control of the trunk drives a branch)
         self.frame = None if frame is None else int(frame)
         self.held = None # Trunk output short of a whole frame
+        self._input = (1.0, 0.0, None)
 
     def __repr__(self):
         return f"<BranchRunner {self.name}: {self.trunk!r} | " + ", ".join(f"{k}: {v!r}" for k, v in self.chains.items()) + ">"
@@ -146,6 +147,7 @@ class BranchRunner:
     def __call__(self, data, fields=None):
         if fields is not None:
             raise ConfigError(f"{self.name}: fields are for transmitting")
+        self._input = (data.meta.Fs or 1.0, data.meta.cf, data.meta.stream.t0)
         if self.trunk is not None:
             data = self.trunk(data)
         if self.exit is not None:
@@ -174,6 +176,17 @@ class BranchRunner:
             out[name] = self.chains[name](piece)
         self.bus.queue = [q for q in self.bus.queue if q[3] >= data.meta.pos + len(data)] # (kept: positions ahead)
         return out
+
+    def take_messages(self):
+        """The frames the trunk and every branch decoded since the last call, placed in the stream given (a branch's
+        positions are the trunk's output, carried back through it)"""
+        Fs, cf, t0 = self._input
+        out = list(self.trunk.take_messages()) if self.trunk is not None else []
+        for chain in self.chains.values():
+            for m in chain.take_messages():
+                pos = self.trunk.to_input(m.sample) if self.trunk is not None else m.sample
+                out.append(m.placed(pos, Fs, cf, t0))
+        return sorted(out, key=lambda m: m.sample)
 
     def _frames(self, data):
         """The whole frames of what the trunk gave so far (the end of the stream: all of it)"""

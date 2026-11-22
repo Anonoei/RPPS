@@ -39,8 +39,8 @@ class Parallel:
 
 class ParallelRunner(Runner):
     """A Runner whose slots from `region_slot` on run frame by frame on an executor. Same contract as Runner"""
-    def __init__(self, slots, name, entries, direction, make_steps, region_first, parallel):
-        super().__init__(slots, name, entries, direction)
+    def __init__(self, slots, name, entries, direction, make_steps, region_first, parallel, profile=None):
+        super().__init__(slots, name, entries, direction, profile)
         if direction != "rx":
             raise ValueError("a parallel region is a receive-side thing")
         self.stop = next(i for i, s in enumerate(self.slots) if s.step.id == region_first)
