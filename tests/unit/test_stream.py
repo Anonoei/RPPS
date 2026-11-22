@@ -111,7 +111,7 @@ def test_blocks_flow_through_pipelines(tmp_path, x):
     path = tmp_path / "a.iq"
     x[:5000].tofile(path)
     rx = rp.signal.filters.ShiftFreq(1e3) + rp.signal.sample.down.Decimate(5)
-    src = rp.source.File("cf64", path, Fs=100e3, cf=1e6)
+    src = rp.source.File("cf32", path, Fs=100e3, cf=1e6)
     got = (src(777) + rx).collect() # 777 doesn't divide 5000: a short last block
     ref = (rp.Data(x[:5000], Fs=100e3) + rx).data
     assert len(got) == len(ref) and np.allclose(got, ref, atol=1e-5)
@@ -120,17 +120,17 @@ def test_blocks_flow_through_pipelines(tmp_path, x):
 def test_sink_round_trip(tmp_path, x):
     src = tmp_path / "a.iq"
     (x[:3000]*0.2).astype(np.complex64).tofile(src)
-    for fmt, tol in (("ci32t", 1/32768), ("ci16t", 1/128), ("cf64", 1e-7)):
+    for fmt, tol in (("ci16t", 1/32768), ("ci8t", 1/128), ("cf32", 1e-7)):
         out = tmp_path / f"b.{fmt}"
         with rp.source.Sink(fmt, out) as sink:
-            rp.source.File("cf64", src)(1000) >> sink
+            rp.source.File("cf32", src)(1000) >> sink
         back = rp.source.File(fmt, out).read(3000)
         assert np.abs(back - x[:3000]*0.2).max() <= tol
 
 def test_file_seek_resumes_where_it_was(tmp_path, x):
     path = tmp_path / "a.iq"
     x[:1000].tofile(path)
-    f = rp.source.File("cf64", path)
+    f = rp.source.File("cf32", path)
     f.read(100)
     f.seek(400)
     assert np.array_equal(f.read(10), x[400:410])

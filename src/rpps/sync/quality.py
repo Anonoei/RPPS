@@ -69,7 +69,7 @@ class Track:
 
 class Monitor(Stage):
     """Es/N0, Eb/N0 and EVM of the locked symbols going by, published to `meta.stream.est[name]` as a `Quality` (None until
-    `minimum` symbols): the symbols pass unchanged. The constellation is `points`, or the detected one (`meta.stream.det`,
+    `minimum` symbols): the symbols pass unchanged. The constellation is `points`, or the detected one (`meta.det`,
     from `Acquire`) when none is given. A profile names it `{"sync": "quality"}`."""
     __slots__ = ("points", "bits", "rate", "history", "minimum", "name")
     def __init__(self, points=None, bits=None, rate=1.0, history=4096, minimum=256, name="quality"):
@@ -85,7 +85,7 @@ class Monitor(Stage):
     def step(self, y, st, meta):
         pts = self.points
         if pts is None:
-            det = meta.stream.det
+            det = meta.det
             if det is None:
                 return y
             if st.mod != det.mod:

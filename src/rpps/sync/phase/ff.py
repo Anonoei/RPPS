@@ -9,7 +9,7 @@ class FFCarrier(Stage):
     """Feed-forward carrier correction for M-fold symmetric (PSK) symbols. No loop
 
     Takes the modulation order M, the constellation phase, the frequency offset and the gain
-    from the detection in Meta (meta.stream.det). Then per symbol:
+    from the detection in Meta (meta.det). Then per symbol:
         frequency: phase-continuous oscillator at the detected offset
         phase: Viterbi & Viterbi, the angle of the sum of y^M over the last `window` symbols, divided by M
         amplitude: the detected gain
@@ -25,7 +25,7 @@ class FFCarrier(Stage):
         return SimpleNamespace(n=0, last=None, hist=None, cm=0.0, mod=None)
 
     def step(self, y, st, meta: Meta):
-        det = meta.stream.det
+        det = meta.det
         if det is None or len(y) == 0: # Still acquiring
             return y[:0]
         if st.mod != det.mod: # Detection can change while it refines

@@ -26,7 +26,7 @@ The data carries its sample rate and the state of every stage, so there is nothi
 
     # a receiver is stages added together; blocks flow through it with state carried along
     rx = rp.signal.filters.low_pass(401, 3e6, 100e6) + rp.signal.sample.down.Decimate(8) + rp.sync.Acquire()
-    for out in rp.source.File("ci32t", "capture.cs16", Fs=100e6, cf=1e9)(16384) + rx:
+    for out in rp.source.File("ci16t", "capture.cs16", Fs=100e6, cf=1e9)(16384) + rx:
         print(out.Fs, out.sps)
 
 ## Where things are

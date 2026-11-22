@@ -22,8 +22,8 @@ def test_rx_decodes_a_capture(tmp_path, capsys):
     data = np.random.default_rng(1).integers(0, 2, sum(t.row({**f, "short": 0})["kbch"] - 80 for f in frames)).astype(bool)
     o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=frames)
     pad = np.zeros(3000, np.complex64)
-    (np.concatenate((pad, o.data, pad))*np.exp(0.7j)).astype(np.complex64).tofile(tmp_path/"cap.cf64")
-    assert cli.main(["rx", "dvbs2/normal", str(tmp_path/"cap.cf64"), "--fs", str(o.Fs), "--out", str(tmp_path/"out.bin")]) == 0
+    (np.concatenate((pad, o.data, pad))*np.exp(0.7j)).astype(np.complex64).tofile(tmp_path/"cap.cf32")
+    assert cli.main(["rx", "dvbs2/normal", str(tmp_path/"cap.cf32"), "--fs", str(o.Fs), "--out", str(tmp_path/"out.bin")]) == 0
     got = np.unpackbits(np.fromfile(tmp_path/"out.bin", np.uint8)).astype(bool)
     assert np.array_equal(got[:len(data)], data)
 
@@ -43,10 +43,10 @@ def test_tx_writes_what_rx_receives(tmp_path, capsys):
     """BLE advertising packets out of `rpps tx`, back through the profile"""
     payload = bytes(range(60))
     (tmp_path/"in.bin").write_bytes(payload)
-    assert cli.main(["tx", "ble/adv", str(tmp_path/"ble.cf64"), "--rate", "1e6", "--in", str(tmp_path/"in.bin"),
+    assert cli.main(["tx", "ble/adv", str(tmp_path/"ble.cf32"), "--rate", "1e6", "--in", str(tmp_path/"in.bin"),
                      "--packet", "20", "--gap", "4000", "--field", "type=2"]) == 0
     assert "samples at 4e+06 Hz" in capsys.readouterr().out
-    x = np.fromfile(tmp_path/"ble.cf64", np.complex64)
+    x = np.fromfile(tmp_path/"ble.cf32", np.complex64)
     p = rp.profile.load("ble/adv")
     outs = p.rx()(rp.Data(np.concatenate((np.zeros(36, np.complex64), x)), Fs=4e6, sps=4, flush=True)) # one per packet
     bits = [np.asarray(o.data) < 0 if np.asarray(o.data).dtype.kind == "f" else np.asarray(o.data).astype(bool) for o in outs]
@@ -58,9 +58,9 @@ def test_rx_gives_the_branch_asked_for(tmp_path, capsys):
     from rpps.grid import lte
     sib = np.random.default_rng(2).integers(0, 2, 224).astype(np.uint8)
     x = lte.tx.channel(lte.tx.downlink(pci=10, ports=1, n_rb=6, frames=4, sib=sib), delay=700, snr_db=20)
-    x.tofile(tmp_path/"lte.cf64")
-    assert cli.main(["rx", "lte/downlink", str(tmp_path/"lte.cf64"), "--fs", "1.92e6", "--param", "n_rb=6", "--branch", "pdsch",
+    x.tofile(tmp_path/"lte.cf32")
+    assert cli.main(["rx", "lte/downlink", str(tmp_path/"lte.cf32"), "--fs", "1.92e6", "--param", "n_rb=6", "--branch", "pdsch",
                      "--out", str(tmp_path/"sib.bin")]) == 0
     assert (tmp_path/"sib.bin").read_bytes() == np.packbits(np.tile(sib, 2)).tobytes() # Frames 0 and 2
     with pytest.raises(SystemExit, match="no branch"):
-        cli.main(["rx", "lte/downlink", str(tmp_path/"lte.cf64"), "--fs", "1.92e6", "--param", "n_rb=6", "--branch", "nope"])
+        cli.main(["rx", "lte/downlink", str(tmp_path/"lte.cf32"), "--fs", "1.92e6", "--param", "n_rb=6", "--branch", "nope"])

@@ -140,9 +140,14 @@ def test_raw_binary(tmp_path):
     d = rp.signal.filters.import_fir(tmp_path / "c.bin", dtype="cf32")
     assert d["taps"] == [0.1, 0.3] and d["taps_imag"] == [0.2, -0.1]
     np.array([1, -2], dtype="<i2").tofile(tmp_path / "i.raw")
-    assert rp.signal.filters.import_fir(tmp_path / "i.raw", dtype="i16", scale=0.5)["taps"] == [0.5, -1]
+    assert rp.signal.filters.import_fir(tmp_path / "i.raw", dtype="i16t", scale=0.5)["taps"] == [0.5, -1]
     with pytest.raises(ValueError, match="no header"):
         rp.signal.filters.import_fir(tmp_path / "c.bin")
+    with pytest.raises(ValueError, match="byte order"):
+        rp.signal.filters.import_fir(tmp_path / "i.raw", dtype="i16") # Not a pysdrlib name, and no byte order: refused
+    assert rp.signal.filters.import_fir(tmp_path / "i.raw", dtype="<i2")["taps"] == [1, -2]
+    np.array([0.5, 0.25], dtype=np.complex64).tofile(tmp_path / "e.cf32") # The extension says the dtype
+    assert rp.signal.filters.import_fir(tmp_path / "e.cf32")["taps"] == [0.5, 0.25]
     (tmp_path / "odd.f32").write_bytes(b"\0" * 6)
     with pytest.raises(ValueError, match="whole number"):
         rp.signal.filters.import_fir(tmp_path / "odd.f32")

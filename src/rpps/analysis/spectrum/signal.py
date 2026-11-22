@@ -17,6 +17,7 @@ class Signal:
     clipped: it runs into the edge of the capture's band, so its width and centre are only what is inside
     baud_est / baud_strength: symbol rate from the |x|^2 line of the channelized signal (None: no clear line)
     holds: how many other signals lie inside it (a band that holds some is a raised floor, a transponder's, not a signal)
+    id: its number, kept from survey to survey by `Survey.match`
     Fs, cf, bin_hz: the capture's rates and the spectrum's resolution
     """
     def __init__(self, mid, width, bottom, height, snr=None, *, lo=None, hi=None, power=None, peak_freq=None,
@@ -37,6 +38,7 @@ class Signal:
         self.baud_est = None
         self.baud_strength = 0.0
         self.holds = 0
+        self.id = None
 
     @property
     def freq(self):
@@ -118,7 +120,8 @@ class Survey(list):
 
     def pick(self, near=None, freq=None, index=None, strongest=False):
         """One signal. near: closest to this offset from the capture's centre [Hz], freq: closest to this absolute
-        frequency [Hz], index: by position, strongest: highest in-band power (also the default for one argument less)"""
+        frequency [Hz], index: by position, strongest: highest in-band SNR, not total power, which a wide pedestal under the
+        carriers would win (also the default for one argument less)"""
         if not len(self):
             raise ValueError("No signals to pick from")
         if index is not None:
@@ -128,6 +131,29 @@ class Survey(list):
         if near is not None:
             return min(self, key=lambda s: abs(s.mid - near))
         return max(self, key=lambda s: s.snr if s.snr is not None else s.height)
+
+    def match(self, previous, near=0.5, ratio=(0.75, 4/3)):
+        """Carry signal ids over from an earlier survey of the same band (frame to frame), so a signal keeps its id.
+
+        A signal is the earlier one whose centre is within `near` of its width and whose width is within `ratio` of its own
+        (the closest such); each earlier signal is matched once. Unmatched signals get new ids, after every id `previous`
+        used. Sets Signal.id in place and returns self"""
+        taken, ids = set(), [s.id for s in previous if s.id is not None]
+        nxt = max(ids) + 1 if ids else 0
+        for s in sorted(self, key=lambda s: -s.snr if s.snr is not None else -s.height): # Strongest choose first
+            best = None
+            for p in previous:
+                if p.id is None or p.id in taken:
+                    continue
+                d = abs(p.freq - s.freq)
+                if d <= near*s.width and ratio[0] <= s.width/p.width <= ratio[1] and (best is None or d < best[0]):
+                    best = (d, p)
+            if best is None:
+                s.id, nxt = nxt, nxt + 1
+            else:
+                s.id = best[1].id
+                taken.add(s.id)
+        return self
 
     def plot(self, ax=None, chosen=None):
         """Draw the spectrum with every signal shaded and numbered. Returns the axes"""
@@ -353,7 +379,7 @@ def _edge_boxes(pw, nfft, K=31, inner=0.06, T=EDGE_DB, w_frac=0.005, min_w=2.0, 
 HOLD_DB = 10.0 # dB: a signal inside a wider band holds it up (a raised floor) only standing this far above its own floor
 
 def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occupied=0.99, min_bins=4, edge=0.02,
-                 cf=0.0, split_db=3.0, min_across=8, min_band_snr_db=None, edges=True, edge_db=EDGE_DB):
+                 cf=0.0, split_db=3.0, min_across=8, min_band_snr_db=None, edges=True, edge_db=EDGE_DB, nested=True):
     """Find signals in a spectrum
 
     Averages periodograms (more samples means a finer, quieter spectrum), finds the noise floor, and takes every
@@ -376,7 +402,8 @@ def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occ
     edge_db: how steep an edge is [dB per 1% of the band]
     min_band_snr_db: weakest in-band SNR reported [dB] (None: no limit. A wide signal can be well above the noise in
         every bin and still have an in-band SNR under 0 dB, so the detection threshold is the better gate)
-    Returns a Survey (a list of Signal sorted by frequency).
+    nested: keep the bands that hold other signals (Signal.holds, a transponder's pedestal). False: only the signals
+    Returns a Survey (a list of Signal sorted by frequency, ids 0, 1... in that order).
     """
     samps = np.asarray(samps)
     N = len(samps)
@@ -494,6 +521,10 @@ def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occ
     for a in out: # A band holding other signals (a transponder's noise pedestal under its carriers) is not one signal: they
         # stand well above it (a carrier's own peak, or ripple on it, doesn't)
         a.holds = sum(1 for b in out if b is not a and a.lo <= b.mid <= a.hi and b.width < 0.5*a.width and b.snr >= HOLD_DB)
+    if not nested:
+        out = [a for a in out if not a.holds]
+    for i, a in enumerate(out):
+        a.id = i
     return Survey(out, Fs, cf, nfft, K, freq, db, float(floor))
 
 def survey(source, Fs=None, cf=None, samples=2**17, more=2**20, baud=True, **kw):

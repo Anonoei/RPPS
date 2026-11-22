@@ -46,11 +46,67 @@ def centres_in(n, t0, sps, span=8):
     return t0 + sps*np.arange(int((last - t0)//sps) + 1)
 
 def best_tau(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
-    """Symbol timing in [0, sps) maximising the matched-filter output energy
+    """Symbol timing in [0, sps) maximising the matched-filter output energy, from x[lo:hi]
 
     The symbol lattice is tau + k*sps in absolute sample index, so results from different
     segments of x are comparable. Returns (tau, mean |y|^2)
+
+    The matched filter runs once, as a convolution; its output is band-limited, so it is interpolated `grid` times finer
+    by FFT (in chunks: memory stays small whatever the length) and each candidate timing reads its energy off that. A
+    segment too short for the convolution's edges takes the filter matrix for each candidate (`_best_tau_rows`), which
+    gives the same answer.
     """
+    hi = len(x) if hi is None else hi
+    L = int(np.ceil(span*sps))
+    if hi - lo < 4*L + 8*sps:
+        return _best_tau_rows(x, sps, beta, span, lo, hi, grid)
+    h = rrc_pulse(np.arange(-L, L + 1)/sps, beta)
+    h /= np.sqrt(np.sum(h**2))
+    z = np.convolve(np.asarray(x[lo:hi], dtype=np.complex128), h, mode="valid") # z[i]: output at sample lo + L + i
+    energy, count = np.zeros(grid), np.zeros(grid)
+    taus = np.arange(grid)*sps/grid
+    margin = int(np.ceil(max(4*sps, 32))) # Interpolation wraps at a chunk's ends: only its middle is read
+    step = max(TAU_CHUNK, 8*margin)
+    for a in range(0, len(z), step):
+        b = min(a + step, len(z))
+        c0, c1 = max(a - margin, 0), min(b + margin, len(z))
+        # Readable span: inside this chunk's share, and clear of the whole output's ends (no neighbour there to wrap from)
+        r0 = max(a, margin) if a == 0 else a
+        r1 = min(b, len(z) - margin) if b == len(z) else b
+        if r1 <= r0:
+            continue
+        zu = _upsample_power(z[c0:c1], grid)
+        t0, t1 = lo + L + r0, lo + L + r1 # Absolute sample positions read here
+        for g, tau in enumerate(taus):
+            k = np.arange(np.ceil((t0 - tau)/sps), np.ceil((t1 - tau)/sps))
+            # Between the interpolated points linearly: rounding to the nearest would make the energy a step function of
+            # tau and sps, and a lock following them would jump on the smallest change of input
+            pos = (tau + k*sps - lo - L - c0)*grid
+            i0 = np.floor(pos).astype(np.int64)
+            ok = (i0 >= 0) & (i0 + 1 < len(zu))
+            i0, f = i0[ok], pos[ok] - i0[ok]
+            energy[g] += np.sum(zu[i0]*(1 - f) + zu[i0 + 1]*f)
+            count[g] += len(i0)
+    energy = np.divide(energy, count, out=np.zeros(grid), where=count > 0)
+    g, d = peak(energy, circular=True, log=False)
+    return ((g + d)*sps/grid) % sps, float(energy[g])
+
+TAU_CHUNK = 8192 # Matched-filter samples interpolated at a time by best_tau
+
+def _upsample_power(z, U):
+    """|z|^2 at U times the rate, by zero-padding z's spectrum"""
+    n = len(z)
+    Z = np.fft.fft(z)
+    pad = np.zeros(n*U, complex)
+    half = (n + 1)//2
+    pad[:half], pad[n*U - (n - half):] = Z[:half], Z[half:]
+    if n % 2 == 0: # The Nyquist bin splits between the two ends
+        pad[half] = Z[half]/2
+        pad[n*U - (n - half)] = Z[half]/2
+    return np.abs(np.fft.ifft(pad)*U)**2
+
+def _best_tau_rows(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
+    """best_tau by the filter matrix, rebuilt for each candidate timing: for segments too short to convolve"""
     hi = len(x) if hi is None else hi
     seg = x[:hi]
     S = span*sps
@@ -66,7 +122,7 @@ def best_tau(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
 class Mat(Stage):
     """Matrix matched filter and symbol timing
 
-    Needs meta.stream.det (see rpps.sync.detect) for beta and the timing offset. Symbols are
+    Needs meta.det (see rpps.sync.detect) for beta and the timing offset. Symbols are
     taken from a lattice t_next + k*sps in the (fractional) sps of Meta, then the lattice is nudged by a
     block-wise energy-maximum estimate (`track` = fraction of it applied) to follow the clock.
 
@@ -84,22 +140,23 @@ class Mat(Stage):
         return SimpleNamespace(buffer=None, t_next=0.0, beta=self.beta, base=0, det=None) # det None: not started
 
     def _start(self, st, meta: Meta):
-        det = meta.stream.det
+        det = meta.det
         S = self.span*meta.sps
         st.t_next = det.tau + np.ceil((S + 5 - det.tau)/meta.sps)*meta.sps
         st.beta = self.beta or det.beta
         st.det = det
 
     def step(self, samples, st, meta: Meta):
-        if meta.stream.det is None: # Still acquiring
+        if meta.det is None: # Still acquiring
             return samples[:0]
         if st.det is None:
             self._start(st, meta)
         sps = meta.sps
-        if st.det is not meta.stream.det:
-            # Refined estimates: move to their lattice (absolute index = st.base + buffer index)
-            st.det = meta.stream.det
-            k = np.ceil((st.base + st.t_next - st.det.tau)/sps)
+        if st.det is not meta.det:
+            # Refined estimates: move to their lattice (absolute index = st.base + buffer index), its point nearest the
+            # next symbol. (Not the first point at or after it: a refined timing a hair earlier would skip a symbol)
+            st.det = meta.det
+            k = np.round((st.base + st.t_next - st.det.tau)/sps)
             st.t_next = st.det.tau + k*sps - st.base
         samples = samples if st.buffer is None else np.concatenate((st.buffer, samples))
         centres = centres_in(len(samples), st.t_next, sps, self.span)

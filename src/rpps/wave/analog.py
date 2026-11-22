@@ -1,4 +1,5 @@
-"""Analog demodulation, carrier modulation to baseband: AM envelope and SSB (FM is `FMDemod`)"""
+"""Analog demodulation, carrier modulation to baseband: AM envelope and SSB as stream stages (FM is `FMDemod`), and `demod`,
+one block at a time with its measurements (FM deviation, AM depth, SINAD)"""
 from types import SimpleNamespace
 
 import numpy as np
@@ -7,6 +8,7 @@ from .. import _accel
 from ..base import Stage
 from ..signal.filters.filter import FIR
 from ..signal.filters.impl.designer import designer
+from .fm import discriminate
 
 class AMDemod(Stage):
     """Envelope detector: |x| with the carrier (DC) removed by a slow running mean (alpha: how fast the mean follows, the
@@ -55,3 +57,93 @@ class SSBDemod(FIR):
 
     def step(self, samples, st, meta):
         return np.real(super().step(samples, st, meta)).astype(np.float32)
+
+
+# ---- One block at a time: a display's demodulator
+
+class Measurements:
+    """What `demod` measured on its block
+
+    kind: fm, am, usb or lsb. power_db: power in the channel (bw) [dB]
+    offset_hz: FM's carrier offset from 0 Hz (the mean instantaneous frequency); None for the others
+    deviation_hz / deviation_rms_hz: FM peak (99.9th percentile) and rms deviation from that mean
+    depth: AM modulation depth, (max - min)/(max + min) of the envelope (0.1th and 99.9th percentiles)
+    tone_hz / sinad_db: the audio's strongest tone, and the power of everything over everything but it, when one tone
+        holds most of the audio (a test tone); None otherwise
+    """
+    __slots__ = ("kind", "power_db", "offset_hz", "deviation_hz", "deviation_rms_hz", "depth", "tone_hz", "sinad_db")
+    def __init__(self, kind, **kw):
+        self.kind = kind
+        for k in self.__slots__[1:]:
+            setattr(self, k, kw.get(k))
+
+    def __repr__(self):
+        bits = [f"{k} {getattr(self, k):.4g}" for k in self.__slots__[1:] if getattr(self, k) is not None]
+        return f"<Measurements {self.kind}: " + ", ".join(bits) + ">"
+
+TONE_FRACTION = 0.5 # A tone holding this much of the audio's power is a test tone: SINAD is measured against it
+
+def _band(x, Fs, lo, hi):
+    """x with only the frequencies in [lo, hi] Hz kept (a mask on its spectrum: no delay, no state)"""
+    X = np.fft.fft(x)
+    f = np.fft.fftfreq(len(x), 1/Fs)
+    X[(f < lo) | (f > hi)] = 0
+    return np.fft.ifft(X)
+
+def _tone(audio, Fs):
+    """(tone Hz, SINAD dB) when one tone holds TONE_FRACTION of the audio's power, else (None, None)"""
+    a = np.asarray(audio, dtype=np.float64)
+    if len(a) < 64:
+        return None, None
+    a = a - a.mean()
+    p = np.abs(np.fft.rfft(a*np.hanning(len(a))))**2
+    p[0] = 0.0
+    k = int(np.argmax(p))
+    tone = p[max(k - 3, 0):k + 4].sum() # The Hann window's main lobe and a little of its skirt
+    total = p.sum()
+    if total <= 0 or tone < TONE_FRACTION*total:
+        return None, None
+    return k*Fs/len(a), float(10*np.log10(total/max(total - tone, 1e-30*total)))
+
+def demod(x, Fs, kind="fm", bw=None, audio_bw=None):
+    """Demodulate one block of analog signal, centred at 0 Hz, and measure it: for a display that wants each frame on its own
+    (the stream stages `FMDemod`, `AMDemod` and `SSBDemod` carry state and filter delay from block to block instead)
+
+    kind: "fm", "am", "usb" or "lsb". bw: the channel [Hz] (default: FM 200 kHz, AM 10 kHz, SSB 2.8 kHz; capped at Fs)
+    audio_bw: the audio kept [Hz] (default: FM 15 kHz, AM bw/2, SSB bw)
+    Returns (audio, audio_Fs, Measurements). audio is float32 in the signal's own units: FM the frequency deviation [Hz],
+    AM the envelope over the carrier less one (1.0 is 100% modulation), SSB the real signal. audio_Fs = Fs/D, the whole
+    decimation D that keeps audio_bw with some room.
+    """
+    if kind not in ("fm", "am", "usb", "lsb"):
+        raise ValueError(f"kind must be fm, am, usb or lsb, not {kind!r}")
+    x = np.asarray(x, dtype=np.complex128)
+    if len(x) < 2:
+        raise ValueError(f"{len(x)} samples: nothing to demodulate")
+    bw = min(float(bw or {"fm": 200e3, "am": 10e3}.get(kind, 2800.0)), Fs)
+    audio_bw = min(float(audio_bw or {"fm": 15e3, "am": bw/2}.get(kind, bw)), Fs/2)
+    m = Measurements(kind)
+    if kind in ("usb", "lsb"):
+        y = _band(x, Fs, 0.0, bw) if kind == "usb" else _band(x, Fs, -bw, 0.0)
+        m.power_db = float(10*np.log10(np.mean(np.abs(y)**2) + 1e-30))
+        audio = y.real
+    else:
+        y = _band(x, Fs, -bw/2, bw/2)
+        m.power_db = float(10*np.log10(np.mean(np.abs(y)**2) + 1e-30))
+        if kind == "fm":
+            f = discriminate(y, Fs)
+            m.offset_hz = float(np.mean(f))
+            audio = f - m.offset_hz
+            m.deviation_hz = float(np.percentile(np.abs(audio), 99.9))
+            m.deviation_rms_hz = float(np.sqrt(np.mean(audio**2)))
+        else:
+            env = np.abs(y)
+            lo, hi = np.percentile(env, (0.1, 99.9))
+            m.depth = float((hi - lo)/(hi + lo)) if hi + lo > 0 else 0.0
+            carrier = float(np.mean(env))
+            audio = env/carrier - 1 if carrier > 0 else env
+        audio = _band(audio, Fs, -audio_bw, audio_bw).real
+    D = max(1, int(Fs // (2.5*audio_bw)))
+    audio = audio[::D].astype(np.float32)
+    m.tone_hz, m.sinad_db = _tone(audio, Fs/D)
+    return audio, Fs/D, m

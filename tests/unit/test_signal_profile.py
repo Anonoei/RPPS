@@ -14,7 +14,7 @@ def capture(path, x, Fs, shift, rng, noise=0.05):
     iq = np.empty(2*len(y), np.int16)
     iq[0::2], iq[1::2] = np.round(y.real*8000), np.round(y.imag*8000)
     iq.tofile(path)
-    return rp.source.File("ci32t", str(path), Fs=Fs)
+    return rp.source.File("ci16t", str(path), Fs=Fs)
 
 @pytest.fixture(scope="module")
 def dvbs_capture(tmp_path_factory):

@@ -4,7 +4,8 @@ from .. import _config
 
 
 from .costas import Costas
-from .acquire import Acquire, Detection, detect
+from .acquire import Acquire, Detection, Lock, detect, track_timing
+from .time.mat import best_tau, matrix_mf, centres_in
 from . import rate, quality
 from .rate import find_baud, find_rate
 from .acquire_fec import AcquireFEC

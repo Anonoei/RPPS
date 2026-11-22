@@ -6,6 +6,15 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
 ## Unreleased
 
 ### Breaking
+- **pysdrlib 0.5 is required.** **Sample formats follow pysdrlib 0.5's names** (SigMF's: the bits of I alone): `cf32` is two float32 (numpy complex64,
+  a `.cfile`), `cf64` complex128, `ci16t` int16 pairs (a gqrx `.cs16`), `ci8t` int8 pairs. What RPPS called `cf64` is
+  `cf32`, `ci32t` is `ci16t`, `ci16t` is `ci8t`. `rpps rx/tx/survey/profile --fmt` defaults to `cf32`.
+  Raw filter files (`import_fir`, `import_iir`, `read_table` `dtype=`) take the same names (`i8t ui8 i16t i32t` for the
+  integers) or a numpy dtype with its byte order (`"<i2"`); a bare numpy code is refused (`"i8"` is int64 to numpy).
+- `rpps.sync.acquire.refine_timing` is `rp.sync.track_timing(x, sps, beta, span=8, rounds=2)`.
+- **The detection rides on each block:** stages read `meta.det` (and `Data.det`), the detection the block went through
+  `Acquire` with, not `meta.stream.det`, which is only the latest. A stage of your own that read `meta.stream.det` should
+  read `meta.det`; setting `stream.det` by hand still reaches blocks no Acquire stamped.
 - **`ble/adv` receives packet by packet:** a burst step cuts the capture into packets and each is demodulated on its own
   (timing and carrier offset from its access address, found by a preamble step). Its runner gives a list, one output per
   packet, each with its own `stream.est`; `sync={"timing": {"method": "known"}}` is no longer needed.
@@ -32,6 +41,17 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   and `qc_checks` finds sparse checks in the generator itself: sums of two to four shifted parity blocks whose
   information dependences nearly cancel. An LDPC code's dense generator hides those from a word-level search unless the
   words are many.
+- `rp.sync.Lock`: a signal's symbols as a snapshot, for programs that seek, pause and retune. `Lock.find(x, Fs)` searches
+  (raises `rp.errors.NoLock` with the reason), `lock.update(block)` follows rate, timing, cfo and phase on any later block,
+  consecutive or not, with no search; `lock.stale` says when to search again; `lock.refine(longer)` searches the rate
+  again on more signal. `Acquire` runs on it.
+- `rp.sync.best_tau` runs the matched filter once and interpolates it (4-20x faster, the same timing); `best_tau`,
+  `track_timing`, `matrix_mf` and `centres_in` are exported from `rp.sync`.
+- `find_signals(nested=False)` leaves out bands that hold other signals; `Signal.id`, and `Survey.match(previous)` keeps
+  ids from survey to survey.
+- `rp.wave.demod(x, Fs, kind, bw)`: FM, AM, USB or LSB audio from one block, no state or delay, with FM offset and
+  deviation, AM depth, and the tone and SINAD of a test tone.
+- README: the API other programs can build on, and an import-cost test (no scipy, matplotlib or pysdrlib on `import rpps`).
 - `analysis.spectrum.burst`: bursts of several kinds, each with its own preamble (a TDMA network's burst types each carry
   a unique word): when the bursts share fewer than `min_shared` symbols they are grouped by length, each group's own
   preamble found (`burst_kinds`), and every burst acquired on its kind's (`BurstResult.kind`, `Bursts.preambles`).
@@ -104,6 +124,10 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
 ### Fixed
 - `analysis.code.block.linear.sparse_checks` returned nothing when given fewer than k + 16 words (all went to the solve,
   none were left to verify on). It now keeps some aside first.
+- Pipelined (`.pipelined`, `.threaded`), a stage after `Acquire` could take a refinement made for a later block, its
+  detection or its sps, depending on the threads' timing: the output differed from run to run.
+- `sync.time.Mat` dropped a symbol when a refinement moved the timing a little earlier: it now moves to the nearest
+  point of the refined lattice, not the first one after.
 - `analysis.spectrum.waveform.on_off`: the period of bursts much shorter than their frame came out as the smallest lag
   searched (inside a burst the autocorrelation is near 1 at every lag). It is now the earliest true peak, within 10% of
   the highest, past the autocorrelation's first dip, per lag over its overlap, searched up to half the record (at most

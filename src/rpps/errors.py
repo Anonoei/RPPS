@@ -8,3 +8,9 @@ class StreamError(RPPSError):
 
 class ConfigError(RPPSError, LookupError):
     """A definition (modulation, code, scrambler...) does not exist or is malformed"""
+
+class NoLock(RPPSError):
+    """No signal to lock to (`rpps.sync.Lock`): reason says why, line is the symbol-rate line's strength when one was measured"""
+    def __init__(self, reason, line=None):
+        super().__init__(reason)
+        self.reason, self.line = reason, line
