@@ -76,7 +76,44 @@ def test_no_lock_says_why():
     assert e.value.line is not None
     lk = rp.sync.Lock.find(psk(20000, 4.0), 1e6)
     with pytest.raises(rp.errors.NoLock, match="fewer than"):
-        lk.update(np.zeros(100, complex))
+        lk.update(noise[:100])
+
+@pytest.mark.parametrize("what, x, kw, why", [
+    ("zeros", np.zeros(20000, complex), {}, "all zero"),
+    ("zeros, any line", np.zeros(20000, complex), {"lock": None}, "all zero"),
+    ("a constant, any line", np.ones(20000, complex), {"lock": None}, "no symbol rate"),
+    ("NaN", np.full(20000, np.nan + 0j), {}, "not all finite"),
+    ("inf", np.r_[np.ones(19999), np.inf].astype(complex), {"baud": 0.1e6}, "not all finite"),
+    ("empty", np.zeros(0, complex), {"min_samples": 0}, "samples"),
+])
+def test_nothing_like_symbols_is_no_lock_not_numpy(what, x, kw, why):
+    """What holds no symbols raises NoLock with a reason, never ValueError / IndexError / FloatingPointError, whatever
+    np.seterr the caller runs with (a display catches NoLock alone, so anything else is a bug)"""
+    with np.errstate(all="raise"):
+        with pytest.raises(rp.errors.NoLock, match=why):
+            rp.sync.Lock.find(x, 1e6, **kw)
+
+def test_update_on_nothing_is_no_lock():
+    lk = rp.sync.Lock.find(psk(20000, 4.0), 1e6)
+    rng = np.random.default_rng(3)
+    with np.errstate(all="raise"):
+        for x, why in ((np.zeros(5000, complex), "all zero"), (np.full(5000, np.nan + 0j), "not all finite"),
+                       (np.zeros(0, complex), "samples")):
+            with pytest.raises(rp.errors.NoLock, match=why):
+                lk.update(x)
+        for x in (np.ones(5000, complex), np.exp(2j*np.pi*0.1*np.arange(5000)), (rng.random(5000) < 1e-3).astype(complex)):
+            try:
+                lk.update(x) # a lock (stale or not) or NoLock: nothing else
+            except rp.errors.NoLock:
+                pass
+
+def test_features_of_silence_and_of_nan():
+    from rpps.analysis.spectrum.cyclic import features
+    with np.errstate(all="raise"):
+        for x in (np.zeros(20000, complex), np.zeros(0, complex), np.ones(20000, complex), 1e-30*np.ones(300, complex)):
+            assert features(x, 1e6).baud is None
+        with pytest.raises(ValueError, match="not all finite"):
+            features(np.full(20000, np.nan + 0j), 1e6)
 
 def test_lock_with_a_known_rate_needs_no_line():
     x = psk(20000, 4.0, tau=0.5)

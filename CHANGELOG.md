@@ -187,6 +187,14 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   is shown and every package has a docstring.
 
 ### Fixed
+- `rp.sync.Lock.find`, `update` and `refine` raise `NoLock` with a reason for whatever holds no symbols, never numpy's
+  errors: samples all zero ("no signal: the samples are all zero"), NaN or inf ("not all finite"), a rate of 0 when any
+  line is taken (a constant), estimates that come out non-finite ("nothing like symbols here"). Their arithmetic runs
+  under its own numpy error state, so a caller's `np.seterr(all="raise")` no longer turns an underflow into a
+  `FloatingPointError`. `update` on zeros now says "all zero" (it said "fewer than 16 symbols").
+- `rp.analysis.spectrum.cyclic.features` likewise: silence has no lines whatever `np.seterr` says, samples that are not
+  finite are a `ValueError` saying so, and a sequence varying only by rounding (an exactly constant input) no longer
+  shows a symbol-rate line found in its residue.
 - `rp.sync.BurstTx` (a burst profile's `p.tx()`): a burst added after `take(flush=True)` with an `at` before the
   flushed end failed inside numpy. A flush now ends the stream: the next burst starts a new one, its `at` from that
   stream's start (`sent` is still readable until then); a start in samples already handed out is refused by name.
