@@ -23,6 +23,7 @@ import functools
 
 import numpy as np
 
+from ... import _effort
 from ._code import _code, register, as_llr, word_errors
 from .polar import encode_u, scl
 
@@ -185,7 +186,7 @@ class nr_polar(_code):
         """(K bits of every path (W, P, K), deinterleaved, CRC included; metrics (W, P), best first)"""
         llr = as_llr(np.asarray(x), soft)
         llr = llr[:len(llr)//self.E*self.E].reshape(-1, self.E)
-        u, pm = scl(self.coded_llr(llr), self.frozen, self.size)
+        u, pm = scl(self.coded_llr(llr), self.frozen, _effort.scale("list", self.size))
         cp = u[:, :, self.info]
         c = np.zeros_like(cp)
         c[:, :, self.pi] = cp

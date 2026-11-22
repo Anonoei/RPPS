@@ -6,6 +6,9 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
 ## Unreleased
 
 ### Breaking
+- `ldpc.min_sum(llr)` is `ldpc.propagate(llr)`: the layered schedule runs min-sum or sum-product (the definition's
+  `"check"`, or the effort level's). `rpps._effort.iters(base)` is `scale("iters", base)`, `maxlog(base)` is
+  `choice("maxlog", base)`.
 - **A burst profile's `p.tx()` places the bursts:** a call gives the samples up to its burst's start (the gap before it),
   not the burst; `tx.flush()` gives the rest. Send the packets and write what comes out (`examples/profile_loopback.py`).
   `rpps tx --gap` is seconds, not samples.
@@ -39,6 +42,11 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- **More effort knobs, measured** (`tests/effort_bench.py`: the lowest Es/N0 each chain decodes at, and its speed, per
+  level). `max` decodes LDPC by layered sum-product (native `ldpc_sumproduct`; about 0.3 dB over min-sum on DVB-S2 1/2,
+  in fewer iterations), lists 4x the polar paths (SC codes list 4), and gives a turbo product code one more Chase bit;
+  TPC iterations follow the level's factor as LDPC and turbo do. `fast` halves the polar list and takes one Chase bit
+  off. An LDPC definition may name `"check": "sumproduct"` itself.
 - **Only the message kinds wanted:** `profile.kinds()`, `profile.rx(kinds=...)`, `Decoder(..., kinds=...)`,
   `ProfileInfo.kinds`, `rpps rx --kinds`: only those kinds come out, and only the steps they need run (their steps and the
   headers that drive them): unneeded branches are not built, a chain ends at its last needed step. LTE's MIB alone

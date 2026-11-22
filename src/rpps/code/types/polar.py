@@ -22,7 +22,7 @@ differs from the hard decisions, or -1 when a CRC-aided decoder found no path th
 """
 import numpy as np
 
-from ... import _accel
+from ... import _accel, _effort
 from ._code import _code, register, as_llr, word_errors
 
 def _check_n(N):
@@ -208,10 +208,11 @@ class polar(_code):
         if W == 0:
             return np.zeros(0, bool), np.zeros(0, int)
         ok = np.ones(W, bool)
-        if self.size <= 1 and self.crc is None:
+        size = _effort.scale("list", self.size) # (the effort level: max lists 4 paths where the definition decodes SC)
+        if size <= 1 and self.crc is None:
             u, _ = sc(llr, lambda i, L: np.zeros(len(L), np.uint8) if self.frozen[i] else (L < 0).astype(np.uint8))
         else:
-            paths, _ = scl(llr, self.frozen, max(self.size, 1))
+            paths, _ = scl(llr, self.frozen, size)
             if self.crc is None:
                 u = paths[:, 0]
             else:

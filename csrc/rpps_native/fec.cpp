@@ -18,12 +18,22 @@ namespace {
 
 constexpr double INF = std::numeric_limits<double>::infinity();
 
-// Layered normalized min-sum (rpps/code/types/ldpc.py min_sum): the checks in `rows` order (a colouring's layers one after
-// the other: within a layer no two checks share a variable, so going row by row gives what the numpy decoder's layer at a
-// time does). For each check: q = total - r (the variable's value without this check), the sign product and the two
-// smallest |q|, r = alpha * sign * the smallest of the others, total = q + r. Each codeword stops when every check holds.
-py::tuple ldpc_minsum(carray<double> llr, carray<int64_t> var_a, carray<int64_t> cstart_a, carray<int64_t> deg_a,
-                      carray<int64_t> rows_a, int iters, double alpha, int threads) {
+// phi(x) = -log(tanh(x/2)), its own inverse: the sum-product check update in the log domain. x clamped where the
+// result is past any LLR in use (phi(1e-9) = 21.4, phi(30) = 1.9e-13)
+inline double phi(double x) {
+    x = std::min(std::max(x, 1e-9), 30.0);
+    return -std::log(std::tanh(0.5*x));
+}
+
+// Layered decoding (rpps/code/types/ldpc.py layered): the checks in `rows` order (a colouring's layers one after the
+// other: within a layer no two checks share a variable, so going row by row gives what the numpy decoder's layer at a
+// time does). For each check: q = total - r (the variable's value without this check), the sign product, then
+//   min-sum (SP false): the two smallest |q|, r = alpha * sign * the smallest of the others
+//   sum-product (SP true): r = sign * phi(sum of phi|q| of the others), exact (no alpha)
+// and total = q + r. Each codeword stops when every check holds.
+template <bool SP>
+py::tuple ldpc_layered(carray<double> llr, carray<int64_t> var_a, carray<int64_t> cstart_a, carray<int64_t> deg_a,
+                       carray<int64_t> rows_a, int iters, double alpha, int threads) {
     check_shape(llr, {-1, -1}, "llr");
     const long long B = llr.shape(0), N = llr.shape(1), E = var_a.size(), M = cstart_a.size(), R = rows_a.size();
     check_shape(deg_a, {M}, "deg");
@@ -42,28 +52,48 @@ py::tuple ldpc_minsum(carray<double> llr, carray<int64_t> var_a, carray<int64_t>
         py::gil_scoped_release nogil;
         parallel_for(B, threads, [&](long long b) {
             const double *ch = ch_all + b*N;
-            std::vector<double> total(ch, ch + N), r(E, 0.0), q;
+            std::vector<double> total(ch, ch + N), r(E, 0.0), q, p;
             bool done = false;
             for (int it = 0; it < iters && !done; it++) {
                 for (long long k = 0; k < R; k++) {
                     const long long c = rows[k], e0 = cstart[c], d = deg[c];
                     q.resize(static_cast<size_t>(d));
-                    int negs = 0; long long i1 = 0; double min1 = INF;
-                    for (long long j = 0; j < d; j++) {
-                        const double v = total[var[e0 + j]] - r[e0 + j];
-                        q[j] = v;
-                        if (v < 0) negs++;
-                        const double a = std::fabs(v);
-                        if (j == 0 || a < min1) { min1 = a; i1 = j; } // first minimum, as argmin
-                    }
-                    double min2 = INF;
-                    for (long long j = 0; j < d; j++) if (j != i1) min2 = std::min(min2, std::fabs(q[j]));
-                    const double total_sign = (negs % 2 == 1) ? -1.0 : 1.0;
-                    for (long long j = 0; j < d; j++) {
-                        const double s = total_sign * (q[j] < 0 ? -1.0 : 1.0);
-                        const double nr = alpha*s*(j == i1 ? min2 : min1);
-                        r[e0 + j] = nr;
-                        total[var[e0 + j]] = q[j] + nr;
+                    int negs = 0;
+                    if constexpr (SP) {
+                        p.resize(static_cast<size_t>(d));
+                        double sum = 0.0;
+                        for (long long j = 0; j < d; j++) {
+                            const double v = total[var[e0 + j]] - r[e0 + j];
+                            q[j] = v;
+                            if (v < 0) negs++;
+                            p[j] = phi(std::fabs(v));
+                            sum += p[j];
+                        }
+                        const double total_sign = (negs % 2 == 1) ? -1.0 : 1.0;
+                        for (long long j = 0; j < d; j++) {
+                            const double s = total_sign * (q[j] < 0 ? -1.0 : 1.0);
+                            const double nr = s*phi(sum - p[j]);
+                            r[e0 + j] = nr;
+                            total[var[e0 + j]] = q[j] + nr;
+                        }
+                    } else {
+                        long long i1 = 0; double min1 = INF;
+                        for (long long j = 0; j < d; j++) {
+                            const double v = total[var[e0 + j]] - r[e0 + j];
+                            q[j] = v;
+                            if (v < 0) negs++;
+                            const double a = std::fabs(v);
+                            if (j == 0 || a < min1) { min1 = a; i1 = j; } // first minimum, as argmin
+                        }
+                        double min2 = INF;
+                        for (long long j = 0; j < d; j++) if (j != i1) min2 = std::min(min2, std::fabs(q[j]));
+                        const double total_sign = (negs % 2 == 1) ? -1.0 : 1.0;
+                        for (long long j = 0; j < d; j++) {
+                            const double s = total_sign * (q[j] < 0 ? -1.0 : 1.0);
+                            const double nr = alpha*s*(j == i1 ? min2 : min1);
+                            r[e0 + j] = nr;
+                            total[var[e0 + j]] = q[j] + nr;
+                        }
                     }
                 }
                 done = true;
@@ -355,7 +385,12 @@ py::array_t<double> ldpc_flood(carray<double> llr, carray<int64_t> idx, carray<i
 void register_fec(py::module_ &m) {
     m.def("ldpc_flood", &ldpc_flood, "ldpc_flood(llr (B, n), idx (c, dmax), deg (c), iters, alpha, threads) -> totals (B, n)",
           py::arg("llr"), py::arg("idx"), py::arg("deg"), py::arg("iters"), py::arg("alpha"), py::arg("threads") = 0);
-    m.def("ldpc_minsum", &ldpc_minsum, "ldpc_minsum(llr (B, N), var, cstart, deg, rows (check order: the layers), iters, alpha, threads) -> (hard (B, N), converged (B))",
+    m.def("ldpc_sumproduct", [](carray<double> llr, carray<int64_t> var, carray<int64_t> cstart, carray<int64_t> deg,
+                                carray<int64_t> rows, int iters, int threads) {
+              return ldpc_layered<true>(llr, var, cstart, deg, rows, iters, 1.0, threads);
+          }, "ldpc_sumproduct(llr (B, N), var, cstart, deg, rows (check order: the layers), iters, threads) -> (hard (B, N), converged (B))",
+          py::arg("llr"), py::arg("var"), py::arg("cstart"), py::arg("deg"), py::arg("rows"), py::arg("iters"), py::arg("threads") = 0);
+    m.def("ldpc_minsum", &ldpc_layered<false>, "ldpc_minsum(llr (B, N), var, cstart, deg, rows (check order: the layers), iters, alpha, threads) -> (hard (B, N), converged (B))",
           py::arg("llr"), py::arg("var"), py::arg("cstart"), py::arg("deg"), py::arg("rows"), py::arg("iters"), py::arg("alpha"),
           py::arg("threads") = 0);
     m.def("gf_syndromes", &gf_syndromes, "gf_syndromes(words (W, N), exp, log, nroots, fcr, prim, threads) -> S (W, nroots)",
