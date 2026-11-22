@@ -18,6 +18,10 @@ print(out.stream.load())             # time each stage takes, as a fraction of r
 - **Effort.** `rp.set_effort("fast" | "balanced" | "max")`, `with rp.effort(...)`, `RPPS_EFFORT` or
   `rpps rx --effort` trade speed for recovered SNR: decoder iterations, exact or max-log demapping, the timing
   interpolator. The levels and their measured gains are in [`rpps`](../api/rpps.md#rpps._effort).
+- **Gaps.** Samples the radio lost (an overrun) and blocks `threaded(drop=True)` discarded are counted in `meta.pos`, at
+  the source and through every stage, so positions and `meta.time_of(k)` stay true to time across a gap;
+  `out.stream.dropped` is how many source samples were lost. `Device` dates the stream from the radio's clock where it
+  timestamps its samples (else the host's).
 - **Only what you need.** `profile.rx(kinds={...})` builds only the steps the wanted messages need.
 
 The pipelined threads and their load are shown end to end in

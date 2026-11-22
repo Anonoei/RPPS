@@ -111,12 +111,39 @@ def test_a_dropping_source_counts_what_it_discards():
         stream = rp.Data(np.zeros(1, np.complex64), Fs=1e3).stream
         for _ in range(200):
             yield rp.Data(np.ones(64, np.complex64), Fs=1e3, stream=stream)
-    got, stream = 0, None
-    for b in rp.source.source.Blocks(source()).threaded(depth=1, drop=True):
+    got, stream, dec = 0, None, rp.signal.sample.down.Decimate(2)
+    for b in rp.source.source.Blocks(source()).threaded(depth=1, drop=True) + dec:
         stream = b.stream
+        assert b.meta.pos == stream.in_pos[dec]//2 - 32 # after a gap too: the decimator counts the dropped blocks
         time.sleep(0.002) # a slow reader
         got += 1
-    assert got + stream.dropped == 200 and stream.dropped > 0
+    assert 64*got + stream.dropped == 64*200 and stream.dropped > 0 # in source samples
+
+@pytest.mark.filterwarnings("ignore:Simulated") # its watchdog, when this machine is slow to read
+def test_a_radio_overrun_moves_the_positions_on():
+    """Samples a radio lost are counted in meta.pos at the source and through every stage, and in stream.dropped"""
+    pysdrlib = pytest.importorskip("pysdrlib")
+    sdr = pysdrlib.device("sim", realtime=False)
+    src = rp.source.Device(sdr, cf=100e6, Fs=1e6)
+    dec = rp.signal.sample.down.Decimate(4)
+    last, jumps, after = None, [], None
+    for i, b in enumerate(src(4096) + dec):
+        if i == 2:
+            sdr.drop(10000)
+        if last is not None and b.meta.pos != last:
+            jumps.append(b.meta.pos - last)
+        last = b.meta.pos + len(b)
+        # The decimator's positions follow the source's (each gap rounded to its rate once)
+        assert abs(b.meta.pos - (src.stream.pos - 4096)/4) <= len(jumps)
+        if after is not None or i > 400: # One block past the drop: a gap inside a block shows at the next one
+            break
+        if b.stream.pos - 4096*(i + 1) >= 10000: # (`dropped` can also count what was lost before the first block)
+            after = i
+    # A loaded machine can overrun the sim on its own (its watchdog): every gap is counted, however many there are
+    lost = src.stream.pos - 4096*(i + 1) # what the source's positions moved on by
+    assert src.stream.dropped >= lost >= 10000 and min(jumps) > 0
+    assert abs(4*sum(jumps) - lost) <= 4*len(jumps)
+    assert src.stream.t0 is not None and b.meta.time_of(0) == pytest.approx(src.stream.t0 + (src.stream.pos - 4096)/1e6)
 
 def test_load_reports_each_stage_against_real_time(capture):
     _, path = capture
