@@ -56,7 +56,6 @@ def test_round_trip_any_cut(count=1000):
     assert bl[0].Fs == 1e5 and bl[0].cf == 1e6 and out["src"].stream.dropped == 0
     assert out["blocks"][-1].flush and out["src"].lost # (the publisher closed: the blocks end)
 
-@pytest.mark.xfail(strict=True, reason="pysdrlib f79b991: at the end of a stream the samples short of a block are lost (reported)")
 def test_the_end_of_a_stream_short_of_a_block_comes_out():
     test_round_trip_any_cut(777)
 
@@ -76,7 +75,6 @@ def test_a_gap_upstream_is_a_gap_here():
     assert pos[0][0] == 0 and any(p == 2500 for p, _ in pos) and sum(n for _, n in pos) == 4000
     assert out["src"].stream.dropped == 500
 
-@pytest.mark.xfail(strict=True, reason="pysdrlib f79b991: the shm driver gives no freq/rate Event at a retune (reported)")
 def test_a_retune_starts_the_stream_over():
     with ShmSink("r") as sink:
         a = rp.Data(tone(0), Fs=1e5, cf=1e6)
