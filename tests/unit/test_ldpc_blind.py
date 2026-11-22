@@ -191,3 +191,16 @@ def test_sparse_checks_with_fewer_words_than_the_dimension():
     assert len(words) < len(G) + 16
     H, holds = sparse_checks(words, trials=200, patience=60, seed=0)
     assert len(H) and np.all(holds > 0.99) and not ((words.astype(np.int32) @ H.T.astype(np.int32)) % 2).any()
+
+def test_qc_generator_with_constant_information_bits():
+    """A header's constant bits leave the information columns short of rank: the generator still predicts the words"""
+    import rpps as rp
+    rng = np.random.default_rng(10)
+    enc = rp.code.load("block/ldpc/ieee80211n_648_1_2").encoder
+    u = rng.integers(0, 2, (60, 324)).astype(np.uint8)
+    u[:, :30] = 0 # (a header that never changes)
+    words = np.array([enc.encode(x) for x in u]).astype(np.uint8)
+    V, c, holds = L.qc_generator(words, 324, 27)
+    assert np.all(holds == 1.0)
+    H, r = L.qc_checks(V, 27)
+    assert r == 324 and not ((words.astype(np.int32) @ H.T.astype(np.int32)) % 2).any()
