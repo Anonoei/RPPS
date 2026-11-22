@@ -15,7 +15,7 @@ from ..math.interp import peak
 from ..math.prob import mixture_variance
 from .rate import find_baud
 from .time.mat import matrix_mf, centres_in, best_tau
-from .quality import measure
+from .quality import measure, decide, errors, summary
 
 class Detection:
     """Result of `detect`. Acquire stamps it on its blocks: meta.det
@@ -171,8 +171,13 @@ class Lock:
     points: the constellation (unit rms). quality: rpps.sync.quality.Quality of the symbols
     stale: why the lock no longer fits (Es/N0 fell `drop_db` below the search's, the rate moved more than `drift` from
         it, or another of the searched modulations now fits better), None while it does
+    x: the block the lock is of
+
+    What an analyser shows of the block: `decisions()`, `errors()` and `summary()` (rpps.sync.quality: EVM, MER, IQ
+    offset, gain imbalance, quadrature error), `derotated()` (x as the symbols see it), `matched(up)` (the matched filter
+    between the symbols: eye diagrams) and `reference()` (the ideal waveform of the decided symbols)
     """
-    __slots__ = ("det", "found", "symbols", "centres", "points", "quality", "stale", "Fs", "span", "drop_db", "drift")
+    __slots__ = ("det", "found", "symbols", "centres", "points", "quality", "stale", "Fs", "span", "drop_db", "drift", "x")
     MIN_SYMBOLS = 16 # Fewer symbols in a block are no measurement
     RECHECK_MARGIN = 0.05 # nats/symbol another modulation must lead by to call the lock stale (a QPSK lock on 8PSK at
     # 6 dB Es/N0: 8PSK leads by about 0.1; the right one leads the next by 0.13 there, more above)
@@ -275,7 +280,7 @@ class Lock:
         det.esn0, det.ebn0 = q.esn0_db, q.ebn0_db
         lk = cls.__new__(cls)
         lk.det, lk.found, lk.symbols, lk.centres, lk.points, lk.quality = det, found, syms, c, points, q
-        lk.Fs, lk.span, lk.drop_db, lk.drift = Fs, span, drop_db, drift
+        lk.Fs, lk.span, lk.drop_db, lk.drift, lk.x = Fs, span, drop_db, drift, x
         lk.stale = None
         if found is not det:
             if found.esn0 is not None and q.esn0_db < found.esn0 - drop_db:
@@ -291,6 +296,70 @@ class Lock:
                 if others[best] > own + cls.RECHECK_MARGIN:
                     lk.stale = f"looks like {best} now ({others[best] - own:.2f} nats/symbol over {det.mod})"
         return lk
+
+    # ---- what an analyser shows of the block
+
+    def decisions(self):
+        """The nearest constellation point to each symbol (unit rms, as `points`)"""
+        return decide(self.symbols, self.points)
+
+    def errors(self):
+        """Each symbol's error against its decision: rpps.sync.quality.Errors (vector; evm_pct and mag_pct as a percentage
+        of the constellation's rms; phase_deg)"""
+        return errors(self.symbols, self.points)
+
+    def summary(self):
+        """An analyser's error summary of the symbols: rpps.sync.quality.Summary (EVM rms and peak, MER, magnitude and
+        phase error, IQ offset, gain imbalance, quadrature error)"""
+        return summary(self.symbols, self.points)
+
+    def _turn(self, pos):
+        """The carrier offset, phase and gain the symbols were corrected by, at sample positions `pos` of x"""
+        d = self.det
+        return np.exp(-2j*np.pi*d.cfo/self.Fs*(pos - self.centres[0]) - 1j*d.phase)/d.gain
+
+    def derotated(self):
+        """x with the carrier offset and phase taken out and scaled as the symbols are (their matched filter at `centres`
+        gives about `symbols`; exactly for no carrier offset, the offset turning inside the filter otherwise)"""
+        return self.x*self._turn(np.arange(len(self.x)))
+
+    def matched(self, up=1):
+        """The matched filter's output between the symbols, `up` points a symbol: (t, z). t: time in symbols from the
+        first symbol instant (centres[0]); z: the output corrected as the symbols are, so z[::up] is `symbols`. From the
+        first symbol to the last; the eye diagram of the block is z against t modulo a symbol or two"""
+        up = int(up)
+        if up < 1:
+            raise ValueError("matched: up is a whole number of points a symbol, 1 or more")
+        d, c = self.det, self.centres
+        pos = c[0] + np.arange((len(c) - 1)*up + 1)*(d.sps/up)
+        pos[::up] = c # (the instants themselves, to the last bit)
+        z = np.empty(len(pos), np.complex128)
+        step = max(1, 2**20//int(2*self.span*d.sps + 2)) # Rows of the filter matrix a time
+        for a in range(0, len(pos), step):
+            p = pos[a:a + step]
+            z[a:a + step] = matrix_mf(self.x, p, d.sps, d.beta, self.span)*self._turn(p)
+        return (pos - c[0])/d.sps, z
+
+    def reference(self):
+        """The ideal waveform of the block: the decided symbols through the root raised cosine pulse at `centres`, on x's
+        samples, scaled and turned as `derotated()` (compare the two). Zero where no symbol of the lock reaches (the
+        ends of x hold symbols the lock has not)"""
+        from .time.mat import _rrc_rows
+        d, c = self.det, self.centres
+        dec = self.decisions()
+        S = self.span*d.sps
+        lags = np.arange(int(np.ceil(2*S)) + 2)
+        r = np.zeros(len(self.x), np.complex128)
+        step = max(1, 2**20//len(lags))
+        for a in range(0, len(c), step):
+            cc = c[a:a + step]
+            j0 = np.ceil(cc - S).astype(np.int64)
+            w = _rrc_rows(j0 - cc, lags, d.sps, d.beta)
+            w /= np.sqrt(np.sum(w**2, axis=1, keepdims=True))
+            idx = j0[:, None] + lags
+            ok = (idx >= 0) & (idx < len(r))
+            np.add.at(r, idx[ok], (dec[a:a + step, None]*w)[ok])
+        return r
 
     def __repr__(self):
         return f"<Lock {self.det}{', stale: ' + self.stale if self.stale else ''}>"
