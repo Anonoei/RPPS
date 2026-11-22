@@ -111,11 +111,14 @@ Pitfalls found the hard way:
 ## Testing
 
 ```
-python -m pytest -n auto -m "not slow"                       # the fast tests, on every core (CI runs this)
+python -m pytest -n auto -m "not slow"                       # the fast tests (CI runs this)
 RPPS_NO_NATIVE=1 python -m pytest -n auto -m "not slow and not kernels"   # the Python loops
 python -m pytest -m oracle                                   # the scipy comparisons (needs .[oracle])
 python -m pytest tests/unit/test_remez.py                    # one file
 ```
+
+`-n auto` runs on half the cores (every core where `CI` is set), and each worker keeps BLAS and RPPS's own pools to
+one thread (`tests/unit/conftest.py`), so the machine stays usable; `RPPS_TEST_WORKERS=4` chooses the workers.
 
 | Marker | Meaning |
 |---|---|
