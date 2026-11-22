@@ -49,7 +49,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   (per symbol: error vector, EVM and magnitude error as a percentage of the constellation's rms, phase error in degrees),
   `summary()` (EVM rms and peak, MER, magnitude and phase error, and from a fit of the symbols as kI I + kQ Q + c: IQ
   offset, gain imbalance and quadrature error), `derotated()` (x as the symbols see it), `matched(up)` (the matched
-  filter between the symbols, `up` points a symbol: eye diagrams; its instants are the symbols) and `reference()` (the
+  filter between the symbols, `up` points a symbol: eye diagrams; one convolution read between the samples, its
+  instants the symbols; `exact=True` the filter's matrix at every point) and `reference()` (the
   decided symbols through the ideal pulse). The measures are `rp.sync.quality.errors` and `summary` for any symbols.
 - `Signal.channel()` gives the front end's `delay` [s] and `settle`: the output samples a new stream starts with before
   every filter is full (its start-up transient), so a display drops exactly those.

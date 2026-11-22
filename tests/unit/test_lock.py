@@ -176,6 +176,18 @@ def test_lock_matched_errors_summary_reference():
     err = np.sqrt(np.mean(np.abs(xr[cut:-cut] - r[cut:-cut])**2)/np.mean(np.abs(r[cut:-cut])**2))
     assert 0.08 < err < 0.2
 
+@pytest.mark.parametrize("sps, n", [(20.0, 8192), (5.3, 40000), (2.0, 8192)])
+def test_matched_by_one_filter_is_the_filter_matrix_within_a_display(sps, n):
+    """matched(up): one convolution, read between samples; against the filter's own rows at every point (exact=True):
+    the instants the same, the rest within 1e-2 and 3e-3 rms"""
+    x = psk(n, sps, tau=1.3, cfo=2e-4, esn0_db=25, seed=2)
+    lk = rp.sync.Lock.find(x, 1e6, baud=1e6/sps)
+    t, z = lk.matched(16)
+    te, ze = lk.matched(16, exact=True)
+    assert np.array_equal(t, te) and np.array_equal(z[::16], lk.symbols)
+    e = np.abs(z - ze)
+    assert e.max() < 1e-2 and np.sqrt(np.mean(e**2)) < 3e-3 # (worst over 15 seeds: 4.6e-3, 1.6e-3)
+
 def test_lock_followed_keeps_its_block():
     x = psk(60000, 4.0, seed=5)
     lk = rp.sync.Lock.find(x[:20000], 1e6)
