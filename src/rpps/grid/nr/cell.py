@@ -1,6 +1,6 @@
 """5G NR cell search and slot timing through LEO Doppler (38.211 7.4.2-7.4.3, 38.213 4.1): samples to whole slots
 
-Acquiring (the first `acquire` seconds): the PSS at 1.92 MS/s over carrier offsets `offset` +- `span` (a LEO pass at
+Acquiring (the first `acquire` seconds): the PSS at 3.84 MS/s over carrier offsets `offset` +- `span` (a LEO pass at
 S-band moves the carrier by up to some 50 kHz), folded on the SS/PBCH block period (`period`, 20 ms). Then each block at
 the full rate: the residual offset from the PSS-to-SSS phase, less the cell's bias in it (NR gives each symbol's carrier a
 phase of its own, 38.211 5.4: a constant for a cell, found against the four symbols' cyclic prefixes), the SSS's N_ID1, and from the PBCH DM-RS the
@@ -143,29 +143,41 @@ class NrCell(Stage):
     # ---- acquisition
 
     def _acquire(self, x, fs, nfft):
-        ratio = int(round(fs/1.92e6))
-        h = _lowpass(fs)
-        P = int(round(self.period*1.92e6))
-        t = np.arange(len(x))/fs
-        tmpl = [pss_time(n2, 128) for n2 in range(3)]
-        best = None
+        # The samples moved by `offset`, filtered to the PSS's +-0.96 MHz and the span and taken to 3.84 MS/s once; each
+        # offset tried is then a turn of the decimated samples
         from ...signal.filters import convolve
-        for off in self.offset + np.arange(-self.span, self.span + self.resolution/2, self.resolution):
-            yd = convolve(x*np.exp(-2j*np.pi*off*t), h, "same")[::ratio]
-            for n2, tp in enumerate(tmpl):
-                c = np.abs(_correlate(yd, tp))**2
-                m = len(c)//P*P
+        ratio = int(round(fs/3.84e6))
+        P = int(round(self.period*3.84e6))
+        y0 = convolve(x*phy.lte_phy.ramp(len(x), 0.0, self.offset/fs), _lowpass(fs, 0.96e6 + self.span + 60e3), "same")[::ratio]
+        # The correlations in the frequency domain: the samples' spectrum once, each offset a roll of it, each template's
+        # conjugate spectrum once: one inverse FFT an offset and root
+        n = len(y0)
+        nf = 1 << int(np.ceil(np.log2(n + 256)))
+        Y = np.fft.fft(y0, nf)
+        T = [np.conj(np.fft.fft(pss_time(n2, 256), nf)) for n2 in range(3)]
+        # The templates hold nothing past +-0.96 MHz, so each product's middle half is all of it: inverse FFTs of half the
+        # size give the correlation at 1.92 MS/s (positions to 2 samples at 3.84 MS/s; the full-rate search refines them)
+        q = nf//4
+        T = [np.concatenate((t[-q:], t[:q])) for t in T]
+        P2 = P//2
+        best = None
+        for d in np.arange(-self.span, self.span + self.resolution/2, self.resolution):
+            k = int(round(d*nf/3.84e6))
+            Yd = np.concatenate((Y[(np.arange(-q, 0) + k) % nf], Y[(np.arange(0, q) + k) % nf]))
+            for n2 in range(3):
+                c = np.abs(np.fft.ifft(np.fft.ifftshift(Yd*T[n2]))[:(n - 255)//2])**2 # (c[k] = sum y[2k + i] conj(t[i]))
+                m = len(c)//P2*P2
                 if not m:
                     continue
-                fold = c[:m].reshape(-1, P).mean(0)
+                fold = c[:m].reshape(-1, P2).mean(0)
                 score = fold.max()/max(np.median(fold), 1e-30)
                 if best is None or score > best[3]:
-                    best = (n2, off, int(np.argmax(fold))*ratio, score)
+                    best = (n2, self.offset + d, int(np.argmax(fold))*2*ratio, score)
         if best is None or best[3] < 10.0:
             return None
         n_id2, off, p0, _ = best
         Pf = self.period*fs
-        y = x*np.exp(-2j*np.pi*off*t)
+        y = x*phy.lte_phy.ramp(len(x), 0.0, off/fs)
         tmpl = pss_time(n_id2, nfft)
         blocks = []
         k = 0

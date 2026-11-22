@@ -104,16 +104,18 @@ class LteCell(Stage):
     # ---- acquisition
 
     def _search(self, x, fs, nfft):
-        """(N_ID2, offset [Hz], PSS position mod 5 ms at the full rate, metric) from the decimated fold"""
+        """(N_ID2, offset [Hz], PSS position mod 5 ms at the full rate, metric) from the decimated fold. The samples are
+        moved by `offset`, filtered to the PSS's +-465 kHz and the span, and taken to 1.92 MS/s once; each offset tried is
+        then a turn of the decimated samples"""
+        from ...signal.filters import convolve
         ratio = int(round(fs/1.92e6))
-        h = _lowpass(fs)
         period = 9600
-        t = np.arange(len(x))/fs
+        y0 = convolve(x*phy.ramp(len(x), 0.0, self.offset/fs), _lowpass(fs, 0.47e6 + self.span + 50e3), "same")[::ratio]
+        td = np.arange(len(y0))/1.92e6
         tmpl = [pss_time(u, 128) for u in ROOTS]
         best = None
-        for off in self.offset + np.arange(-self.span, self.span + self.resolution/2, self.resolution):
-            from ...signal.filters import convolve
-            y = convolve(x*np.exp(-2j*np.pi*off*t), h, "same")[::ratio]
+        for d in np.arange(-self.span, self.span + self.resolution/2, self.resolution):
+            y = y0*np.exp(-2j*np.pi*d*td)
             for r, tp in enumerate(tmpl):
                 c = np.abs(_correlate(y, tp))**2
                 m = len(c)//period*period
@@ -122,7 +124,7 @@ class LteCell(Stage):
                 fold = c[:m].reshape(-1, period).mean(0)
                 score = fold.max()/max(np.median(fold), 1e-30)
                 if best is None or score > best[3]:
-                    best = (r, off, int(np.argmax(fold))*ratio, score)
+                    best = (r, self.offset + d, int(np.argmax(fold))*ratio, score)
         return best
 
     def _find_pss(self, y, guess, tmpl, half):
@@ -170,8 +172,7 @@ class LteCell(Stage):
             return None
         n_id2, off, p0, _ = found
         period = 5*phy.subframe_len(nfft)
-        t = np.arange(len(x))
-        y = x*np.exp(-2j*np.pi*off*t/fs)
+        y = x*phy.ramp(len(x), 0.0, off/fs)
         tmpl = pss_time(ROOTS[n_id2], nfft)
         pos = []
         guess = p0
@@ -186,7 +187,7 @@ class LteCell(Stage):
             return None
         pss_off = phy.symbol_starts(nfft)[6]
         off += float(np.median([self._cp_offset(y, p - pss_off, nfft, fs) for p in pos]))
-        y = x*np.exp(-2j*np.pi*off*t/fs)
+        y = x*phy.ramp(len(x), 0.0, off/fs)
         votes = [self._sss(y, p, nfft, n_id2) for p in pos]
         votes = [(p, v) for p, v in zip(pos, votes) if v is not None]
         if not votes:
