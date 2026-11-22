@@ -16,10 +16,13 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   `find` and `update` take `at` too; a block that isn't the next raises NoLock, and a timing jump over 0.3 symbol
   makes the lock stale.
 - **Channels in shared memory:** `rp.source.ShmSink(name or [names])` publishes blocks (a channelizer's columns, one
-  channel each) to pysdrlib's shared-memory rings at their positions, with a JSON manifest per channel (rate, centre,
-  width, parent span, time anchors, generation) and an index (`rp.source.read_index`); `rp.source.Shm(name)` reads one
-  from another process, with gaps and missed samples counted in `meta.pos` and `stream.dropped`, and starts over on a
-  retune. Example: `examples/channel_shm.py`.
+  channel each) as pysdrlib shared-memory streams (`pysdrlib.shm.ShmStream`) at their positions, with each channel's
+  centre, width, parent span and label for a view. Another process receives one like a radio,
+  `rp.source.Device("shm@rpps.<name>")`. Example: `examples/channel_shm.py`.
+- **`Device` follows a retune and ends when the device is lost:** a "freq" / "rate" event while streaming cuts the
+  block there and starts the stream over at the new setting; pysdrlib's `err.Lost` ends the blocks (the last flushing,
+  `device.lost` says why) instead of raising. `Device` also takes a target string (`"hackrf@SERIAL"`, `"shm@rpps.ch3"`,
+  `"host/hackrf-0"`), opened with `pysdrlib.open` and closed by `close()`.
 - **Load covers everything, and as one number:** `stream.load()` now times pipes (`/`, `*`: decoders) as well as
   stages, and a parallel region's workers; `stream.load(window=s)` over the last `s` seconds of signal;
   `stream.realtime(window=None)` the busiest thread's load (<= 1.0 keeps up).

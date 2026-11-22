@@ -324,13 +324,24 @@ class Device(Source):
     gap starts further on and the stages carry the gap into theirs (one inside a block shows at the next block), and
     `stream.dropped` adds them up. `stream.t0` is the radio's clock (`hw_time`) where it timestamps its samples, else
     the host's `time.monotonic()` at the first sample, so `meta.time_of(k)` dates any item.
+
+    When the device's frequency or rate changes while it streams (a "freq" / "rate" event: another program retuned it, a
+    shared-memory publisher retuned), the block is cut there and the stream starts over (`restart`) at the new setting,
+    positions counting from the change. When the device is lost (unplugged, a publisher that stopped: pysdrlib's
+    `err.Lost`), the blocks end, the last one flushing, and `lost` says why.
     """
     def __init__(self, device, cf=None, Fs=None, rx_gain=None, sps=0.0, **open_args):
-        """device: a pysdrlib device name, or a device you made (rp.source.Device(pysdrlib.device("sim", realtime=False))).
-        rx_gain: the receive gain as a fraction 0-1 of the device's range (the same on any radio), or a {stage: fraction} dict"""
+        """device: a pysdrlib driver name ("hackrf"), a target string ("hackrf@SERIAL", "shm@rpps.ch3",
+        "radiohost/hackrf-0": opened here by `pysdrlib.open`, closed by `close()` or when it is lost), or a device you made
+        (rp.source.Device(pysdrlib.device("sim", realtime=False))). rx_gain: the receive gain as a fraction 0-1 of the
+        device's range (the same on any radio), or a {stage: fraction} dict"""
+        self._opened, self.lost = False, None
         if isinstance(device, str):
             import pysdrlib
-            device = pysdrlib.device(device)
+            if "@" in device or "/" in device:
+                device, open_args, self._opened = pysdrlib.open(device, **open_args), {}, True
+            else:
+                device = pysdrlib.device(device)
         self.sdr = device
         self.rx_gain = rx_gain
         self._open_args = open_args
@@ -353,19 +364,49 @@ class Device(Source):
             self.stream.src_Fs = self.Fs
             s = self.stream
             base = None
-            with sdr.stream(count, meta=True) as rx: # Exactly `count` samples a block; starts and stops receiving
-                for x, m in rx:
-                    if base is None: # pysdrlib counts from this stream's start; ours may have run before
-                        base = s.pos - m.index
-                        t = m.hw_time if m.hw_time is not None else m.time
-                        if s.t0 is None and t is not None and self.Fs:
-                            s.t0 = t - s.pos/self.Fs
-                    s.pos = max(s.pos, base + m.index) # Samples the radio lost (or discarded settling) are counted
-                    s.dropped += m.dropped
-                    yield self._block(x)
+            from pysdrlib import err
+            try:
+                with sdr.stream(count, meta=True) as rx: # Exactly `count` samples a block; starts and stops receiving
+                    for x, m in rx:
+                        if base is None: # pysdrlib counts from this stream's start; ours may have run before
+                            base = s.pos - m.index
+                            t = m.hw_time if m.hw_time is not None else m.time
+                            if s.t0 is None and t is not None and self.Fs:
+                                s.t0 = t - s.pos/self.Fs
+                        s.pos = max(s.pos, base + m.index) # Samples the radio lost (or discarded settling) are counted
+                        s.dropped += m.dropped
+                        at = 0
+                        for ev in sorted((e for e in m.events if e.kind in ("freq", "rate")), key=lambda e: e.offset):
+                            if ev.offset > at:
+                                yield self._block(x[at:ev.offset])
+                            at = max(at, ev.offset)
+                            if ev.kind == "freq":
+                                self.cf = float(ev.value)
+                            else:
+                                self.Fs = float(ev.value)
+                            # A new setting: what the stages tracked no longer holds. Positions count from the change
+                            self.restart()
+                            s = self.stream
+                            s.src_Fs = self.Fs
+                            base = -(m.index + ev.offset)
+                            t = m.hw_time if m.hw_time is not None else m.time
+                            if t is not None and self.Fs:
+                                s.t0 = t + ev.offset/self.Fs
+                        yield self._block(x[at:])
+            except err.Lost as e: # The device (or a shared-memory publisher) is gone: the stream ends here
+                self.lost = str(e)
+                tail = getattr(e, "samples", None) # (what was there short of a whole block, where pysdrlib gives it)
+                yield self._block(np.zeros(0, np.complex64) if tail is None else np.asarray(tail, np.complex64), flush=True)
+                if self._opened:
+                    self.close()
         finally:
             if mine and sdr.state["open"]:
                 sdr.close()
+
+    def close(self):
+        """Close a device this opened from a target string (one opened by name is closed when its blocks end)"""
+        if self._opened and self.sdr.state["open"]:
+            self.sdr.close()
 
 class Sink:
     """Write blocks to a file with pysdrlib's FileSink: `block >> sink` or `blocks >> sink`
