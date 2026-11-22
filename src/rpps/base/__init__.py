@@ -129,8 +129,9 @@ link's. `rp.code.Uncoded()` is the code step of a link with no FEC. `rp.Data(x)`
 ## Data and operators
 
 **Data** (`base/data.py`) wraps an array with its `Meta`: `Fs`, `sps`, centre frequency, group delay, stream state, and
-`meta.pos`, the absolute position of its first item (`meta.time_of(k)` gives source time). Nothing needs setting up or
-resetting.
+`meta.pos`, the absolute position of its first item (`meta.time_of(k)` gives source time). Samples a source lost (a
+radio's overrun, a dropped block) are counted in it, and a stage carries a gap in its input into its output positions,
+so positions stay true to time. Nothing needs setting up or resetting.
 
 | Operator | Means | On |
 |---|---|---|

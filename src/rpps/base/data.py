@@ -94,10 +94,17 @@ class _Data:
         if out.dtype in (np.complex128, np.float64): # Samples are single precision throughout
             out = out.astype(np.complex64 if out.dtype.kind == "c" else np.float32)
         cat = getattr(stage, "CATEGORY", None) or Category.SIGNAL
+        gap = 0 # Items a source lost before this block (a radio's overrun, a dropped block): carried into the outputs
+        if self.meta.timed:
+            seen = stream.in_pos.get(stage)
+            if seen is not None and self.meta.pos > seen:
+                gap = self.meta.pos - seen
+            stream.in_pos[stage] = self.meta.pos + len(self)
         if self.REP in (Rep.CHANNEL, Rep.DATA): # A stage on bits: same class, representation and form
             out_meta = meta.fork()
             start = stream.out_pos.get(stage)
-            out_meta.pos = meta.pos if start is None else start
+            out_meta.pos = meta.pos if start is None else start + gap
+            out_meta.timed = True
             stream.out_pos[stage] = out_meta.pos + len(out)
             return self.derive(out, cat, self.DT, ctx=dict(self.ctx), meta=out_meta, rep=self.REP)
         # One value per symbol is symbols: a stage that takes samples to one per symbol (timing recovery, an FFT) gives
@@ -114,7 +121,10 @@ class _Data:
         start = stream.out_pos.get(stage)
         if start is None: # First block this stage sees in the stream: its outputs start where its input is, at the new rate
             start = int(round(meta.pos * meta.op.Fs / meta.state.Fs)) if meta.state.Fs else 0
+        elif gap: # A gap at the input's rate, at the output's
+            start += int(round(gap * meta.op.Fs / meta.state.Fs)) if meta.state.Fs else gap
         out_meta.pos = start # Then it counts its own outputs: independent of how the blocks were cut
+        out_meta.timed = True
         stream.out_pos[stage] = start + len(out)
         return Analog(out, cat, dt, dict(self.ctx), out_meta, rep)
 
@@ -354,6 +364,7 @@ def Data(data, ctx=None, flush=False, Fs=None, sps=None, cf=None, stream=None, d
     if d is None:
         raise TypeError(f"Cannot convert {type(data)}")
     d.meta.pos = d.meta.stream.pos # The stream's source position: this block follows what it produced before
+    d.meta.timed = True
     d.meta.stream.pos += len(d)
     return d # type: ignore
 

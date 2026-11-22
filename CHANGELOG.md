@@ -9,6 +9,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 ## 0.6.0 (2026-11-22)
 
 ### Breaking
+- **`stream.dropped` counts source samples**, a radio's overruns and a threaded source's discarded blocks alike (it
+  counted blocks for `Blocks.threaded(drop=True)`).
 - `ldpc.min_sum(llr)` is `ldpc.propagate(llr)`: the layered schedule runs min-sum or sum-product (the definition's
   `"check"`, or the effort level's). `rpps._effort.iters(base)` is `scale("iters", base)`, `maxlog(base)` is
   `choice("maxlog", base)`.
@@ -45,6 +47,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- **Positions stay true to time across a gap:** `Device` stamps each block from the radio's own count (pysdrlib's
+  `index`), so samples it lost move `meta.pos` on, and every stage carries a gap in its input into its output positions
+  (as it does a block `threaded(drop=True)` discarded). `stream.t0` is the radio's clock (`hw_time`) or the host's at
+  the first sample, so `meta.time_of(k)` dates a live stream.
 - **What an analyser shows of a lock:** `rp.sync.Lock` keeps its block (`lk.x`) and gives `decisions()`, `errors()`
   (per symbol: error vector, EVM and magnitude error as a percentage of the constellation's rms, phase error in degrees),
   `summary()` (EVM rms and peak, MER, magnitude and phase error, and from a fit of the symbols as kI I + kQ Q + c: IQ

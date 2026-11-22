@@ -56,10 +56,11 @@ def _threaded(gen, depth, drop, name):
                 if drop:
                     try:
                         q.put_nowait(b)
-                    except queue.Full:
+                    except queue.Full: # Counted in source samples, whatever rate the block is at
                         meta = getattr(b, "meta", None)
                         if meta is not None:
-                            meta.stream.dropped += 1
+                            n, Fs, src = len(b), meta.state.Fs, meta.stream.src_Fs
+                            meta.stream.dropped += int(round(n * src / Fs)) if Fs and src else n
                 elif not put(b):
                     break
                 if stop.is_set():
@@ -139,8 +140,9 @@ class Blocks:
         """Run everything before this point (the source, the stages applied so far) in its own thread
 
         depth: blocks the queue to the next thread holds.
-        drop: when the queue is full, discard the block and count it in `stream.dropped` instead of waiting. Use
-            for a radio, which overruns anyway when it isn't read; the stream then has gaps (the stages carry on).
+        drop: when the queue is full, discard the block and count it in `stream.dropped` (source samples) instead of
+            waiting. Use for a radio, which overruns anyway when it isn't read; the stream then has gaps: the stages
+            carry on, and the positions of what follows count the block (`meta.pos` stays true to time).
         An exception in the thread is raised where the blocks are read; leaving the loop stops the thread (and
         closes the source).
         """
@@ -317,6 +319,11 @@ class Device(Source):
     that is open already (pysdrlib.connect gives one) stays open; one this opens is closed when the blocks end
 
         for blk in rp.source.Device("hackrf", cf=100e6, Fs=10e6)(8192) + rx: ...
+
+    Positions and time come from the radio: samples it lost (an overrun) are counted in `meta.pos`, so a block after a
+    gap starts further on and the stages carry the gap into theirs (one inside a block shows at the next block), and
+    `stream.dropped` adds them up. `stream.t0` is the radio's clock (`hw_time`) where it timestamps its samples, else
+    the host's `time.monotonic()` at the first sample, so `meta.time_of(k)` dates any item.
     """
     def __init__(self, device, cf=None, Fs=None, rx_gain=None, sps=0.0, **open_args):
         """device: a pysdrlib device name, or a device you made (rp.source.Device(pysdrlib.device("sim", realtime=False))).
@@ -344,9 +351,17 @@ class Device(Source):
             sdr.initialize(cf=self.cf, Fs=self.Fs, rx_gain=self.rx_gain)
             self.cf, self.Fs = sdr.get_rx_freq(), sdr.get_rx_sample_rate() # What the hardware settled on
             self.stream.src_Fs = self.Fs
+            s = self.stream
+            base = None
             with sdr.stream(count, meta=True) as rx: # Exactly `count` samples a block; starts and stops receiving
                 for x, m in rx:
-                    self.stream.dropped += m.dropped
+                    if base is None: # pysdrlib counts from this stream's start; ours may have run before
+                        base = s.pos - m.index
+                        t = m.hw_time if m.hw_time is not None else m.time
+                        if s.t0 is None and t is not None and self.Fs:
+                            s.t0 = t - s.pos/self.Fs
+                    s.pos = max(s.pos, base + m.index) # Samples the radio lost (or discarded settling) are counted
+                    s.dropped += m.dropped
                     yield self._block(x)
         finally:
             if mine and sdr.state["open"]:

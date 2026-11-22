@@ -42,10 +42,13 @@ class Stream:
     det: detection result (baud, modulation, timing, cfo...), see rpps.sync.detect
     busy: seconds each stage spent in `step`; air: seconds of signal the source produced. busy/air (`load`) over 1
         means that stage can't keep up in real time
-    dropped: blocks a threaded source discarded because the stages fell behind (Blocks.threaded(drop=True))
+    dropped: source samples lost: a radio's overruns (`Device`, as pysdrlib reports them) and blocks a threaded source
+        discarded because the stages fell behind (`Blocks.threaded(drop=True)`, counted at the source's rate)
     pos: items the source has produced so far: the absolute position of its next block
     t0: time [s] of the source's item 0, when the source knows it (a radio's timestamp); None otherwise
     out_pos: items each stage has produced so far in this stream: the absolute position of its next output block
+    in_pos: the position each stage expects its next input block at; one further on is a gap, which the stage carries
+        into its own output positions
     est: what sync stages estimated, by name ({"align": {...}}), for whoever wants to know (det stays Acquire's)
     control: the control path (rpps.base.control.Control): fields header steps published, position anchors, and
         what a profile runner did with them (applied, re-run, dropped). None until a step publishes
@@ -55,7 +58,7 @@ class Stream:
     here is the latest: a stage reads its block's (`Meta.det`), which Acquire stamps, so a stage running behind Acquire
     in another thread uses the detection its block went through with, not one made for a later block.
     """
-    __slots__ = ("states", "det", "blocks", "src_Fs", "src_sps", "gen", "busy", "air", "dropped", "pos", "t0", "out_pos", "est", "control")
+    __slots__ = ("states", "det", "blocks", "src_Fs", "src_sps", "gen", "busy", "air", "dropped", "pos", "t0", "out_pos", "in_pos", "est", "control")
     def __init__(self, Fs=None):
         self.states = {}
         self.det = None
@@ -69,6 +72,7 @@ class Stream:
         self.pos = 0
         self.t0 = None
         self.out_pos = {}
+        self.in_pos = {}
         self.est = {}
         self.control = None
 
@@ -90,11 +94,14 @@ class Meta:
         delay: group delay of the data so far [s]. A stage adds its own
         stream: the Stream this block belongs to (stage state, detection)
         pos: absolute position of the block's first item in the stream, counted in items at this block's rate. It does
-            not depend on how the stream was cut into blocks, so estimators can place their windows by it
+            not depend on how the stream was cut into blocks, so estimators can place their windows by it. Samples a
+            source lost (a radio's overrun, a dropped block) are counted: positions stay true to time across a gap
+        timed: `pos` counts this block's own items (a source's block, a stage's output), so a jump in it is a gap; a
+            pipe's output keeps its input's position and is not timed
         flush: this block ends the stream: a stage gives out what it was holding back
         det: the detection this block went through Acquire with (the stream's, `stream.det`, until an Acquire stamps one)
     """
-    __slots__ = ("state", "op", "delay", "stream", "gen", "pos", "flush", "_det")
+    __slots__ = ("state", "op", "delay", "stream", "gen", "pos", "timed", "flush", "_det")
     def __init__(self, Fs=1.0, sps=0.0, cf=0.0, delay=0.0, stream=None, pos=0):
         self.stream = Stream(Fs) if stream is None else stream
         if self.stream.src_Fs is None:
@@ -106,6 +113,7 @@ class Meta:
         self.delay = delay
         self.gen = self.stream.gen
         self.pos = int(pos)
+        self.timed = False
         self.flush = False
         self._det = None
 
@@ -137,6 +145,7 @@ class Meta:
         m.delay = self.delay
         m.gen = self.gen
         m.pos = self.pos
+        m.timed = False
         m.flush = False
         m._det = self._det
         return m
