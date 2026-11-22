@@ -46,7 +46,9 @@ A known signal is a profile: one JSON file describing it in both directions.
 p = rp.profile.load("ble/adv", channel=38)               # python -m rpps ls profile: the shipped ones
 for pdu in rp.source.File("cf32", "ch38.cf32", Fs=4e6, cf=2426e6)(65536) + p.rx():
     print(pdu.as_bytes().hex)
-wave = p.tx()(rp.Data(bytes(31)), fields={"type": 2})   # the same file transmits
+tx = p.tx()                                                       # the same file transmits: a call a burst,
+gap = tx(rp.Data(bytes(31), Fs=1e6, sps=1), fields={"type": 2})   # giving the samples up to its start,
+wave = tx.flush()                                                 # and flush the rest
 ```
 
 From the shell: `python -m rpps ls` (definitions), `python -m rpps steps` (what a profile can name),
