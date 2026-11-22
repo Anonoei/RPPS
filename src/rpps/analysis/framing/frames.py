@@ -242,9 +242,11 @@ def gate(x, Fs, smooth=4e-6, contrast=10.0, min_len=64e-6, hang=8e-6):
             merged.append([a, b])
     return [(int(a), int(b)) for a, b in merged if b - a >= min_len*Fs]
 
-def bursts(x, Fs, names=None, baud=None, min_symbols=128, **kw):
+def bursts(x, Fs, names=None, baud=None, min_symbols=128, betas=(0.2, 0.25, 0.35), **kw):
     """The bursts of x (`gate`), each acquired on its own: rate (or `baud` for all), modulation, offset, timing (as a
-    TDMA receiver must: every burst comes from another transmitter, with its own clock and carrier). [Burst]"""
+    TDMA receiver must: every burst comes from another transmitter, with its own clock and carrier). What is known
+    narrows each burst's search: `baud` (no rate search), `names` (the modulations to try), `betas` (the roll-offs).
+    [Burst]"""
     from ...sync.acquire import detect, correct, candidates, symmetry
     from ...sync.time.mat import matrix_mf, centres_in
     x = np.asarray(x, dtype=np.complex128)
@@ -253,12 +255,8 @@ def bursts(x, Fs, names=None, baud=None, min_symbols=128, **kw):
         seg = x[a:b]
         bu = Burst(a, b)
         try:
-            det = detect(seg, Fs, names) if baud is None else None
-            if baud is not None:
-                det = detect(seg, Fs, names)
-                sps = Fs/baud
-            else:
-                sps = det.sps
+            det = detect(seg, Fs, names, betas=betas, baud=baud)
+            sps = Fs/baud if baud is not None else det.sps
             if len(seg)/sps >= min_symbols:
                 # The matched filter needs the pulse's span either side: widen the segment by it, so the burst's first
                 # symbols (the preamble) are taken too; the timing found on the gated part carries over

@@ -225,7 +225,8 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None,
     their kind's. kw: frames.gate's"""
     from ... import symbol as rsym
     x = np.asarray(x, dtype=np.complex128)
-    B = frames.bursts(x, Fs, baud=baud, **kw)
+    B = frames.bursts(x, Fs, names=None if mod is None else [mod], baud=baud,
+                      betas=(0.2, 0.25, 0.35) if beta is None else (beta,), **kw) # what is known isn't searched for
     acq = [b for b in B if b.det is not None]
     if mod is None:
         if not acq:
