@@ -1,8 +1,18 @@
 import os
 os.environ.setdefault("MPLBACKEND", "Agg")
+# Each xdist worker is one process: BLAS and RPPS's own pools stay at one thread, so `-n auto` doesn't oversubscribe
+for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "RPPS_THREADS"):
+    os.environ.setdefault(_var, "1")
 
 import numpy as np
 import pytest
+
+def pytest_xdist_auto_num_workers(config):
+    """`-n auto`: half the cores, so the machine stays usable while the suite runs; every core on CI (where `CI` is set,
+    as GitHub does). RPPS_TEST_WORKERS chooses"""
+    n = os.environ.get("RPPS_TEST_WORKERS")
+    cores = os.cpu_count() or 2
+    return int(n) if n else cores if os.environ.get("CI") else max(1, cores//2)
 
 @pytest.fixture
 def rng():
