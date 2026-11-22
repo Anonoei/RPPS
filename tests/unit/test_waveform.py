@@ -65,6 +65,20 @@ def test_tdd_bursts_and_their_period():
     assert b is not None and abs(b.period - 5e-3) < 0.05e-3 and abs(b.duty - 0.74) < 0.03
     assert W.on_off(_noise(len(x), 20, np.ones(len(x))), fs) is None # Steady
 
+def test_short_bursts_in_a_long_frame():
+    """Bursts much shorter than their frame (a TDMA return link: 4 ms in 30 ms, 2 ms in 110 ms): the period, not the
+    smallest lag searched (inside one burst the autocorrelation is near 1 at every lag)"""
+    fs = 200e3
+    for on, period, secs in ((4e-3, 30e-3, 0.3), (2e-3, 110e-3, 0.6)):
+        n = int(secs*fs)
+        sym = np.repeat(RNG.choice([1, 1j, -1, -1j], n//2 + 1), 2)[:n] # (QPSK at 2 samples a symbol: its envelope swings)
+        h = np.sinc(np.arange(-8, 9)/2)*np.hanning(17)
+        x = _noise(n, 20, np.convolve(sym, h/np.sqrt(np.sum(h**2)), "same"))
+        t = np.arange(n)/fs
+        x = x*((t % period) < on) + 1e-3*RNG.standard_normal(n)
+        b = W.on_off(x, fs)
+        assert b is not None and abs(b.period - period) < 0.2e-3, (on, period, b and b.period)
+
 def test_constant_envelope():
     fs = 1e6
     t = np.arange(2**16)/fs
