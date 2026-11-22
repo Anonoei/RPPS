@@ -63,3 +63,11 @@ From the shell: `python -m rpps ls` (definitions), `python -m rpps steps` (what 
 | [projects/](https://github.com/Anonoei/RPPS/tree/main/projects) | worked receivers on real signals: FM, BLE, ADS-B, Wi-Fi, ATSC, LTE |
 | [Contributing](https://anonoei.github.io/RPPS/contributing/) | setup, tests, native kernels, CI, conventions |
 | [Roadmap](https://anonoei.github.io/RPPS/roadmap/) | what is built and what is not yet |
+
+## License
+Copyright (C) 2024-2026 Anonoei
+
+RPPS is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as
+published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) (GPL-3.0-or-later).
