@@ -81,7 +81,7 @@ class LMS(_Equalizer):
 
         eq = rp.sync.equalize.LMS(11, points=rp.symbol.load("QPSK").points, training=known_symbols)
 
-    With neither, the constellation is the detected one (meta.stream.det, see rp.sync.Acquire), so after the
+    With neither, the constellation is the detected one (meta.det, see rp.sync.Acquire), so after the
     carrier correction: `... + rp.sync.phase.FFCarrier() + rp.sync.equalize.LMS(7, 0.002)`.
     """
     __slots__ = ("points", "training")
@@ -97,7 +97,7 @@ class LMS(_Equalizer):
 
     def step(self, samples, st, meta):
         if st.points is None and self.training is None: # The detected constellation, once there is one
-            det = meta.stream.det
+            det = meta.det
             if det is None:
                 return samples[:0]
             from .acquire import candidates

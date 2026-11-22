@@ -26,13 +26,13 @@ def main():
     blocks = int(args[0]) if len(args) > 0 else 450
     first = int(args[1]) if len(args) > 1 else 0
     last = int(args[2]) if len(args) > 2 else 99
-    sigs = rp.analysis.survey(rp.source.File("ci32t", path, Fs=Fs))
+    sigs = rp.analysis.survey(rp.source.File("ci16t", path, Fs=Fs))
     print(f"{len(sigs)} signals", flush=True)
     for j, s in enumerate(sigs):
         if not first <= j <= last:
             continue
         ch = s.channel()
-        src = rp.source.File("ci32t", path, Fs=Fs)
+        src = rp.source.File("ci16t", path, Fs=Fs)
         x = np.concatenate([np.asarray((rp.Data(b.data, Fs=Fs, stream=st) + ch.front).data)
                             for st in [rp.base.Stream(Fs)] for i, b in zip(range(blocks), src(1024*16))])
         det = rp.sync.detect(x[:2**16], ch.Fs)

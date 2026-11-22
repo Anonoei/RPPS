@@ -33,14 +33,14 @@ out = syms / link
 ### Receiving a signal
 ```python
 # docs: skip
-src = rp.source.File("ci32t", "capture.cs16", Fs=100e6, cf=1.0e9)       # or rp.source.Device("hackrf", cf=..., Fs=...)
+src = rp.source.File("ci16t", "capture.cs16", Fs=100e6, cf=1.0e9)       # or rp.source.Device("hackrf", cf=..., Fs=...)
 rx = (rp.signal.filters.ShiftFreq(22.3e6)  + rp.signal.filters.low_pass(401, 3e6, 100e6) + rp.signal.sample.down.Decimate(8)
       + rp.sync.Acquire() + rp.sync.time.Mat() + rp.sync.phase.FFCarrier())     # stages added together make a pipeline
 
 for out in src(16384) + rx:          # blocks flow through, state carried from one to the next
     print(out.Fs, out.sps, out.det)  # rates follow the stages; Acquire's detection is on the data
 
-src(16384) + rx >> rp.source.Sink("cf64", "symbols.iq")       # or straight into a file
+src(16384) + rx >> rp.source.Sink("cf32", "symbols.iq")       # or straight into a file
 ```
 A stage can also be applied by hand to a block: `blk + rp.signal.filters.ShiftFreq(1e3)`.
 `rp.signal.channel` has impairments to test against (`AWGN`, `CFO`, `Fading`, `Multipath`, `ClockDrift`...).
@@ -51,12 +51,12 @@ pulse, modulation, codes, framing) and the parameters a header may change along 
 ```python
 # docs: skip
 p = rp.profile.load("ble/adv", channel=38)                 # or dvbs2/normal, adsb/mode_s, ax25/afsk1200, ccsds/tm_rs, ieee80211b/long...
-for pdu in rp.source.File("cf64", "ch38.cf64", Fs=4e6, cf=2426e6)(65536) + p.rx():
+for pdu in rp.source.File("cf32", "ch38.cf32", Fs=4e6, cf=2426e6)(65536) + p.rx():
     print(pdu.as_bytes().hex, pdu.stream.est["ble_adv"]["last"])        # one per packet (its burst step): its payload if the CRC checks, its header
 wave = p.tx()(rp.Data(bytes(31)), fields={"type": 2})                   # the same file transmits: the steps inverted, in reverse
 ```
 `python -m rpps ls profile` lists the shipped profiles, `python -m rpps steps` the step kinds and sync methods a profile
-can name, `python -m rpps rx ble/adv capture.cf64 --fs 4e6 --param channel=38` receives a file from the shell. A new signal
+can name, `python -m rpps rx ble/adv capture.cf32 --fs 4e6 --param channel=38` receives a file from the shell. A new signal
 is a new file in `config/profile/<family>/<mode>.json` (or in your own config directory, `rp.add_config_path`), built from
 the shipped definitions: constellations, pulses, codes, scramblers, sequences, headers. Writing one needs no code; see
 [README.dev.md](README.dev.md#profiles) for the format and the step kinds.
@@ -95,6 +95,26 @@ BCJR / turbo, LDPC, Reed-Solomon, BCH) run in C++ (`rpps._native`, built with th
 threads run them in parallel; batches of codewords are spread over the cores (`RPPS_THREADS` sets how many).
 Without a compiler RPPS uses its Python loops (the reference: `RPPS_NO_NATIVE=1` forces them). Compare with
 `python tests/bench_stages.py`.
+
+### What other programs can build on
+These are kept stable: a change to what they take or give is called out in the CHANGELOG, and a name is not moved without
+the old place going through a release that warns. Anything else (a module's other functions, `rpps._*`, a stage's state)
+can change.
+
+| Where | What |
+| --- | --- |
+| `rp.Data`, `rp.Stage`, `rp.Pipe`, `rp.Pipeline` | the data and the operators (`*`, `/`, `+`) |
+| `rp.sync.Lock`, `rp.errors.NoLock` | a signal's symbols as a snapshot: `Lock.find(x, Fs)`, `lock.update(block)`, `lock.stale`, `lock.refine(longer)` |
+| `rp.sync.detect`, `rp.sync.Detection`, `rp.sync.Acquire` | acquisition once, and as a stream stage |
+| `rp.sync.best_tau`, `rp.sync.track_timing`, `rp.sync.matrix_mf`, `rp.sync.centres_in`, `rp.sync.find_baud` | timing and rate |
+| `rp.sync.quality.measure` | Es/N0, Eb/N0, EVM of symbols |
+| `rp.analysis.find_signals`, `rp.analysis.survey`, `Survey`, `Signal` | the signals in a capture; `Survey.match` keeps their ids |
+| `rp.wave.demod`, `rp.wave.FMDemod`, `AMDemod`, `SSBDemod` | analog audio, one block or a stream |
+| `rp.profile.ls`, `rp.profile.load` | the shipped profiles |
+| `rp.source.formats` | sample formats, by pysdrlib's names |
+
+`import rpps` loads numpy and RPPS only (about 0.2 s): no scipy, matplotlib or pysdrlib until something asks for them
+(`rp.viz`, a source), so programs can import it at start-up.
 
 ## Install
 1. Run `python3 -m pip install rpps` (`rpps[viz]` adds matplotlib for `rp.viz`). From a checkout, `python builder.py -c`

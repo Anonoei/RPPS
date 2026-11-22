@@ -9,7 +9,7 @@ def main():
     # num_samps = -1
     num_samps = 1024*16 # Any block size works, the stages keep the stream continuous
     # RDS is 1187.5 symbols/s. Decimate and Resample scale sps along with Fs, so sps is 16 at the sync
-    sink = rp.source.File("cf64", "data/fm_rds_250k_1Msamples.iq", Fs=250e3, sps=250e3/1187.5, cf=99.5e6)
+    sink = rp.source.File("cf32", "data/fm_rds_250k_1Msamples.iq", Fs=250e3, sps=250e3/1187.5, cf=99.5e6)
 
     demod = rp.wave.FMDemod() # FM Demod
     shift = rp.signal.filters.ShiftFreq(fo=-57e3) # Frequency shift to RDS

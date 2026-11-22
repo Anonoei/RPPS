@@ -1,9 +1,9 @@
 """Sources and sinks of signal blocks
 
-    src = rp.source.File("ci32t", "capture.cs16", Fs=2e6, cf=100e6)
+    src = rp.source.File("ci16t", "capture.cs16", Fs=2e6, cf=100e6)
     for out in src(4096) + (lpf + dec):          # blocks flow through the pipeline, its state carried along
         ...
-    src(4096) + (lpf + dec) >> rp.source.Sink("cf64", "out.iq")   # or straight into a sink
+    src(4096) + (lpf + dec) >> rp.source.Sink("cf32", "out.iq")   # or straight into a sink
 
 Threads: `.threaded()` puts everything before it in its own thread, and `.pipelined(pipe)` gives every stage of a
 pipeline its own, connected by bounded queues. Stages overlap where they release the GIL (numpy, the rpps._native

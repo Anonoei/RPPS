@@ -51,7 +51,9 @@ class Stream:
         what a profile runner did with them (applied, re-run, dropped). None until a step publishes
 
     Threads (Blocks.threaded): each stage's state is used only by the thread running that stage. `det` and
-    `src_sps` have one writer (Acquire); `gen` lets blocks already on their way pick up a new sps (Meta.refresh).
+    `src_sps` have one writer (Acquire); `gen` lets blocks already on their way pick up a new sps (Meta.refresh). `det`
+    here is the latest: a stage reads its block's (`Meta.det`), which Acquire stamps, so a stage running behind Acquire
+    in another thread uses the detection its block went through with, not one made for a later block.
     """
     __slots__ = ("states", "det", "blocks", "src_Fs", "src_sps", "gen", "busy", "air", "dropped", "pos", "t0", "out_pos", "est", "control")
     def __init__(self, Fs=None):
@@ -90,8 +92,9 @@ class Meta:
         pos: absolute position of the block's first item in the stream, counted in items at this block's rate. It does
             not depend on how the stream was cut into blocks, so estimators can place their windows by it
         flush: this block ends the stream: a stage gives out what it was holding back
+        det: the detection this block went through Acquire with (the stream's, `stream.det`, until an Acquire stamps one)
     """
-    __slots__ = ("state", "op", "delay", "stream", "gen", "pos", "flush")
+    __slots__ = ("state", "op", "delay", "stream", "gen", "pos", "flush", "_det")
     def __init__(self, Fs=1.0, sps=0.0, cf=0.0, delay=0.0, stream=None, pos=0):
         self.stream = Stream(Fs) if stream is None else stream
         if self.stream.src_Fs is None:
@@ -104,6 +107,17 @@ class Meta:
         self.gen = self.stream.gen
         self.pos = int(pos)
         self.flush = False
+        self._det = None
+
+    @property
+    def det(self):
+        return self.stream.det if self._det is None else self._det
+
+    @det.setter
+    def det(self, det):
+        """Acquire: the detection for this block and those made from it; the stream keeps the latest"""
+        self._det = det
+        self.stream.det = det
 
     def time_of(self, k=0):
         """Source time [s] of item k of this block: the stream's t0, plus the position at this rate, less the group delay.
@@ -124,6 +138,7 @@ class Meta:
         m.gen = self.gen
         m.pos = self.pos
         m.flush = False
+        m._det = self._det
         return m
 
     def refresh(self):
@@ -133,6 +148,9 @@ class Meta:
         the source and Acquire carry the old sps: scale the source's new one by the Fs ratio, as the stages would have.
         """
         s = self.stream
+        if self._det is not None: # Past Acquire: its sps is the one Acquire gave this block, not a later block's
+            self.gen = s.gen
+            return
         if self.gen != s.gen:
             self.gen = s.gen
             if s.src_sps is not None and s.src_Fs:

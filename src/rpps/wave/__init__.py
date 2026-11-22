@@ -5,6 +5,7 @@
     Stagger   offset one rail by part of a symbol (O-QPSK)
     FM        a shaped level signal to a phase-continuous frequency-modulated one (FSK, GFSK, GMSK, C4FM)
     FMDemod   its quadrature discriminator
+    demod     FM, AM or SSB audio from one block, no state, with FM deviation, AM depth and SINAD
 
 The pulses are definitions (config/pulse: `halfsine`, `gaussian`, `rrc`, `rect`), loaded by rp.signal.filters.load:
 
@@ -14,7 +15,7 @@ The pulses are definitions (config/pulse: `halfsine`, `gaussian`, `rrc`, `rect`)
 from .shape import Shape, Matched
 from .stagger import Stagger
 from .fm import FM, FMDemod, fm_gain, discriminate
-from .analog import AMDemod, SSBDemod
+from .analog import AMDemod, SSBDemod, demod, Measurements
 from .ofdm import OFDMTx, OFDMRx
 
 from ..base.rpps import tag_stages as _tag_stages

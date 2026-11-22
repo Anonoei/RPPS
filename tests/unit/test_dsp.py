@@ -191,6 +191,19 @@ def test_signal_fields_and_survey_pick(rng):
     assert a.duty > 0.9 and a.resolved
     assert sv.pick(near=140e3) is b and sv.pick(freq=100e6 - 190e3) is a and sv.pick(index=1) is b
     assert sv.pick(strongest=True) in sv
+    assert [s.id for s in sv] == [0, 1] and all(s.power is not None for s in sv)
+
+def test_survey_match_keeps_ids_frame_to_frame(rng):
+    Fs = 1e6
+    first = rp.analysis.find_signals(two_bands(rng, 1 << 17, Fs, -200e3, 150e3, 60e3), Fs)
+    first[0].id, first[1].id = 7, 3 # Ids from earlier frames
+    # The next frame: the same two, drifted a little, and a new one between them
+    x = two_bands(rng, 1 << 17, Fs, -195e3, 155e3, 60e3) + two_bands(rng, 1 << 17, Fs, -20e3, 400e3, 30e3)
+    nxt = rp.analysis.find_signals(x, Fs).match(first)
+    by = {round(s.mid/1e4): s.id for s in nxt}
+    near = lambda f: min(nxt, key=lambda s: abs(s.mid - f))
+    assert near(-195e3).id == 7 and near(155e3).id == 3 and near(-20e3).id == 8 # New ones count on from the highest
+    assert len({s.id for s in nxt}) == len(nxt), by
 
 def test_signal_channel_isolates_and_decimates(rng):
     Fs = 1e6
@@ -206,9 +219,9 @@ def test_signal_channel_isolates_and_decimates(rng):
 def test_survey_from_a_file_keeps_its_place(rng, tmp_path):
     Fs = 1e6
     x = two_bands(rng, 1 << 17, Fs, -200e3, 150e3, 60e3)
-    path = tmp_path / "cap.cf64"
+    path = tmp_path / "cap.cf32"
     x.tofile(path)
-    src = rp.source.File("cf64", str(path), Fs=Fs, cf=50e6)
+    src = rp.source.File("cf32", str(path), Fs=Fs, cf=50e6)
     src.seek(1000)
     sv = rp.analysis.survey(src, samples=1 << 16)
     assert src.cur_samp == 1000 # Peeking doesn't use samples up
@@ -263,6 +276,9 @@ def test_a_carrier_on_a_raised_floor_has_its_snr_over_that_floor():
     assert abs(a.esn0_db(1e6) - 15.0) < 1.0 and abs(b.esn0_db(1e6) - 20.0) < 1.0 # Not 12 dB more, over the thermal floor
     big = max(sv, key=lambda s: s.width)
     assert big.width > 30e6 and big.holds >= 2
+    only = rp.analysis.find_signals(x.astype(np.complex64), Fs, nested=False) # Without the pedestal: just the carriers
+    assert only and not any(s.holds for s in only) and all(s.width < 30e6 for s in only)
+    assert any(abs(s.mid + 10e6) < 1e6 for s in only) and any(abs(s.mid - 5e6) < 1e6 for s in only)
 
 def test_carriers_narrower_than_the_edge_window_are_not_boxed_with_their_gaps(rng):
     # 383 kHz carriers 750 kHz apart at 100 MS/s, strong and weak by turns: narrower than the edge step's +-w (0.5% of

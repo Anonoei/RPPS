@@ -1,7 +1,7 @@
 """Samples from the network: raw IQ over UDP or TCP, in any pysdrlib format
 
-    src = rp.source.Socket("cf64", "udp://0.0.0.0:5004", Fs=2e6, cf=100e6)       # listen for datagrams
-    src = rp.source.Socket("ci16t", "tcp://10.0.0.5:1234", Fs=2.4e6)             # connect and read a byte stream
+    src = rp.source.Socket("cf32", "udp://0.0.0.0:5004", Fs=2e6, cf=100e6)       # listen for datagrams
+    src = rp.source.Socket("cui8", "tcp://10.0.0.5:1234", Fs=2.4e6)             # connect and read a byte stream
     for out in src(16384) + rx:
         ...
 

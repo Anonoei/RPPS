@@ -1,7 +1,7 @@
-"""Sample file formats, as pysdrlib names them: a complex format is named by the bits of one whole sample
+"""Sample file formats, as pysdrlib names them: a complex format is named by the bits of its I (or Q) alone, as in SigMF
 
-    ci8t ci16t ci32t   complex two's compliment integers (4, 8 and 16 bit I and Q)
-    cf32 cf64 cf128    complex floats (cf64 is two float32: numpy's complex64)
+    ci8t ci16t ci32t   complex two's complement integers (8, 16 and 32 bit I and Q)
+    cf16 cf32 cf64     complex floats (cf32 is two float32: numpy's complex64; cf64 is complex128)
     i8t.. ui8.. f32..  real samples
 `rp.source.formats.ls()` lists them.
 """

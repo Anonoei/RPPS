@@ -15,7 +15,7 @@ class AcquireFEC(Stage):
         fec = out.stream.est.get("fec")           # an rpps.analysis.identify.CodeDetection, once there is one
         dec = fec.rx()                             # once fec.complete: the decoder (a profile runner), bits = dec(out)
 
-    Takes timed, carrier-corrected symbols (after `phase.FFCarrier`, with the modulation from `Acquire` in meta.stream.det)
+    Takes timed, carrier-corrected symbols (after `phase.FFCarrier`, with the modulation from `Acquire` in meta.det)
     and gives the same symbols, turned and conjugated so the decoder's map is the right one (the carrier phase has an
     M-fold ambiguity, and the IQ sense is unknown). Codes are the configured ones (`rpps.analysis.identify.identify`).
 
@@ -50,7 +50,7 @@ class AcquireFEC(Stage):
                                drop=0, buf=[], buffered=0, shift=0)
 
     def step(self, y, st, meta):
-        det = meta.stream.det
+        det = meta.det
         if det is None or len(y) == 0:
             return y
         if st.done:

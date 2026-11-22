@@ -68,8 +68,8 @@ class _Data:
 
     @property
     def det(self):
-        """What `rp.sync.Acquire` detected (baud, modulation, cfo...), None before"""
-        return self.meta.stream.det
+        """What `rp.sync.Acquire` detected (baud, modulation, cfo...) for this block, None before"""
+        return self.meta.det
 
     def state(self, stage):
         """The carried state of a stage in this stream (loop estimates, filter history...), None before it ran"""
