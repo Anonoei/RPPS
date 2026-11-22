@@ -28,7 +28,7 @@ max), and a value set on an operator is that operator's base. `rpps rx --effort`
 | Max-log or exact (`maxlog`: demapper, BCJR, turbo) | max-log | exact, no extrinsic scaling |
 | Timing interpolation (`interp_taps`) | cubic | 12-tap windowed sinc (balanced: 8 taps below 4 sps) |
 
-Measured (`tests/effort_bench.py`, FER 1e-1, one thread; Mbit/s at the threshold, where max iterates most):
+Measured (`tools/effort_bench.py`, FER 1e-1, one thread; Mbit/s at the threshold, where max iterates most):
 
 | Chain | Es/N0 dB fast / balanced / max | Mbit/s fast / balanced / max |
 |---|---|---|

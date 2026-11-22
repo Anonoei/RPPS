@@ -43,12 +43,13 @@ src/rpps/            the package: one sub-package per category (rpps, Where thin
 csrc/rpps_native/    C++ kernels, built as rpps._native (optional)
 config/              JSON definitions, copied into the wheel as rpps/config
 tests/unit/          the test suite
-tests/*.py           benchmarks (bench_stages.py, parallel_bench.py, tpc_ber.py)
+tests/run_wheel_tests.py  the unit tests against an installed wheel (cibuildwheel)
 examples/            one script per recommended way of doing a thing, each checking itself
 docs/                the guides (markdown; docs/api/ and the llms files are generated)
 projects/            worked examples on real signals (FM, ADS-B, ATSC, LTE, P25 ...), each with a README
 data/                captures (git-ignored)
-tools/               builder.py (the local build helper), gen_docs.py (API pages and llms files for the site)
+tools/               builder.py (the local build helper), gen_docs.py (API pages and llms files for the site),
+                     benchmarks run by hand (bench_stages.py, parallel_bench.py, resample_bench.py, effort_bench.py, tpc_ber.py)
 setup.py             builds the native module and copies config/
 ```
 
@@ -104,7 +105,7 @@ Pitfalls found the hard way:
 - **Size `parallel_for` chunks by work** (about 128k multiply-adds), not items; the pool is persistent and reset after a fork.
 - **Keep BLAS products out of per-block paths:** OpenBLAS spins between calls and slows everything around it
   (`OPENBLAS_NUM_THREADS=1` shows it).
-- **Benchmark best-of-N in one process** (`tests/bench_stages.py`, `parallel_bench.py`, `resample_bench.py`).
+- **Benchmark best-of-N in one process** (`tools/bench_stages.py`, `parallel_bench.py`, `resample_bench.py`).
 
 
 ## Testing

@@ -1,9 +1,9 @@
 """Effort levels (rp.set_effort) measured: the lowest Es/N0 each chain decodes at, and how fast, per level
 
-    python tests/effort_bench.py                      # every chain, FER 1e-1, 20 frame errors a point
-    python tests/effort_bench.py --chains polar_dci tpc --fer 0.01 --errors 50
-    python tests/effort_bench.py --quick              # fewer errors, coarser search: a few minutes
-    python tests/effort_bench.py --markdown           # table rows for rpps._effort as well
+    python tools/effort_bench.py                      # every chain, FER 1e-1, 20 frame errors a point
+    python tools/effort_bench.py --chains polar_dci tpc --fer 0.01 --errors 50
+    python tools/effort_bench.py --quick              # fewer errors, coarser search: a few minutes
+    python tools/effort_bench.py --markdown           # table rows for rpps._effort as well
 
 A chain: random messages, the code's encoder, the constellation, AWGN at Es/N0 (per symbol, unit mean power), the
 constellation's LLRs with the exact noise variance (max-log or exact as the level says), the decoder. Each SNR point
