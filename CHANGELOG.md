@@ -45,6 +45,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- `Signal.channel()` gives the front end's `delay` [s] and `settle`: the output samples a new stream starts with before
+  every filter is full (its start-up transient), so a display drops exactly those.
 - **More effort knobs, measured** (`tools/effort_bench.py`: the lowest Es/N0 each chain decodes at, and its speed, per
   level). `max` decodes LDPC by layered sum-product (native `ldpc_sumproduct`: 0.19 dB over min-sum on DVB-S2 64800 1/2
   QPSK, 0.47 dB on 16200 3/5 8PSK, in fewer iterations), lists 4x the polar paths (SC codes list 4; 0.25-0.5 dB), and
