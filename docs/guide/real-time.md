@@ -45,10 +45,10 @@ When one process is not enough (`stream.realtime()` over 1.0), there are three w
 1. **A process per signal, each reading the radio.** On a pysdrlib server's machine every RPPS process opens
    `Device("remote")`. The server shares its samples in memory, so each process reads at its own pace, and each does
    its own wideband downconversion.
-2. **One channelizer, a process per channel.** The wideband work is done once: one process publishes each channel to
-   shared memory (`rp.source.ShmSink`, a pysdrlib ring per channel, a manifest beside it), and each demodulator reads
-   its channel (`rp.source.Shm(name)`). Positions stay true to time, a retune starts the readers over, and a live view
-   can read the same channels.
+2. **One channelizer, a process per channel.** The wideband work is done once: one process publishes each channel as a
+   pysdrlib shared-memory stream (`rp.source.ShmSink`), and each demodulator receives its channel like a radio,
+   `rp.source.Device("shm@rpps.<name>")`. Positions stay true to time, a retune starts the receivers over, the
+   publisher stopping ends their blocks, and a live view (pyspecan) or `pysdrlib.find()` sees the same channels.
 3. **One process, a thread per channel**, for a few channels: `Channelizer`, then each channel's stages.
 
 ```python
