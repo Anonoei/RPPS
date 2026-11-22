@@ -23,7 +23,7 @@ import functools
 import numpy as np
 
 from ..lte.channels import _Channel
-from ...base.control import publish
+from ...base.control import publish, emit
 from . import phy
 from .grid import frame_len, unpack
 
@@ -94,12 +94,14 @@ class PBCH(_NrChannel):
         a, err = _pbch_code().decoder.decode(s, status=True)
         if err[0] < 0:
             st.est["failed"] += 1
+            emit(meta, self, None, {"pci": pci, "i_ssb": i_ssb}, None, False, pos)
             return None
         mib, sfn, hrf, kmsb = phy.payload_decode(np.asarray(a, np.uint8), pci)
         m = phy.parse_mib(mib)
         fields = {"sfn": sfn, "frame_ref": head["count"]//10, "coreset0": m["coreset0"], "ss0": m["ss0"],
                   "k_ssb": m["k_ssb_lsb"] + 16*kmsb, "dmrs_pos": m["dmrs_pos"], "barred": m["barred"], "i_ssb": i_ssb}
         publish(meta, self, fields, at=pos)
+        emit(meta, self, None, {"pci": pci, **fields, "hrf": hrf}, mib, True, pos)
         st.est["decoded"] += 1
         st.est["last"] = {**fields, "hrf": hrf}
         return mib
@@ -158,8 +160,12 @@ class PDCCH(_NrChannel):
                             found.append((L, cce, bits, int(r)))
                         break
         out = []
-        for L, cce, bits, rnti in found:
+        for i, (L, cce, bits, rnti) in enumerate(found):
             out.append(bits)
+            fields = {"pci": pci, "slot": head["slot"], "sfn": sfn, "rnti": rnti, "aggregation": L, "cce": cce}
+            if i == 0:
+                fields.update(phy.parse_dci_10_si(bits, n_rb))
+            emit(meta, self, None, fields, bits, True, pos) # (its CRC, scrambled with the RNTI, matched)
         if found:
             L, cce, bits, rnti = found[0]
             d = phy.parse_dci_10_si(bits, n_rb)
@@ -226,4 +232,7 @@ class PDSCH(_NrChannel):
         st.est["decoded" if ok else "failed"] += 1
         st.est["last"] = {"tbs": tbs, "first": first, "count": count, "qm": qm, "crc": bool(ok),
                           "phase": bool(ok and self.order[0])}
+        emit(meta, self, None, {"pci": pci, "slot": head["slot"], "rnti": int(self.rnti), "tbs": tbs, "first": first,
+                                "count": count, "mcs": int(self.mcs), "qm": qm, "rv": int(self.rv)},
+             b[:tbs] if ok else None, bool(ok), pos)
         return b[:tbs] if ok else None

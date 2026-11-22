@@ -15,19 +15,22 @@ Both directions:
     anchor(meta, op, at, out, rate=None)
         a step that drops or inserts items says which output item an input position became, so positions translate
         exactly through it
+    emit(meta, op, kind, fields, bits=None, ok=None, at=<input position>)
+        a decoded frame, for whoever reads the profile's messages (rpps.profile.message): its fields, its payload bits,
+        whether its check passed, from absolute position `at` in the op's input (where the frame starts)
 """
 
 class Control:
     """The control path of one stream (`stream.control`)
 
-    published, anchors: what operators reported since the runner last collected them (the runner empties these)
+    published, anchors, messages: what operators reported since the runner last collected them (the runner empties these)
     log: every change the runner accepted, in order: {"step", "fields", "at", "targets"}
     reports: what did not go as announced: late changes re-run or dropped, restarts, fields with no table row
     rerun: re-runs done; buffer: the re-run buffer's current size, in items at its first step
     """
-    __slots__ = ("published", "anchors", "log", "reports", "rerun", "buffer")
+    __slots__ = ("published", "anchors", "messages", "log", "reports", "rerun", "buffer")
     def __init__(self):
-        self.published, self.anchors, self.log, self.reports = [], [], [], []
+        self.published, self.anchors, self.messages, self.log, self.reports = [], [], [], [], []
         self.rerun, self.buffer = 0, 0
 
     def fields(self, step=None):
@@ -48,3 +51,7 @@ def publish(meta, op, fields, at, out=None, span=None, group=None):
 def anchor(meta, op, at, out, rate=None):
     """Absolute input position `at` became item `out` of this call's output (a step that drops or inserts items)"""
     of(meta.stream).anchors.append((op, int(at), int(out), rate))
+
+def emit(meta, op, kind, fields, bits=None, ok=None, at=0):
+    """A decoded frame (see module): kind None takes the profile step's id"""
+    of(meta.stream).messages.append((op, kind, dict(fields or {}), None if bits is None else bits, ok, int(at)))
