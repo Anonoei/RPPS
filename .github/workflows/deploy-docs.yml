@@ -40,9 +40,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[docs]"
 
-      # API pages and llms files from the code (scripts/gen_docs.py), then zensical build --strict into site/
+      # API pages and llms files from the code (tools/gen_docs.py), then zensical build --strict into site/
       - name: Build docs
-        run: python builder.py -d
+        run: python tools/builder.py -d
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

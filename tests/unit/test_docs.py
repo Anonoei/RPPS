@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
 GENERATED = {DOCS / "api", DOCS / "llms.txt", DOCS / "llms-full.txt"}
 
-needs_source = pytest.mark.skipif(not (ROOT / "src" / "rpps").is_dir() or not (ROOT / "scripts").is_dir(),
+needs_source = pytest.mark.skipif(not (ROOT / "src" / "rpps").is_dir() or not (ROOT / "tools").is_dir(),
                                   reason="the source tree (a wheel test has only tests, examples and docs)")
 
 
@@ -71,7 +71,7 @@ def test_every_package_documents_itself():
 @needs_source
 def test_gen_docs(tmp_path):
     """The API nav in zensical.toml matches the packages, and the llms files build and stay readable in one go"""
-    spec = importlib.util.spec_from_file_location("gen_docs", ROOT / "scripts" / "gen_docs.py")
+    spec = importlib.util.spec_from_file_location("gen_docs", ROOT / "tools" / "gen_docs.py")
     gen = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(gen)
     assert gen.check_nav()

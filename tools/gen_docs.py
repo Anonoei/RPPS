@@ -1,9 +1,9 @@
 """Generate the parts of the documentation that come from the code: API pages and the llms files
 
-    python scripts/gen_docs.py             # writes docs/api/*.md, docs/llms.txt, docs/llms-full.txt
-    python scripts/gen_docs.py --check     # exits 1 if zensical.toml's API nav and the packages disagree
+    python tools/gen_docs.py             # writes docs/api/*.md, docs/llms.txt, docs/llms-full.txt
+    python tools/gen_docs.py --check     # exits 1 if zensical.toml's API nav and the packages disagree
 
-`python builder.py -d` runs this, then `zensical build`. Zensical runs no MkDocs plugins (gen-files), so the pages that
+`python tools/builder.py -d` runs this, then `zensical build`. Zensical runs no MkDocs plugins (gen-files), so the pages that
 render each package (`::: rpps.<pkg>`, mkdocstrings) are written here, one per top-level package; a nested package gets
 its own block on its parent's page, so nothing renders twice.
 

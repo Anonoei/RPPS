@@ -1,7 +1,7 @@
 """config/ stays at the root of the repo; the built package carries a copy (rpps/config) so `pip install` has the definitions
 
 The C++ kernels (csrc/rpps_native -> rpps._native) are optional: without pybind11 or a compiler the build warns and
-rpps runs its pure Python loops. Build them in place with `python setup.py build_ext -i` (builder.py -c).
+rpps runs its pure Python loops. Build them in place with `python setup.py build_ext -i` (tools/builder.py -c).
 """
 import importlib.util
 import os

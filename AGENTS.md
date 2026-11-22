@@ -10,15 +10,15 @@ signal should be new definitions plus existing operators.
 ## Commands
 
 ```
-python builder.py -s            # pip install -e ".[dev]"
-python builder.py -c            # build the C++ kernels in place (rpps._native)
+python tools/builder.py -s      # pip install -e ".[dev]"
+python tools/builder.py -c      # build the C++ kernels in place (rpps._native)
 python -m pytest -n auto -m "not slow"                                     # what CI runs
 RPPS_NO_NATIVE=1 python -m pytest -n auto -m "not slow and not kernels"    # the Python loops
-python builder.py -d            # docs: API pages + llms files (scripts/gen_docs.py), then zensical build --strict
+python tools/builder.py -d      # docs: API pages + llms files (tools/gen_docs.py), then zensical build --strict
 python -m rpps ls [resource]    # shipped definitions; also: show, steps, rx, tx, survey, profile, solve, fmt
 ```
 
-A stale `rpps._native` warns at import; rebuild with `python builder.py -c` after touching `csrc/`.
+A stale `rpps._native` warns at import; rebuild with `python tools/builder.py -c` after touching `csrc/`.
 
 ## The model in one screen
 
@@ -54,6 +54,7 @@ Full design: the `rpps.base` docstring (model, rule, categories, contracts, grey
 | `config/<resource>/` | JSON definitions: constellation, pulse, filter, sequence, scramble, fec, interleave, crc, frame, header, table, profile; `tags.json` |
 | `csrc/rpps_native/` | C++17 kernels (pybind11); the Python loop in the calling stage is the reference |
 | `docs/` | the site: guides (`docs/guide/`), examples index, contributing, roadmap; `docs/api/` and `docs/llms*.txt` are generated |
+| `tools/` | `builder.py` (setup, kernels, tests, docs, release), `gen_docs.py` (API pages, llms files) |
 | `examples/` | one self-checking script per recommended usage; the guides embed them; `tests/unit/test_examples.py` runs them |
 | `tests/unit/` | the suite; `conftest.py` gives `rng`, `bits`, `awgn`, `shaped`, `cpfsk` |
 | `projects/` | worked receivers on real signals, each with a README |
@@ -76,7 +77,7 @@ Nothing under `src/` may import scipy (`test_numpy_only.py`).
 | Effort levels and measured gains | `rpps._effort` |
 | How to use it for a task | `docs/guide/*.md` |
 | Setup, testing markers, native kernel pitfalls, CI, releases | `docs/contributing.md` |
-| Everything at once | `docs/llms-full.txt` (after `python scripts/gen_docs.py`) |
+| Everything at once | `docs/llms-full.txt` (after `python tools/gen_docs.py`) |
 
 ## Conventions
 

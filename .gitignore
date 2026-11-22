@@ -27,7 +27,7 @@ logs/
 !.vscode/*.code-snippets
 !*.code-workspace
 
-# Built by builder.py -d (CI/CD publishes site/); generated from the code by scripts/gen_docs.py
+# Built by tools/builder.py -d (CI/CD publishes site/); generated from the code by tools/gen_docs.py
 site/
 docs/api/
 docs/llms.txt
