@@ -13,6 +13,8 @@ from ..errors import ConfigError
 class BurstRunner:
     """pre: the runner of the steps before the burst step (None when there are none), burst: the rpps.sync.Burst,
     make_post(): a new runner of the steps after it. `last` is the runner of the last burst (its controls, reports)"""
+    kinds = None # The message kinds handed out (Profile.rx(kinds=...)), None: all
+
     def __init__(self, pre, burst, make_post, name):
         self.pre, self.burst, self.make_post, self.name = pre, burst, make_post, name
         self.last = None
@@ -53,7 +55,7 @@ class BurstRunner:
         for m in self._msgs:
             out.append(m.placed(self.pre.to_input(m.sample) if self.pre is not None else m.sample, Fs, cf, t0))
         self._msgs = []
-        return sorted(out, key=lambda m: m.sample)
+        return sorted((m for m in out if self.kinds is None or m.kind in self.kinds), key=lambda m: m.sample)
 
     def __radd__(self, data):
         """`block + runner`, as a runner goes where a stage does"""

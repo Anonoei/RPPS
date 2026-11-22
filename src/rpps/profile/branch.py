@@ -130,6 +130,8 @@ class _Bus:
 
 class BranchRunner:
     """trunk: the runner of the steps before the branch step (None: none), chains: {name: BranchChain} in order"""
+    kinds = None # The message kinds handed out (Profile.rx(kinds=...)), None: all
+
     def __init__(self, trunk, chains, name, bus, order, frame=None, exit=None, owner=None):
         self.trunk, self.chains, self.name, self.bus, self.order = trunk, chains, name, bus, order
         self.exit, self.owner = exit, owner or {} # The trunk's Exit (None: no control of the trunk drives a branch)
@@ -186,7 +188,7 @@ class BranchRunner:
             for m in chain.take_messages():
                 pos = self.trunk.to_input(m.sample) if self.trunk is not None else m.sample
                 out.append(m.placed(pos, Fs, cf, t0))
-        return sorted(out, key=lambda m: m.sample)
+        return sorted((m for m in out if self.kinds is None or m.kind in self.kinds), key=lambda m: m.sample)
 
     def _frames(self, data):
         """The whole frames of what the trunk gave so far (the end of the stream: all of it)"""

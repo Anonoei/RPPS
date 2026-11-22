@@ -92,6 +92,7 @@ class Runner:
     the runner was given. profile: the profile's name, for them
     """
     HANDED = 4096 # Keys of messages handed out kept, so a re-run doesn't hand one out twice
+    kinds = None # The message kinds handed out (Profile.rx(kinds=...)), None: all
 
     def __init__(self, slots, name="", entries=None, direction="rx", profile=None):
         self.slots, self.name, self.direction = list(slots), name, direction
@@ -322,7 +323,7 @@ class Runner:
         self.messages = []
         while len(self._handed) > self.HANDED:
             self._handed.pop(next(iter(self._handed)))
-        return sorted(out, key=lambda m: m.sample)
+        return sorted((m for m in out if self.kinds is None or m.kind in self.kinds), key=lambda m: m.sample)
 
     def to_input(self, pos):
         """A position in this runner's output, in its input (the stream it was given)"""

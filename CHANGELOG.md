@@ -36,6 +36,10 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- **Only the message kinds wanted:** `profile.kinds()`, `profile.rx(kinds=...)`, `Decoder(..., kinds=...)`,
+  `ProfileInfo.kinds`, `rpps rx --kinds`: only those kinds come out, and only the steps they need run (their steps and the
+  headers that drive them): unneeded branches are not built, a chain ends at its last needed step. LTE's MIB alone
+  takes about half the time, DVB-S2's PL headers alone skip the LDPC (about 20x faster).
 - **Decoded messages:** every frame a profile receives is also an `rp.profile.Message` (kind, fields, payload, crc_ok,
   sample, time, freq, quality), from `runner.take_messages()`, placed in the stream the runner was given. Link headers,
   HDLC, the DVB-S2 PL header, the LTE and NR channels emit them; DVB-S TS packets (with PID) and CCSDS transfer frames are

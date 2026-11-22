@@ -104,6 +104,8 @@ class Header(_Frame):
         tx: payload -> frame, the header built from the fields as last controlled (`control(modcod=..., ...)`).
     Frames start where a profile says (a frame sync before it), or at the start of the stream.
     """
+    EMITS = True # Every header, taken or refused, is a message (rpps.profile.message)
+
     def __init__(self, name, constellation, phase, rotate, known, rows, n, scramble, fields, max_errors=None, cycle=None):
         super().__init__()
         self.name = name

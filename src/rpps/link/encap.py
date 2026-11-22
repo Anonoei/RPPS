@@ -57,6 +57,7 @@ class Frame(Encap):
 
     As an operator: `packet * frame` gives one frame's bits (flags, stuffing, FCS) per call; `bits / frame` the payload bits of
     the frames whose FCS checks out, however the stream is cut (an open frame waits for its closing flag in the next block)"""
+    EMITS = True # Every frame, good or not, is a message (rpps.profile.message)
 
     def _block(self, enc):
         return 8 if enc else 1

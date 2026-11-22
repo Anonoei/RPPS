@@ -170,3 +170,48 @@ class Preamble(Stage):
             return x
         n = pos - st.start + np.arange(len(x)) # Samples since the output's start: the correction's phase is continuous
         return x*np.exp(-1j*st.w*n)
+
+
+class PreambleTx(Stage):
+    """The transmit side of Preamble with `attach`: a stream's preamble put before it
+
+    template: the preamble's waveform at this point of the transmit chain (a profile makes it: Profile._template), with
+    the tail its pulses leave; advance: its samples up to that tail (its symbols times the samples a symbol). The stream
+    starts with the template, the stream's own samples from `advance` on, the tail added to them: for linear steps
+    (pulse shaping) exactly the waveform of the preamble's symbols and the stream's sent as one."""
+    CONTROLS = {}
+
+    def __init__(self, template=None, advance=0):
+        self.template, self.advance = None, 0
+        if template is not None:
+            self.set_template(template, advance)
+
+    def set_template(self, template, advance):
+        self.template, self.advance = np.asarray(template), int(advance)
+        if not 0 <= self.advance <= len(self.template):
+            raise ValueError("PreambleTx: advance is within the template")
+
+    def __str__(self):
+        return "PreambleTx"
+
+    def new_state(self, meta):
+        return SimpleNamespace(rest=None)
+
+    def step(self, x, st, meta):
+        if self.template is None:
+            raise ValueError(f"{self}: no template yet (a profile makes it)")
+        x = np.asarray(x)
+        dt = np.result_type(x.dtype, self.template.dtype)
+        if st.rest is None: # The stream's first block: the preamble before it
+            x = np.concatenate((self.template[:self.advance].astype(dt), x.astype(dt)))
+            st.rest, at = self.template[self.advance:].astype(dt), self.advance
+        else:
+            x, at = x.astype(dt), 0
+        n = min(len(st.rest), len(x) - at)
+        if n > 0:
+            x = x.copy()
+            x[at:at + n] += st.rest[:n]
+            st.rest = st.rest[n:]
+        if meta.flush and len(st.rest):
+            x, st.rest = np.concatenate((x, st.rest)), st.rest[:0]
+        return x

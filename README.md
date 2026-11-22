@@ -115,6 +115,7 @@ can change.
 | `rp.wave.demod`, `rp.wave.FMDemod`, `AMDemod`, `SSBDemod` | analog audio (FM, PM, AM, SSB), one block or a stream |
 | `rp.profile.ls`, `rp.profile.load`, `rp.profile.info`, `rp.profile.catalogue` | the shipped profiles, and what each needs (`requires`) |
 | `rp.profile.Decoder`, `rp.profile.Message`, `runner.take_messages()` | a selected signal's frames, decoded, one record each |
+| `profile.kinds()`, `profile.rx(kinds=...)`, `Decoder(..., kinds=...)` | only some message kinds, and only the steps they need |
 | `rp.source.formats` | sample formats, by pysdrlib's names |
 
 `import rpps` loads numpy and RPPS only (about 0.2 s): no scipy, matplotlib or pysdrlib until something asks for them

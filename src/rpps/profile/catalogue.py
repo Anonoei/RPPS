@@ -23,14 +23,25 @@ KEYS = ("baud", "Fs", "bw", "min_samples") # Every profile's requires has these,
 
 class ProfileInfo:
     """A profile, described: name, comment, ref, tags, params ({name: {"default", "comment"}}), requires (evaluated:
-    baud, Fs, bw, min_samples, None where they wait for a baud not given; input; from_cf as written; comment)"""
-    __slots__ = ("name", "comment", "ref", "tags", "params", "requires")
+    baud, Fs, bw, min_samples, None where they wait for a baud not given; input; from_cf as written; comment), kinds (the
+    message kinds it gives, sorted: what `Profile.rx(kinds=...)` and the Decoder take; the profile is built, with the params
+    given, when first asked)"""
+    __slots__ = ("name", "comment", "ref", "tags", "params", "requires", "_given", "_kinds")
+    FIELDS = ("name", "comment", "ref", "tags", "params", "requires", "kinds")
 
-    def __init__(self, name, comment, ref, tags, params, requires):
+    def __init__(self, name, comment, ref, tags, params, requires, given=None):
         self.name, self.comment, self.ref, self.tags, self.params, self.requires = name, comment, ref, tags, params, requires
+        self._given, self._kinds = dict(given or {}), None
+
+    @property
+    def kinds(self):
+        if self._kinds is None:
+            from .profile import load
+            self._kinds = sorted(load(self.name, **self._given).kinds())
+        return self._kinds
 
     def to_dict(self):
-        return {k: getattr(self, k) for k in self.__slots__}
+        return {k: getattr(self, k) for k in self.FIELDS}
 
     def __repr__(self):
         r = self.requires
@@ -77,7 +88,7 @@ def info(name, baud=None, **params):
     ps = {k: {"default": v.get("default") if isinstance(v, dict) else v,
               "comment": v.get("comment") if isinstance(v, dict) else None} for k, v in decl.items()}
     return ProfileInfo(name, obj.get("comment", ""), obj.get("ref"), list(obj.get("tags") or []), ps,
-                       requirements(obj.get("requires") or {}, values, baud, f"profile/{name}"))
+                       requirements(obj.get("requires") or {}, values, baud, f"profile/{name}"), params)
 
 def catalogue():
     """Every profile there is, described (with its defaults), by name"""

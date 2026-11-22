@@ -78,3 +78,13 @@ def test_rx_prints_the_messages(tmp_path, capsys):
     assert {"pbch", "pcfich", "pdcch", "pdsch"} <= kinds
     sib1 = [m for m in lines if m["kind"] == "pdsch" and m["crc_ok"]]
     assert sib1 and all(m["payload"] == np.packbits(sib).tobytes().hex() for m in sib1)
+
+def test_rx_only_the_kinds_asked_for(tmp_path, capsys):
+    import json
+    from rpps.grid import lte
+    x = lte.tx.channel(lte.tx.downlink(pci=10, ports=1, n_rb=6, frames=4), delay=700, snr_db=20)
+    x.tofile(tmp_path/"lte.cf32")
+    assert cli.main(["rx", "lte/downlink", str(tmp_path/"lte.cf32"), "--fs", "1.92e6", "--param", "n_rb=6", "--messages",
+                     "--kinds", "pbch,pcfich"]) == 0
+    kinds = {json.loads(ln)["kind"] for ln in capsys.readouterr().out.splitlines()}
+    assert kinds == {"pbch", "pcfich"}

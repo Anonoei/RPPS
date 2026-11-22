@@ -155,3 +155,122 @@ class Burst(Pipe):
         m = data.meta
         b = Data(np.ascontiguousarray(samples), flush=True, Fs=m.Fs, sps=m.sps, cf=m.cf, stream=stream, delay=m.delay)
         return [b]
+
+
+class BurstTx(Pipe):
+    """The transmit side of Burst: bursts placed on one stream of samples, each where its start puts it
+
+        btx = rp.sync.BurstTx(gap_s=1e-3)
+        btx.add(burst)                       # a Data of samples, one whole burst (its own stream, flushed)
+        btx.add(burst, at=0.004, freq=-3e6)  # at 4 ms from the stream's start, 3 MHz below its centre
+        out = btx.take()                     # the samples no later burst can reach any more; take(flush=True): the rest
+
+    One BurstTx makes one output stream (it holds it: a profile's transmit runner builds its own). Bursts come in the
+    order of their starts. A burst's start is `at` [s from the stream's first sample], else the end of the burst before
+    plus `gap_s` (the first: `gap_s` from 0). The stream ends `gap_s` after the last burst's end, as it began.
+
+    Per burst: its first and last `ramp_s` raised by a raised cosine (the power ramps of a burst transmitter; 0: switched),
+    resampled to the stream's rate `Fs` (None: the first burst's rate) by a rational polyphase filter, and moved `freq` Hz
+    from the stream's centre (None: the next of `hop`, cycled, or 0) by an oscillator running from the stream's first
+    sample (every burst on one carrier has the phase of one continuous carrier). Bursts may overlap: they add (carriers
+    of an MF-TDMA network share a slot; a burst may also start inside the one before).
+
+    `sent`: (start sample, samples, freq) of every burst added."""
+    CATEGORY = Category.SYNC
+
+    def __init__(self, Fs=None, gap_s=0.0, ramp_s=0.0, hop=None):
+        if gap_s < 0 or ramp_s < 0:
+            raise ValueError("BurstTx: gap_s and ramp_s are not negative")
+        if Fs is not None and Fs <= 0:
+            raise ValueError("BurstTx: Fs is positive")
+        self.Fs, self.gap_s, self.ramp_s = Fs, float(gap_s), float(ramp_s)
+        self.hop = None if hop is None else [float(f) for f in hop]
+        if self.hop is not None and not self.hop:
+            raise ValueError("BurstTx: hop is a list of offsets [Hz], not empty")
+        self.reset()
+
+    def __str__(self):
+        return f"BurstTx(gap {self.gap_s:g} s)"
+
+    def reset(self):
+        """Start a new stream"""
+        self._Fs, self._cf, self._sps = self.Fs, None, None
+        self._buf, self._base = np.zeros(0, np.complex128), 0 # Samples not handed out yet, from absolute position _base
+        self._start, self._end = None, 0 # The last burst's start and end
+        self._stream = None
+        self.sent = []
+
+    def takes(self, encode=True):
+        return {Rep.SAMPLES}
+
+    def add(self, burst, at=None, freq=None):
+        """Place one whole burst (a Data of samples). Its samples come out of `take`"""
+        x = np.asarray(burst.data).astype(np.complex128)
+        Fs_in = burst.meta.Fs
+        if self._Fs is None:
+            self._Fs = Fs_in
+        if self._cf is None:
+            self._cf, self._sps = burst.meta.cf, burst.meta.sps*self._Fs/Fs_in
+        Fs = self._Fs
+        if freq is None:
+            freq = self.hop[len(self.sent) % len(self.hop)] if self.hop else 0.0
+        if abs(freq) >= Fs/2:
+            raise ValueError(f"BurstTx: {freq:g} Hz is outside the stream ({Fs:g} Hz)")
+        x = self._resample(self._ramp(x, Fs_in), Fs_in, Fs)
+        start = int(round(at*Fs)) if at is not None else (self._end if self.sent else 0) + int(round(self.gap_s*Fs))
+        if at is not None and at < 0:
+            raise ValueError("BurstTx: at is from the stream's start, not before it")
+        if self._start is not None and start < self._start:
+            raise ValueError(f"BurstTx: bursts come in the order of their starts ({start} is before {self._start})")
+        if freq:
+            x = x*np.exp(2j*np.pi*freq/Fs*(start + np.arange(len(x))))
+        need = start + len(x) - self._base
+        if need > len(self._buf):
+            self._buf = np.concatenate((self._buf, np.zeros(need - len(self._buf), np.complex128)))
+        self._buf[start - self._base:need] += x
+        self._start, self._end = start, start + len(x)
+        self.sent.append((start, len(x), float(freq)))
+
+    def take(self, flush=False):
+        """The samples up to the last burst's start (no burst added later reaches before it), as a block of the output
+        stream; flush: all of them and the gap after the last burst, ending the stream"""
+        from ..base.data import Data
+        if self._Fs is None:
+            raise ValueError("BurstTx: no burst added yet")
+        if flush:
+            end = max(self._end + int(round(self.gap_s*self._Fs)), self._base)
+            if end - self._base > len(self._buf):
+                self._buf = np.concatenate((self._buf, np.zeros(end - self._base - len(self._buf), np.complex128)))
+        else:
+            end = self._start if self._start is not None else self._base
+        n = end - self._base
+        out, self._buf, self._base = self._buf[:n], self._buf[n:], end
+        d = Data(out.astype(np.complex64), flush=flush, Fs=self._Fs, sps=self._sps, cf=self._cf, stream=self._stream)
+        self._stream = d.stream
+        return d
+
+    def _ramp(self, x, Fs):
+        n = min(int(round(self.ramp_s*Fs)), len(x)//2)
+        if n <= 0:
+            return x
+        w = 0.5 - 0.5*np.cos(np.pi*(np.arange(n) + 0.5)/n)
+        x = x.copy()
+        x[:n] *= w
+        x[len(x) - n:] *= w[::-1]
+        return x
+
+    @staticmethod
+    def _resample(x, Fs_in, Fs):
+        """x at Fs: its whole response (the filter's tail too), its first sample where x's was"""
+        if Fs == Fs_in:
+            return x
+        from fractions import Fraction
+        r = Fraction(Fs/Fs_in).limit_denominator(1000)
+        if abs(float(r) - Fs/Fs_in) > 1e-9*Fs/Fs_in:
+            raise ValueError(f"BurstTx: {Fs:g} Hz is not a ratio of small integers of the bursts' {Fs_in:g} Hz")
+        from ..signal.sample.re import Polyphase
+        f = Polyphase(r.numerator, r.denominator)
+        L = len(f.taps)
+        y = f.run(np.concatenate((x, np.zeros(-(-L//f.up) + 1, x.dtype))))
+        lag = int(round((L - 1)/2/f.down)) # The filter's delay, in output samples
+        return y[lag:]
