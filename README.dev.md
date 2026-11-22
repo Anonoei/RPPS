@@ -180,7 +180,7 @@ SYMBOLS; `BitStage` takes channel or data bits and keeps their form.
 |---|---|
 | `source` | files and their formats, WAV, SigMF, sockets, radios through pysdrlib (imported only when used); sinks |
 | `signal` | `filters` (FIR, IIR, windows, pulses, fractional delay, polyphase channelizer), `sample` (resampling), `channelize`, `DCBlock`, `Deemphasis`, `Conjugate`, `channel` (the simulated medium) |
-| `sync` | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `AcquireFEC`, `acquire_code`, `Squelch`, `PeakAGC`, `Burst` (splits a stream into bursts), `Preamble`, `ToneLock`. Second class: `time.MM` (Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `CMA` |
+| `sync` | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `AcquireFEC`, `acquire_code`, `Squelch`, `PeakAGC`, `Burst` (splits a stream into bursts), `BurstTx` (places them), `Preamble`, `PreambleTx`, `ToneLock`. Second class: `time.MM` (Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `CMA` |
 | `wave` | `Shape`/`Matched`, `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod` |
 | `symbol` | `Constellation` (PSK, QAM, APSK, ASK), `Differential`, `Spread`/`Despread`, `Carriers`, `Header`, `Pilots`, `PhaseScramble` |
 | `code` | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), `Line`, `Marker`, `Uncoded` |
@@ -286,6 +286,13 @@ profile makes itself from a `sequence` word (or `word` + `bits`, after `lead` bi
 first that maps symbols to bits back to the preamble's input. On a real stream (an FSK discriminator's output) it matches by
 the correlation coefficient and `correct` takes off the level a carrier offset leaves; `{"sync": "timing", "method":
 "known", "anchor": <its name>}` places the symbols on what it found. `ble/adv` is built so.
+
+Transmitting, the burst step is the mirror (rpps.profile.burst.BurstTxRunner, rpps.sync.BurstTx): a call sends one burst
+through steps built anew for it, and the step places it on one output stream: `gap_s` after the one before or at `at=`,
+with `ramp_s` ramps, `freq=` from the centre (or the step's `hop`, cycled) at the stream's rate `Fs`. Bursts on different
+carriers may overlap (MF-TDMA). A call gives what no later burst can reach any more: the samples up to its start.
+`"attach": true` on a preamble step sends its waveform before each burst (rpps.sync.PreambleTx), for a preamble no later
+step sends.
 
 **Branches:** a last step `{"branch": "channels", "order": [...], "frame": N, "branches": {name: [steps]}}` fans the
 chain out (rpps.profile.branch): every block of the trunk goes through each branch in `order`, each a chain of its own in a
@@ -602,7 +609,8 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
   transport block's TBS_LBRM, HARQ combining across redundancy versions; LDPC tables for CCSDS AR4JA / C2, DVB-S2X, DVB-T2,
   ATSC 3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; Fletcher and Internet checksums; fountain codes.
 - **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
-  spread spectrum, space-time codes; a burst step in a parallel region; the transmit side of branches (and of `grid`:
+  spread spectrum, space-time codes; a burst step in a parallel region; a channelized burst step (receiving MF-TDMA or a hopping carrier); a preamble `offset`
+  with known timing `anchor` (the grid lands off); the transmit side of branches (and of `grid`:
   `grid.lte.tx`, `grid.nr.tx` are test transmitters); NR at 30 kHz and above, NR VRB-to-PRB interleaving, several
   code blocks a transport block, multiple antenna ports; LTE beyond SIB1 (unicast DCI formats, multiple code blocks, TDD, extended prefix); `lte/downlink` in
   real time at 15.36 MS/s (about 1.1x slower; `nr/downlink` keeps up at 7.68 MS/s); a first-class carrier estimator for

@@ -114,6 +114,8 @@ class Profile:
                 d = d + op if how == STAGE else d * op if how == ENCODE else d / op
         x = np.asarray(d.data)
         built[i].obj.set_template(x, int(round(d.meta.delay*d.meta.Fs)))
+        for _, op in built[i].tx: # (attach: the same waveform sent, its symbols' samples before the pulses' tail)
+            op.set_template(x, int(round(len(bits)*(d.meta.sps or 1))))
 
     @staticmethod
     def _fuse(steps):
@@ -303,15 +305,36 @@ class Profile:
         return BranchRunner(trunk, chains, f"{self.name} rx", bus, list(nested), steps[-1].spec.get("frame"), exit_op, owner)
 
     def tx(self):
-        """Transmit runner: the transform steps inverted, in reverse order (sync and signal steps have no transmit side).
-        Call it as `runner(block, fields=...)` to set the fields of the frames that start in the block (see Runner)"""
+        """Transmit runner: the transform steps inverted, in reverse order (most sync and signal steps have no transmit side).
+        Call it as `runner(block, fields=...)` to set the fields of the frames that start in the block (see Runner).
+        A profile with a burst step gives a burst transmitter (rpps.profile.burst.BurstTxRunner): a call a burst"""
         built = self._build()
         if built[-1].category == "branch":
             raise ConfigError(f"profile {self.name}: transmitting through branches is not built (receive only)")
+        k = [i for i, st in enumerate(built) if st.category == "sync" and st.kind == "burst"]
+        if k:
+            return self._burst_tx(built, k)
+        return Runner(self._tx_slots(built), f"{self.name} tx", self.controls, "tx", profile=self.name)
+
+    @staticmethod
+    def _tx_slots(steps):
         slots = []
-        for st in reversed(built):
+        for st in reversed(steps):
             slots += [Slot(how, op, st, len(slots) + i) for i, (how, op) in enumerate(st.tx)]
-        return Runner(slots, f"{self.name} tx", self.controls, "tx", profile=self.name)
+        return slots
+
+    def _burst_tx(self, built, k):
+        """The transmit side of a profile with a burst step: the steps after it built anew for every burst, the bursts
+        placed on one stream by the step's rpps.sync.BurstTx, the steps before it on that stream"""
+        from .burst import BurstTxRunner
+        if len(k) > 1:
+            raise ConfigError(f"profile {self.name}: one burst step")
+        k = k[0]
+        pre = Runner(self._tx_slots(built[:k]), f"{self.name} tx", self.controls, "tx", profile=self.name) if k else None
+        def make_post():
+            post = self._build()[k + 1:]
+            return Runner(self._tx_slots(post), f"{self.name} tx (burst)", self.controls, "tx", profile=self.name)
+        return BurstTxRunner(make_post, built[k].tx[0][1], pre, f"{self.name} tx")
 
     def __repr__(self):
         return f"<Profile {self.name}: " + ", ".join(f"{s.category}:{s.kind}" for s in self.steps) + ">"

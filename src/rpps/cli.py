@@ -151,9 +151,10 @@ def _params(pairs):
 def cmd_tx(args):
     """Transmit with a profile: data (a file's bytes, or random) through its transforms to samples in a file
 
-    --packet N splits the data into packets of N bytes, each sent as a burst of its own (its pulses complete), with --gap
-    zero samples between them; otherwise it is one stream. --field NAME=VALUE sets the fields of every frame's header
-    (the profile's schedule or defaults otherwise)."""
+    --packet N splits the data into packets of N bytes, each sent as a burst of its own (its pulses complete), --gap
+    seconds apart; otherwise it is one stream. A profile with a burst step places the bursts itself (rpps.sync.BurstTx):
+    --gap overrides its gap_s, --hop its carrier offsets, --rate-out its output rate (MF-TDMA, hopping). --field
+    NAME=VALUE sets the fields of every frame's header (the profile's schedule or defaults otherwise)."""
     import numpy as np
     import rpps as rp
     p = rp.profile.load(args.profile, **_params(args.param))
@@ -165,14 +166,33 @@ def cmd_tx(args):
     size = 8*args.packet if args.packet else len(bits)
     fields = _params(args.field) or None
     tx, stream, n_out, Fs = p.tx(), None, 0, None
+    from rpps.profile.burst import BurstTxRunner
+    bursts = isinstance(tx, BurstTxRunner)
+    if bursts:
+        bt = tx.burst_tx
+        if args.gap is not None:
+            bt.gap_s = args.gap
+        if args.hop:
+            bt.hop = [float(f) for f in args.hop.split(",")]
+        if args.rate_out:
+            bt.Fs = args.rate_out
+        bt.reset()
+    elif args.hop or args.rate_out:
+        raise SystemExit(f"{args.profile} has no burst step: --hop and --rate-out place bursts")
+    starts = list(range(0, len(bits), max(size, 1)))
     with rp.source.Sink(args.fmt, args.out) as sink:
-        for a in range(0, len(bits), max(size, 1)):
-            d = rp.Data(bits[a:a + size], Fs=args.rate, sps=1, stream=stream, flush=True)
-            stream = d.stream
-            o = tx(d, fields=fields)
-            x = np.asarray(o.data, dtype=np.complex64)
-            if args.packet and args.gap:
-                x = np.concatenate((x, np.zeros(args.gap, np.complex64)))
+        for k, a in enumerate(starts):
+            last = k == len(starts) - 1
+            if bursts:
+                o = tx(rp.Data(bits[a:a + size], Fs=args.rate, sps=1), fields=fields, flush=last)
+                x = np.asarray(o.data, dtype=np.complex64)
+            else:
+                d = rp.Data(bits[a:a + size], Fs=args.rate, sps=1, stream=stream, flush=True)
+                stream = d.stream
+                o = tx(d, fields=fields)
+                x = np.asarray(o.data, dtype=np.complex64)
+                if args.packet and args.gap:
+                    x = np.concatenate((x, np.zeros(int(round(args.gap*o.Fs)), np.complex64)))
             sink.write(x)
             n_out, Fs = n_out + len(x), o.Fs
     print(f"{args.out}: {n_out} samples at {Fs:g} Hz ({len(data)} bytes through {args.profile})")
@@ -376,7 +396,9 @@ def main(argv=None):
     src.add_argument("--random", type=int, help="the data: this many random bytes")
     p_tx.add_argument("--seed", type=int, default=0, help="seed of --random")
     p_tx.add_argument("--packet", type=int, default=0, help="bytes a packet, each sent as a burst of its own")
-    p_tx.add_argument("--gap", type=int, default=0, help="zero samples after each packet")
+    p_tx.add_argument("--gap", type=float, default=None, help="seconds between packets (a burst profile: its gap_s otherwise)")
+    p_tx.add_argument("--hop", default="", metavar="F1,F2,...", help="a burst profile: carrier offsets [Hz] cycled burst by burst")
+    p_tx.add_argument("--rate-out", type=float, default=None, help="a burst profile: output sample rate (the bursts' own otherwise)")
     p_tx.add_argument("--param", action="append", default=[], metavar="NAME=VALUE", help="a profile parameter (repeatable)")
     p_tx.add_argument("--field", action="append", default=[], metavar="NAME=VALUE", help="a header field of every frame (repeatable)")
     p_tx.set_defaults(fn=cmd_tx)

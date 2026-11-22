@@ -334,28 +334,41 @@ def _sync_one(kind):
 @register_step("sync", "burst")
 def _burst(kind, spec, rep, ctx):
     """Per-burst demodulation (rpps.profile.burst): the stream cut into its bursts, the steps after this one built anew for
-    each. {"sync": "burst", "factor": 6, "win": 8, "min_s": 60e-6, "max_s": 3e-3} (rpps.sync.Burst's settings)"""
+    each. {"sync": "burst", "factor": 6, "win": 8, "min_s": 60e-6, "max_s": 3e-3} (rpps.sync.Burst's settings).
+    Transmitting (rpps.profile.burst.BurstTxRunner, rpps.sync.BurstTx): "gap_s" between bursts, "ramp_s" power ramps,
+    "Fs" the output rate (null: the bursts' own), "hop" carrier offsets [Hz] cycled burst by burst"""
     from .. import sync
     if rep is not None and rep != Rep.SAMPLES:
         raise ConfigError(f"sync burst: cuts samples, not {rep}")
     op = sync.Burst(spec.get("factor", 6.0), spec.get("win", 100), spec.get("min_s", 0.0), spec.get("max_s"),
                     spec.get("percentile", 20), spec.get("history", 1 << 17), spec.get("settle", 512), spec.get("quiet", 3.0))
-    return [(STAGE, op)], [], Rep.SAMPLES
+    hop = spec.get("hop")
+    if hop is not None and (not isinstance(hop, list) or not hop):
+        raise ConfigError("sync burst: hop is a list of carrier offsets [Hz]")
+    try:
+        tx = sync.BurstTx(spec.get("Fs"), spec.get("gap_s", 0.0), spec.get("ramp_s", 0.0), hop)
+    except ValueError as e:
+        raise ConfigError(f"sync burst: {e}") from None
+    return [(STAGE, op)], [(STAGE, tx)], Rep.SAMPLES
 
 @register_step("sync", "preamble")
 def _preamble(kind, spec, rep, ctx):
     """A burst's preamble (rpps.sync.Preamble): by its repetition ({"repeat": 16, "window": 128}), or by its waveform, made
     from bits (a `sequence` word, or `word` + `bits`, after `lead` bits) through the profile's own transmit side, from the
     steps after this one down to the symbol mapping (the profile builds it: rpps.profile.Profile._templates). Timing
-    {"method": "known", "anchor": <its name>} then places the symbols on what it found"""
+    {"method": "known", "anchor": <its name>} then places the symbols on what it found.
+    "attach": true transmits it (rpps.sync.PreambleTx) before every stream (burst): for a preamble no later step sends
+    (a marker step sends a word of its own)"""
     from .. import sync
     m = dict(spec)
     named = "sequence" in m or "word" in m
     if not named and "repeat" not in m:
         raise ConfigError("sync preamble: needs a `sequence` (or `word` and `bits`) or a `repeat`")
+    if m.get("attach") and not named:
+        raise ConfigError("sync preamble: attach sends its waveform, made from a `sequence` or `word` (a repeat alone has none)")
     op = sync.Preamble(None, m.get("repeat"), m.get("window"), m.get("search"), m.get("gate", 0.5),
                        m.get("offset", 0), m.get("correct", False), m.get("name", "preamble"), pending=named)
-    return [(STAGE, op)], [], rep
+    return [(STAGE, op)], [(STAGE, sync.PreambleTx())] if m.get("attach") else [], rep
 
 @_sync_one("align")
 def _align(m, ctx):

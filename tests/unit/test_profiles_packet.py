@@ -49,20 +49,15 @@ def ble_signal():
     rng = np.random.default_rng(11)
     p = rp.profile.load("ble/adv")
     pdus = [rng.integers(0, 2, 8*n).astype(bool) for n in (6, 20, 37)]
-    tx, s, waves = p.tx(), None, []
-    for pdu in pdus:
-        d = rp.Data(pdu, Fs=1e6, sps=1, stream=s, flush=True) # each packet is a burst: its last pulses go out whole
-        s = d.stream
-        o = tx(d, fields={"type": 2, "txadd": 1})
-        waves += [o.data, np.zeros(4000, np.complex64)] # 1 ms apart (advertising events are milliseconds apart)
-    x = np.concatenate([np.zeros(4*9, np.complex64)] + waves)
-    return p, x, o, pdus
+    tx = p.tx() # A burst a call, 1 ms apart (the profile's gap_s: advertising events are milliseconds apart)
+    o = tx([rp.Data(pdu, Fs=1e6, sps=1) for pdu in pdus], fields={"type": 2, "txadd": 1}, flush=True)
+    return p, np.asarray(o.data), o, pdus
 
 def test_ble_builds_the_pairs(ble_signal):
     p = ble_signal[0]
     assert names(p.rx()) == ["+Burst", "+FMDemod", "+Matched", "+Preamble", "+Known", "/Constellation", "+Delimiter", "/Marker",
                              "/additive/ble_whiten", "/Header"]
-    assert names(p.tx()) == ["*Header", "*additive/ble_whiten", "*Marker", "*Constellation", "+Shape", "+FM"]
+    assert names(p.tx()) == ["*Header", "*additive/ble_whiten", "*Marker", "*Constellation", "+Shape", "+FM", "+BurstTx"]
 
 def test_ble_packets_round_trip(ble_signal):
     p, x, o, pdus = ble_signal

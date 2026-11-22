@@ -64,15 +64,9 @@ def ble():
     rng = np.random.default_rng(11)
     p = rp.profile.load("ble/adv")
     pdus = [rng.integers(0, 2, 8*n).astype(bool) for n in (6, 20, 37)]
-    tx, s, waves, starts, at = p.tx(), None, [], [], 36
-    for pdu in pdus:
-        d = rp.Data(pdu, Fs=1e6, sps=1, stream=s, flush=True)
-        s = d.stream
-        o = tx(d, fields={"type": 2, "txadd": 1})
-        starts.append(at)
-        waves += [o.data, np.zeros(4000, np.complex64)]
-        at += len(o.data) + 4000
-    return p, np.concatenate([np.zeros(36, np.complex64)] + waves), pdus, starts
+    tx = p.tx() # A burst each, the profile's gap_s apart; `sent` says where each starts
+    o = tx([rp.Data(pdu, Fs=1e6, sps=1) for pdu in pdus], fields={"type": 2, "txadd": 1}, flush=True)
+    return p, np.asarray(o.data), pdus, [start for start, _, _ in tx.sent]
 
 def test_ble_packets_are_messages_placed_in_the_capture(ble):
     """A burst profile: each burst runs in a stream of its own; its messages are placed back in the capture's"""

@@ -26,14 +26,13 @@ def main(snr_db=15.0, cfo=20e3):
     p = rp.profile.load("ble/adv", channel=38)
     print(p, p.params)
 
-    # Transmit three advertising PDUs, each a burst of its own (flush=True: its last pulses go out whole), 1 ms apart
+    # Transmit three advertising PDUs: a call a burst (its burst step places them, the profile's gap_s apart: 1 ms; a
+    # call gives the samples up to its burst's start, flush=True the rest)
     pdus = [bytes(rng.integers(0, 256, n).astype(np.uint8)) for n in (6, 20, 37)]
-    tx, stream, waves = p.tx(), None, [np.zeros(36, np.complex64)]
-    for pdu in pdus:
-        d = rp.Data(pdu, Fs=1e6, sps=1, stream=stream, flush=True)
-        stream = d.stream
-        wave = tx(d, fields={"type": 2, "txadd": 1}) # header fields; the length field is worked out
-        waves += [wave.data, np.zeros(4000, np.complex64)]
+    tx = p.tx()
+    waves = [tx(rp.Data(pdu, Fs=1e6, sps=1), fields={"type": 2, "txadd": 1}).data for pdu in pdus] # the length is worked out
+    wave = tx.flush()
+    waves.append(wave.data)
     air = (rp.Data(np.concatenate(waves), Fs=wave.Fs)
            + rp.signal.channel.CFO(cfo) + rp.signal.channel.AWGN(snr_db=snr_db, seed=1))
     print(f"transmitted {len(pdus)} packets: {len(air)} samples at {wave.Fs/1e6:g} MS/s, {wave.sps} a bit")
