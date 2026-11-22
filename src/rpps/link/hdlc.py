@@ -45,6 +45,11 @@ class hdlc(_code):
 
     def deframe(self, bits):
         """Frames as (payload bytes, fcs ok) in the bit stream, and the number of aborted frames"""
+        frames, aborts = self.frames_at(bits)
+        return [(p, ok) for _, p, ok in frames], aborts
+
+    def frames_at(self, bits):
+        """Frames as (index of the opening flag in `bits`, payload bytes, fcs ok), and the number of aborted frames"""
         b = np.asarray(bits, dtype=np.uint8)
         if self.nrzi:
             b = np.concatenate(([0], (b[1:] == b[:-1]).astype(np.uint8)))
@@ -76,7 +81,7 @@ class hdlc(_code):
                 continue
             n_fcs = self.fcs.width // 8
             ok = self.fcs.to_bytes(self.fcs.compute(raw[:-n_fcs])) == raw[-n_fcs:]
-            frames.append((raw[:-n_fcs], ok))
+            frames.append((int(s), raw[:-n_fcs], ok))
         return frames, aborts
 
     def _decode(self, bits):
@@ -105,10 +110,14 @@ class hdlc(_code):
             return max(0, len(b) - (n - 1) - (1 if self.nrzi else 0))
         return max(0, last - (1 if self.nrzi else 0)) # (NRZI: the bit before the flag is its reference)
 
-    def decode_stream(self, bits, held):
-        """Decode `held` (what the last call kept) and `bits` together: (data bits of the good frames, what to hold)"""
+    def decode_stream(self, bits, held, frames=None):
+        """Decode `held` (what the last call kept) and `bits` together: (data bits of the good frames, what to hold).
+        frames: a list to append every frame found to, as `frames_at` gives them (index in held + bits)"""
         buf = np.concatenate((np.asarray(held, dtype=np.uint8), np.asarray(bits, dtype=np.uint8)))
         used = self.consumed(buf)
-        out = self.decode(buf[:used + len(self.flag_bits) + (1 if self.nrzi else 0)]) if used else np.zeros(0, bool)
+        part = buf[:used + len(self.flag_bits) + (1 if self.nrzi else 0)]
+        out = self.decode(part) if used else np.zeros(0, bool)
+        if frames is not None and used:
+            frames += self.frames_at(part)[0]
         # Frames between the flags before `used` are out; the flag at `used` opens the next one (decode found no frame after it)
         return out, buf[used:]

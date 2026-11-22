@@ -13,6 +13,13 @@
       "comment": "transmit: the PSDU rate in 100 kb/s, 10 or 20, unless the caller gives one per packet"
     }
   },
+  "requires": {
+    "baud": "11e6",
+    "Fs": "baud*sps",
+    "bw": "22e6",
+    "min_samples": "Fs*400e-6",
+    "comment": "chips at 11 Mchip/s"
+  },
   "steps": [
     {
       "wave": "shape",

@@ -13,6 +13,14 @@
       "comment": "where the tones are centred in the input [Hz]: 1700 for audio, 0 for complex baseband"
     }
   },
+  "requires": {
+    "input": "audio",
+    "baud": "1200",
+    "Fs": "baud*sps",
+    "bw": "12.5e3",
+    "min_samples": "Fs*0.5",
+    "comment": "the FM channel's audio (12.5 kHz narrowband FM): a Decoder demodulates the channel first"
+  },
   "defaults": {
     "timing": {
       "method": "gardner",

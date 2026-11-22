@@ -13,6 +13,13 @@
       "comment": "resource blocks: 6, 15, 25, 50, 75, 100 at 1.92, 3.84, 7.68, 15.36, 23.04, 30.72 MS/s"
     }
   },
+  "requires": {
+    "baud": "15e3",
+    "Fs": "1.92e6 if n_rb == 6 else 3.84e6 if n_rb == 15 else 7.68e6 if n_rb == 25 else 15.36e6 if n_rb == 50 else 23.04e6 if n_rb == 75 else 30.72e6",
+    "bw": "180e3*n_rb",
+    "min_samples": "Fs*0.08",
+    "comment": "baud: the subcarrier spacing; the MIB every 40 ms, SIB1 every 20 ms after it"
+  },
   "steps": [
     {
       "grid": "lte_cell",
@@ -34,30 +41,61 @@
         "expr": "8 + 4200*n_rb"
       },
       "branches": {
-        "pbch": [{"grid": "lte_pbch", "id": "pbch"}],
-        "pcfich": [{"grid": "lte_pcfich", "id": "pcfich"}],
-        "pdcch": [{"grid": "lte_pdcch", "id": "pdcch", "rntis": [65535]}],
-        "pdsch": [{"grid": "lte_pdsch", "id": "pdsch"}]
+        "pbch": [
+          {"grid": "lte_pbch", "id": "pbch"}
+        ],
+        "pcfich": [
+          {"grid": "lte_pcfich", "id": "pcfich"}
+        ],
+        "pdcch": [
+          {
+            "grid": "lte_pdcch",
+            "id": "pdcch",
+            "rntis": [65535]
+          }
+        ],
+        "pdsch": [
+          {"grid": "lte_pdsch", "id": "pdsch"}
+        ]
       }
     }
   ],
   "controls": {
     "pbch": {
       "drive": {
-        "pcfich": {"ports": "ports"},
-        "pdcch": {"ports": "ports", "phich_ng": "phich_ng"},
-        "pdsch": {"ports": "ports"}
+        "pcfich": {
+          "ports": "ports"
+        },
+        "pdcch": {
+          "ports": "ports",
+          "phich_ng": "phich_ng"
+        },
+        "pdsch": {
+          "ports": "ports"
+        }
       }
     },
     "pcfich": {
       "drive": {
-        "pdcch": {"cfi": "cfi"},
-        "pdsch": {"cfi": "cfi"}
+        "pdcch": {
+          "cfi": "cfi"
+        },
+        "pdsch": {
+          "cfi": "cfi"
+        }
       }
     },
     "pdcch": {
       "drive": {
-        "pdsch": {"rnti": "rnti", "riv": "riv", "mcs": "mcs", "rv": "rv", "tpc": "tpc", "distributed": "distributed", "flag": "flag"}
+        "pdsch": {
+          "rnti": "rnti",
+          "riv": "riv",
+          "mcs": "mcs",
+          "rv": "rv",
+          "tpc": "tpc",
+          "distributed": "distributed",
+          "flag": "flag"
+        }
       }
     }
   }
