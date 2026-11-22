@@ -210,10 +210,9 @@ class PDCCH(_Channel):
     def cces(self, head, G, H):
         """(N_CCE, 72) soft bits of the control region: REGs equalized, the shift and interleaver undone, descrambled"""
         pci, n_rb, sf = head["pci"], head["n_rb"], head["sf"]
-        regs = phy.control_regs(pci, n_rb, phy.control_symbols(self.cfi, n_rb), phy.phich_groups(self.phich_ng, n_rb),
-                                int(self.ports))
-        M = len(regs)
-        k, l = phy._res(regs, pci, int(self.ports))
+        key = (pci, n_rb, phy.control_symbols(self.cfi, n_rb), phy.phich_groups(self.phich_ng, n_rb), int(self.ports))
+        M = len(phy.control_regs(*key))
+        k, l = phy.control_res(*key)
         wbar = phy.soft_bits(phy.undo_diversity(G, H, k, l, int(self.ports))).reshape(M, 8)
         w = wbar[(np.arange(M) - pci) % M] # Undo the cyclic shift by the cell id
         z = np.zeros_like(w)

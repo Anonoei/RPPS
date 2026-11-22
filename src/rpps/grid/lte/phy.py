@@ -56,6 +56,16 @@ def grid(x, nfft, n_rb, early=None):
     f = np.where(k < 6*n_rb, k - 6*n_rb, k - 6*n_rb + 1)
     return W[:, sc_bin(k, nfft, n_rb)]*np.exp(2j*np.pi*f*early/nfft)[None, :]
 
+def ramp(n, start, step):
+    """e^(-j 2 pi (start + step k)) for k = 0..n-1 (cycles): a derotation, complex64. Built from two short tables and their
+    outer product (k = 128 a + b), not n exponentials: the phase is reduced to a cycle in float64 first, so it stays exact
+    over a stream of any length"""
+    b = np.arange(128)
+    a = np.arange(-(-n//128))
+    lo = np.exp(-2j*np.pi*((step*b) % 1.0))
+    hi = np.exp(-2j*np.pi*((start + step*128*a) % 1.0))
+    return (hi[:, None]*lo[None, :]).reshape(-1)[:n].astype(np.complex64)
+
 # ---- sequences (7.2, 6.10.1)
 
 @functools.lru_cache(maxsize=4096)
@@ -103,26 +113,32 @@ def crs_mask(pci, n_rb, ports):
 
 def channel(G, pci, n_rb, sf, ports=4):
     """H (4, 14, 12 N_RB): each port's channel on every resource element of subframe sf's grid G. Least squares at the
-    reference signals, linear in frequency between them, and a straight line in time through the port's symbols of the
-    subframe (it barely moves in 1 ms). Ports past `ports` are zeros"""
+    reference signals, linear in frequency between them (constant past the edges), and a straight line in time through
+    the port's symbols of the subframe (it barely moves in 1 ms). Ports past `ports` are zeros. Every port and symbol at
+    once: a port's reference signals are a comb of step 6, so each subcarrier's two neighbours are found by arithmetic"""
     nsc = 12*n_rb
     ks = np.arange(nsc)
     H = np.zeros((4, 14, nsc), np.complex64)
     tsym = np.arange(14, dtype=float)
+    rows = [(p, slot, l) for p in range(ports) for slot in (0, 1) for l in CRS_SYMBOLS[p]]
+    if not rows:
+        return H
+    v = np.array([(crs_shift(p, 2*sf + slot, l) + pci) % 6 for p, slot, l in rows])
+    sym = np.array([slot*7 + l for _, slot, l in rows])
+    kk = 6*np.arange(2*n_rb)[None, :] + v[:, None] # (rows, 2 N_RB)
+    ref = np.array([crs_values(pci, 2*sf + slot, l, n_rb) for p, slot, l in rows])
+    h = G[sym[:, None], kk]/ref # Least squares at each reference signal
+    t = np.clip((ks[None, :] - v[:, None])/6.0, 0, 2*n_rb - 1) # Where each subcarrier falls on its row's comb
+    i0 = np.minimum(np.floor(t).astype(np.int64), 2*n_rb - 2)
+    a = t - i0
+    r = np.arange(len(rows))[:, None]
+    hs = h[r, i0]*(1 - a) + h[r, i0 + 1]*a # (rows, nsc)
     for p in range(ports):
-        ts, hs = [], []
-        for slot in (0, 1):
-            ns = 2*sf + slot
-            for l in CRS_SYMBOLS[p]:
-                sym = slot*7 + l
-                kk = 6*np.arange(2*n_rb) + (crs_shift(p, ns, l) + pci) % 6
-                h = G[sym, kk]/crs_values(pci, ns, l, n_rb)
-                ts.append(sym)
-                hs.append(np.interp(ks, kk, h.real) + 1j*np.interp(ks, kk, h.imag))
-        t, Hs = np.array(ts, float), np.array(hs)
-        tm = t.mean()
-        slope = np.sum((t - tm)[:, None]*(Hs - Hs.mean(0)), axis=0)/np.sum((t - tm)**2)
-        H[p] = Hs.mean(0)[None, :] + slope[None, :]*(tsym - tm)[:, None]
+        sel = np.array([q == p for q, _, _ in rows])
+        t_p, H_p = sym[sel].astype(float), hs[sel]
+        tm = t_p.mean()
+        slope = np.sum((t_p - tm)[:, None]*(H_p - H_p.mean(0)), axis=0)/np.sum((t_p - tm)**2)
+        H[p] = H_p.mean(0)[None, :] + slope[None, :]*(tsym - tm)[:, None]
     return H
 
 # ---- transmit diversity (6.3.4.3), soft bits (7.1.2)
@@ -231,6 +247,12 @@ def control_symbols(cfi, n_rb):
 def phich_groups(ng, n_rb):
     return int(np.ceil(ng*n_rb/8))
 
+@functools.lru_cache(maxsize=256)
+def control_res(pci, n_rb, symbols, phich_groups_, ports):
+    """(k, l) of the PDCCH REGs' resource elements in order (control_regs, each REG's four)"""
+    return _res(control_regs(pci, n_rb, symbols, phich_groups_, ports), pci, ports)
+
+@functools.lru_cache(maxsize=256)
 def subblock_perm(n):
     """The 32-column sub-block interleaver's read-out order of n items (36.212 5.1.4.2.1, dummies left out)"""
     from ... import code

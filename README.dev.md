@@ -474,7 +474,8 @@ Other decoding behaviour worth knowing:
 ## Native kernels
 
 `rpps._native` (C++17, pybind11, `csrc/rpps_native/*.cpp`) holds the per-sample loops and decoders (AGC, Costas, timing,
-equalizers, IIR, Viterbi, BCJR, LDPC, RS, BCH, demapping, resampling, FIR decimation, carrier and frame sync) and the blind
+equalizers, IIR, Viterbi, BCJR, LDPC, polar list decoding, RS, BCH, demapping, resampling, FIR decimation, carrier and
+frame sync) and the blind
 tools' slow loops (`analysis.cpp`). Without a compiler the build warns and RPPS runs its Python loops.
 
 **The Python loop is the reference.** Every kernel's Python version stays in the stage that calls it, and tests compare the
@@ -572,8 +573,8 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
 - **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
   spread spectrum, space-time codes; a burst step in a parallel region; the transmit side of branches (and of `grid`:
   `grid.lte.tx`, `grid.nr.tx` are test transmitters); NR at 30 kHz and above, NR VRB-to-PRB interleaving, several
-  code blocks a transport block, multiple antenna ports; LTE beyond SIB1 (unicast DCI formats, multiple code blocks, TDD, extended prefix); `lte_grid` and `nr` in
-  real time (about 5x and 7x slower); a first-class carrier estimator for
+  code blocks a transport block, multiple antenna ports; LTE beyond SIB1 (unicast DCI formats, multiple code blocks, TDD, extended prefix); `lte/downlink` in
+  real time at 15.36 MS/s (about 1.1x slower; `nr/downlink` keeps up at 7.68 MS/s); a first-class carrier estimator for
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
 - **Links, sources, profiles:** PPP, KISS, AX.25 addresses, MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,

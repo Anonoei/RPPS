@@ -203,6 +203,7 @@ def type0_slots(ss0, i_ssb, coreset_symbols):
     first = (0 if i_ssb % 2 == 0 else coreset_symbols) if first == "alt" else int(first)
     return (n0, n0 + 1), (x//10) % 2, first
 
+@functools.lru_cache(maxsize=256)
 def cce_regs(n_rb, symbols, pci, L=6, R=2):
     """For each CCE, the (symbol, RB) of its 6 REGs (interleaved mapping, bundles of L = 6, R = 2, shift = cell id)"""
     n_reg = n_rb*symbols
@@ -315,6 +316,7 @@ def pdsch_res(nfft, c0bin, first, count, s, l, mapping, dmrs_pos, ssb_slots):
         db.append(b); ds.append(np.full(len(b), sym)); di.append((b - c0bin)//2)
     return (np.concatenate(bins), np.concatenate(syms)), (np.concatenate(db), np.concatenate(ds), np.concatenate(di))
 
+@functools.lru_cache(maxsize=4096)
 def pdcch_res(c0bin, n_rb, symbols, first_symbol, pci, cce, L):
     """(bins, symbols) of a candidate's data REs in mapping order, and of its DM-RS (bins, symbols, sequence index)"""
     regs = [r for j in range(cce, cce + L) for r in cce_regs(n_rb, symbols, pci)[j]]
@@ -332,6 +334,7 @@ def pdcch_res(c0bin, n_rb, symbols, first_symbol, pci, cce, L):
     m = np.array(dmrs)
     return (d[:, 1], d[:, 0]), (m[:, 1], m[:, 0], m[:, 2])
 
+@functools.lru_cache(maxsize=256)
 def ldpc_for(tbs_bits, rate, E, rv, qm):
     """The code block's LDPC code for a transport block of TBS bits (one code block: K' = TBS + its CRC)"""
     from ... import code

@@ -56,11 +56,12 @@ Burst and preamble steps in profiles, so burst demodulators can be profiles, the
   - more than 4 candidate blocks (above 3 GHz);
   - VRB-to-PRB interleaving;
   - several code blocks a transport block;
-  - real time (about 7x slower at 7.68 MS/s).
+  - real time at wider bandwidths (at 7.68 MS/s it keeps up: 3 s of LEO pass in 2.3 s).
 
 ## Open
 
-- `lte_grid` is about 5x slower than real time at 15.36 MS/s: `LteCell`'s derotation and the CRS interpolation.
+- `lte/downlink` is about 1.1x real time at 15.36 MS/s (from 5x): the FFTs, channel estimation and the PDCCH's many small Viterbi
+  decodes are what is left; running the trunk and branches on separate cores (`pipelined()`) is the next step.
 - Not built:
   - the transmit side of branch profiles (`grid.lte.tx` is a test transmitter);
   - LTE past SIB1: unicast DCI formats, several code blocks, TDD, extended prefix;

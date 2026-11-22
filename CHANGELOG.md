@@ -27,6 +27,15 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- **Speed: LTE and NR downlinks near real time.**
+  - `polar_scl`, a C++ polar list decoder: about 20x the numpy one, the same paths and metrics. Polar's N is checked
+    without building G.
+  - NR's PDCCH decodes each aggregation level's candidates in one batch; the PDSCH's LDPC code is built once per size.
+  - NR and LTE cell derotation from a two-table ramp, not an `exp` per sample.
+  - LTE CRS channel estimation for every port and symbol in a few array operations; control-region maps cached.
+  - Results unchanged: LTE outputs bit-identical on the band 13 capture.
+  - NR: 3 s of a LEO pass in 2.3 s at 7.68 MS/s (was 22 s); live 2 s captures at 15.36 MS/s in about 2 s (was 15).
+  - LTE: about 1.1x real time at 15.36 MS/s (was 5x).
 - **5G NR downlink to SIB1, through LEO Doppler (NTN):** the profile `nr/downlink` and `rpps.grid.nr` (15 kHz).
   - `NrCell`: PSS search over a wide carrier offset (default +-60 kHz), SSS, the block index and half frame from the PBCH
     DM-RS. Then every SS/PBCH block tracked by two second-order loops: the offset and its rate, the slot timing and the

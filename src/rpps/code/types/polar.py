@@ -22,7 +22,13 @@ differs from the hard decisions, or -1 when a CRC-aided decoder found no path th
 """
 import numpy as np
 
+from ... import _accel
 from ._code import _code, register, as_llr, word_errors
+
+def _check_n(N):
+    """N is a power of 2 (what `transform` checks, without building G)"""
+    if N < 1 or N & (N - 1):
+        raise ValueError(f"polar: N {N} is not a power of 2")
 
 def transform(N):
     """G = F^(x n) for N = 2^n, uint8"""
@@ -76,7 +82,7 @@ def sc(llr, decide):
     Returns (u (W, N) uint8, Lu (W, N): each u_i's LLR given the u before it as decided)"""
     L = np.asarray(llr, dtype=np.float64)
     W, N = L.shape
-    transform(N) # checks N
+    _check_n(N)
     u = np.zeros((W, N), np.uint8)
     Lu = np.zeros((W, N))
 
@@ -105,8 +111,16 @@ def scl(llr, frozen, size):
     Returns (u (W, P, N) uint8, metric (W, P): each path's penalty, smaller is likelier)"""
     L = np.asarray(llr, dtype=np.float64)
     W, N = L.shape
-    transform(N)
+    _check_n(N)
     frozen = np.asarray(frozen, dtype=bool)
+    if _accel.native is not None and hasattr(_accel.native, "polar_scl"): # (the C++ kernel: this function is its reference)
+        u, pm = _accel.native.polar_scl(np.ascontiguousarray(L), np.ascontiguousarray(frozen), int(size))
+        return u, pm
+    return _scl(L, frozen, size)
+
+def _scl(L, frozen, size):
+    """The reference list decoder (numpy, every frame and path at once)"""
+    W, N = L.shape
     state = {"u": np.zeros((W, 1, N), np.uint8), "pm": np.zeros((W, 1))}
 
     def node(Ln, i0):

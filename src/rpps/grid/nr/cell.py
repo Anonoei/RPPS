@@ -252,10 +252,10 @@ class NrCell(Stage):
             need = a + S + 16
             if len(st.buf) < need:
                 break
-            n = np.arange(S)
-            dt = n/fs
-            ph = lk.phase + lk.f*dt + 0.5*lk.rate*dt**2 # Cycles
-            seg = st.buf[a:a + S].astype(np.complex128)*np.exp(-2j*np.pi*(ph % 1.0))
+            # The slot derotated: the offset at its middle, linear across it (the rate's square term within a slot is below
+            # 3e-4 cycles at 1 kHz/s), the phase continuous from slot to slot
+            f_mid = lk.f + lk.rate*S/(2*fs)
+            seg = (st.buf[a:a + S]*phy.lte_phy.ramp(S, lk.phase, f_mid/fs)).astype(np.complex128)
             slot_in_frame = lk.slot % 10
             frame = lk.slot//10
             per = int(round(self.period/1e-3)) # Slots a period
@@ -275,7 +275,6 @@ class NrCell(Stage):
                     ef = self._offset(m[1], lk.bias)
                     lk.f += 0.5*ef
                     lk.rate += 0.15*ef/self.period
-                    lk.phase += 0.0
                     lk.miss, lk.metric = 0, r[1]
                     del cp
                 else:
@@ -284,7 +283,7 @@ class NrCell(Stage):
             st.out_slots += 1
             L = S*lk.scale
             dt = L/fs
-            lk.phase = (lk.phase + lk.f*(round(lk.T + L) - round(lk.T))/fs + 0.5*lk.rate*dt**2) % 1.0
+            lk.phase = (lk.phase + (lk.f + lk.rate*S/(2*fs))*(round(lk.T + L) - round(lk.T))/fs) % 1.0
             lk.f += lk.rate*dt
             lk.T += L
             lk.slot += 1
