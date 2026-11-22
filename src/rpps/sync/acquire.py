@@ -188,20 +188,19 @@ class Lock:
         min_samples: fewer samples are not searched (the rate search goes down to Fs/16: at least 64 symbols)
         drop_db / drift: when `update` calls the lock stale (an Es/N0 drop [dB], a relative rate change)
         Raises NoLock (reason, line) when x is too short or has no clear symbol rate"""
-        x = np.asarray(x)
-        if len(x) < min_samples:
-            raise NoLock(f"{len(x)} samples, the search needs {min_samples}")
-        line = None
-        if not baud:
-            baud, line = find_baud(x, Fs)
-            if lock is not None and line < lock:
-                raise NoLock(f"no symbol rate (line {line:.1f}, needs {lock:g}): a carrier, or noise?", line)
-        det = detect(x, Fs, names, betas, span, baud=baud)
-        det.line = line
-        lk = cls._make(x, Fs, det, candidates([det.mod])[det.mod], span, det, drop_db, drift)
-        if lk is None:
-            raise NoLock(f"{len(x)} samples hold fewer than {cls.MIN_SYMBOLS} symbols at {det.baud:.6g} Bd")
-        return lk
+        x = cls._samples(x, min_samples, f"the search needs {min_samples}")
+        with cls._numbers():
+            line = None
+            if not baud:
+                baud, line = find_baud(x, Fs)
+                if lock is not None and not line >= lock:
+                    raise NoLock(f"no symbol rate (line {line:.1f}, needs {lock:g}): a carrier, or noise?", line)
+                if not 0 < baud < Fs/2:
+                    raise NoLock(f"no symbol rate (the strongest line is at {baud:.6g} Bd): a carrier, or noise?", line)
+            det = detect(x, Fs, names, betas, span, baud=baud)
+            det.line = line
+            lk = cls._make(x, Fs, det, candidates([det.mod])[det.mod], span, det, drop_db, drift)
+        return cls._made(lk, x, det)
 
     def update(self, x, rounds=1, recheck=True):
         """The same signal in a new block x (anywhere in the stream: consecutive or not): timing and rate followed from
@@ -211,26 +210,54 @@ class Lock:
         recheck: score the other modulations the search tried on these symbols (the same matched filter output), and
         call the lock stale when one fits better by RECHECK_MARGIN: at low SNR a change of modulation can cost less Es/N0
         than `drop_db`"""
-        x = np.asarray(x)
+        x = self._samples(x)
         d = self.det
-        sps, tau = track_timing(x, d.sps, d.beta, self.span, rounds)
-        det = Detection(mod=d.mod, baud=self.Fs/sps, sps=sps, beta=d.beta, tau=tau, M=d.M, scores=self.found.scores,
-                        line=self.found.line)
-        lk = self._make(x, self.Fs, det, self.points, self.span, self.found, self.drop_db, self.drift, recheck)
-        if lk is None:
-            raise NoLock(f"{len(x)} samples hold fewer than {self.MIN_SYMBOLS} symbols at {det.baud:.6g} Bd")
-        return lk
+        with self._numbers():
+            sps, tau = track_timing(x, d.sps, d.beta, self.span, rounds)
+            det = Detection(mod=d.mod, baud=self.Fs/sps, sps=sps, beta=d.beta, tau=tau, M=d.M, scores=self.found.scores,
+                            line=self.found.line)
+            lk = self._make(x, self.Fs, det, self.points, self.span, self.found, self.drop_db, self.drift, recheck)
+        return self._made(lk, x, det)
 
     def refine(self, x, baud=None):
         """The search again on more of the signal (x: a longer stretch), its modulation and roll-off kept: the rate is
         searched afresh (or `baud`, when known), so an estimate made on few samples is corrected however far off it was,
         which `update`, following, can't. The result is the lock's new reference (`found`). Raises NoLock as `find`"""
+        x = self._samples(x)
+        with self._numbers():
+            det = detect(x, self.Fs, [self.det.mod], (self.det.beta,), self.span, baud=baud)
+            det.scores = self.found.scores # (only the kept modulation was scored)
+            lk = self._make(x, self.Fs, det, self.points, self.span, det, self.drop_db, self.drift)
+        return self._made(lk, x, det)
+
+    # ---- NoLock, not numpy's errors, for what holds no symbols
+
+    @staticmethod
+    def _samples(x, need=1, why="no samples"):
+        """x as an array, or NoLock: too few samples, not all finite, all zero"""
         x = np.asarray(x)
-        det = detect(x, self.Fs, [self.det.mod], (self.det.beta,), self.span, baud=baud)
-        det.scores = self.found.scores # (only the kept modulation was scored)
-        lk = self._make(x, self.Fs, det, self.points, self.span, det, self.drop_db, self.drift)
+        if len(x) < need:
+            raise NoLock(f"{len(x)} samples, {why}")
+        if not np.all(np.isfinite(x)):
+            raise NoLock("the samples are not all finite (NaN or inf)")
+        if not np.any(x):
+            raise NoLock("no signal: the samples are all zero")
+        return x
+
+    @staticmethod
+    def _numbers():
+        """The search's arithmetic under its own numpy error state (whatever np.seterr the caller set): what holds no
+        symbols ends in a NoLock, from the checks around it, rather than a FloatingPointError"""
+        return np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore")
+
+    @classmethod
+    def _made(cls, lk, x, det):
         if lk is None:
-            raise NoLock(f"{len(x)} samples hold fewer than {self.MIN_SYMBOLS} symbols at {det.baud:.6g} Bd")
+            raise NoLock(f"{len(x)} samples hold fewer than {cls.MIN_SYMBOLS} symbols at {det.baud:.6g} Bd")
+        d = lk.det
+        if not (np.isfinite([d.sps, d.tau, d.cfo, d.phase, d.gain, lk.quality.esn0_db]).all()
+                and np.all(np.isfinite(lk.symbols))):
+            raise NoLock("nothing like symbols here (the estimates are not finite)")
         return lk
 
     @classmethod
