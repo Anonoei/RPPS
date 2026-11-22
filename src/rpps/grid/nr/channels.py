@@ -57,12 +57,11 @@ def equalize(G, data, dmrs, ref):
     if len(syms) == 1:
         H = Hs[0]
     else:
-        H = np.empty(len(db), complex)
-        for j, s in enumerate(ds):
-            w = np.interp(s, syms, np.arange(len(syms)))
-            i0 = min(int(np.floor(w)), len(syms) - 2)
-            a = w - i0
-            H[j] = Hs[i0, j]*(1 - a) + Hs[i0 + 1, j]*a
+        w = np.interp(ds, syms, np.arange(len(syms))) # Each data RE's place among the DM-RS symbols
+        i0 = np.minimum(np.floor(w).astype(np.int64), len(syms) - 2)
+        a = w - i0
+        j = np.arange(len(db))
+        H = Hs[i0, j]*(1 - a) + Hs[i0 + 1, j]*a
     Y = G[ds, db]
     return Y*np.conj(H), np.abs(H)**2
 
@@ -135,21 +134,26 @@ class PDCCH(_NrChannel):
         K = phy.dci_10_si_size(n_rb) + 24
         n_cce = n_rb*nsym//6
         found = []
-        for L in (4, 8, 16):
-            for cce in range(0, n_cce - L + 1, L):
+        for L in (4, 8, 16): # Every candidate of a level in one list decode (they share K and E)
+            starts = list(range(0, n_cce - L + 1, L))
+            if not starts:
+                continue
+            soft = []
+            for cce in starts:
                 data, (mb, ms, mi) = phy.pdcch_res(c0bin, n_rb, nsym, first, pci, cce, L)
                 ref = np.empty(len(mb), complex)
                 for sym in np.unique(ms):
                     seq = phy.pdcch_dmrs(pci, head["slot"], sym, 3*n_rb)
                     ref[ms == sym] = seq[mi[ms == sym]]
                 z, _ = equalize(G, data, (mb, ms), ref)
-                s = phy.soft_bits(z, 2)*phy.sign(phy.gold(pci, 108*L))
-                dec = _dci_code(K, 108*L).decoder
-                paths, _ = dec.paths(s)
-                res = dec.residue(paths)[0]
-                for p, r in enumerate(res):
+                soft.append(phy.soft_bits(z, 2)*phy.sign(phy.gold(pci, 108*L)))
+            dec = _dci_code(K, 108*L).decoder
+            paths, _ = dec.paths(np.concatenate(soft))
+            res = dec.residue(paths)
+            for w, cce in enumerate(starts):
+                for p, r in enumerate(res[w]):
                     if int(r) in self.rntis:
-                        bits = paths[0, p, :K - 24]
+                        bits = paths[w, p, :K - 24]
                         if not any(np.array_equal(bits, f[2]) for f in found):
                             found.append((L, cce, bits, int(r)))
                         break

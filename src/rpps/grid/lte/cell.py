@@ -242,14 +242,12 @@ class LteCell(Stage):
             need = a + L + pss_off + nfft + 16
             if len(st.buf) < need + 16:
                 if meta.flush and len(st.buf) >= a + L: # The stream's last half-frame: out as it is (no PSS after it to track)
-                    n = np.arange(a, a + L) + st.base
-                    out.append((st.buf[a:a + L]*np.exp(-2j*np.pi*((lk.f*n/fs) % 1.0))).astype(np.complex64))
+                    out.append(st.buf[a:a + L]*phy.ramp(L, lk.f*(a + st.base)/fs, lk.f/fs))
                     st.buf, st.base = st.buf[a + L:], st.base + a + L
                     st.est["half_frames"] += 1
                 break
             o = min(a, 16) # y[o] is the half-frame's first sample
-            n = np.arange(a - o, need) + st.base
-            y = st.buf[a - o:need].astype(np.complex128)*np.exp(-2j*np.pi*((lk.f*n/fs) % 1.0))
+            y = (st.buf[a - o:need]*phy.ramp(need - a + o, lk.f*(a - o + st.base)/fs, lk.f/fs)).astype(np.complex128)
             r = self._find_pss(y, o + pss_off, lk.tmpl, 6)
             if r is not None and r[1] >= self.gate:
                 e = r[0] - (o + pss_off)

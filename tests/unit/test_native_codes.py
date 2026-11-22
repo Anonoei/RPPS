@@ -233,3 +233,18 @@ def test_equalizers(which, rng):
     ref, got = both(lambda: stage_run(make, y, cut, Fs=1e3, sps=1))
     assert len(ref) == len(got) > 5900
     assert np.allclose(ref, got, atol=1e-3)
+
+# --- Polar list decoding: polar_scl against the numpy reference (rpps/code/types/polar.py _scl)
+
+@pytest.mark.parametrize("N,size", [(8, 1), (32, 4), (128, 8), (512, 8), (1024, 16)])
+def test_polar_scl_matches_python(N, size, rng):
+    """The same paths in the same order and the same metrics: candidates ranked stably, 0s before 1s on a tie"""
+    import sys
+    pol = sys.modules["rpps.code.types.polar"]
+    frozen = np.zeros(N, bool)
+    frozen[pol.pw_order(N)[:N - max(1, N//3)]] = True
+    llr = rng.normal(1.0, 1.5, (4, N))*rng.choice([-1, 1], (4, N))
+    llr[0, :4] = 0.0 # (ties)
+    u1, m1 = _accel.native.polar_scl(llr, frozen, size)
+    u2, m2 = pol._scl(llr, frozen, size)
+    assert np.array_equal(u1, u2) and np.allclose(m1, m2, rtol=1e-12, atol=1e-9)
