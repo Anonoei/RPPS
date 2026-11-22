@@ -53,16 +53,28 @@ def symmetry(points, tol=1e-3, max_order=16):
             return M
     return 1
 
+_CANDIDATES = {} # (config search path, name) -> unit-rms points (read-only), None -> the default names
+
 def candidates(names=None):
-    """Load candidate constellations from config/constellation: {name: unit-rms points}"""
+    """Load candidate constellations from config/constellation: {name: unit-rms points}. Each is read once per config
+    search path (a Lock rechecks them every block: finding the files would cost more than scoring them)"""
     from .. import symbol  # Late: symbol imports after sync
+    from .. import _config
+    where = tuple(_config._EXTRA)
     if names is None: # The PSK family's own point sets: a child (a labelling or a rotation of a parent) is not another modulation
-        from .. import _config
-        names = [n for n in symbol.ls().get("psk", []) if "extends" not in _config.read_raw(_config.find("constellation", f"psk/{n}"))]
+        names = _CANDIDATES.get((where, None))
+        if names is None:
+            names = _CANDIDATES[(where, None)] = tuple(
+                n for n in symbol.ls().get("psk", []) if "extends" not in _config.read_raw(_config.find("constellation", f"psk/{n}")))
     out = {}
     for name in names:
-        pts = np.asarray(symbol.load_or_generate(name).points, dtype=np.complex128)
-        out[name] = pts / np.sqrt(np.mean(np.abs(pts)**2))
+        pts = _CANDIDATES.get((where, name))
+        if pts is None:
+            pts = np.asarray(symbol.load_or_generate(name).points, dtype=np.complex128)
+            pts = pts / np.sqrt(np.mean(np.abs(pts)**2))
+            pts.flags.writeable = False
+            _CANDIDATES[(where, name)] = pts
+        out[name] = pts
     return out
 
 def correct(y, pts, M, pad=4):
