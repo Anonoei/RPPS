@@ -202,6 +202,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   is shown and every package has a docstring.
 
 ### Fixed
+- `analysis.spectrum.burst.demodulate` and `framing.frames.bursts`: a given `baud`, `mod` or `beta` narrows each
+  burst's acquisition instead of being searched for again (the rate was searched on every burst even when given).
 - `rp.sync.Lock.find`, `update` and `refine` raise `NoLock` with a reason for whatever holds no symbols, never numpy's
   errors: samples all zero ("no signal: the samples are all zero"), NaN or inf ("not all finite"), a rate of 0 when any
   line is taken (a constant), estimates that come out non-finite ("nothing like symbols here"). Their arithmetic runs
