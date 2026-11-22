@@ -27,6 +27,11 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- `analysis.code.block.ldpc`: blind quasi-cyclic codes. `qc_generator` solves the generator's circulants from about
+  k/z + 9 words (each word gives z equations; the reliable words solve, held-out ones check), `circulant_size` finds z,
+  and `qc_checks` finds sparse checks in the generator itself: sums of two to four shifted parity blocks whose
+  information dependences nearly cancel. An LDPC code's dense generator hides those from a word-level search unless the
+  words are many.
 - `analysis.spectrum.burst`: bursts of several kinds, each with its own preamble (a TDMA network's burst types each carry
   a unique word): when the bursts share fewer than `min_shared` symbols they are grouped by length, each group's own
   preamble found (`burst_kinds`), and every burst acquired on its kind's (`BurstResult.kind`, `Bursts.preambles`).
@@ -97,6 +102,8 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   `csrc/rpps_native` has now (`rpps._accel.stale`); rebuild with `python builder.py -c`. Installed packages are not checked.
 
 ### Fixed
+- `analysis.code.block.linear.sparse_checks` returned nothing when given fewer than k + 16 words (all went to the solve,
+  none were left to verify on). It now keeps some aside first.
 - `analysis.spectrum.waveform.on_off`: the period of bursts much shorter than their frame came out as the smallest lag
   searched (inside a burst the autocorrelation is near 1 at every lag). It is now the earliest true peak, within 10% of
   the highest, past the autocorrelation's first dip, per lag over its overlap, searched up to half the record (at most
