@@ -44,9 +44,9 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
 ### Added
 - **More effort knobs, measured** (`tests/effort_bench.py`: the lowest Es/N0 each chain decodes at, and its speed, per
   level). `max` decodes LDPC by layered sum-product (native `ldpc_sumproduct`: 0.19 dB over min-sum on DVB-S2 64800 1/2
-  QPSK, 0.47 dB on 16200 3/5 8PSK, in fewer iterations), lists 4x the polar paths (SC codes list 4), and gives a turbo product code one more Chase bit;
-  TPC iterations follow the level's factor as LDPC and turbo do. `fast` halves the polar list and takes one Chase bit
-  off. An LDPC definition may name `"check": "sumproduct"` itself.
+  QPSK, 0.47 dB on 16200 3/5 8PSK, in fewer iterations), lists 4x the polar paths (SC codes list 4; 0.25-0.5 dB), and
+  gives a turbo product code one more Chase bit (with 4x its iterations: 0.47 dB). `fast` halves the polar list and takes
+  one Chase bit off. An LDPC definition may name `"check": "sumproduct"` itself.
 - **Only the message kinds wanted:** `profile.kinds()`, `profile.rx(kinds=...)`, `Decoder(..., kinds=...)`,
   `ProfileInfo.kinds`, `rpps rx --kinds`: only those kinds come out, and only the steps they need run (their steps and the
   headers that drive them): unneeded branches are not built, a chain ends at its last needed step. LTE's MIB alone

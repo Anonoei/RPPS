@@ -7,26 +7,47 @@
 
 Levels (looked up when a stage or decoder runs, so a level can change mid-stream):
 
-    fast       the cheapest work that still decodes at good SNR: max-log demapping, fewer decoder iterations, cubic timing
-               interpolation
-    balanced   the default: what each definition says (its iterations, its demapper), timing interpolation that keeps
-               the interpolation error under the pulse's own truncation at 3 samples per symbol and more
-    max        the most SNR at more cost: decoders iterate further (LDPC up to 4x; each codeword still stops when it
-               converges, so the cost is only near the threshold), log-MAP turbo decoding, a timing interpolator at the
-               pulse's own floor at 2 samples per symbol
+    fast       the cheapest work that still decodes at good SNR: max-log demapping, half the decoder iterations, half
+               the polar list, one Chase bit less, cubic timing interpolation
+    balanced   the default: what each definition says (its iterations, list, Chase bits, demapper, min-sum), timing
+               interpolation that keeps the interpolation error under the pulse's own truncation at 3 samples per
+               symbol and more
+    max        the most SNR at more cost: decoders iterate further (up to 4x; each codeword still stops when it
+               converges, so the cost is mostly near the threshold), LDPC by sum-product, 4x the polar list, one Chase
+               bit more, log-MAP turbo decoding, a timing interpolator at the pulse's own floor at 2 samples per symbol
 
 A definition's settings stay the base: a level scales them (an LDPC definition with 50 iterations runs 50 balanced, 200
 max), and a value set on an operator is that operator's base. `rpps rx --effort` sets it from the shell.
 
-| Setting | fast | max | Measured (max against balanced) |
-|---|---|---|---|
-| LDPC / turbo iterations | x0.5 | x4, stopping early | LDPC 1/2 at 0.9 dB: FER 3/16 → 0/16 at 2x time; LTE turbo at 0.2 dB: 6/12 → 0/12 |
-| Max-log or exact (demapper, BCJR, turbo) | max-log | exact, no extrinsic scaling | turbo log-MAP 0.1-0.2 dB, 5-7x time |
-| Timing interpolation | cubic | 12-tap windowed sinc (balanced: 8 taps below 4 sps) | EVM floor at 2 sps: cubic -26 dB, 8 taps -48, 12 taps -55 (pulse truncation -56) |
+| Setting | fast | max |
+|---|---|---|
+| LDPC / turbo / TPC iterations (`iters`) | x0.5 | x4, stopping early |
+| LDPC check update (`check`) | min-sum | sum-product |
+| Polar list (`list`) | x0.5 | x4 (successive cancellation lists 4) |
+| TPC Chase-II bits (`chase`) | -1 | +1 |
+| Max-log or exact (`maxlog`: demapper, BCJR, turbo) | max-log | exact, no extrinsic scaling |
+| Timing interpolation (`interp_taps`) | cubic | 12-tap windowed sinc (balanced: 8 taps below 4 sps) |
+
+Measured (`tests/effort_bench.py`, FER 1e-1, one thread; Mbit/s at the threshold, where max iterates most):
+
+| Chain | Es/N0 dB fast / balanced / max | Mbit/s fast / balanced / max |
+|---|---|---|
+| LDPC DVB-S2 64800 1/2, QPSK | 1.08 / 0.94 / 0.75 | 2.2 / 1.2 / 0.96 |
+| LDPC DVB-S2 16200 3/5, 8PSK | 6.16 / 6.09 / 5.62 | 7.7 / 2.7 / 0.79 |
+| Turbo LTE K=6144, QPSK | -0.84 / -1.31 / -1.62 | 1.6 / 0.85 / 0.10 |
+| Turbo LTE K=40, QPSK | -0.34 / -0.41 / -0.49 | 0.47 / 0.24 / 0.073 |
+| Polar NR DCI (K 63, E 432), QPSK | -4.97 / -5.25 / -5.67 | 0.22 / 0.12 / 0.032 |
+| Polar NR PBCH, QPSK | -8.50 / -8.85 / -9.32 | 0.19 / 0.097 / 0.029 |
+| Polar (256,128) + CRC-16, QPSK | 1.29 / 1.13 / 0.90 | 0.92 / 0.38 / 0.098 |
+| TPC (64,57)^2, BPSK | 2.81 / 2.16 / 1.69 | 0.36 / 0.13 / 0.032 |
+| Conv K7 1/2 (Viterbi), QPSK | 3.61 / 3.61 / 3.61 | 7.9 / 5.6 / 5.6 |
+
+Timing at 2 sps: EVM floor -28.0 / -48.5 / -55.4 dB (pulse truncation -56) at the same speed.
 
 Other decoding behaviour worth knowing:
 
-- LDPC is layered normalized min-sum (checks coloured once per code), about half the iterations of flooding.
+- LDPC is layered (checks coloured once per code), about half the iterations of flooding: normalized min-sum, or
+  sum-product at max (phi tabulated, 1.7x min-sum's time an iteration, fewer iterations).
 - Soft values go as far as something uses them: additive descrambling flips LLR signs, Forney deinterleaving moves LLRs,
   BCJR hands on a-posteriori LLRs (RS uses them for erasures, keeping two checks spare), differential decoding is the
   product detector `y conj(y[n-1])`.
