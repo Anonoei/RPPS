@@ -131,7 +131,7 @@ class turbo(_code):
         K, n = self.Kb, self.den
         # The effort level (rpps._effort): its iterations and max-log or log-MAP. The extrinsic scaling corrects max-log
         # only; past the definition's iterations a word stops once two iterations agree
-        iters, maxlog = _effort.iters(self.iters), _effort.maxlog(self.maxlog)
+        iters, maxlog = _effort.scale("iters", self.iters), _effort.choice("maxlog", self.maxlog)
         scale = self.scale if maxlog or maxlog == self.maxlog else 1.0
         words = llr[:len(llr)//n*n].reshape(-1, n)
         finals = []
@@ -249,7 +249,7 @@ class turbo_mux(_code):
         """(final LLRs (words, K), the received systematic bits hard decided (words, K))"""
         llr = as_llr(bits, soft, 2.0)
         n, K, m = self.den, self.Kb, self.m
-        iters, maxlog = _effort.iters(self.iters), _effort.maxlog(self.maxlog)
+        iters, maxlog = _effort.scale("iters", self.iters), _effort.choice("maxlog", self.maxlog)
         scale = self.scale if maxlog or maxlog == self.maxlog else 1.0
         words = llr[:len(llr)//n*n].reshape(-1, n)
         finals, hard = [], []

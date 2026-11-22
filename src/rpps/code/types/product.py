@@ -1,5 +1,6 @@
 import numpy as np
 
+from ... import _effort
 from ._code import _code, register
 
 @register("product")
@@ -69,7 +70,7 @@ class product(_code):
         """Chase-II on the rows of R (rows, n), normalized LLRs: decisions D (rows, n), their signs sD (+1 for a 0), the
         metric of each decision mD (rows,) and of the best competitor per bit mC (rows, n; inf where none). A row whose
         test patterns all fail the algebraic decoder keeps its hard decision, with no competitor on any bit"""
-        p = min(self.chase, n)
+        p = min(_effort.shift("chase", self.chase), n)
         rows = len(R)
         y = (R < 0).astype(np.uint8)
         weak = np.argsort(np.abs(R), axis=1)[:, :p] # (rows, p)
@@ -106,7 +107,7 @@ class product(_code):
         M = (L < 0).astype(np.uint8)
         act = np.arange(nw) # Words still decoding
         half = 0
-        for _ in range(self.iters):
+        for _ in range(_effort.scale("iters", self.iters)):
             for axis in (0, 1): # columns, then rows
                 a = self.ALPHA[min(half, len(self.ALPHA) - 1)]
                 b = self.BETA[min(half, len(self.BETA) - 1)]
@@ -145,7 +146,7 @@ class product(_code):
                 w = w ^ self.offset
             M = w[self.lead:].reshape(self.n2, self.n1).copy()
             first = M.copy()
-            for _ in range(self.iters):
+            for _ in range(_effort.scale("iters", self.iters)):
                 M_cols, st_c = self._fix(self.cols, M.T.copy(), self.n2, self.k2)
                 M = M_cols.T
                 M, st_r = self._fix(self.rows, M, self.n1, self.k1)

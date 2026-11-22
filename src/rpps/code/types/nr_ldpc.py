@@ -148,6 +148,7 @@ class nr_ldpc(ldpc):
         code = cls(log, obj["bg"], obj["graph"], obj["kp"], obj["e"], obj.get("z"), obj.get("kb"), obj.get("rv", 0),
                    obj.get("qm", 1), obj.get("ncb"), obj.get("iters", 25), obj.get("alpha", 0.8))
         code.schedule = obj.get("schedule", "layered")
+        code.check = cls.check_of(obj)
         return code
 
     def codeword(self, c):
@@ -194,6 +195,6 @@ class nr_ldpc(ldpc):
         llr = llr[:len(llr)//self.E*self.E].reshape(-1, self.E)
         if not len(llr):
             return np.zeros(0, bool), np.zeros(0, int)
-        cw, converged = self.min_sum(self.codeword_llr(llr))
+        cw, converged = self.propagate(self.codeword_llr(llr))
         sent = cw[:, self.index]
         return cw[:, :self.kp].reshape(-1), word_errors(llr < 0, sent, converged)

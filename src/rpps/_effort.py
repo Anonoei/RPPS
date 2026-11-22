@@ -26,7 +26,10 @@ LEVELS = ("fast", "balanced", "max")
 
 # What each level sets: {setting: {level: value}}
 SETTINGS = {
-    "iters": {"fast": 0.5, "balanced": 1.0, "max": 4.0},          # factor on a decoder's iteration cap (LDPC, turbo)
+    "iters": {"fast": 0.5, "balanced": 1.0, "max": 4.0},          # factor on a decoder's iteration cap (LDPC, turbo, TPC)
+    "list": {"fast": 0.5, "balanced": 1.0, "max": 4.0},           # factor on a polar list decoder's paths (1: successive cancellation)
+    "chase": {"fast": -1, "balanced": 0, "max": 1},                 # added to a turbo product code's Chase-II test bits (2^bits patterns)
+    "check": {"fast": None, "balanced": None, "max": "sumproduct"}, # LDPC layered check update: the definition's (min-sum), or sum-product
     "maxlog": {"fast": True, "balanced": None, "max": False},      # demapping and turbo: max-log (True), exact (False), the definition's (None)
     "interp_taps": {"fast": 4, "balanced": None, "max": 12},        # timing interpolation: 4 = cubic, else windowed sinc taps; None: by sps
 }
@@ -67,11 +70,15 @@ def interp_taps(sps):
     v = SETTINGS["interp_taps"][_level]
     return v if v is not None else (4 if sps >= 4 else 8)
 
-def iters(base):
-    """A decoder's iteration cap at the level in force: its own (`base`) scaled, at least 1"""
-    return max(1, int(round(base*SETTINGS["iters"][_level])))
+def scale(name, base):
+    """A count at the level in force ("iters", "list"): its own (`base`) scaled, at least 1"""
+    return max(1, int(round(base*SETTINGS[name][_level])))
 
-def maxlog(base):
-    """Max-log or exact at the level in force: the level's choice, else the operator's own (`base`)"""
-    v = SETTINGS["maxlog"][_level]
+def shift(name, base):
+    """A count at the level in force ("chase"): its own (`base`) plus the level's step, at least 1"""
+    return max(1, int(base) + SETTINGS[name][_level])
+
+def choice(name, base):
+    """A choice at the level in force ("maxlog", "check"): the level's, else the operator's own (`base`)"""
+    v = SETTINGS[name][_level]
     return base if v is None else v
