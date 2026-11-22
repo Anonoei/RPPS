@@ -137,7 +137,7 @@ what breaks under **Breaking**, with what to use instead. Work in progress (not 
   `at=` [s] (TDMA slots), with `ramp_s` raised-cosine power ramps, on a carrier each (`freq=`, or the step's `hop` list
   cycled) on a stream of rate `Fs`: MF-TDMA carriers may share a slot (they add), and a hopping carrier keeps the phase
   of one continuous oscillator. `tx.sent` records each burst's start, length and carrier. A preamble step with
-  `"attach": true` sends its own waveform (`rp.sync.PreambleTx`) before each burst. `ble/adv` sends 1 ms apart.
+  `"attach": true` sends its own waveform before each burst (`Preamble.attach_tx()`, a `rp.sync.PreambleTx`). `ble/adv` sends 1 ms apart.
   `rpps tx`: `--gap` is in seconds; `--hop`, `--rate-out`. Receiving MF-TDMA or hopping takes a channelizer before the
   profile (a channelized burst step is not built).
 - **Burst demodulation in profiles:** a `{"sync": "burst"}` step; the steps after it are built anew for every burst

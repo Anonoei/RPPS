@@ -33,34 +33,42 @@ class Preamble(Stage):
     A real stream (an FSK discriminator's output) is matched by the correlation coefficient: the template and the stream's
     window with their means taken off (a carrier offset there is a constant), positive only. The offset, the level b of
     the fit x = a template + b over the match, is est["level"]; `correct` takes it off the output.
-    first: the template's sample at its first symbol's peak; pending: the template comes later (`set_template`: a profile
-    makes it from its own transmit side).
+    first: the template's sample at its first symbol's peak; span: its samples up to the tail its pulses leave (its symbols
+    times the samples a symbol; None: all of it); pending: the template comes later (`set_template`: a profile makes it
+    from its own transmit side). `attach_tx()`: the transmit side, which sends this template (PreambleTx).
     Estimates in stream.est[name]: found, pos (absolute), metric, cfo [Hz] (with repeat), and where the symbols are:
     first (the absolute sample of the first symbol's peak), delay and Fs (the group delay and rate there; known timing
     with an `anchor` places its grid by them)."""
     CONTROLS = {}
 
     def __init__(self, template=None, repeat=None, window=None, search=None, gate=0.5, offset=0, correct=False, name="preamble",
-                 first=0, pending=False):
+                 first=0, pending=False, span=None):
         if template is None and not pending and (repeat is None or window is None):
             raise ValueError("Preamble: a template, or a repetition (repeat=lag, window=samples) to find")
         self.repeat, self.search, self.gate, self.offset = repeat, search, float(gate), int(offset)
         self._window = window
         self.correct, self.name = correct, name
-        self.template, self.first, self.window = None, 0, None
+        self.template, self.first, self.window, self.span = None, 0, None, None
         if template is not None:
-            self.set_template(template, first)
+            self.set_template(template, first, span)
         else:
             self.window = None if window is None else int(window)
 
-    def set_template(self, template, first=0):
-        """The waveform to find, and its sample at the first symbol's peak"""
+    def set_template(self, template, first=0, span=None):
+        """The waveform to find, its sample at the first symbol's peak, and its samples up to its pulses' tail"""
         t = np.asarray(template)
         if t.dtype.kind == "c" and np.max(np.abs(t.imag), initial=0.0) <= 1e-6*np.max(np.abs(t), initial=1.0):
             t = t.real # (real levels made from complex points: BPSK)
         self.template = t.astype(np.complex128) if t.dtype.kind == "c" else t.astype(np.float64)
         self.first = int(first)
+        self.span = len(self.template) if span is None else int(span)
+        if not 0 <= self.span <= len(self.template):
+            raise ValueError("Preamble: span is within the template")
         self.window = int(self._window) if self._window is not None else len(self.template)
+
+    def attach_tx(self):
+        """The transmit side: a PreambleTx that sends this preamble's template (the one set now or later)"""
+        return PreambleTx(self)
 
     def __str__(self):
         return f"Preamble({'template' if self.template is not None else f'repeat {self.repeat}'})"
@@ -173,23 +181,15 @@ class Preamble(Stage):
 
 
 class PreambleTx(Stage):
-    """The transmit side of Preamble with `attach`: a stream's preamble put before it
+    """The transmit side of a Preamble (`Preamble.attach_tx()`): its template put before a stream
 
-    template: the preamble's waveform at this point of the transmit chain (a profile makes it: Profile._template), with
-    the tail its pulses leave; advance: its samples up to that tail (its symbols times the samples a symbol). The stream
-    starts with the template, the stream's own samples from `advance` on, the tail added to them: for linear steps
-    (pulse shaping) exactly the waveform of the preamble's symbols and the stream's sent as one."""
+    The stream starts with the template, the stream's own samples from its `span` on (the preamble's symbols), the tail its
+    pulses leave added to them: for linear steps (pulse shaping) exactly the waveform of the preamble's symbols and the
+    stream's sent as one. The template is the Preamble's when the stream starts (a profile sets it after building)."""
     CONTROLS = {}
 
-    def __init__(self, template=None, advance=0):
-        self.template, self.advance = None, 0
-        if template is not None:
-            self.set_template(template, advance)
-
-    def set_template(self, template, advance):
-        self.template, self.advance = np.asarray(template), int(advance)
-        if not 0 <= self.advance <= len(self.template):
-            raise ValueError("PreambleTx: advance is within the template")
+    def __init__(self, preamble):
+        self.preamble = preamble
 
     def __str__(self):
         return "PreambleTx"
@@ -198,13 +198,14 @@ class PreambleTx(Stage):
         return SimpleNamespace(rest=None)
 
     def step(self, x, st, meta):
-        if self.template is None:
-            raise ValueError(f"{self}: no template yet (a profile makes it)")
+        t, span = self.preamble.template, self.preamble.span
+        if t is None:
+            raise ValueError(f"{self}: its Preamble has no template yet (a profile makes it)")
         x = np.asarray(x)
-        dt = np.result_type(x.dtype, self.template.dtype)
+        dt = np.result_type(x.dtype, t.dtype)
         if st.rest is None: # The stream's first block: the preamble before it
-            x = np.concatenate((self.template[:self.advance].astype(dt), x.astype(dt)))
-            st.rest, at = self.template[self.advance:].astype(dt), self.advance
+            x = np.concatenate((t[:span].astype(dt), x.astype(dt)))
+            st.rest, at = t[span:].astype(dt), span
         else:
             x, at = x.astype(dt), 0
         n = min(len(st.rest), len(x) - at)

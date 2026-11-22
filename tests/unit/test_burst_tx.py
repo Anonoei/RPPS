@@ -179,3 +179,15 @@ def test_preamble_attached_and_found():
 def test_attach_needs_a_waveform():
     with pytest.raises(ConfigError, match="attach"):
         attach_profile(word=None, bits=None, repeat=16, window=64)
+
+def test_attach_tx_sends_its_preambles_template():
+    """The transmit side reads the Preamble's template when a stream starts: set after it was made, set again, it follows"""
+    pre = rp.sync.Preamble(pending=True)
+    ptx = pre.attach_tx()
+    t = np.array([1.0, 2.0, 3.0, 0.5, 0.25])
+    pre.set_template(t, span=3) # 3 samples of symbols, then a tail of 2
+    out = np.asarray((rp.Data(np.ones(4, np.float32), flush=True) + ptx).data)
+    assert np.allclose(out, [1, 2, 3, 1.5, 1.25, 1, 1])
+    pre.set_template(-t) # span None: all of it before the stream
+    out = np.asarray((rp.Data(np.ones(2, np.float32), flush=True) + ptx).data)
+    assert np.allclose(out, [-1, -2, -3, -0.5, -0.25, 1, 1])

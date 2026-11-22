@@ -113,9 +113,7 @@ class Profile:
             for how, op in st.tx:
                 d = d + op if how == STAGE else d * op if how == ENCODE else d / op
         x = np.asarray(d.data)
-        built[i].obj.set_template(x, int(round(d.meta.delay*d.meta.Fs)))
-        for _, op in built[i].tx: # (attach: the same waveform sent, its symbols' samples before the pulses' tail)
-            op.set_template(x, int(round(len(bits)*(d.meta.sps or 1))))
+        built[i].obj.set_template(x, int(round(d.meta.delay*d.meta.Fs)), int(round(len(bits)*(d.meta.sps or 1))))
 
     @staticmethod
     def _fuse(steps):
