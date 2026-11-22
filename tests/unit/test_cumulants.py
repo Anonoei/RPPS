@@ -37,3 +37,22 @@ def test_orders_with_the_snr(name):
 
 def test_partitions_count():
     assert [len(C._partitions(p)) for p in range(1, 9)] == [1, 2, 5, 15, 52, 203, 877, 4140] # Bell numbers
+
+def test_merged_terms_are_the_partition_sum():
+    """_terms merges partitions with the same moments: the same C_pq as the sum over every partition"""
+    import math
+    rng = np.random.default_rng(5)
+    x = rng.standard_normal(500) + 1j*rng.standard_normal(500) + 0.3
+    M = C._moment_table(x, 8)
+    for _, p, q in C.FEATURES:
+        conj = [i >= p - q for i in range(p)]
+        full = 0j
+        for part in C._partitions(p):
+            k = len(part)
+            term = (-1)**(k - 1)*math.factorial(k - 1)
+            for block in part:
+                b = sum(conj[i] for i in block)
+                term = term*M[len(block) - b, b]
+            full += term
+        assert C.cumulant(M, p, q) == pytest.approx(full, rel=1e-12, abs=1e-12)
+    assert len(C._terms(8, 4)) < 120 # from 4140 partitions
