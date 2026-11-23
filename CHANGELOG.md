@@ -138,6 +138,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   entropy". Entropy alone cannot tell encrypted from compressed data; these tests can for most compressors.
   `payload.verdict` runs them on a random-looking payload (`.randomness`) and says which it is. `rp.math.prob.igamc`,
   the chi-square tail, comes with it.
+- **The configured convolutional scan stops trying other rates once one fits overwhelmingly**
+  (`scan_defined_conv(decisive=20)`): codes of the same rate are still tried (an equivalent, the generators the other
+  way round, must be seen), the rest are not. A K=7 rate 1/2 stream is identified 4x faster.
 
 ## 0.6.0 (2026-11-22)
 

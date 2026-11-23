@@ -90,22 +90,28 @@ def scan_conv(bits, ks=range(3, 8), rates=(2, 3), periods=(), tag=None):
                                      "stream": tag}))
     return hyps, trials
 
-def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 0.45, 0.8)):
+def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 0.45, 0.8), decisive=20.0):
     """Try every convolutional definition in config/fec/conv on every bit mapping and puncture alignment
 
     A correct hypothesis lets the decoder reproduce the received bits (the channel error rate, well below
     what a wrong one gets). Each of `segments` (fractions into the stream) is tried on its own: a symbol the timing slipped
     moves the puncture phase, so a segment across it fits two phases half well, and the others still fit one. A
-    hypothesis says which segment (its offset holds there). Returns (hypotheses, trials).
+    hypothesis says which segment (its offset holds there). Once one fits overwhelmingly (z > `decisive`, a tenth of a
+    wrong code's mismatch), only definitions of the same rate are tried further (an equivalent code, the generators in
+    the other order, also fits and the pick needs to see it; a code of another rate cannot). Returns (hypotheses, trials).
     """
     from .... import code as coding
     names = names or coding.names("conv")
     hyps, trials = [], 0
     rng = np.random.default_rng(0)
+    decided = None # The rate (bits in, bits out a puncture period) of an overwhelming fit
     for name in names:
         code = cached(f"conv/{name}")
         enc = code.encoder
         pat = enc.puncture if enc.puncture is not None else np.ones((enc.den, 1), dtype=bool)
+        rate = (pat.shape[1], int(pat.sum()))
+        if decided is not None and rate != decided:
+            continue
         L = pat.shape[1]
         nb = int(pat.sum())
         per = max(steps//L, 1)
@@ -129,6 +135,8 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
                     hyps.append(Hypothesis("conv-config", name, z, # offset: from the start of the stream, not of the segment
                         {"offset": (start + off) % nb, "mismatch": k/n, "baseline": base, "stream": tag, "segment": si},
                         ("conv", name)))
+                    if z > decisive and k/n < 0.1*base:
+                        decided = rate
     return hyps, trials
 
 def decode_conv(bits, hyp):
