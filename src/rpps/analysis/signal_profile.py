@@ -199,10 +199,17 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
         header = next((s.get("header") for s in prof.obj["steps"] if s.get("sync") == "frame"), None)
         if header is None: # No frame sync, or one by a word (no header to read)
             continue
-        inverted = rotation(z, symbol.load_header(header).preamble)
+        pre = symbol.load_header(header).preamble
+        inverted = rotation(z, pre)
         if inverted is None: # The preamble isn't there either way round
             continue
-        data = Data(np.conj(z) if inverted else z, sps=1, flush=True)
+        zz = np.conj(z) if inverted else z
+        # The chain's carrier offset is an M-th power's, which a constellation not M-fold symmetric (APSK) leaves off by
+        # a good part of the rate: the rest from the preamble's own phase steps
+        w = preamble_offset(zz, pre)
+        if w:
+            zz = (zz*np.exp(-1j*w*np.arange(len(zz)))).astype(np.complex64)
+        data = Data(zz, sps=1, flush=True)
         try:
             res = prof.rx(start=Rep.SYMBOLS)(data)
         except Exception: # A profile that can't run on these symbols isn't this signal
@@ -218,6 +225,23 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
             summary = {k: ([(json.loads(f), n) for f, n in Counter(v).most_common(4)], len(v)) for k, v in heads.items()}
             out.append((name, summary, max(len(v) for v in heads.values()), inverted, params))
     return sorted(out, key=lambda t: -t[2])
+
+def preamble_offset(z, preamble, threshold=0.6, top=16):
+    """The carrier offset left on symbols z, in radians a symbol (within +-pi), from where a known preamble is: the phase
+    steps symbol to symbol, the preamble's own taken off, are the offset's (differential: the carrier phase doesn't
+    matter). For symbols the preamble was found in (`rotation`); 0.0 when nothing correlates past `threshold`"""
+    pre = np.asarray(preamble, dtype=complex)
+    ref = pre[1:]*np.conj(pre[:-1])
+    d = np.asarray(z[1:])*np.conj(np.asarray(z[:-1]))
+    d = d/(np.abs(d) + 1e-12)
+    up = np.correlate(d, ref, "valid")/len(ref)
+    size = np.abs(up)
+    if not len(size) or size.max() <= threshold:
+        return 0.0
+    # (the preambles: near the strongest; data matches the preamble's steps by chance less well, and at any angle)
+    peaks = np.nonzero(size > max(threshold, 0.75*size.max()))[0]
+    best = peaks[np.argsort(-size[peaks])[:top]]
+    return float(np.angle(np.sum(up[best])))
 
 def rotation(z, preamble, threshold=0.6, top=8):
     """Whether the spectrum is inverted, from the way a known preamble turns symbol to symbol: True (inverted), False, or

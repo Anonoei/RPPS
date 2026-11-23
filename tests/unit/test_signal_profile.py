@@ -111,6 +111,29 @@ def test_the_preamble_turning_backwards_means_an_inverted_spectrum():
     assert SP.rotation(z, pre) is False and SP.rotation(np.conj(z), pre) is True
     assert SP.rotation(data, pre) is None
 
+def test_the_carrier_offset_left_comes_from_the_preamble_steps():
+    rng = np.random.default_rng(4)
+    pre = rp.symbol.load_header("dvbs2_pl").preamble
+    data = np.exp(1j*np.pi/4*(2*rng.integers(0, 4, 3000) + 1))
+    z = np.concatenate([data[:1000], pre, data[1000:2000], pre, data[2000:]])
+    for w in (0.0, 0.3, -1.1, 2.9):
+        y = z*np.exp(1j*w*np.arange(len(z)) + 0.7j) + 0.2*(rng.standard_normal(len(z)) + 1j*rng.standard_normal(len(z)))
+        assert abs(SP.preamble_offset(y, pre) - w) < 0.02
+
+def test_framed_takes_the_carrier_offset_from_the_preamble():
+    """The chain's offset (an M-th power's) can be off by a good part of the rate on APSK: the headers still decode"""
+    from types import SimpleNamespace
+    frames = [{"modcod": 4, "pilots": 1, "sis": 1, "isi": 0}]*6
+    p = rp.profile.load("dvbs2/normal")
+    dfl = rp.profile.table("dvbs2/modcod").row({**frames[0], "short": 0})["kbch"] - 80
+    data = np.random.default_rng(1).integers(0, 2, dfl*len(frames)).astype(bool)
+    o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=frames)
+    y = rp.Data(o.data, Fs=o.Fs, sps=o.sps, delay=o.delay, flush=True) + rp.wave.Matched(rp.signal.filters.load("pulse/rrc/0p35"))
+    z = np.tile(np.asarray(y.data)[::o.sps], 3)
+    z = z*np.exp(2j*np.pi*0.06*np.arange(len(z))) # 60 kHz at 1 MBd that the chain didn't see
+    got = {name: headers for name, _, headers, _, _ in SP.framed(z, SimpleNamespace(cfo=0.0, baud=1e6), skip=0)}
+    assert got and max(got.values()) >= 3
+
 def test_framed_reads_the_headers_of_a_profile_ending_in_branches():
     """A profile that ends in branches gives {branch: output}; its headers are in the trunk's stream and the branches'"""
     from types import SimpleNamespace

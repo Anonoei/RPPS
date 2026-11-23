@@ -206,6 +206,11 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   out from the payload's start: `code.block.linear.frame_units(rows)`, the shortest length whose words at 0, n, 2n... of
   every frame are short of rank, on every bit map (one unknown rotation is common to the bursts); then `solve_block`
   names it (BCH, LDPC checks, cyclic...), or the payload's randomness is reported.
+- **Framed profiles take the carrier offset from their preamble**: `rp.analysis.profile` ran the framed profiles
+  (DVB-S2 and the like) on the chain's symbols with the chain's carrier offset taken off, an M-th power's, which on a
+  constellation that isn't M-fold symmetric (16/32APSK) can be off by a good part of the rate: no header decoded, and a
+  DVB-S2 APSK carrier stopped as a doubtful 8PSK. The rest of the offset now comes from the preamble's own phase steps
+  (`signal_profile.preamble_offset`) before the profile runs.
 - **A block code laid out in each frame is found from few frames**: where the profile finds frames (a unique word) and no
   code fits, the payloads were tried only as one codeword a frame, which needs more frames than the payload has bits.
   Now words laid end to end from each payload's start are looked for too (`linear.frame_units`), and the code is then
