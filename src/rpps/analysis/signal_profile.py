@@ -200,16 +200,18 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
             inverted = rotation(z, symbol.load_header(header).preamble)
             if inverted is None: # The preamble isn't there either way round
                 continue
+            data = Data(np.conj(z) if inverted else z, sps=1, flush=True)
             try:
-                res = prof.rx(start=Rep.SYMBOLS)(Data(np.conj(z) if inverted else z, sps=1, flush=True))
+                res = prof.rx(start=Rep.SYMBOLS)(data)
             except Exception: # A profile that can't run on these symbols isn't this signal
                 continue
-            ctl = res.stream.control
-            if ctl is None:
-                continue
+            # A profile ending in branches gives {branch: output}: its trunk publishes in the input's stream, each
+            # branch in its own
+            streams = [data.stream] + [o.stream for o in (res.values() if isinstance(res, dict) else [res])]
             heads = {}
-            for step, fields, at in ctl.fields():
-                heads.setdefault(step, []).append(json.dumps(fields, sort_keys=True, default=str))
+            for st in {id(s): s for s in streams}.values():
+                for step, fields, at in (st.control.fields() if st.control is not None else []):
+                    heads.setdefault(step, []).append(json.dumps(fields, sort_keys=True, default=str))
             if max((len(v) for v in heads.values()), default=0) >= min_headers:
                 summary = {k: ([(json.loads(f), n) for f, n in Counter(v).most_common(4)], len(v)) for k, v in heads.items()}
                 out.append((name, summary, max(len(v) for v in heads.values()), inverted, params))

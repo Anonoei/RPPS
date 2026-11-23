@@ -86,6 +86,60 @@ def test_agc_matches_python(log, kind):
         assert np.allclose(y, ref, rtol=1e-4, atol=1e-5)
         assert float(st.gain) == pytest.approx(float(st_ref.gain), rel=1e-4)
 
+@pytest.mark.parametrize("sps, beta", [(2.4999869, 0.35), (7.8124962, 0.2), (4.0, 0.25), (3.3, 0.0), (2.0, 0.5)])
+@pytest.mark.parametrize("dtype", [np.complex64, np.complex128])
+def test_matrix_mf_matches_python(sps, beta, dtype):
+    """Fractional and whole sps; beta 0 (a sinc); (4.0, 0.25) and (2.0, 0.5) put lags on the |t| = 1/(4 beta) limit"""
+    from rpps.sync.time.mat import matrix_mf, centres_in
+    rng = np.random.default_rng(int(sps*10))
+    x = (rng.standard_normal(20000) + 1j*rng.standard_normal(20000)).astype(dtype)
+    for t0 in (8*sps + 2, 8*sps + 2.3, 8*sps + 2.5):
+        c = centres_in(len(x), t0, sps)
+        saved = _accel.native
+        try:
+            _accel.native = None
+            ref = matrix_mf(x, c, sps, beta)
+        finally:
+            _accel.native = saved
+        got = matrix_mf(x, c, sps, beta)
+        assert got.dtype == ref.dtype and np.max(np.abs(got - ref)) < 1e-12*np.max(np.abs(ref))
+
+@pytest.mark.parametrize("native", [True, False])
+def test_matrix_mf_refuses_a_support_outside_x(native):
+    """Both paths raise where numpy's negative indices would wrap round to the end of x"""
+    from rpps.sync.time.mat import matrix_mf
+    saved = _accel.native
+    _accel.native = saved if native else None
+    try:
+        for c in (3.0, 990.0):
+            with pytest.raises(IndexError):
+                matrix_mf(np.ones(1000, np.complex64), np.array([c]), 2.5, 0.35)
+    finally:
+        _accel.native = saved
+
+def test_mat_timing_matches_python():
+    """Acquire + Mat on RRC-shaped QPSK: the same symbols, cut any way"""
+    rng = np.random.default_rng(11)
+    sym = (rng.choice([-1, 1], 6000) + 1j*rng.choice([-1, 1], 6000)).astype(np.complex64)/np.sqrt(2)
+    x = (rp.Data(sym, Fs=1e3, sps=1) + rp.wave.Shape(4, rp.signal.filters.load("pulse/rrc/0p35"))).data
+    x = (x + 0.05*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))).astype(np.complex64)
+    def symbols(cut, native):
+        saved, spy = _accel.native, Counting(_accel.native)
+        _accel.native = spy if native else None
+        try:
+            acq, mat, stream, outs, i = rp.sync.Acquire(), rp.sync.time.Mat(), None, [], 0
+            for b in cut:
+                d = rp.Data(x[i:i + b], Fs=4e3, stream=stream)
+                stream, i = d.stream, i + b
+                outs.append((d + acq + mat).data)
+            assert not native or spy.calls > 0, "the native kernel never ran"
+            return np.concatenate(outs)
+        finally:
+            _accel.native = saved
+    for cut in ([len(x)], [8192]*2 + [len(x) - 16384], [1]*30 + [len(x) - 30]):
+        ref, y = symbols(cut, False), symbols(cut, True)
+        assert len(y) == len(ref) > 4000 and np.allclose(y, ref, atol=1e-5)
+
 @pytest.mark.parametrize("ted, biphase", [("mm", False), ("gardner", False), ("mm", True)])
 def test_mm_matches_python(ted, biphase):
     sps = 8

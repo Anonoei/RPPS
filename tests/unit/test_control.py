@@ -27,7 +27,7 @@ def tmp_profile(tmp_path, obj, name="test/p"):
 @pytest.fixture
 def config_path(tmp_path):
     yield tmp_path
-    if tmp_path in rp._config._EXTRA:
+    while tmp_path in rp._config._EXTRA: # (each tmp_profile call adds it again: leave none behind)
         rp._config._EXTRA.remove(tmp_path)
 
 # ---- tables, entries, position maps

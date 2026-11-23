@@ -69,6 +69,14 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   chance could not have made it. It gives the word (`word`, `bits`), the bits each frame's copy differs by
   (`mismatches`), and an `errors` to start a delimit step from. A 100-byte word with 10% bit errors is found from 12
   to 20 frames.
+- **`matrix_mf` (rpps.sync.time.mat) runs in C++** (`rp._native.matrix_mf`): each row of RRC weights is computed and
+  applied in one vectorised pass, never stored, 9-10x the numpy path and equal to it to rounding; `Mat` timing gains the
+  most. Both paths now raise IndexError when a symbol's support runs outside x, where numpy's negative indices used to
+  wrap round to the end of the block: `Mat`'s +-0.25-sample timing probes use only the symbols whose shifted support
+  is in the buffer (`mat.fits`).
+- **`signal_profile.framed` reads profiles that end in branches** (`dvbs2/mis`): it read `.stream` off the result,
+  which is `{branch: output}` there, and the AttributeError ended the framed pass for every profile. The trunk's
+  headers come from the input's stream, each branch's from its own.
 
 ## 0.6.0 (2026-11-22)
 

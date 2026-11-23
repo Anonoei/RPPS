@@ -99,3 +99,16 @@ def test_the_preamble_turning_backwards_means_an_inverted_spectrum():
     z = z*np.exp(2j*np.pi*0.003*np.arange(len(z)) + 0.7j) + 0.2*(rng.standard_normal(len(z)) + 1j*rng.standard_normal(len(z)))
     assert SP.rotation(z, pre) is False and SP.rotation(np.conj(z), pre) is True
     assert SP.rotation(data, pre) is None
+
+def test_framed_reads_the_headers_of_a_profile_ending_in_branches():
+    """A profile that ends in branches gives {branch: output}; its headers are in the trunk's stream and the branches'"""
+    from types import SimpleNamespace
+    frames = [{"modcod": 4, "pilots": 1, "sis": 1, "isi": 0}]*6
+    p = rp.profile.load("dvbs2/normal")
+    dfl = rp.profile.table("dvbs2/modcod").row({**frames[0], "short": 0})["kbch"] - 80
+    data = np.random.default_rng(1).integers(0, 2, dfl*len(frames)).astype(bool)
+    o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=frames)
+    y = rp.Data(o.data, Fs=o.Fs, sps=o.sps, delay=o.delay, flush=True) + rp.wave.Matched(rp.signal.filters.load("pulse/rrc/0p35"))
+    z = np.asarray(y.data)[::o.sps]
+    got = {name: headers for name, _, headers, _, _ in SP.framed(np.tile(z, 3), SimpleNamespace(cfo=0.0, baud=1e6), skip=0)}
+    assert "dvbs2/mis" in got and got["dvbs2/mis"] >= 3

@@ -174,6 +174,108 @@ py::tuple mm(carray<cf32> x_a, carray<double> pulse_a, long long i_in, double es
     return py::make_tuple(o, i_in, est, count, pw, pw_half, so, sr);
 }
 
+// ---------------------------------------------------------------- Matrix matched filter (rpps/sync/time/mat.py)
+// y[i] = sum_l w[i, l] x[j0_i + l], j0_i = ceil(c_i - span sps), w[i, l] = rrc((j0_i - c_i + l)/sps) scaled to unit
+// energy: matrix_mf and _rrc_rows fused, a row at a time (never the whole matrix). The sines and cosines come by angle
+// addition from tables of the lags, as _rrc_rows does; the limits t = 0 and |t| = 1/(4 beta) take rrc_pulse's values.
+// Double arithmetic (numpy's float64 weights times the samples). A row's weights are one branch-free loop (vectorised),
+// then the few lags that can sit on a limit point are checked.
+constexpr double PI = 3.141592653589793;
+
+#if defined(__GNUC__) && defined(__x86_64__) && !defined(__clang__)
+#define RPPS_CLONES __attribute__((target_clones("avx2", "default")))
+#else
+#define RPPS_CLONES
+#endif
+
+inline double rrc_limit(double t, double beta) {
+    if (std::abs(t) < 1e-9)
+        return 1.0 + beta*(4.0/PI - 1.0);
+    return beta/std::sqrt(2.0)*((1.0 + 2.0/PI)*std::sin(PI/(4.0*beta)) + (1.0 - 2.0/PI)*std::cos(PI/(4.0*beta)));
+}
+
+// One row's weights by the general formula into w (wrong at a limit point: the caller fixes those)
+RPPS_CLONES
+static void mmf_row(double off, double sps, double beta, const double *lag, const double *ca, const double *sa,
+                    const double *cb, const double *sb, double s_a, double c_a, double s_b, double c_b, long long L, double *w) {
+    for (long long l = 0; l < L; l++) {
+        const double t = (off + lag[l])/sps; // (lag[l] = l: converting the index itself has no AVX2 instruction)
+        const double sin_a = s_a*ca[l] + c_a*sa[l]; // sin(pi (1 - beta) t)
+        const double cos_b = c_b*cb[l] - s_b*sb[l]; // cos(pi (1 + beta) t)
+        const double ft = 4.0*beta*t;
+        w[l] = (sin_a + ft*cos_b)/(PI*t*(1.0 - ft*ft));
+    }
+}
+
+// sum w^2 and sum w x over a row (x as interleaved re, im)
+template <typename T>
+RPPS_CLONES
+static void mmf_dot(const T *x, const double *w, long long L, double *e_out, double *re_out, double *im_out) {
+    double e = 0.0, re = 0.0, im = 0.0;
+    for (long long l = 0; l < L; l++) {
+        e += w[l]*w[l];
+        re += w[l]*static_cast<double>(x[2*l]);
+        im += w[l]*static_cast<double>(x[2*l + 1]);
+    }
+    *e_out = e; *re_out = re; *im_out = im;
+}
+
+template <typename T>
+py::array_t<cf64> matrix_mf(carray<std::complex<T>> x_a, carray<double> cen_a, double sps, double beta, double span) {
+    const long long n = x_a.size(), N = cen_a.size();
+    const T *x = reinterpret_cast<const T *>(x_a.data());
+    const double *c = cen_a.data();
+    const double S = span*sps;
+    const long long L = static_cast<long long>(std::ceil(2.0*S)) + 2;
+    auto out = empty<cf64>(static_cast<std::size_t>(N));
+    cf64 *o = out.mutable_data();
+    bool bad_index = false;
+    {
+        py::gil_scoped_release nogil;
+        const double a = PI*(1.0 - beta)/sps, b = PI*(1.0 + beta)/sps, q = beta == 0.0 ? 0.0 : 1.0/(4.0*beta);
+        std::vector<double> lag(L), ca(L), sa(L), cb(L), sb(L), w(L);
+        for (long long l = 0; l < L; l++) {
+            lag[l] = static_cast<double>(l);
+            ca[l] = std::cos(a*l); sa[l] = std::sin(a*l);
+            cb[l] = std::cos(b*l); sb[l] = std::sin(b*l);
+        }
+        for (long long i = 0; i < N; i++) {
+            const double j0d = std::ceil(c[i] - S);
+            const long long j0 = static_cast<long long>(j0d);
+            if (j0 < 0 || j0 + L > n) {
+                bad_index = true;
+                break;
+            }
+            const double off = j0d - c[i];
+            if (beta == 0.0) { // np.sinc
+                for (long long l = 0; l < L; l++) {
+                    const double t = (off + static_cast<double>(l))/sps;
+                    w[l] = t == 0.0 ? 1.0 : std::sin(PI*t)/(PI*t);
+                }
+            } else {
+                mmf_row(off, sps, beta, lag.data(), ca.data(), sa.data(), cb.data(), sb.data(), std::sin(a*off), std::cos(a*off),
+                        std::sin(b*off), std::cos(b*off), L, w.data());
+                // Only the lags nearest t = 0 and t = +-1/(4 beta) can be within 1e-9 of them (lags are 1/sps apart)
+                for (const double lc : {-off, q*sps - off, -q*sps - off}) {
+                    const long long l = std::llround(lc);
+                    if (l < 0 || l >= L)
+                        continue;
+                    const double t = (off + static_cast<double>(l))/sps;
+                    if (std::abs(t) < 1e-9 || std::abs(std::abs(t) - q) < 1e-9)
+                        w[l] = rrc_limit(t, beta);
+                }
+            }
+            double e, re, im;
+            mmf_dot(x + 2*j0, w.data(), L, &e, &re, &im);
+            const double g = 1.0/std::sqrt(e);
+            o[i] = cf64(re*g, im*g);
+        }
+    }
+    if (bad_index)
+        throw py::index_error("matrix_mf: a symbol's support runs outside x");
+    return out;
+}
+
 // ---------------------------------------------------------------- Adaptive equalizer (rpps/equalize.py): CMA and LMS
 // One output per `sps` inputs: y = w . (buf[n], buf[n-1], ..., buf[n-N+1]), then w += mu*err*conj(x). complex64 throughout,
 // as numpy computes it. mode 0: CMA, err = -y(|y|^2 - R). mode 1: LMS, err = d - y with d the training symbol while
@@ -250,6 +352,9 @@ void register_sync(py::module_ &m) {
     m.def("mm", &mm, "mm(x, pulse, i_in, est, count, pw, pw_half, outs, rail, ratio, sps, alpha, guard, ted, biphase) -> (y, i_in, est, count, pw, pw_half, outs, rail)",
           py::arg("x"), py::arg("pulse"), py::arg("i_in"), py::arg("est"), py::arg("count"), py::arg("pw"), py::arg("pw_half"),
           py::arg("outs"), py::arg("rail"), py::arg("ratio"), py::arg("sps"), py::arg("alpha"), py::arg("guard"), py::arg("ted"), py::arg("biphase"));
+    const char *mmf_doc = "matrix_mf(x, centres, sps, beta, span) -> y (complex128): rpps.sync.time.mat.matrix_mf";
+    m.def("matrix_mf", &matrix_mf<float>, mmf_doc, py::arg("x").noconvert(), py::arg("centres"), py::arg("sps"), py::arg("beta"), py::arg("span"));
+    m.def("matrix_mf", &matrix_mf<double>, mmf_doc, py::arg("x").noconvert(), py::arg("centres"), py::arg("sps"), py::arg("beta"), py::arg("span"));
 }
 
 } // namespace rpps
