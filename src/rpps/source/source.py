@@ -213,7 +213,7 @@ class File(Source):
     def __init__(self, fmt, path, Fs=1.0, cf=0.0, sps=0.0, scale=True):
         super().__init__(Fs, cf, sps)
         self.fmt = fmts.get(fmt)
-        import pysdrlib
+        pysdrlib = fmts.pysdrlib()
         self._f = pysdrlib.File(path, self.fmt.name, scale=scale)
         self.path = self._f.get_path()
 
@@ -337,7 +337,7 @@ class Device(Source):
         device's range (the same on any radio), or a {stage: fraction} dict"""
         self._opened, self.lost = False, None
         if isinstance(device, str):
-            import pysdrlib
+            pysdrlib = fmts.pysdrlib()
             if "@" in device or "/" in device:
                 device, open_args, self._opened = pysdrlib.open(device, **open_args), {}, True
             else:
@@ -421,7 +421,7 @@ class Sink:
     """
     def __init__(self, fmt, path, scale=True, append=False, clip=True):
         self.fmt = fmts.get(fmt)
-        import pysdrlib
+        pysdrlib = fmts.pysdrlib()
         self._sink = pysdrlib.FileSink(path, self.fmt.name, append=append, open=True, clip=clip, scale=scale)
 
     @property

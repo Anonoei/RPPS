@@ -28,7 +28,7 @@ def main():
     track = rp.sync.quality.Track(bpsk) # Es/N0 over the last symbols
     shown = np.zeros(0, dtype=np.complex64) # The symbols on the phasor
 
-    fig, axs = plt.subplots(1,3, layout="constrained", figsize=(12,6))
+    fig, axs = rp.viz.subplots(1, 3, layout="constrained", figsize=(12, 6))
     ax_t = axs[0]
     ax_e = axs[1]
     ax_p = axs[2]
@@ -60,4 +60,5 @@ def main():
             # writer.grab_frame()
 
 if __name__ == "__main__":
-    main()
+    with rp.viz.styled(): # rpps' dark style for all the program draws, cleared axes and titles too
+        main()

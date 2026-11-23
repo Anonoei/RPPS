@@ -49,6 +49,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   - A code implementation defines `_decode(x, ...) -> (output, errors or None)`; `_code.decode` wraps it.
 
 ### Added
+- The `mm` timing step takes `biphase` (Manchester symbols, timed on their mid-symbol transition) and `interp`:
+  RDS as a profile, built in code and run (`examples/e2e_profile.py`).
 - **More of the stable API** (the Building on RPPS guide): `analysis.profile`, `source.Memory`, `waveform.classify`,
   `cumulants.classify`, `fsk.analyze`, `hopping.track`, `burst.demodulate` and `framing.frames` `find`, `cut`,
   `coherence`, `periods`: a change is called out, and a rename warns for a release.
@@ -229,6 +231,11 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   is shown and every package has a docstring.
 
 ### Fixed
+- `rp.source` refuses a pysdrlib older than 0.5 (ImportError naming the version and the fix): its format names
+  differ ("cf32" was two float16), so a capture was read as noise and nothing locked.
+- Eye diagrams (`rp.viz.eye`) are upright (they were drawn upside down), take a block with no whole trace (a stream's
+  short last block), keep their alpha in range with few traces, and `eye.Q` updates with Q; a debug print is gone.
+  `examples/e2e.py` and `e2e_mat.py` draw in rpps' dark style again (`rp.viz.subplots`, `rp.viz.styled()`).
 - `analysis.spectrum.waveform.classify` judges the envelope of bursts inside them by the smoothed power
   (`waveform.on_samples`), not by each sample's: filtered PSK in bursts was called constant envelope, its dips between
   symbols dropped.

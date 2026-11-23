@@ -7,14 +7,24 @@
 """
 # pysdrlib is imported when a format is first asked for: `import rpps` works without it (codes, profiles, analysis)
 
+NEED = (0, 5) # pysdrlib before 0.5 named formats otherwise ("cf32" was two float16): its files would be read as noise
+
+def pysdrlib():
+    """The pysdrlib module, refused (ImportError) when it is older than NEED"""
+    import pysdrlib as lib
+    have = tuple(int(p) for p in lib.__version__.split(".")[:2] if p.isdigit())
+    if have < NEED:
+        raise ImportError(f"rpps needs pysdrlib >= {'.'.join(map(str, NEED))}, this is {lib.__version__} ({lib.__file__}): "
+                          f"its format names differ, so samples would be misread. pip install -U pysdrlib")
+    return lib
+
 def ls():
     """The format names pysdrlib knows"""
-    from pysdrlib import Formats
-    return Formats.ls()
+    return pysdrlib().Formats.ls()
 
 def get(fmt):
     """A pysdrlib Formats member from its name (or a member)"""
-    from pysdrlib import Formats
+    Formats = pysdrlib().Formats
     if isinstance(fmt, Formats):
         return fmt
     try:

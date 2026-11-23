@@ -109,3 +109,11 @@ def test_udp_source_ends_on_silence():
 def test_bad_urls():
     with pytest.raises(ValueError):
         rp.source.Socket("cf32", "http://x:1")
+
+def test_a_pysdrlib_before_0_5_is_refused_by_name(monkeypatch):
+    """pysdrlib < 0.5 named the formats otherwise ("cf32" two float16s): its files would be read as noise, so a source
+    refuses it with the version and the fix rather than giving samples"""
+    pysdrlib = pytest.importorskip("pysdrlib")
+    monkeypatch.setattr(pysdrlib, "__version__", "0.4.6")
+    with pytest.raises(ImportError, match=r"pysdrlib >= 0\.5, this is 0\.4\.6"):
+        rp.source.formats.get("cf32")
