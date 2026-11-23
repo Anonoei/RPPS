@@ -268,7 +268,6 @@ def _strong(fec):
         return True
     return fec.mismatch is not None and fec.baseline and fec.mismatch < STRONG*fec.baseline
 
-CHUNK = 2**16 # Channel samples a chain takes at a time
 NEAR = 2**20 # Channel samples kept for rpps.analysis.spectrum.waveform
 PM_OFFSET = 0.25 # A residual carrier this far (of the signal's width) from its centre isn't one: PM is symmetric about it
 CARRIER_SHARE = 0.01 # Power share of the strongest spectral bin (of 8192) worth a residual-carrier analysis
@@ -773,17 +772,9 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
         fed = [ch for ch in chains if not ch.dead and id(ch) in slot]
         if bank is None:
             return
-        held = {id(ch): [] for ch in fed} # A chain's channel samples go in CHUNK at a time (as a capture's blocks would)
-        def give(ch, y, last=False):
-            h = held[id(ch)]
-            if len(y):
-                h.append(y)
-            n = sum(len(v) for v in h)
-            if n >= CHUNK or (last and n):
-                ch.step(np.concatenate(h), last=last)
-                h.clear()
-            elif last:
-                ch.step(np.zeros(0, np.complex64), last=True)
+        def give(ch, y, last=False): # A chain's channel samples as the bank gives them (its stages don't mind the cut)
+            if len(y) or last:
+                ch.step(y, last=last)
         for i, blk in enumerate(source(block)):
             if i >= cap:
                 break

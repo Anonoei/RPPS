@@ -150,6 +150,10 @@ class Mat(Stage):
             st.det = meta.det
             k = np.round((st.base + st.t_next - st.det.tau)/sps)
             st.t_next = st.det.tau + k*sps - st.base
+            # The point nearest can be one whose support begins before the buffer kept (a timing a hair earlier than the
+            # one the buffer was cut for): on to the first whose support is all there
+            while np.ceil(st.t_next - self.span*sps) < 0:
+                st.t_next += sps
         samples = samples if st.buffer is None else np.concatenate((st.buffer, samples))
         centres = centres_in(len(samples), st.t_next, sps, self.span)
 
