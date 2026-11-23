@@ -1,5 +1,6 @@
 """Channels in shared memory (rpps.source.shm): ShmSink publishes blocks at their positions as pysdrlib `shm` streams, and
 another thread (or process) receives one with rp.source.Device("shm@rpps.<name>"): rate, centre, positions and gaps"""
+import sys
 import threading
 import time
 
@@ -75,6 +76,8 @@ def test_a_gap_upstream_is_a_gap_here():
     assert pos[0][0] == 0 and any(p == 2500 for p, _ in pos) and sum(n for _, n in pos) == 4000
     assert out["src"].stream.dropped == 500
 
+@pytest.mark.xfail(sys.platform == "win32", raises=PermissionError, strict=False,
+                   reason="pysdrlib ShmStream.close unlinks the manifest while the reader still has it open (WinError 32)")
 def test_a_retune_starts_the_stream_over():
     with ShmSink("r") as sink:
         a = rp.Data(tone(0), Fs=1e5, cf=1e6)
