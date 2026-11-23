@@ -395,32 +395,38 @@ def _profile_codes():
     """The names of the convolutional codes shipped profiles decode with"""
     from .. import _config
     out = set()
-    for fam, modes in _config.ls("profile").items():
-        for mode in modes:
-            try:
-                obj = _config.resolve(_config.read(_config.find("profile", f"{fam}/{mode}")), {}, f"profile/{fam}/{mode}")
-            except Exception:
-                continue
-            out |= {st["name"] for st in obj.get("steps", []) if st.get("code") == "conv"
-                    and isinstance(st.get("name"), str)}
+    for name, obj, _ in _profiles():
+        out |= {st["name"] for st in obj.get("steps", []) if st.get("code") == "conv" and isinstance(st.get("name"), str)}
     return frozenset(out)
 
 
-def match_profile(steps):
-    """A shipped profile (config/profile) with the same code and symbol steps as `steps`: (name, its steps) or (None, None)"""
+def _profiles():
+    """(name, resolved definition, params) of every shipped profile and each variant its choices make (rp.profile.variants)"""
     from .. import _config
-    want = (_fec_steps(steps), _symbol_steps(steps)[:2])
+    from ..profile.catalogue import variants
     for fam, modes in _config.ls("profile").items():
         for mode in modes:
             name = f"{fam}/{mode}"
-            try:
-                obj = _config.resolve(_config.read(_config.find("profile", name)), {}, f"profile/{name}")
-                got = (_fec_steps(obj["steps"]), _symbol_steps(obj["steps"])[:2])
-            except Exception: # A profile whose steps a header names (no fixed code) can't match
-                continue
-            if got == want:
-                return name, obj["steps"]
-    return None, None
+            raw = _config.read(_config.find("profile", name))
+            for params in variants(name):
+                try:
+                    yield name, _config.resolve(raw, params, f"profile/{name}"), params
+                except Exception:
+                    continue
+
+
+def match_profile(steps):
+    """A shipped profile (config/profile), or a variant of one, with the same code and symbol steps as `steps`:
+    (name, its steps, the params of the variant: {} for the defaults) or (None, None, None)"""
+    want = (_fec_steps(steps), _symbol_steps(steps)[:2])
+    for name, obj, params in _profiles():
+        try:
+            got = (_fec_steps(obj["steps"]), _symbol_steps(obj["steps"])[:2])
+        except Exception: # A profile whose steps a header names (no fixed code) can't match
+            continue
+        if got == want:
+            return name, obj["steps"], params
+    return None, None, None
 
 
 class CodeDetection:
@@ -432,7 +438,8 @@ class CodeDetection:
     stream: the bit stream that decodes (`bit_streams` key); equivalent: others that decode as well (a code that can't
         tell inverted bits apart leaves that to what's inside it: Align's polarity)
     offset, period: where in the window the code's structure starts (bits) and how often it repeats
-    steps: profile steps from the timed symbols on; profile_name: the shipped profile that has the same ones
+    steps: profile steps from the timed symbols on; profile_name: the shipped profile that has the same ones, and
+        profile_params the values of its params that make them (a variant: rp.profile.variants)
     target: the map the decoder uses; correction: (angle, conj) that turns the symbols to it (rp.sync.AcquireFEC applies it)
     mismatch, baseline: re-encoding mismatch of a convolutional code, and what a wrong hypothesis gets
     slips: carrier turns and symbol slips rp.sync.AcquireFEC caught and put right; latency: seconds it held the symbols for
@@ -441,7 +448,7 @@ class CodeDetection:
         code, see `solve`), outermost first; they are in `inner` but never in `steps`: save one to decode with it
     """
     __slots__ = ("found", "complete", "mod", "kind", "name", "stream", "equivalent", "offset", "period", "inner",
-                 "steps", "profile_name", "target", "correction", "z", "mismatch", "baseline", "report", "guesses", "n",
+                 "steps", "profile_name", "profile_params", "target", "correction", "z", "mismatch", "baseline", "report", "guesses", "n",
                  "slips", "latency")
 
     def __init__(self, **kw):
@@ -472,7 +479,7 @@ class CodeDetection:
         if not self.found:
             raise ValueError(f"no code found: {self}")
         if self.profile_name:
-            return profile.load(self.profile_name)
+            return profile.load(self.profile_name, **(self.profile_params or {}))
         return profile.Profile("detected", self.definition())
 
     def rx(self):
@@ -500,11 +507,16 @@ class CodeDetection:
             g = f", blind guesses {self.guesses}" if self.guesses else ""
             return f"no known code ({self.n} symbols{g})"
         inner = "".join(f" + {h.params['interleaver'] + ' + ' if h.params.get('interleaver') else ''}{h.name}" for h in self.inner)
-        prof = f" = profile {self.profile_name}" if self.profile_name else ""
+        prof = f" = profile {_named(self.profile_name, self.profile_params)}" if self.profile_name else ""
         mm = f", mismatch {self.mismatch:.4f}" if self.mismatch is not None else ""
         return f"{self.kind} {self.name}{inner} on {self.mod} {self.stream}{prof} (z={self.z:.1f}{mm})"
 
     __repr__ = __str__
+
+
+def _named(name, params):
+    """A profile and the params of its variant, as `rpps rx -p` takes them: "demo/variants (modulation=16qam)" """
+    return name + (f" ({', '.join(f'{k}={v}' for k, v in params.items())})" if params else "")
 
 
 def identify(symbols, constellation, names=None, blind=False, differential=True, profiles=True):
@@ -748,8 +760,8 @@ def _blind(head, c, y=None):
 def _finish(out, c, profiles):
     """The shipped profile with the same steps, if any, and the correction that turns the symbols to the map it decodes with"""
     own = out.steps
-    name, steps = match_profile(own) if profiles else (None, None)
-    for out.profile_name, out.steps in ((name, steps), (None, own)):
+    name, steps, params = match_profile(own) if profiles else (None, None, None)
+    for out.profile_name, out.profile_params, out.steps in ((name, params, steps), (None, None, own)):
         if out.steps is None:
             continue
         out.target, out.correction = _target(out, c)

@@ -91,6 +91,28 @@ def info(name, baud=None, **params):
     return ProfileInfo(name, obj.get("comment", ""), obj.get("ref"), list(obj.get("tags") or []), ps,
                        requirements(obj.get("requires") or {}, values, baud, f"profile/{name}"), params)
 
+def variants(name, limit=64):
+    """The param values a blind search tries for a profile: every combination of the choices of its params (but those
+    marked "blind": false), the defaults first, at most `limit` of them; [{}] for a profile without choices. A variant
+    is `load(name, **v)`"""
+    import itertools
+    file = _config.find("profile", name)
+    if file is None:
+        raise FileNotFoundError(f"profile/{name}: not found, have {_config.ls('profile')}")
+    decl = _config.read(file).get("params") or {}
+    axes = []
+    for k, spec in decl.items():
+        if isinstance(spec, dict) and spec.get("choices") and spec.get("blind", True):
+            keys = list(spec["choices"])
+            default = spec.get("default")
+            first = next((c for c in keys if c == default or (isinstance(c, str) and c == str(default))), None)
+            vals = [default] if first is not None else []
+            vals += [c for c in keys if c is not first]
+            axes.append((k, vals))
+    if not axes:
+        return [{}]
+    return [dict(zip([k for k, _ in axes], combo)) for combo in itertools.islice(itertools.product(*[v for _, v in axes]), limit)]
+
 def catalogue():
     """Every profile there is, described (with its defaults), by name"""
     return [info(f"{family}/{mode}") for family, modes in sorted(ls().items()) for mode in modes]

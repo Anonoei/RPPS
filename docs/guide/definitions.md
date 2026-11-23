@@ -95,6 +95,10 @@ where its expression holds:
 - Expressions take string literals, so `"when": "modulation == '16qam'"` and `"expr": "... if fec == 'none' else ..."` work.
 - A child's `choices` replace its parent's, so a child can narrow them. A mode a standard names stays a child that pins
   the default (`dvbs/qpsk_1_2`), so the name keeps working.
+- Blind analysis (`rp.analysis.identify`, `rpps solve`, the survey's framed profiles) tries every variant the choices
+  make (`rp.profile.variants(name)`, the defaults first) and names the one that fits with its params
+  (`demo/variants (modulation=16qam, rolloff=0.2)`); `"blind": false` on a param (a payload size) keeps it at its default.
+- Expressions join strings with `+`: `{"expr": "'k7_171_133/' + rate"}`.
 - `rp.profile.info(name, **params)` evaluates `requires` with the chosen bundle (`"bw": "(1 + rolloff)*baud"`) and lists
   each param's choices.
 

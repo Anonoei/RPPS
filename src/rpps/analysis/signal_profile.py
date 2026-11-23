@@ -67,11 +67,12 @@ def weights(hyps, top=5):
 
 class SignalProfile:
     """The steps that process one signal (see the module). solved: every step found or guessed, none unsolved"""
-    __slots__ = ("name", "signal", "steps", "fec", "det", "profile_name", "symbols")
+    __slots__ = ("name", "signal", "steps", "fec", "det", "profile_name", "profile_params", "symbols")
 
     def __init__(self, name="", signal=None):
         self.name, self.signal = name, signal
         self.steps, self.fec, self.det, self.profile_name, self.symbols = [], None, None, None, 0
+        self.profile_params = None # The values of the profile's params that make it (a variant), {} for its defaults
 
     def add(self, *a, **kw):
         self.steps.append(Step(*a, **kw))
@@ -93,12 +94,15 @@ class SignalProfile:
         return self.fec.rx()
 
     def to_dict(self):
-        return {"name": self.name, "solved": self.solved, "profile": self.profile_name, "symbols": self.symbols,
+        return {"name": self.name, "solved": self.solved, "profile": self.profile_name, "params": self.profile_params,
+                "symbols": self.symbols,
                 "steps": [s.to_dict() for s in self.steps]}
 
     def __str__(self):
         mark = {FOUND: " ", GUESS: "?", UNSOLVED: "!"}
-        head = self.name + (f"  -> {'profile ' + self.profile_name if self.profile_name else 'solved' if self.solved else 'UNSOLVED'}")
+        from .identify import _named
+        prof = _named(self.profile_name, self.profile_params) if self.profile_name else None
+        head = self.name + (f"  -> {'profile ' + prof if prof else 'solved' if self.solved else 'UNSOLVED'}")
         out = [head]
         w = max([len(s.kind) for s in self.steps] + [4])
         for i, s in enumerate(self.steps, 1):
@@ -175,8 +179,8 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
     """Shipped profiles with a frame sync step, run on timed symbols (the frequency offset taken off), conjugated first
     when the preamble turns the wrong way (`rotation`: a spectrum inverted on the way down, in which the coherent frame
     sync finds nothing): [(name,
-    {header id: ([(fields, count)] commonest first, how many)}, headers, inverted)] of those whose headers decode, best
-    first"""
+    {header id: ([(fields, count)] commonest first, how many)}, headers, inverted, params)] of those whose headers decode,
+    best first; each variant a profile's choices make (rp.profile.variants) is tried, `params` the one that decoded"""
     from .. import profile, symbol
     from ..base import Data
     from ..base.types import Rep
@@ -186,18 +190,18 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
         return out
     z = z*np.exp(-2j*np.pi*det.cfo/det.baud*np.arange(len(z)))
     z = (z/np.sqrt(np.mean(np.abs(z)**2))).astype(np.complex64)
-    for fam, modes in profile.ls().items():
-        for mode in modes:
-            name = f"{fam}/{mode}"
-            obj = profile.load(name).obj
-            if not any(s.get("sync") == "frame" for s in obj["steps"]):
+    names = [f"{fam}/{mode}" for fam, modes in profile.ls().items() for mode in modes]
+    for name in names:
+        for params in profile.variants(name):
+            prof = profile.load(name, **params)
+            header = next((s.get("header") for s in prof.obj["steps"] if s.get("sync") == "frame"), None)
+            if header is None: # No frame sync, or one by a word (no header to read)
                 continue
-            header = next(s["header"] for s in obj["steps"] if s.get("sync") == "frame")
             inverted = rotation(z, symbol.load_header(header).preamble)
             if inverted is None: # The preamble isn't there either way round
                 continue
             try:
-                res = profile.load(name).rx(start=Rep.SYMBOLS)(Data(np.conj(z) if inverted else z, sps=1, flush=True))
+                res = prof.rx(start=Rep.SYMBOLS)(Data(np.conj(z) if inverted else z, sps=1, flush=True))
             except Exception: # A profile that can't run on these symbols isn't this signal
                 continue
             ctl = res.stream.control
@@ -208,7 +212,7 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
                 heads.setdefault(step, []).append(json.dumps(fields, sort_keys=True, default=str))
             if max((len(v) for v in heads.values()), default=0) >= min_headers:
                 summary = {k: ([(json.loads(f), n) for f, n in Counter(v).most_common(4)], len(v)) for k, v in heads.items()}
-                out.append((name, summary, max(len(v) for v in heads.values()), inverted))
+                out.append((name, summary, max(len(v) for v in heads.values()), inverted, params))
     return sorted(out, key=lambda t: -t[2])
 
 def rotation(z, preamble, threshold=0.6, top=8):
@@ -611,7 +615,7 @@ class _Chain:
         c = symbol.load_or_generate(det.mod)
         weak = fec is not None and fec.found and rate_doubt and not _strong(fec)
         if fec is not None and fec.found and not weak:
-            p.profile_name = fec.profile_name
+            p.profile_name, p.profile_params = fec.profile_name, fec.profile_params
             _code_steps(p, fec, c)
             # Inner finds the steps don't hold: blind ones, and a configured RS code with nothing to align it by
             extra = [h for h in fec.inner if h.kind != "rs" or "pattern" not in h.params]
@@ -634,8 +638,8 @@ class _Chain:
             fr = []
             p.add("frame", "framed profiles", UNSOLVED, note=f"{type(e).__name__}: {e}")
         if fr:
-            name, heads, n, inverted = fr[0]
-            p.profile_name = name
+            name, heads, n, inverted, params = fr[0]
+            p.profile_name, p.profile_params = name, params
             if inverted:
                 p.add("spectrum", "inverted: conjugate the symbols before the profile",
                       note="the frame preamble turns backwards, symbol to symbol")

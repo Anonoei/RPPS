@@ -24,6 +24,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **Composite checks**: a `config/crc` definition of `"type": "composite"`, CRC parts over transformed views of the
   message (`nibble_swap`, `reverse_bits`, `reverse_bytes`, `invert`, `xor`, `skip`, `take`, or one registered with
   `rp.link.check.register`), concatenated or XORed. It goes wherever a CRC does (an HDLC `fcs`, a link header's `crc`).
+- **Blind analysis tries a profile's variants**: `rp.profile.variants(name)` lists the combinations of its params'
+  choices (defaults first; a param with `"blind": false` stays at its default), and `identify` (`match_profile`), the
+  survey's framed profiles and `rpps solve` try each; a match carries `profile_params` beside `profile_name`.
+  `match_profile` returns (name, steps, params).
 - The `mpower` carrier step takes a generated `"shape"` (`"16QAM"`) as the constellation step does.
 - `examples/profile_variants.py`.
 - **Words of any width**: a `sequence` word (and `word` + `bits` on a step) may be longer than 64 bits; a 100-byte

@@ -48,7 +48,7 @@ which needs the PCFICH, which needs the PBCH. A kind the profile doesn't give is
 """
 from .profile import Profile, load, ls
 from .message import Message
-from .catalogue import ProfileInfo, info, catalogue
+from .catalogue import ProfileInfo, info, catalogue, variants
 from .decoder import Decoder
 from .runner import Runner
 from .parallel import Region
