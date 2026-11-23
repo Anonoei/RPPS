@@ -703,7 +703,7 @@ class _Chain:
         return p
 
 def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True, survey=None, symbols=2**18,
-            max_blocks=None):
+            max_blocks=None, progress=None):
     """Profiles of signals in a capture: [SignalProfile], in the order chosen
 
     source: an rp.source Source (File, Memory: a live device is best captured into Memory first, as the chains run slower
@@ -714,8 +714,12 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
     signals: which ones: None (every one the survey finds), an index or indices into the survey, or Signal objects
     freq: instead, the one nearest this frequency (Hz from the capture's centre)
     survey: the rp.analysis.survey of `source` already made (the indices refer to it; it isn't surveyed again)
-    blind: run the blind tools where no definition fits (tens of seconds a signal)"""
+    blind: run the blind tools where no definition fits (tens of seconds a signal)
+    progress: called as progress(stage, done, total, left) as the work goes: stage "read" (blocks read of the stretch
+        planned: `blocks`, then `max_blocks` once some chains read on; `left` the chains still reading), "build" (profiles
+        built of the signals), and "again" / "build again" for a second pass at a rate the cyclic spectrum gives"""
     from .spectrum.signal import survey as _survey
+    tell = progress or (lambda *a: None)
     sv = survey if survey is not None else None
     if signals is not None and not isinstance(signals, (int, np.integer)) and all(hasattr(s, "channel") for s in signals):
         picked = list(signals)
@@ -752,7 +756,7 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
             out.append(c)
         return out, bank, slot
 
-    def run(chains, bank, slot):
+    def run(chains, bank, slot, stage="read"):
         fed = [ch for ch in chains if not ch.dead and id(ch) in slot]
         if bank is None:
             return
@@ -779,6 +783,7 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
             outs = bank.step(blk.data, active=[slot[id(ch)] for ch in fed])
             for ch in fed:
                 give(ch, outs[slot[id(ch)]])
+            tell(stage, i + 1, blocks if i < blocks else cap, len(fed))
         outs = bank.flush(active=[slot[id(ch)] for ch in fed]) # The end of the stream for those still reading
         for ch in fed:
             give(ch, outs[slot[id(ch)]], last=True)
@@ -796,7 +801,10 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
 
     chains, bank, slot = chains_for(picked, [None]*len(picked))
     run(chains, bank, slot)
-    out = [build(ch) for ch in chains]
+    out = []
+    for k, ch in enumerate(chains):
+        out.append(build(ch))
+        tell("build", k + 1, len(chains), len(chains) - k - 1)
     # Where the chain found no rate (or a doubtful one) and the cyclic spectrum sees one: a second pass at that rate
     again = {}
     for k, (ch, p) in enumerate(zip(chains, out)):
@@ -805,10 +813,11 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
             again[k] = (ch.sig, baud)
     if again:
         redo, bank2, slot2 = chains_for([sb[0] for sb in again.values()], [sb[1] for sb in again.values()])
-        run(redo, bank2, slot2)
+        run(redo, bank2, slot2, stage="again")
         again = dict(zip(again, redo))
-        for k, ch in again.items():
+        for j, (k, ch) in enumerate(again.items()):
             q = build(ch)
+            tell("build again", j + 1, len(again), len(again) - j - 1)
             if _further(q, out[k]):
                 q.steps.insert(1, Step("rate", f"{ch.baud/1e3:.6g} kBd from the cyclic spectrum (rpps.analysis.spectrum.cyclic)",
                                        GUESS, note="the first pass found " + (out[k].steps[1].what if len(out[k].steps) > 1

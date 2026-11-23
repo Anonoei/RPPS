@@ -123,3 +123,13 @@ def test_framed_reads_the_headers_of_a_profile_ending_in_branches():
     z = np.asarray(y.data)[::o.sps]
     got = {name: headers for name, _, headers, _, _ in SP.framed(np.tile(z, 3), SimpleNamespace(cfo=0.0, baud=1e6), skip=0)}
     assert "dvbs2/mis" in got and got["dvbs2/mis"] >= 3
+
+@pytest.mark.kernels
+def test_progress_reports_each_stage(dvbs_capture):
+    seen = []
+    ps = rp.analysis.profile(rp.source.File("ci16t", dvbs_capture.path, Fs=8e6), blocks=12, max_blocks=12, blind=False,
+                             progress=lambda *a: seen.append(a))
+    reads = [a for a in seen if a[0] == "read"]
+    assert [a[1] for a in reads] == list(range(1, 13)) and all(a[2] == 12 for a in reads)
+    builds = [a for a in seen if a[0] == "build"]
+    assert builds[-1][1:] == (len(ps), len(ps), 0)

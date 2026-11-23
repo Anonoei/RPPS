@@ -123,6 +123,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   every phase, bit offset, field and root, the numpy loop the reference), 2.8x on one thread and more on several; it
   was 43% of a 25-signal capture's survey. `identify.scan_rs` loads the configured codes and interleavers once a
   process (they were loaded on every call: 97 s of that survey).
+- **`rp.analysis.profile(progress=)`**: called as `progress(stage, done, total, left)` as the work goes (blocks read of
+  the stretch planned and the chains still reading, then the profiles built), for a percent and an estimate.
 
 ## 0.6.0 (2026-11-22)
 
