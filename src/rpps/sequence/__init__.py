@@ -10,6 +10,8 @@ for one (`rp.sync.acquire_code`).
     {"base": "sequence", "type": "recurrence", "sequences": [...], "skip": 1600}      see rpps.sequence.recurrence
     {"base": "sequence", "type": "chips" | "set" | "gold", ...}                       see rpps.sequence.code
     {"base": "sequence", "type": "word", "word": "0x1ACFFC1D", "bits": 32}          a fixed word (sync marker, access address): rpps.sequence.word
+Complex sequences are computed, not defined: `rp.sequence.zadoff_chu(u, N, shift)` (rpps.sequence.zc), the CAZAC roots of
+LTE and NR (PSS, PRACH, SRS, uplink DM-RS).
 Any value can be a load-time parameter ("params", then {"param": ...} / {"expr": ...}). Chip rates are in "rate" (chips/s).
 """
 from .. import _config
@@ -18,6 +20,7 @@ from . import lfsr
 from .recurrence import Recurrence
 from .code import Code, LOADERS as _CODES
 from .word import Word
+from .zc import zadoff_chu
 
 def _load(name, obj):
     t = obj.get("type")

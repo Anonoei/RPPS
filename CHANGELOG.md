@@ -34,6 +34,22 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   and `tpc_ber` take `--save`, `--update-baseline`, `--check` (exit 1 on a regression) and `--compare FILE`
   (`tools/_bench.py`), writing to the git-ignored `.benchmarks/<bench>/`. `parallel_bench.py` and `resample_bench.py`
   take their positional arguments through argparse now.
+- **`tools/modclass_bench.py`: the Es/N0 at which modulation detection works**, per constellation, for
+  `cumulants.classify` (blind and SNR-aided) and `rp.sync.detect` (rate searched or given): the lowest Es/N0 from
+  which Pc >= 0.9 holds up to 20 dB over fixed trials, the Pc curve (`--sweep`), or what each modulation and noise
+  alone are named with each name's false-discovery rate (`--confusion`, `--frontend` for noise a front-end filter has
+  shaped); `--save`/`--check` like the other benchmarks. `tests/unit/test_modclass_threshold.py` keeps the thresholds.
+- **SNR before lock, with no noise floor measured apart** (`rp.sync.quality`): `m2m4(y, points)` from the symbols'
+  moments under a constellation, `from_sequence(y, ref)` from a known sequence (a CAZAC one: signal and noise from one
+  circular correlation, any shift, phase and multipath; else least squares), `cyclic(x, sps)` from the signal's
+  spectral correlation at the symbol rate (in band, any pulse: noise outside the signal's band, of any colour, changes
+  nothing; the roll-off comes with it), and `blind(x, sps)` from the eigenvalues of the empty band (white noise only:
+  None where it can tell it isn't). Measured accuracy in the module.
+- **`rp.sequence.zadoff_chu(u, N, shift)`**: Zadoff-Chu (CAZAC) roots; LTE's PSS is made from it.
+- **`detect(esn0=, min_evidence=)` and `Lock.find(esn0=, min_evidence=)`**: a known Es/N0 (from a known sequence) to
+  score at, and an answer only when sure: `min_evidence` nats of total lead over the runner-up (`Detection.evidence`)
+  and 10 over Gaussian noise of the same power (`Detection.over_noise`), else `mod` is None (`best` the leader) and
+  `Lock.find` raises NoLock.
 - **Catalogue systems and features**: SCPC (IESS-308/309), DVB-RCS/RCS2 return bursts, DVB-S2X (small roll-offs),
   an unmodulated carrier / beacon (`modulation="cw"`), PM TT&C in the C and Ku bands; features `burst` (bursty or
   continuous), `profile` (the profile that decoded it), `sync` (LTE PSS/SSS, NR SSB), `ssb_period`, `subcarrier` and
@@ -78,6 +94,14 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   bits match, and `rp.math.prob.log_binom_half_cdf`.
 
 ### Changed
+- **`rp.sync.detect` scores each candidate at its own Es/N0 from the symbols' moments** (`quality.m2m4`, the
+  quasi-hybrid likelihood test) instead of letting each fit its own noise, which at low SNR named the densest candidate
+  (QPSK at 4 dB was 64QAM 19 times in 20, noise alone 32APSK); where the fit's own winner reads over 12.5 dB, the fit,
+  as before. It needs only the symbols (no pulse, rate or band assumed) and costs the same. `Detection.how` says
+  which was used.
+- **`rp.sync.Acquire` decides at fixed stream positions** (min_samples, then doubling, each on the stream's first P
+  samples), re-searching modulation and roll-off until two in a row agree, and at the stream's end: its detection no
+  longer depends on how the stream is cut into blocks (it decided on whatever had arrived and kept that modulation).
 - **`frames.find` sees a short unique word from fewer frames:** its candidate periods sum the correlation over every
   multiple of a lag (`frames.comb_lags`), not the lag alone. A 16-symbol word every 2000 QPSK symbols at 5 dB is found
   from 40 frames (it took 80), and random symbols still give none. A multiple of the period found must be much

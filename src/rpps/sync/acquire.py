@@ -4,6 +4,20 @@ snapshots of separate blocks (`Lock`: a display that seeks, pauses and retunes) 
 Everything here is feed-forward: symbol rate and timing from the matrix matched filter,
 frequency/phase from the M-th power of the symbols, modulation from the likelihood of the
 corrected symbols under each candidate constellation.
+
+The likelihood needs the noise. Fitted per candidate (each its own variance, the points at the symbols' rms, noise
+included), a denser constellation explains noise better, so at low SNR the densest candidate won (noise alone was named
+32APSK, QPSK at 4 dB 64QAM): the generalised likelihood's known bias to higher orders. So each candidate is scored at
+its own Es/N0 from the symbols' moments (rpps.sync.quality.m2m4: what that candidate's kurtosis says the signal and
+noise are; the quasi-hybrid likelihood test), unless the fit's own winner reads over FIT_MIN dB: there the fit is
+right and M2M4 fades (for QAM), so the fit; at the caller's Es/N0 when it gives one (`esn0=`, from a known sequence: rpps.sync.quality.from_sequence
+on a Zadoff-Chu). It needs nothing but the symbols. With the rate given, BPSK is named 7 dB lower, QPSK from 1.75 dB
+(it was 4.75), 32QAM and the APSKs 1.75 dB lower; 64QAM's 10 dB is honest now (tools/modclass_bench.py).
+
+`min_evidence` makes detect say it doesn't know (mod None, the leader in `best`) rather than name a guess: when the
+leader doesn't beat Gaussian noise of the same power by NULL_MARGIN nats in all (`Detection.over_noise`: is there a
+constellation at all), or doesn't lead the runner-up by min_evidence nats (`Detection.evidence`: which one). 10 nats
+never named noise; it named 8PSK as 16PSK and 16QAM as 64QAM now and then at 8 dB, and at 0-4 dB names 9-22%.
 """
 from types import SimpleNamespace
 
@@ -15,17 +29,25 @@ from ..math.interp import peak
 from ..math.prob import mixture_variance
 from .rate import find_baud
 from .time.mat import matrix_mf, centres_in, best_tau
-from .quality import measure, decide, errors, summary
+from .quality import measure, decide, errors, summary, m2m4
+
+FIT_MIN = 12.5     # dB: the fit's winner reading over this is scored by the fit, else by M2M4 (measured: 12 dips at
+                   # 8 dB, where the leaning fit over-reads, 14 at 14-16 dB, where M2M4 fades)
+NULL_MARGIN = 10.0 # nats: what the leader must beat Gaussian noise by for min_evidence (noise alone: 1 block in 60)
 
 class Detection:
     """Result of `detect`. Acquire stamps it on its blocks: meta.det
 
     line: strength of the symbol-rate line the rate came from, over its local floor (noise peaks at about 3-4; a rate
-        taken from a weaker line is a guess)"""
+        taken from a weaker line is a guess)
+    mod: the modulation, None when detect was asked for `min_evidence` and the evidence is short (`best` the leader)
+    how: how the candidates were scored: "given" (at the caller's esn0, `given`), "moments" (each at its M2M4 Es/N0) or
+        "fit" (each its own variance). null: the score of Gaussian noise of the symbols' power (see over_noise)"""
     __slots__ = (
         "mod", "baud", "sps", "beta", "tau",
         "cfo", "phase", "M", "gain",
-        "scores", "n", "esn0", "ebn0", "line"
+        "scores", "n", "esn0", "ebn0", "line",
+        "best", "how", "given", "null"
     )
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -33,7 +55,7 @@ class Detection:
 
     def __str__(self):
         q = "" if self.esn0 is None else f", Es/N0 {self.esn0:.1f} dB, Eb/N0 {self.ebn0:.1f} dB"
-        return (f"{self.mod}: baud {self.baud:.1f}, sps {self.sps:.4f}, beta {self.beta}, "
+        return (f"{self.mod if self.mod is not None else f'unclear ({self.best}?)'}: baud {self.baud:.1f}, sps {self.sps:.4f}, beta {self.beta}, "
                 f"cfo {self.cfo:.1f} Hz, margin {self.margin:.3f} nats/sym{q}")
 
     __repr__ = __str__
@@ -43,6 +65,16 @@ class Detection:
         """Score lead of the detected modulation over the runner-up"""
         s = sorted(self.scores.values(), reverse=True)
         return s[0] - s[1] if len(s) > 1 else np.inf
+
+    @property
+    def evidence(self):
+        """Total log-likelihood lead of the leader over the runner-up (nats): margin times symbols"""
+        return self.margin*(self.n or 0)
+
+    @property
+    def over_noise(self):
+        """Total log-likelihood lead of the leader over Gaussian noise of the same power (nats): a constellation at all"""
+        return (self.scores[self.best] - self.null)*(self.n or 0) if self.null is not None else np.inf
 
 def symmetry(points, tol=1e-3, max_order=16):
     """Order M of the rotational symmetry of a point set (the M-th power removes the modulation)"""
@@ -92,14 +124,41 @@ def correct(y, pts, M, pad=4):
         phase = (np.angle(np.sum(y1**M)) - np.angle(np.mean(pts**M)))/M
     return y1 * np.exp(-1j*phase), cfo, phase
 
-def score(y, pts, iters=8):
-    """Mean log-likelihood per symbol under equiprobable points with Gaussian noise (sigma estimated)"""
-    d2 = np.abs(y[:, None] - pts[None, :])**2
-    var = mixture_variance(d2, iters)
+def score(y, pts, iters=8, esn0=None):
+    """Mean log-likelihood per symbol of unit-rms y under equiprobable points with Gaussian noise: the variance fitted
+    (EM), or, given esn0 (dB), the points scaled to the signal's share of the power and the noise the rest"""
+    return _score(y, pts, iters, esn0)[0]
+
+def _score(y, pts, iters=8, esn0=None):
+    """`score` and the variance per real axis it used"""
+    if esn0 is None:
+        d2 = np.abs(y[:, None] - pts[None, :])**2
+        var = mixture_variance(d2, iters)
+    else:
+        r = 10**(esn0/10)
+        d2 = np.abs(y[:, None] - np.sqrt(r/(1 + r))*pts[None, :])**2
+        var = 1/(2*(1 + r)) # per real axis
     logp = -d2/(2*var)
     m = logp.max(axis=1)
     ll = m + np.log(np.sum(np.exp(logp - m[:, None]), axis=1)) - np.log(len(pts)) - np.log(2*np.pi*var)
-    return float(np.mean(ll))
+    return float(np.mean(ll)), float(var)
+
+def score_all(ycs, esn0=None):
+    """Scores of {name: (corrected unit-rms symbols, points)} and how they were made: at the caller's esn0 ("given"); each
+    fitting its own variance when the fit's winner reads over FIT_MIN dB ("fit"); else each at its own M2M4 Es/N0
+    ("moments")"""
+    if esn0 is not None:
+        return {n: score(y, p, esn0=esn0) for n, (y, p) in ycs.items()}, "given"
+    fits = {n: _score(y, p) for n, (y, p) in ycs.items()}
+    fit = {n: f[0] for n, f in fits.items()}
+    var = fits[max(fit, key=fit.get)][1] # per axis, unit-rms y: signal 1 - 2 var
+    if 10*np.log10(max(1 - 2*var, 1e-12)/(2*var)) > FIT_MIN:
+        return fit, "fit"
+    return {n: score(y, p, esn0=m2m4(y, p)) for n, (y, p) in ycs.items()}, "moments"
+
+def null_score(y):
+    """`score` of unit-rms y as Gaussian noise of the same power (complex, unit variance)"""
+    return float(-np.mean(np.abs(y)**2) - np.log(np.pi))
 
 def track_timing(x, sps, beta, span=8, rounds=2):
     """Refine sps from the drift of the best timing between the start and end of x. Returns (sps, tau)
@@ -119,13 +178,16 @@ def track_timing(x, sps, beta, span=8, rounds=2):
     tau, _e = best_tau(x, sps, beta, span)
     return sps, tau
 
-def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None):
+def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None, esn0=None, min_evidence=None):
     """Find symbol rate, timing, modulation, frequency offset and phase from baseband samples
 
     x: complex baseband at Fs, with the signal of interest centred and filtered
     names: candidate modulations, default everything in config/constellation
     betas: RRC roll-offs to try
     baud: the symbol rate when already known (a channel plan, rpps.analysis.spectrum.cyclic): timing refines it, no search
+    esn0: the Es/N0 when known (rpps.sync.quality.from_sequence on a known sequence): every candidate is scored at it
+    min_evidence: nats the winner must lead the runner-up by in all (Detection.evidence), with it NULL_MARGIN over
+        Gaussian noise (Detection.over_noise), or mod is None and `best` holds the leader (see the module)
     Returns a Detection; its tau is relative to x[0].
     """
     cands = candidates(names)
@@ -137,12 +199,13 @@ def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None):
         y = matrix_mf(x, c, sps, beta, span)
         gain = np.sqrt(np.mean(np.abs(y)**2))
         y = y / gain
-        scores, fits = {}, {}
+        ycs, fits = {}, {}
         for name, pts in cands.items():
             M = symmetry(pts)
             yc, cfo, phase = correct(y, pts, M)
-            scores[name] = score(yc, pts)
+            ycs[name] = (yc, pts)
             fits[name] = (M, cfo, phase)
+        scores, how = score_all(ycs, esn0)
         top = max(scores, key=scores.get)
         if best is None or scores[top] > best[0]:
             M, cfo, phase = fits[top]
@@ -151,9 +214,13 @@ def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None):
             best = (scores[top], Detection(
                 mod=top, baud=baud, sps=sps, beta=beta, tau=tau,
                 cfo=cfo*baud, phase=phase, M=M, gain=gain,
-                scores=scores, n=len(y), esn0=q.esn0_db, ebn0=q.ebn0_db, line=line
+                scores=scores, n=len(y), esn0=q.esn0_db, ebn0=q.ebn0_db, line=line,
+                best=top, how=how, given=esn0, null=null_score(y)
             ))
-    return best[1]
+    det = best[1]
+    if min_evidence is not None and (det.over_noise < NULL_MARGIN or det.evidence < min_evidence):
+        det.mod = None
+    return det
 
 class Lock:
     """A signal's symbols, as a snapshot: found once by a full search (`Lock.find`), then followed block by block
@@ -187,7 +254,7 @@ class Lock:
 
     @classmethod
     def find(cls, x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None, lock=5.0, min_samples=1024,
-             drop_db=6.0, drift=2e-3, at=None):
+             drop_db=6.0, drift=2e-3, at=None, esn0=None, min_evidence=None):
         """Search x for a signal: its symbol rate, modulation, roll-off, timing, cfo and phase (`detect`)
 
         names / betas: candidate modulations and roll-offs (default: the PSK family, 0.2 0.25 0.35)
@@ -195,6 +262,8 @@ class Lock:
         lock: symbol-rate line strength needed over its local floor (noise peaks at about 3-4); None takes any line
         min_samples: fewer samples are not searched (the rate search goes down to Fs/16: at least 64 symbols)
         drop_db / drift: when `update` calls the lock stale (an Es/N0 drop [dB], a relative rate change)
+        esn0 / min_evidence: as `detect` (a known Es/N0; how sure the modulation must be: NoLock when it isn't, or
+            when the samples hold no symbol-rate correlation)
         at: the stream position of x[0], when known: `follow` then checks the next block is the one right after
         Raises NoLock (reason, line) when x is too short or has no clear symbol rate"""
         x = cls._samples(x, min_samples, f"the search needs {min_samples}")
@@ -206,8 +275,12 @@ class Lock:
                     raise NoLock(f"no symbol rate (line {line:.1f}, needs {lock:g}): a carrier, or noise?", line)
                 if not 0 < baud < Fs/2:
                     raise NoLock(f"no symbol rate (the strongest line is at {baud:.6g} Bd): a carrier, or noise?", line)
-            det = detect(x, Fs, names, betas, span, baud=baud)
+            det = detect(x, Fs, names, betas, span, baud=baud, esn0=esn0, min_evidence=min_evidence)
             det.line = line
+            if det.mod is None:
+                raise NoLock(f"modulation unclear: {det.best} leads by {det.evidence:.0f} nats (needs {min_evidence:g})"
+                             if det.over_noise >= NULL_MARGIN else
+                             f"nothing like a constellation: {det.over_noise:.0f} nats over Gaussian noise", line)
             lk = cls._make(x, Fs, det, candidates([det.mod])[det.mod], span, det, drop_db, drift)
         return cls._made(lk, x, det, at)
 
@@ -340,10 +413,12 @@ class Lock:
             elif abs(det.sps/found.sps - 1) > drift:
                 lk.stale = f"rate {det.baud:.6g} Bd, {abs(det.sps/found.sps - 1)*1e6:.0f} ppm from the search's"
             elif recheck and found.scores and len(found.scores) > 1:
-                own = score(syms, points)
-                others = {}
+                # scored as the search scores (score_all), on this block's symbols
+                ycs = {det.mod: (syms, points)}
                 for name, pts in candidates([n for n in found.scores if n != det.mod]).items():
-                    others[name] = score(correct(y/gain, pts, symmetry(pts))[0], pts)
+                    ycs[name] = (correct(y/gain, pts, symmetry(pts))[0], pts)
+                others, _ = score_all(ycs, found.given)
+                own = others.pop(det.mod)
                 best = max(others, key=others.get)
                 if others[best] > own + cls.RECHECK_MARGIN:
                     lk.stale = f"looks like {best} now ({others[best] - own:.2f} nats/symbol over {det.mod})"
@@ -442,10 +517,15 @@ class Acquire(Stage):
 
     The matrix matched filter and the likelihood only need a few hundred symbols, so there is no
     fixed wait: blocks are held only until the symbol-rate line is significant (`lock` times the
-    local floor, noise peaks at about 3-4), which can be the first block. Then everything held
-    is released at once, and the estimates are re-run on the growing history (doubling each time, up
-    to `history` samples) so baud and cfo tighten. Refinements retest only the detected
-    modulation and roll-off, which is much cheaper.
+    local floor, noise peaks at about 3-4). Then everything held is released at once, and the
+    estimates are re-run on the growing history so baud and cfo tighten, up to `history` samples.
+
+    Every decision is made on the stream's first P samples at fixed P (min_samples, then doubling), never on
+    whatever has arrived, so how the stream is cut into blocks changes nothing: a block that passes one or more of
+    those positions has them run in order. The modulation and roll-off are searched again in full at each position
+    until two in a row agree (a first decision on a few thousand samples at low SNR can be wrong, and refining would
+    keep it); after that, refinements retest only them, which is much cheaper. A block carries the detection made by
+    its end (meta.det). At the stream's end (flush) what has not settled is decided on the whole stream.
 
     Calibrates meta.sps (to the detected one), so following stages get the fractional sps.
 
@@ -468,7 +548,7 @@ class Acquire(Stage):
         self.betas = betas
 
     def new_state(self, meta):
-        return SimpleNamespace(chunks=[], count=0, next=0, done=False, held=True, lock=None)
+        return SimpleNamespace(chunks=[], count=0, next=self.min_samples, done=False, held=True, lock=None, settled=False)
 
     def step(self, samples, st, meta):
         # Every block that passes carries the detection it passed with (meta.det): stages running behind in other
@@ -481,28 +561,38 @@ class Acquire(Stage):
         st.count += len(samples)
         x = np.concatenate(st.chunks) if len(st.chunks) > 1 else st.chunks[0]
         st.chunks = [x]
+        while st.count >= st.next and not st.done: # every decision position this block reached, in order
+            self._decide(x[:st.next], st, meta)
+            st.next *= 2
+        if meta.flush and not st.done and st.count >= self.min_samples and (st.lock is None or not st.settled):
+            self._decide(x, st, meta) # the stream's end is a position too: decide on all of it
         if st.lock is None:
-            if st.count < self.min_samples:
-                return samples[:0] # Nothing there (yet)
-            try: # After max_wait samples, whatever the line
-                st.lock = Lock.find(x, meta.Fs, self.names, self.betas, baud=self.baud, min_samples=self.min_samples,
-                                    lock=self.lock if st.count < self.max_wait else None)
-            except NoLock:
-                return samples[:0]
-            st.next = 2*st.count
-        elif st.count >= st.next: # Refine on the grown history: same modulation and roll-off, the rate searched again
-            st.lock = st.lock.refine(x, baud=self.baud and st.lock.det.baud)
-            st.next = 2*st.count
-        else:
-            meta.det = st.lock.det
-            return samples
+            return samples[:0] # Nothing there (yet)
         det = st.lock.det
         meta.det = det
         meta.calibrate_sps(det.sps)
-        if st.count >= self.history:
-            st.done = True
+        if st.done:
             st.chunks = []
         if st.held: # First detection: release what was held
             st.held = False
             return x
         return samples
+
+    def _decide(self, x, st, meta):
+        """The decision at one position: x is the stream's first P samples"""
+        P = len(x)
+        try:
+            if st.lock is None: # Not there yet: a line `lock` strong, or any line after max_wait
+                st.lock = Lock.find(x, meta.Fs, self.names, self.betas, baud=self.baud, min_samples=self.min_samples,
+                                    lock=self.lock if P < self.max_wait else None)
+            elif not st.settled: # The full search again on twice the samples: settled when it agrees
+                lk = Lock.find(x, meta.Fs, self.names, self.betas, baud=self.baud, min_samples=self.min_samples,
+                               lock=None)
+                st.settled = (lk.det.mod, lk.det.beta) == (st.lock.det.mod, st.lock.det.beta)
+                st.lock = lk
+            else: # Same modulation and roll-off, the rate searched again
+                st.lock = st.lock.refine(x, baud=self.baud and st.lock.det.baud)
+        except NoLock:
+            return
+        if P >= self.history:
+            st.done = True

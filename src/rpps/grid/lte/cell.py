@@ -22,12 +22,13 @@ import numpy as np
 from ...base import Stage
 from ...base.types import Category, Rep
 from . import phy
+from ...sequence import zadoff_chu
 
 ROOTS = (25, 29, 34) # N_ID2 = 0, 1, 2
 
 def pss(u):
-    n = np.arange(62)
-    return np.where(n < 31, np.exp(-1j*np.pi*u*n*(n + 1)/63), np.exp(-1j*np.pi*u*(n + 1)*(n + 2)/63))
+    """The PSS of root u: Zadoff-Chu of length 63 without its middle element (it would sit on DC)"""
+    return np.delete(zadoff_chu(u, 63), 31)
 
 def bins62(nfft):
     return np.concatenate((np.arange(-31, 0), np.arange(1, 32))) % nfft

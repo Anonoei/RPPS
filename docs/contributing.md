@@ -50,8 +50,8 @@ projects/            worked examples on real signals (FM, ADS-B, ATSC, LTE, P25 
 data/                captures (git-ignored)
 tools/               builder.py (the local build helper), gen_docs.py (API pages and llms files for the site),
                      benchmarks run by hand (bench_stages.py, parallel_bench.py, resample_bench.py, effort_bench.py,
-                     tpc_ber.py); each takes --save, --update-baseline and --check (tools/_bench.py), keeping this
-                     machine's results in the git-ignored .benchmarks/<bench>/
+                     modclass_bench.py, tpc_ber.py); each takes --save, --update-baseline and --check (tools/_bench.py),
+                     keeping this machine's results in the git-ignored .benchmarks/<bench>/
 setup.py             builds the native module and copies config/
 ```
 
