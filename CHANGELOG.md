@@ -6,6 +6,15 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 
 ## Unreleased
 
+### Breaking
+- **BLE, IEEE 802.11b and 802.15.4 payload bytes are in the standards' bit order.** Those standards send each octet
+  least significant bit first; `ble/adv` and `ieee80211b/long` sent (and read) their payloads most significant bit first,
+  so a real packet's payload came out bit-reversed per byte (its CRC still passed: it is over the bits as sent), and
+  `ieee802154/2450` sent each octet's high nibble first. Bytes in and out are unchanged in meaning: what is on air now
+  matches the standards. A link header's new `"payload_order": "lsb"` does it for `ble_adv` and `ieee80211b_plcp`; the
+  `interleave/block/lsb_first` definition (each octet's bits reversed) is the last step of `ieee802154/2450`, whose
+  receive output is now data bits (Rep.DATA), not channel bits.
+
 ### Added
 - **Definition params take `"choices"`**: the values a param takes, each optionally a bundle of fields one choice sets
   together (`{"param": "modulation.shape"}`, `modulation.bits` in an expression). A value that is not a choice is an error.

@@ -5,6 +5,7 @@
   "ref": "IEEE 802.11-2020 16.2.2",
   "tags": ["ieee-802.11b"],
   "order": "lsb",
+  "payload_order": "lsb",
   "fields": [
     {"name": "signal", "bits": 8, "default": 10},
     {"name": "service", "bits": 8},

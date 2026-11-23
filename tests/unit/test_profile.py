@@ -20,16 +20,17 @@ def test_listed():
 
 def test_802154_builds_the_documented_pairs():
     p = rp.profile.load("ieee802154/2450", sync=KNOWN)
-    assert [f"{s.category}:{s.kind}" for s in p.steps] == ["sync:carrier", "wave:stagger", "wave:shape", "sync:timing", "symbol:spread"]
+    assert [f"{s.category}:{s.kind}" for s in p.steps] == ["sync:carrier", "wave:stagger", "wave:shape", "sync:timing", "symbol:spread",
+                                                       "code:interleave"]
     # carrier: method none. Known timing takes the matched filter in (it is evaluated at the instants it samples) ...
-    assert names(p.rx()) == ["+Stagger", "+Known", "/Spread"]
+    assert names(p.rx()) == ["+Stagger", "+Known", "/Spread", "/block/lsb_first"] # octets least significant bit first
     assert str(p.rx().ops[1][1]) == "Known(matched)"
     # ... unless asked not to
     apart = rp.profile.load("ieee802154/2450", sync={"timing": {"method": "known", "fuse": False}})
-    assert names(apart.rx()) == ["+Stagger", "+Matched", "+Known", "/Spread"]
-    assert names(p.tx()) == ["*Spread", "+Shape", "+Stagger"]
+    assert names(apart.rx()) == ["+Stagger", "+Matched", "+Known", "/Spread", "/block/lsb_first"]
+    assert names(p.tx()) == ["*block/lsb_first", "*Spread", "+Shape", "+Stagger"]
     assert str(p.rx().ops[0][1]) == "Stagger(i)" and str(p.tx().ops[-1][1]) == "Stagger(q)"
-    assert [s.takes for s in p.steps] == [Rep.SAMPLES, Rep.SAMPLES, Rep.SAMPLES, Rep.SAMPLES, Rep.SYMBOLS]
+    assert [s.takes for s in p.steps] == [Rep.SAMPLES, Rep.SAMPLES, Rep.SAMPLES, Rep.SAMPLES, Rep.SYMBOLS, Rep.CHANNEL]
 
 @pytest.mark.parametrize("sps", [2, 4, 8])
 def test_802154_loopback(sps):
@@ -39,7 +40,7 @@ def test_802154_loopback(sps):
     wave = p.tx()(rp.Data(msg, Fs=250e3, sps=1))
     assert wave.REP == Rep.SAMPLES and wave.sps == sps
     out = p.rx()(wave)
-    assert out.REP == Rep.CHANNEL
+    assert out.REP == Rep.DATA
     got, bits = hard(out), np.unpackbits(msg).astype(bool)
     assert len(got) >= len(bits) - 8 and np.array_equal(got, bits[:len(got)])
 

@@ -5,6 +5,7 @@
   "ref": "Bluetooth Core 6.0 Vol 6 Part B 2.1, 2.3",
   "tags": ["ble"],
   "order": "lsb",
+  "payload_order": "lsb",
   "fields": [
     {"name": "type", "bits": 4},
     {"name": "rfu", "bits": 1},

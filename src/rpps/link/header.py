@@ -4,6 +4,9 @@ A definition, config/header/link/<name>.json, `rp.link.load("header/ieee80211b_p
 
     {"base": "header", "type": "link", "comment": "...", "ref": "...",
      "order": "lsb",                                      field bits sent least ("lsb") or most ("msb") significant first
+     "payload_order": "lsb",                              the payload's bytes sent least significant bit first (BLE, 802.11);
+                                                          out (and in, transmitting) come bytes most significant bit first,
+                                                          as everywhere else. Default "msb": the payload as sent
      "fields": [{"name": "signal", "bits": 8},
                 {"name": "length", "bits": 16,
                  "tx": "(bits*10 + signal - 1)//signal"},   transmit: its value from the payload's bits and the other
@@ -46,8 +49,12 @@ class Header(Pipe):
     SCOPE, SCOPE_NEEDS = FRAME, ("length",) # A frame's own header and payload, when a control gives its length
     EMITS = True # Every frame, good or failed, is a message (rpps.profile.message)
 
-    def __init__(self, name, fields, order="msb", crc=None, payload=None, preamble=None, framed=False, fcs=None):
+    def __init__(self, name, fields, order="msb", crc=None, payload=None, preamble=None, framed=False, fcs=None,
+                 payload_order="msb"):
         self.name = name
+        if payload_order not in ("msb", "lsb"):
+            raise ConfigError(f"header {name}: payload_order is msb or lsb, not {payload_order!r}")
+        self.payload_lsb = payload_order == "lsb"
         self.fields = [dict(f) for f in fields]
         for f in self.fields:
             if "name" not in f or "bits" not in f:
@@ -124,6 +131,15 @@ class Header(Pipe):
             bits = np.concatenate((bits, self.crc.field(bits)))
         return bits
 
+    def _bytes_order(self, bits):
+        """The payload between the order it is sent in and bytes most significant bit first (its own inverse); a last
+        part byte, which a byte-wise payload never has, stays as it is"""
+        if not self.payload_lsb or not len(bits):
+            return bits
+        bits = np.asarray(bits).astype(bool)
+        whole = len(bits)//8*8
+        return np.concatenate((bits[:whole].reshape(-1, 8)[:, ::-1].reshape(-1), bits[whole:]))
+
     def _tx_values(self, nbits):
         v = dict(self.values)
         for f in self.fields:
@@ -143,7 +159,7 @@ class Header(Pipe):
         st = ctx.get(key)
         st = SimpleNamespace(**vars(st)) if st is not None else SimpleNamespace(
             mode="header", held=np.zeros(0, bool), start=None, left=0, frame_left=None, pend=np.zeros(0, bool), pend_pos=None,
-            body=np.zeros(0, bool), tail=np.zeros(0, bool), fields=None)
+            body=np.zeros(0, bool), tail=np.zeros(0, bool), fields=None, part=np.zeros(0, bool))
         ctx[key] = st
         return st
 
@@ -198,13 +214,16 @@ class Header(Pipe):
                 publish(data.meta, self, {**fields, "bits": n}, at=at, out=n_out, span=n, group=st.start)
                 publish(data.meta, self, {"frame_bits": whole}, at=st.start, out=None, span=whole, group=st.start)
                 anchor(data.meta, self, at, n_out)
-                st.mode, st.left, st.body, st.fields = "payload", n, np.zeros(0, bool), fields
+                st.mode, st.left, st.body, st.fields, st.part = "payload", n, np.zeros(0, bool), fields, np.zeros(0, bool)
             elif st.mode == "payload":
                 take = min(st.left, len(x) - i)
-                if self.fcs is None:
-                    out.append(x[i:i + take])
-                    n_out += take
-                st.body = np.concatenate((st.body, x[i:i + take])) # (with an FCS: held until it says the frame is good)
+                if self.fcs is None: # (with an FCS: held until it says the frame is good)
+                    part = np.concatenate((st.part, x[i:i + take])) if self.payload_lsb else x[i:i + take]
+                    give = len(part)//8*8 if self.payload_lsb and st.left > take else len(part) # whole bytes, then the rest
+                    out.append(self._bytes_order(part[:give]))
+                    n_out += give
+                    st.part = part[give:]
+                st.body = np.concatenate((st.body, x[i:i + take]))
                 i += take
                 st.left -= take
                 self._used(st, take)
@@ -212,7 +231,8 @@ class Header(Pipe):
                     st.mode = "skip" if self.fcs is None else "fcs"
                     st.tail = np.zeros(0, bool)
                     if self.fcs is None:
-                        emit(data.meta, self, None, st.fields, st.body, True if self.crc is not None else None, st.start)
+                        body = self._bytes_order(st.body)
+                        emit(data.meta, self, None, st.fields, body, True if self.crc is not None else None, st.start)
             elif st.mode == "fcs": # The frame check sequence over header and payload
                 take = min(self.fcs_bits - len(st.tail), len(x) - i)
                 st.tail = np.concatenate((st.tail, x[i:i + take]))
@@ -221,13 +241,14 @@ class Header(Pipe):
                 if len(st.tail) < self.fcs_bits:
                     break
                 good = np.array_equal(self.fcs.field(np.concatenate((st.held, st.body))), st.tail)
+                body = self._bytes_order(st.body) # (the FCS is over the bits as sent)
                 if good:
-                    out.append(st.body)
-                    n_out += len(st.body)
+                    out.append(body)
+                    n_out += len(body)
                     est["frames"] += 1
                 else:
                     est["fcs_failed"] += 1
-                emit(data.meta, self, None, st.fields, st.body, bool(good), st.start)
+                emit(data.meta, self, None, st.fields, body, bool(good), st.start)
                 st.mode = "skip"
             elif st.mode == "drop": # A failed frame's payload: used up, not given out
                 take = min(st.left, len(x) - i)
@@ -265,6 +286,7 @@ class Header(Pipe):
         out, n_out = [], 0
         def frame(payload, at):
             nonlocal n_out
+            payload = self._bytes_order(payload) # As sent: the FCS is over these
             v = self._tx_values(len(payload))
             pad = np.zeros(0, bool)
             if self.framed and self.length:
@@ -307,7 +329,7 @@ class Header(Pipe):
         if "fields" not in obj:
             raise ConfigError(f"header {name}: needs 'fields'")
         return Header(name, obj["fields"], obj.get("order", "msb"), obj.get("crc"), obj.get("payload"), obj.get("preamble"),
-                      obj.get("framed", False), obj.get("fcs"))
+                      obj.get("framed", False), obj.get("fcs"), obj.get("payload_order", "msb"))
 
 def _crc(name):
     from .serial import load
