@@ -34,23 +34,68 @@ def _normalized(y):
     y = np.asarray(y, dtype=np.complex128)
     return y/np.sqrt(np.mean(np.abs(y)**2))
 
-def periods(y, max_lag=20000, min_lag=16, top=8):
-    """[(lag, correlation)] where the symbols correlate with themselves, strongest first: |mean y[n] conj(y[n+lag])|"""
-    y = _normalized(y)
-    n = len(y)
+RAYLEIGH_MEAN, RAYLEIGH_VAR = np.sqrt(np.pi)/2, 1 - np.pi/4 # |z| of a unit complex Gaussian
+HALF_NORMAL_MEAN, HALF_NORMAL_VAR = np.sqrt(2/np.pi), 1 - 2/np.pi # |z| of a unit real Gaussian
+PLAIN_TOP = 8 # Lags `comb_lags` also takes by their own correlation alone
+
+def comb_lags(za, min_lag, max_lag, top=32, mean=RAYLEIGH_MEAN, var=RAYLEIGH_VAR):
+    """[(lag, z)] the lags in [min_lag, max_lag] a frame structure may repeat at, most significant first
+
+    za: |autocorrelation| at every lag 0..n-1 in noise units (|sum of products| / its standard deviation under noise),
+    whose |.| has `mean` and `var` there (Rayleigh for complex, half-normal for real). A word of U symbols every P adds
+    only U/P to the correlation at lag P, against noise of 1/sqrt(n): alone that takes hundreds of frames to show. But
+    it adds the same at every multiple kP, where the noise is new: z sums za less its mean over the multiples of a lag up
+    to half the stream, each weighted by the signal it can hold (sqrt(n - kL)). That is what a fold of the stream at
+    that lag measures, so a short word is a candidate about sqrt(frames) times sooner; magnitudes are summed, so a
+    carrier left turning slowly (a residual offset, phase noise) or a polarity that changes costs only the coherence
+    across the multiples. The `top` lags by that sum, and the PLAIN_TOP lags by their own correlation alone (a
+    structure seen once a frame at one lag only, which the sum spreads out)."""
+    n = len(za)
     max_lag = min(max_lag, n//4)
     if max_lag <= min_lag:
         return []
-    Y = np.fft.fft(y, 2*n)
-    r = np.abs(np.fft.ifft(np.abs(Y)**2)[:max_lag + 1])/np.arange(n, n - max_lag - 1, -1)
-    lags = np.argsort(-r[min_lag:])[:4*top] + min_lag
-    out = []
-    for L in lags: # One per peak: a lag next to a stronger one is its shoulder
-        if all(abs(L - k) > 2 for k, _ in out):
-            out.append((int(L), float(r[L])))
-        if len(out) == top:
+    zl = za - mean
+    w = np.sqrt((n - np.arange(n))/n)
+    L = np.arange(min_lag, max_lag + 1)
+    num, den = np.zeros(len(L)), np.zeros(len(L))
+    # Short lags have many multiples, so they go one lag at a time over all of them; the rest one multiple at a time
+    # over all those lags
+    split = max(min_lag, int(np.sqrt(n/2)))
+    for i, lag in enumerate(L[L < split]):
+        idx = lag*np.arange(1, n//2//lag + 1)
+        num[i], den[i] = np.sum(w[idx]*zl[idx]), np.sum(w[idx]**2)
+    long = L >= split
+    for k in range(1, n//2//split + 1):
+        m = long & (k*L <= n//2)
+        if not m.any():
             break
+        idx = k*L[m]
+        num[m] += w[idx]*zl[idx]
+        den[m] += w[idx]**2
+    z = num/np.sqrt(var*np.maximum(den, 1e-30))
+    out = []
+    for score, n_top in ((z, top), (zl[L], PLAIN_TOP)):
+        got = 0
+        for i in np.argsort(-score)[:8*n_top]: # One per peak: a lag next to a stronger one is its shoulder
+            lag = int(L[i])
+            if all(abs(lag - k) > 2 for k, _ in out):
+                out.append((lag, float(z[i])))
+                got += 1
+            if got == n_top:
+                break
+    out.sort(key=lambda t: -t[1])
     return out
+
+def periods(y, max_lag=20000, min_lag=16, top=32):
+    """[(lag, z)] the lags locked symbols may repeat at with a frame, most significant first (`comb_lags` over their
+    autocorrelation, one FFT)"""
+    y = _normalized(y)
+    n = len(y)
+    if min(max_lag, n//4) <= min_lag:
+        return []
+    Y = np.fft.fft(y, 1 << int(np.ceil(np.log2(2*n))))
+    za = np.abs(np.fft.ifft(np.abs(Y)**2)[:n])/np.sqrt(n - np.arange(n)) # (unit-power symbols: noise sd sqrt(n - lag))
+    return comb_lags(za, min_lag, max_lag, top)
 
 def coherence(y, period):
     """Per position in the period: |mean over frames of y[n] conj(y[n+period])| over their rms, 1 where every frame has the
@@ -79,8 +124,8 @@ def _chance(m, word):
 def find(y, mod=None, max_lag=20000, min_frames=8, threshold=0.5, false_alarm=1e-3, min_coherence=0.2):
     """The frame structure of locked symbols y: a Frame, or None (no lag with a unique word standing out)
 
-    The candidate periods are the lags the symbols correlate at (`periods`), shortest first among those near the
-    strongest (a multiple of the frame is a superframe, kept for `repeats`); at a period, the unique word is the longest
+    The candidate periods are the lags whose multiples the symbols correlate at (`periods`), with their divisors (a
+    multiple of the frame is a superframe, kept for `repeats`); at a period, the unique word is the longest
     run of positions whose coherence passes `threshold` (with many frames less: sqrt(4/m), but at least `min_coherence`:
     a unique word is in every frame, which a weak signal's 0.2 or more still shows), taken only when chance could
     not have made it (`_chance`, times every position and candidate period looked at, under `false_alarm`): one
@@ -124,7 +169,10 @@ def find(y, mod=None, max_lag=20000, min_frames=8, threshold=0.5, false_alarm=1e
         coh = float(np.mean(word))
         f = Frame(period=L, uw_start=int(s0), uw_length=int(ln), coherence=coh, floor=floor,
                   uw=y[s0:s0 + ln].copy(), frames=len(y)//L)
-        if best is None or ln*coh > best.uw_length*best.coherence*1.5: # A shorter period wins unless much weaker
+        # A shorter period wins unless much weaker; a multiple of it by far more (over fewer frames its word's coherence,
+        # and the noise positions joining the run, are biased up: it is the superframe, for `repeats`)
+        multiple = best is not None and abs(L - best.period*round(L/best.period)) <= 2
+        if best is None or ln*coh > best.uw_length*best.coherence*(4.0 if multiple else 1.5):
             best = f
     return best
 

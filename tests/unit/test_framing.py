@@ -66,6 +66,23 @@ def test_few_frames_or_a_weak_signal_still_found():
     fr = FR.find(y, "qpsk")
     assert fr is not None and fr.period == 1000 and abs(fr.uw_start - at) <= 2
 
+def test_a_short_word_is_found_from_few_frames():
+    """A 16-symbol word every 2000 QPSK symbols at 5 dB Es/N0: the period is a candidate by the correlation summed over
+    its multiples. Over 30 seeds, 40 frames found it every time (the plain correlation: half of them; 80 frames to reach
+    nine in ten)"""
+    q = rp.symbol.load("qpsk").points
+    found = 0
+    for seed in range(10):
+        rng = np.random.default_rng(seed)
+        uw = q[rng.integers(0, 4, 16)]
+        y = q[rng.integers(0, 4, 2000*40 + 333)]
+        for k in range(40):
+            y[333 + k*2000:333 + k*2000 + 16] = uw
+        y = y + np.sqrt(10**-0.5/2)*(rng.standard_normal(len(y)) + 1j*rng.standard_normal(len(y)))
+        fr = FR.find(y, "qpsk")
+        found += fr is not None and fr.period == 2000 and abs(fr.uw_start - 333) <= 2
+    assert found >= 9
+
 def test_a_structure_few_frames_share_is_not_a_word():
     """Over thousands of short "frames" symbols that only some share (pilot blocks at a short lag) are significant,
     but a unique word is in every frame: at coherence 0.12 they are not one"""

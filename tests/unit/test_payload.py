@@ -108,6 +108,31 @@ def test_fixed_word():
     f = P.fixed_word(b)
     assert f is not None and f.period == 624 and f.hits >= 24
 
+def test_a_long_word_with_bit_errors():
+    """A 100-byte unique word every 8800 bits, after a demodulator leaving 10% bit errors: found from 20 frames (12 do,
+    over 9 seeds), where it sits, its bits by majority, and the errors a delimit step could allow"""
+    for seed in range(4):
+        rng = np.random.default_rng(seed)
+        w = rbits(rng, 800)
+        b = np.concatenate([np.concatenate((w, rbits(rng, 8000))) for _ in range(20)])
+        b = np.roll(b ^ (rng.random(len(b)) < 0.1).astype(np.uint8), 3333)
+        f = P.fixed_word(b)
+        assert f is not None and f.period == 8800 and abs(f.offset - 3333) <= 4 and abs(f.bits - 800) <= 8
+        got = np.unpackbits(np.frombuffer(int(f.word, 16).to_bytes((f.bits + 7)//8, "big"), np.uint8))[-f.bits:]
+        k = 3333 - f.offset # (the word's bit j is the found one's j + k)
+        j0, j1 = max(0, -k), min(800, f.bits - k)
+        assert np.mean(got[j0 + k:j1 + k] != w[j0:j1]) < 0.01
+        assert 60 < f.mismatches[0] < 100 and "errors" in f.detail
+
+def test_a_scrambler_keystream_is_no_word():
+    """Folded at a divisor of its period, an LFSR's keystream has columns that agree far beyond chance, but scattered:
+    not a word"""
+    k = np.zeros(100000, np.uint8)
+    k[:15] = 1
+    for i in range(15, len(k)):
+        k[i] = k[i - 15] ^ k[i - 14]
+    assert P.fixed_word(k) is None
+
 def test_random_bits_have_nothing():
     assert P.signatures(rbits(np.random.default_rng(8), 200000)) == []
 

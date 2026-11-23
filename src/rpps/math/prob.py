@@ -13,6 +13,21 @@ def z_critical(trials, alpha=0.01):
     """z a null hypothesis exceeds with probability alpha/trials (Gaussian tail estimate)"""
     return float(np.sqrt(2*np.log(max(trials, 2)/alpha)))
 
+def log_binom_half_cdf(n, e):
+    """log P(Binomial(n, 1/2) <= e) for every e in an array (or one), exactly, in logs (no overflow at any n): the chance
+    a random n-bit window is within e errors of a word. -inf below 0"""
+    from math import lgamma, log
+    e = np.atleast_1d(np.asarray(e, dtype=np.int64))
+    top = int(min(max(e.max(initial=-1), -1), n))
+    if top < 0:
+        out = np.full(e.shape, -np.inf)
+    else:
+        k = np.arange(top + 1)
+        lt = np.array([lgamma(n + 1) - lgamma(j + 1) - lgamma(n - j + 1) for j in k]) - n*log(2) # log P(exactly k)
+        cum = np.logaddexp.accumulate(lt)
+        out = np.where(e < 0, -np.inf, cum[np.clip(e, 0, top)])
+    return out if out.size > 1 else float(out[0])
+
 def deviance_z(k, n, p0=0.5):
     """Signed z-like score of k events in n trials against probability p0 (binomial deviance)"""
     k = np.asarray(k, dtype=np.float64)

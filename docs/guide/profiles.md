@@ -55,6 +55,40 @@ I into Q while Q is half a symbol late.
 A new signal should need no new operator code. `examples/own_definitions.py` ([Definitions](definitions.md)) writes one
 from scratch in a directory of your own.
 
+### A unique word before each frame
+
+A word the modem sends ahead of each block of coded bits (a sync marker, a unique word) is a `sequence` of type word,
+of any width: 100 bytes are 200 hex digits.
+
+```json
+{"base": "sequence", "type": "word", "word": "0x1acffc1d...", "bits": 800, "order": "msb"}
+```
+
+There are two places to find it, both after demodulation and before the FEC:
+
+- **Among bits:** `{"sync": "delimit", "sequence": "<word>", "length": <bits after it>, "keep": true, "polarity": true,
+  "errors": 40}` after the symbol mapping, then `{"code": "marker", "sequence": "<word>", "length": ...}` to strip it.
+  `errors` is how many of the word's bits may be wrong (`{"param": ...}` works too), and `polarity` matches the inverted
+  word too. Use this when the carrier leaves no ambiguity, or only an inversion (BPSK).
+- **Among symbols:** `{"sync": "frame", "sequence": "<word>", "threshold": 0.3}` before the symbol mapping. The profile
+  maps the word to symbols through its own steps, and the match measures the word's phase, so a QPSK or 8PSK carrier
+  left a quarter turn off is put right by the word. Its tolerance is the normalised correlation `threshold`: random
+  data correlates about 1/sqrt(symbols), 0.05 for a 400-symbol word.
+
+How many errors to allow: as many as the word's own bit errors need, but no more than random bits could match.
+`rp.sync.word_errors` gives the second bound: the most errors a match may have while random bits stay under a
+false-alarm rate over the places searched. A long word can tolerate a lot:
+
+```python
+import rpps as rp
+assert rp.sync.word_errors(800, 1e-9) == 314                  # 100 bytes: 314 wrong bits still can't be chance
+assert rp.sync.word_errors(32, 1e-3, positions=8160) == 1     # a 32-bit ASM searched over a CCSDS frame
+```
+
+For an unknown signal, `rp.analysis.framing.payload.fixed_word(bits)` finds such a word blind among demodulated bits
+(bit errors and all). It gives the word, its period, and the bits each frame's copy differs by, with an `errors` to
+start from. `rp.analysis.framing.frames.find(symbols)` does the same among symbols.
+
 ## Decoded messages, and only some of them
 
 Every frame a profile receives is also a record, `rp.profile.Message`: its kind, the fields it decoded, its payload,

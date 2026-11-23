@@ -81,7 +81,7 @@ from . import equalize
 from .squelch import Squelch
 from .code_acquire import acquire_code
 from .pilots import PilotEqualizer, PilotPhase
-from .frame import FrameSync, Delimiter
+from .frame import FrameSync, Delimiter, word_errors
 from .ofdm import CPSync
 from .burst import Burst, BurstTx
 from .tone import ToneLock

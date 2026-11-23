@@ -19,6 +19,20 @@ from ..base.control import publish, anchor
 from . import track
 
 NATIVE_CORRELATION = 256 # Longest preamble (symbols) correlated directly in C++; longer ones go through the FFT
+LONG_WORD = 64 # Delimiter: a longer word is matched by FFT correlation rather than window by window
+
+def word_errors(n_bits, false_alarm=1e-6, positions=1, polarity=False):
+    """The most bit errors a match of an `n_bits` word may have while random bits stay under `false_alarm` matches over
+    `positions` places searched (a frame's bits, when the search restarts every frame): the largest e with
+    positions * P(Binomial(n_bits, 1/2) <= e) (twice that with `polarity`, the inverted word matched too) under it.
+    -1 when even an exact match is too likely (a short word over many places). A 32-bit ASM searched over a CCSDS frame
+    (8160 places) allows 1 at 1e-3; an 800-bit word (100 bytes) 314 at 1e-9, so its own channel errors hardly ever matter"""
+    from math import log
+    from ..math.prob import log_binom_half_cdf
+    n = int(n_bits)
+    budget = log(false_alarm) - log(max(1, int(positions))) - (log(2) if polarity else 0.0)
+    ok = np.nonzero(np.atleast_1d(log_binom_half_cdf(n, np.arange(n + 1))) <= budget)[0]
+    return int(ok[-1]) if len(ok) else -1
 
 class FrameSync(Stage):
     """Find frames by a known preamble among timed symbols, and give them whole and the right way round
@@ -35,13 +49,23 @@ class FrameSync(Stage):
     preamble is found (or the stream is flushed), from its preamble to the next, turned back by the carrier phase: a line
     from the phase its preamble measured to the next one's (block-rate tracking of a slowly turning carrier; a residual
     frequency is for the pilots to take off). A frame longer than `max_length` symbols is cut there.
+    A unique word known as bits (a long one after demodulation, before the FEC) is found here rather than among bits when
+    the carrier leaves an M-fold ambiguity: its phase is measured, so a frame turned by 90 degrees is put right too (a
+    bit search only corrects an inversion). pending: the preamble comes later (`set_template`), as a profile makes it
+    from such a word. Over L symbols random data correlates about 1/sqrt(L) (0.05 for a 400-symbol word), so a long word
+    may use a threshold well under the default.
     Estimates in stream.est[name]: frames, the last preamble's correlation and phase.
     """
     CONTROLS = {}
 
-    def __init__(self, preamble, words=None, threshold=None, max_length=None, name="frame"):
-        self.preamble = np.asarray(preamble, dtype=np.complex128)
-        self.L = len(self.preamble)
+    def __init__(self, preamble, words=None, threshold=None, max_length=None, name="frame", pending=False):
+        if preamble is None and not pending:
+            raise ValueError("FrameSync: a preamble, or pending=True (set_template gives it later)")
+        if pending and words is not None:
+            raise ValueError("FrameSync: words follow a preamble given now, not a pending one")
+        self.preamble, self.L, self._ep = None, 0, 0.0
+        if preamble is not None:
+            self.set_template(preamble)
         self.words = None if words is None else np.conj(np.asarray(words, dtype=np.complex128)) # (M, n), conjugated
         self.n = 0 if words is None else self.words.shape[1]
         self._words_ri = None if words is None else np.stack((self.words.real.T, -self.words.imag.T), axis=1).reshape(2*self.n, -1).astype(np.float32) # (re, -im) pairs
@@ -49,6 +73,14 @@ class FrameSync(Stage):
         self.threshold = float(threshold if threshold is not None else (0.6 if words is None else 0.5))
         self.name = name
         self.max_length = None if max_length is None else int(max_length)
+
+    def set_template(self, preamble, first=0, span=None):
+        """The known symbols that start each frame (a profile makes them from a word, through its own transmit side down to
+        the symbol mapping: rpps.profile.Profile._template; first and span are unused, the symbols being one a sample)"""
+        self.preamble = np.asarray(preamble, dtype=np.complex128)
+        self.L = len(self.preamble)
+        if not self.L:
+            raise ValueError("FrameSync: an empty preamble")
         self._ep = float(np.sum(np.abs(self.preamble)**2))
 
     def __str__(self):
@@ -118,6 +150,8 @@ class FrameSync(Stage):
         return out
 
     def step(self, x, st, meta):
+        if self.preamble is None:
+            raise ValueError(f"{self}: no preamble yet (a profile makes it from its word: set_template)")
         if st.base is None:
             st.base = meta.pos
             st.searched = meta.pos
@@ -176,7 +210,8 @@ class Delimiter(BitStage):
 
     word: the delimiter's value, `bits` long, sent most (order "msb") or least significant bit first; or the bits
     themselves (an array, in the order sent), or a `sequence` definition of type word (rp.sequence.load). errors: bit
-    errors a match may have. length: bits in a frame after the word; after them the frame is over and the search starts
+    errors a match may have (`word_errors` gives the most a false-alarm rate allows; a word longer than 64 bits is matched
+    by FFT correlation). length: bits in a frame after the word; after them the frame is over and the search starts
     again (also a controlled parameter: a header says how long its frame is); unknown, the bits pass until the next
     delimiter. keep: give each frame from its word on (so a `rp.code.Marker` after it can strip and check the word) rather
     than from the bit after it. polarity: match the inverted word too, and give such a frame inverted back (LLRs negated),
@@ -266,8 +301,12 @@ class Delimiter(BitStage):
         n = self.n
         if len(hard) < n:
             return []
-        w = np.lib.stride_tricks.sliding_window_view(hard, n)
-        bad = np.count_nonzero(w != self.word[None, :], axis=1)
+        if n > LONG_WORD: # Mismatches from the +-1 correlation, by FFT blocks: no window x word matrix
+            pm = lambda b: 1.0 - 2.0*b
+            bad = np.rint((n - convolve(pm(hard), pm(self.word)[::-1], "valid"))/2).astype(np.int64)
+        else:
+            w = np.lib.stride_tricks.sliding_window_view(hard, n)
+            bad = np.count_nonzero(w != self.word[None, :], axis=1)
         found = {int(j): False for j in np.nonzero(bad <= self.errors)[0]}
         if self.polarity:
             for j in np.nonzero((n - bad) <= self.errors)[0]:

@@ -79,17 +79,17 @@ class Profile:
         if self._sync.get("timing", {}).get("fuse", True):
             self._fuse(built)
         for i, st in enumerate(built):
-            if st.category == "sync" and st.kind == "preamble" and ("sequence" in st.spec or "word" in st.spec):
+            if st.category == "sync" and st.kind in ("preamble", "frame") and ("sequence" in st.spec or "word" in st.spec):
                 self._template(i, specs, built)
         return built
 
     def _template(self, i, specs, built):
-        """A preamble step's waveform: its bits through the transmit side of the steps after it, from the first that makes
-        channel bits back to the preamble's input (built anew: making it changes no operator the profile uses). Its first
-        symbol's peak is where the group delay of those steps puts it"""
+        """A preamble (or frame) step's waveform: its bits through the transmit side of the steps after it, from the first
+        that makes channel bits back to the step's input (built anew: making it changes no operator the profile uses). Its
+        first symbol's peak is where the group delay of those steps puts it"""
         import numpy as np
         from ..base.data import Data
-        spec, where = built[i].spec, f"profile {self.name}: preamble {built[i].id!r}"
+        spec, where = built[i].spec, f"profile {self.name}: {built[i].kind} {built[i].id!r}"
         j = next((k for k in range(i + 1, len(built)) if built[k].gives == Rep.CHANNEL), None)
         if j is None:
             raise ConfigError(f"{where}: no step after it maps symbols to bits, to make its waveform with")

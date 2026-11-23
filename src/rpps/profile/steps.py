@@ -424,9 +424,18 @@ def _ofdm(m, ctx):
 
 @_sync_one("frame")
 def _frame(m, ctx):
-    """Frames by a known preamble among symbols: the one a physical header definition starts with"""
+    """Frames by a known preamble among symbols: the one a physical header definition starts with ("header"), or a unique
+    word given as bits (a `sequence` word, or `word` + `bits` + `order`), which the profile maps to symbols through its own
+    transmit side, from the steps after this one down to the symbol mapping (rpps.profile.Profile._template), so any
+    rotation of the constellation is resolved by the word"""
     from .. import sync, symbol
-    h = symbol.load_header(_need(m, "header", "sync frame"))
+    named = "sequence" in m or "word" in m
+    if named == ("header" in m):
+        raise ConfigError("sync frame: a `header`, or a word (`sequence`, or `word` and `bits`), one of the two")
+    if named:
+        _word(m, "sync frame") # (checked now; the profile makes the symbols)
+        return sync.FrameSync(None, None, m.get("threshold"), m.get("max_length"), m.get("name", "frame"), pending=True)
+    h = symbol.load_header(m["header"])
     return sync.FrameSync(h.preamble, h.words() if m.get("words", True) else None, m.get("threshold"), m.get("max_length"),
                           m.get("name", "frame"))
 

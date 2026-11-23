@@ -6,6 +6,26 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 
 ## Unreleased
 
+### Added
+- **Words of any width**: a `sequence` word (and `word` + `bits` on a step) may be longer than 64 bits; a 100-byte
+  unique word is 200 hex digits. `rp.sync.Delimiter` matches a word over 64 bits by FFT correlation.
+- **`{"sync": "frame"}` takes a word** (`sequence`, or `word` + `bits`) instead of a `header`: the profile maps it to
+  symbols through its own steps, and the frame sync measures its phase, so a unique word sent after the FEC is found
+  under any rotation of the constellation (a bit delimiter only corrects an inversion).
+- `rp.sync.word_errors(n_bits, false_alarm, positions)`: the most bit errors a delimit step may allow before random
+  bits match, and `rp.math.prob.log_binom_half_cdf`.
+
+### Changed
+- **`frames.find` sees a short unique word from fewer frames:** its candidate periods sum the correlation over every
+  multiple of a lag (`frames.comb_lags`), not the lag alone. A 16-symbol word every 2000 QPSK symbols at 5 dB is found
+  from 40 frames (it took 80), and random symbols still give none. A multiple of the period found must be much
+  stronger to replace it. `frames.periods` gives `(lag, z)`.
+- **`payload.fixed_word` finds a unique word among demodulated bits with bit errors**: the same candidate search, a
+  position constant when `agree` (75%) of frames hold its bit, and the word the stretch where they gather, taken when
+  chance could not have made it. It gives the word (`word`, `bits`), the bits each frame's copy differs by
+  (`mismatches`), and an `errors` to start a delimit step from. A 100-byte word with 10% bit errors is found from 12
+  to 20 frames.
+
 ## 0.6.0 (2026-11-22)
 
 ### Breaking
