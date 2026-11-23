@@ -99,6 +99,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   is identified on every symbol held past `skip`, blind tools included, where it used to stay "still acquiring" and the
   blind tools never ran. `rp.analysis.profile` sends its last block as the end of the stream, so a short capture gets
   the same look as a long one.
+- **`rp.analysis.profile` reads by symbols** (`symbols=2**18`, `max_blocks`): a signal whose code is not decided yet
+  and that has fewer than `symbols` symbols keeps reading past `blocks`, up to `max_blocks` (8 x blocks), so a narrow
+  signal gets symbols enough for the code scans and the layers inside a code instead of a fixed stretch of the
+  capture; a decided one stops costing anything.
 
 ## 0.6.0 (2026-11-22)
 

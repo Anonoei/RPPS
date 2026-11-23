@@ -40,6 +40,17 @@ def test_a_dvbs_capture_profiles_to_its_shipped_profile(dvbs_capture):
     assert d["solved"] and d["steps"][7]["kind"] == "fec"
 
 @pytest.mark.kernels
+def test_a_signal_short_of_symbols_reads_on(dvbs_capture):
+    """24 blocks hold ~49k of the carrier's symbols, too few to settle the chain and decide its code there. Allowed to
+    read on, the chain keeps going until its code is decided (and only it: the profile is the full one)"""
+    pick = lambda ps: min(ps, key=lambda p: abs(p.signal.mid - 1.7e6) - p.signal.width)
+    fresh = lambda: rp.source.File("ci16t", dvbs_capture.path, Fs=8e6) # (a File reads on from where it stopped)
+    short = pick(rp.analysis.profile(fresh(), blocks=24, max_blocks=24, blind=False))
+    assert not short.solved and (short.fec is None or not short.fec.found)
+    full = pick(rp.analysis.profile(fresh(), blocks=24, blind=False))
+    assert full.solved and full.profile_name == "dvbs/qpsk_3_4" and "rs/204_188" in str(full)
+
+@pytest.mark.kernels
 def test_uncoded_symbols_end_in_an_unsolved_step(tmp_path):
     rng = np.random.default_rng(1)
     q = rp.symbol.load("qpsk")

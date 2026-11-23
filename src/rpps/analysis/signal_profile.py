@@ -314,6 +314,14 @@ class _Chain:
             self.errors.append(("channel", e, traceback.format_exc(limit=4)))
             self.dead = True
 
+    def wants(self, symbols):
+        """Whether more of the capture could still tell this chain something: its code not decided yet, and fewer than
+        `symbols` symbols seen"""
+        if self.dead:
+            return False
+        fec = self.stream.est.get("fec") if self.stream.det is not None else None
+        return not (fec is not None and fec.complete) and self.nsym < symbols
+
     def step(self, samps, last=False):
         """One block of the capture through the chain; `last` ends the stream (the stages decide on what they hold)"""
         if self.dead:
@@ -687,11 +695,15 @@ class _Chain:
                    ("; the modulation itself is doubtful" if doubt else ""))
         return p
 
-def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True, survey=None):
+def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True, survey=None, symbols=2**18,
+            max_blocks=None):
     """Profiles of signals in a capture: [SignalProfile], in the order chosen
 
     source: an rp.source Source (File, Memory: a live device is best captured into Memory first, as the chains run slower
         than it does). It is read once, `blocks` blocks of `block` samples, every chosen signal processed along the way.
+    symbols, max_blocks: a signal whose code is not decided yet and that has fewer than `symbols` symbols keeps reading
+        past `blocks`, up to `max_blocks` (default 8 x blocks): a narrow signal gets symbols enough for the code scans
+        (and the layers inside a code) instead of the few thousand a fixed stretch of a wide capture holds
     signals: which ones: None (every one the survey finds), an index or indices into the survey, or Signal objects
     freq: instead, the one nearest this frequency (Hz from the capture's centre)
     survey: the rp.analysis.survey of `source` already made (the indices refer to it; it isn't surveyed again)
@@ -712,17 +724,26 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
             picked = [sv[i] for i in idx]
     index = {id(s): i for i, s in enumerate(sv)}
 
+    cap = max(blocks, max_blocks if max_blocks is not None else 8*blocks)
+
     def run(chains):
-        prev = None # One block behind, so the last one read goes in marked as the end of the stream
+        fed, prev = list(chains), None # One block behind, so the last one a chain reads goes in as the end of its stream
         for i, blk in enumerate(source(block)):
-            if i >= blocks:
+            if i >= cap:
                 break
+            if i >= blocks: # Past the common stretch: only the chains still short of a decided code
+                for ch in [ch for ch in fed if not ch.wants(symbols)]:
+                    ch.step(prev, last=True)
+                    fed.remove(ch)
+                if not fed:
+                    prev = None
+                    break
             if prev is not None:
-                for ch in chains:
+                for ch in fed:
                     ch.step(prev)
             prev = blk.data
         if prev is not None:
-            for ch in chains:
+            for ch in fed:
                 ch.step(prev, last=True)
 
     def build(ch):
