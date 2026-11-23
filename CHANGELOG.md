@@ -125,6 +125,12 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   process (they were loaded on every call: 97 s of that survey).
 - **`rp.analysis.profile(progress=)`**: called as `progress(stage, done, total, left)` as the work goes (blocks read of
   the stretch planned and the chains still reading, then the profiles built), for a percent and an estimate.
+- **A code that carries random-looking bits says so**: when nothing is found inside a convolutional code, `identify`
+  keeps `rp.analysis.framing.payload.verdict` of the bits as `fec.payload`, and the profile's payload step reads "the
+  bits it carries are random-looking" (keyed or compressed data: no layer to find) instead of only what was not found.
+- **`payload.signatures` no longer finds a periodic word in random bits**: a word at a fixed offset (MPEG-TS's 0x47) is
+  scored by the binomial deviance and past what the best of the period's columns reaches by chance; 2 hits in 15
+  frames where 0.06 were expected read as z 8 (MPEG-TS) and made random payloads "structured".
 
 ## 0.6.0 (2026-11-22)
 

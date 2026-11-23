@@ -25,6 +25,8 @@ import zlib
 
 import numpy as np
 
+from ...math.prob import deviance_z, z_critical
+
 from ...math.gf2 import berlekamp_massey
 
 class Found:
@@ -89,9 +91,10 @@ def _periodic_word(bits, word, wlen, periods, name, z_min):
         off = int(np.argmax(cols))
         h, n = int(cols[off]), m//P
         p = 2.0**-wlen
-        # every offset was tried: the best column of P is compared with chance over n frames
-        z = _z(h, n, p)
-        if z > z_min and (best is None or z > best.z):
+        # every offset was tried: the best column of P is compared with chance over n frames, by the binomial deviance (a
+        # Gaussian z gives 2 hits where 0.06 are expected z 8) and past what the best of P random columns reaches
+        z = float(deviance_z(h, n, p))
+        if z > max(z_min, z_critical(P)) and (best is None or z > best.z):
             best = Found(name=name, period=P, offset=off, hits=h, expected=n*p, z=float(z),
                          detail=f"{100*h/n:.0f}% of {n} frames")
     return best

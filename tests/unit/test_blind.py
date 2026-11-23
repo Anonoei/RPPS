@@ -343,3 +343,16 @@ def test_an_odd_length_block_code_on_qpsk_is_found_at_its_length():
     f = F.identify(_qpsk(b, rng)[:2**15], "qpsk", blind=True)
     h = f.inner[0]
     assert (h.params["n"], h.params["k"]) == (63, 51) and f.guesses[0].definition["type"] == "bch"
+
+@pytest.mark.kernels
+def test_a_code_carrying_random_bits_says_so():
+    # Nothing inside a K=7 1/2 code carrying random bits: identify says what the bits are like (random-looking: keyed or
+    # compressed data, no layer to find); over an idle word through a scrambler it finds the scrambler instead
+    rng = np.random.default_rng(8)
+    g = [[1, 0, 1, 1, 0, 1, 1], [1, 1, 1, 1, 0, 0, 1]]
+    enc = lambda d: conv(Logger().Child("t", 0), 1, 2, g, 7, [[1], [1]]).encode(np.asarray(d, bool))[2:]
+    f = F.identify(_qpsk(enc(rng.integers(0, 2, 70000)), rng)[:2**15], "qpsk", blind=True)
+    assert f.found and not f.inner and f.payload.kind == "random-looking"
+    word = rng.integers(0, 2, 24).astype(np.uint8)
+    f = F.identify(_qpsk(enc(_feedthrough(np.tile(word, 3000), (23, 18))), rng)[:2**15], "qpsk", blind=True)
+    assert f.found and any(h.kind.startswith("scrambler") for h in f.inner) and f.payload is None

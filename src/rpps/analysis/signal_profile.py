@@ -644,9 +644,12 @@ class _Chain:
                 p.add("payload", "what the code carries", UNSOLVED,
                       note=f"the capture ended before enough symbols to look inside the code ({fec.n} used)")
             elif not fec.inner and not fec.profile_name:
-                p.add("payload", "what the code carries", UNSOLVED,
-                      note="no RS code (configured or blind), binary block code, scrambler or HDLC framing found inside"
-                      if self.fec.blind else "nothing configured inside; AcquireFEC(blind=True) looks further")
+                v = getattr(fec, "payload", None)
+                note = ("no RS code (configured or blind), binary block code, scrambler or HDLC framing found inside"
+                        if self.fec.blind else "nothing configured inside; AcquireFEC(blind=True) looks further")
+                if v is not None and v.kind == "random-looking":
+                    note = f"nothing inside: the bits it carries are random-looking ({v.why})"
+                p.add("payload", "what the code carries", UNSOLVED, note=note)
             return p
         if fec is None or (not fec.found and not fec.complete and fec.report is None):
             p.add("fec", "still acquiring", UNSOLVED, note=f"{fec.n if fec else self.nsym} symbols: fewer than it needs")

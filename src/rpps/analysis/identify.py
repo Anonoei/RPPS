@@ -449,7 +449,7 @@ class CodeDetection:
     """
     __slots__ = ("found", "complete", "mod", "kind", "name", "stream", "equivalent", "offset", "period", "inner",
                  "steps", "profile_name", "profile_params", "target", "correction", "z", "mismatch", "baseline", "report", "guesses", "n",
-                 "slips", "latency")
+                 "slips", "latency", "payload")
 
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -582,6 +582,9 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
         out.complete = rs is not None or not short # More symbols could still show a Reed-Solomon code inside
         if rs is None and blind:
             _attach(out, solve(info))
+            if not out.inner: # Nothing inside: what the bits are like (random-looking: keyed or compressed, no layer)
+                from .framing.payload import verdict
+                out.payload = verdict(info)
         if rs is not None:
             out.inner.append(rs)
             p = rs.params
