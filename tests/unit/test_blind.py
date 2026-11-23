@@ -407,3 +407,13 @@ def test_soft_scoring_finds_a_configured_code_hard_bits_cannot():
     head = F.bit_streams(s[:2**15], q, True)
     hard, _ = M.scan_defined_conv(head)
     assert not any(h.coding[1].endswith("/1_2") and h.z > 5.6 for h in hard) # (hard alone: nothing the pick would take)
+
+def test_product_columns_from_few_blocks():
+    """A product code's column length from fewer blocks than columns the rank needs: several columns from each block"""
+    from rpps.analysis.code.block import linear
+    rng = np.random.default_rng(4)
+    tpc = rp.code.load("block/product/tpc_64_57_sq")
+    b = np.concatenate([np.asarray(tpc.encoder.encode(rng.integers(0, 2, 3249).astype(bool)), np.uint8) for _ in range(30)])
+    assert linear.product(b, 64, 0, max_n2=80, per_block=1) is None # 30 blocks, one column each: too few for 64 + 24
+    n2, ph, d = linear.product(b, 64, 0, max_n2=80)
+    assert (n2, ph, d) == (64, 0, 7)

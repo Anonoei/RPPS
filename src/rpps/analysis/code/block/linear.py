@@ -158,8 +158,9 @@ def bch_of(g, n_sent):
 
 # --- Product codes ----------------------------------------------------------------------------------------------------
 
-def product(bits, n1, offset, max_n2=128, extra=24):
-    """Rows of n1 bits stacked n2 at a time, whose columns are codewords too: (n2, row phase, deficiency) or None"""
+def product(bits, n1, offset, max_n2=128, extra=24, per_block=4):
+    """Rows of n1 bits stacked n2 at a time, whose columns are codewords too: (n2, row phase, deficiency) or None.
+    Columns from n2 + extra blocks, one each; with fewer blocks, up to `per_block` from each (spread across the columns)"""
     b = np.asarray(bits, dtype=np.uint8)[offset:]
     rows = b[:len(b)//n1*n1].reshape(-1, n1)
     best = None
@@ -167,10 +168,13 @@ def product(bits, n1, offset, max_n2=128, extra=24):
         d = []
         for ph in range(n2):
             B = (len(rows) - ph)//n2
-            if B < n2 + extra:
+            per = -(-(n2 + extra)//max(B, 1)) # Columns a block gives
+            if per > min(per_block, n1):
                 break
-            # One column from each block: words from many blocks (a few blocks can agree with a wrong n2 by chance)
-            cols = rows[ph:ph + B*n2].reshape(B, n2, n1).transpose(0, 2, 1)[np.arange(B), np.arange(B) % n1]
+            # Columns from many blocks: a few blocks can agree with a wrong n2 by chance; each block's spread over its row
+            blk = rows[ph:ph + B*n2].reshape(B, n2, n1).transpose(0, 2, 1)
+            pick = (np.arange(B)[:, None] + np.arange(per)[None, :]*(n1//per)) % n1
+            cols = blk[np.arange(B)[:, None], pick].reshape(-1, n2)
             d.append(n2 - rank(cols[:n2 + extra]))
         if len(d) < n2:
             break
@@ -391,7 +395,9 @@ def solve_block(bits, n=None, offset=None, llr=None, max_len=None, max_n2=128):
     if prod is not None:
         return [prod]
 
-    p = product(b, n, offset, max_n2) if n*max_n2*(max_n2 + 24) <= len(b) else None
+    # (columns up to the length the bits hold enough blocks for: n2 + 24 columns, at most 4 from a block)
+    m2 = max((m for m in range(3, max_n2 + 1) if n*m*(m + 24) <= 4*len(b)), default=None) # (product: 4 columns a block)
+    p = product(b, n, offset, m2) if m2 else None
     if p is not None: # Rows of n are a code, and so are columns of n2 of them: a product code longer than the rank could see
         n2, ph, _ = p
         found = _product(b, n, k, H, n2, offset + ph*n)

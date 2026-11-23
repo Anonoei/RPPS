@@ -593,9 +593,10 @@ class _Chain:
 
     def _framing(self, p, det):
         """Locked symbols no code fits: a frame structure (rpps.analysis.framing.frames) into p, and a block code on the
-        frame-aligned payload when there are frames enough for one as long"""
+        frame-aligned payload: one codeword a frame when there are frames enough for one as long, else words laid end to
+        end from each payload's start. True when a code was found (not framing, fill or a recurrence)"""
         from .framing import frames
-        from .code.block.linear import solve_block
+        from .code.block.linear import solve_block, frame_units
         y = np.concatenate(self.syms)[2000:] # Past the carrier loop's start
         try:
             fr = frames.find(y, det.mod)
@@ -613,18 +614,32 @@ class _Chain:
               note=f"blind (rpps.analysis.framing.frames): {bits.shape[1]} payload bits a frame" +
                    (f"; frames repeat every {rep} ({same*100:.0f}%): fill or a superframe" if rep else ""))
         n = bits.shape[1]
-        if len(bits) >= n + 48: # The rank method: a row per codeword, more rows than its length
-            from .. import symbol
-            from .modulation.quality import gate
-            g = gate(cut[:400, fr.uw_length:].ravel(), symbol.load_or_generate(det.mod).points)
-            if not g.ok: # Bit errors the noise doesn't explain fill the rank: a full rank then says nothing
-                p.add("fec", "block code on the frame-aligned payload: not tried", UNSOLVED,
-                      note=f"the hard decisions can't be trusted ({g.why}): fix the symbols (a pilot-aided sync, "
-                           "rpps.analysis.framing.frames.pilot_frames) before a rank test")
+        # The rank method: a row per codeword, more rows than its length. A frame's payload as one codeword needs n + 48
+        # frames; shorter words laid end to end from the payload's start (rows of a product code, a frame of several
+        # codewords) need only enough of them across the frames (linear.frame_units)
+        whole = len(bits) >= n + 48
+        if not whole and len(bits) < 8:
+            return
+        from .. import symbol
+        from .modulation.quality import gate
+        g = gate(cut[:400, fr.uw_length:].ravel(), symbol.load_or_generate(det.mod).points)
+        if not g.ok: # Bit errors the noise doesn't explain fill the rank: a full rank then says nothing
+            p.add("fec", "block code on the frame-aligned payload: not tried", UNSOLVED,
+                  note=f"the hard decisions can't be trusted ({g.why}): fix the symbols (a pilot-aided sync, "
+                       "rpps.analysis.framing.frames.pilot_frames) before a rank test")
+            return
+        if whole:
+            found, where = solve_block(bits.ravel(), n=n, offset=0), "the frame-aligned payload"
+        else:
+            u, _ = frame_units(list(bits), max_len=min(n, 1024))
+            if u is None:
                 return
-            for h, g in solve_block(bits.ravel(), n=n, offset=0):
-                p.add("fec", h.name, GUESS, detail={"z": h.z, **{k: str(v) for k, v in h.params.items()}},
-                      note=f"blind, on the frame-aligned payload: {g!r}" if g is not None else "blind, on the frame-aligned payload")
+            units = np.concatenate([r[o:o + u] for r in bits for o in range(0, n - u + 1, u)])
+            found, where = solve_block(units, n=u, offset=0), f"words of {u} bits laid end to end from each frame's payload start"
+        for h, g in found:
+            p.add("fec", h.name, GUESS, detail={"z": h.z, **{k: str(v) for k, v in h.params.items()}},
+                  note=f"blind, on {where}: {g!r}" if g is not None else f"blind, on {where}")
+        return any(h.params.get("kind") not in ("frame", "recurrence", "fill") for h, _ in found)
 
     def _tcm(self, p, det):
         """No code on the bits: a trellis code on the labels (rpps.analysis.code.conv.tcm: Ungerboeck, pragmatic), when one holds"""
@@ -779,9 +794,10 @@ class _Chain:
         if fec.inner:
             _guess_steps(p, fec.inner)
             return p
+        coded = False
         if not rate_doubt and not doubt and self.syms:
-            self._framing(p, det)
-            if det.mod in ("8psk", "16qam", "16apsk") and self.syms:
+            coded = self._framing(p, det)
+            if det.mod in ("8psk", "16qam", "16apsk") and self.syms and not coded:
                 self._tcm(p, det)
         if rate_doubt and self.near:
             self._cyclic(p, det)
@@ -795,6 +811,8 @@ class _Chain:
                    "are not a code)")
         else:
             why = f"best of {fec.report.trials} hypotheses, all below the threshold z>{fec.report.z_crit:.1f}"
+        if coded: # (the blind block code on the frames is the fec step: a guess, which the configured scans had none of)
+            return p
         p.add("fec", "no definition fits", UNSOLVED, candidates=cand,
               note=why + more + ("; the symbol rate is doubtful" if rate_doubt else "") +
                    ("; the modulation itself is doubtful" if doubt else ""))

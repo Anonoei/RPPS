@@ -206,6 +206,12 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   out from the payload's start: `code.block.linear.frame_units(rows)`, the shortest length whose words at 0, n, 2n... of
   every frame are short of rank, on every bit map (one unknown rotation is common to the bursts); then `solve_block`
   names it (BCH, LDPC checks, cyclic...), or the payload's randomness is reported.
+- **A block code laid out in each frame is found from few frames**: where the profile finds frames (a unique word) and no
+  code fits, the payloads were tried only as one codeword a frame, which needs more frames than the payload has bits.
+  Now words laid end to end from each payload's start are looked for too (`linear.frame_units`), and the code is then
+  solved on them, a product code's columns included: the fec step is that guess. `linear.product` takes several
+  columns from each block when there are fewer blocks than the rank needs (`per_block`), and `solve_block` looks for
+  columns as long as the bits allow instead of skipping the product test below 128.
 - **A survey box that holds carriers side by side is split**: when the cyclic spectrum's rate needs well under the box
   (the chain could not lock to it), the box's own channel samples are surveyed again and each carrier in it profiled on
   its own ("signal 16.1", "signal 16.2"...), its rate acquired alone in its channel; the one that gets furthest stands
