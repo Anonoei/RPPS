@@ -76,12 +76,13 @@ def _chance(m, word):
         total += term
     return float(np.exp(-t)*total)
 
-def find(y, mod=None, max_lag=20000, min_frames=8, threshold=0.5, false_alarm=1e-3):
+def find(y, mod=None, max_lag=20000, min_frames=8, threshold=0.5, false_alarm=1e-3, min_coherence=0.2):
     """The frame structure of locked symbols y: a Frame, or None (no lag with a unique word standing out)
 
     The candidate periods are the lags the symbols correlate at (`periods`), shortest first among those near the
     strongest (a multiple of the frame is a superframe, kept for `repeats`); at a period, the unique word is the longest
-    run of positions whose coherence passes `threshold` (with many frames less: sqrt(4/m)), taken only when chance could
+    run of positions whose coherence passes `threshold` (with many frames less: sqrt(4/m), but at least `min_coherence`:
+    a unique word is in every frame, which a weak signal's 0.2 or more still shows), taken only when chance could
     not have made it (`_chance`, times every position and candidate period looked at, under `false_alarm`): one
     coherent symbol is not a word. Data that itself repeats every few frames doesn't average
     out, which hides the unique word (most positions coherent): then frame by hand and use `repeats`."""
@@ -98,8 +99,9 @@ def find(y, mod=None, max_lag=20000, min_frames=8, threshold=0.5, false_alarm=1e
         floor = float(np.median(prof))
         if floor > threshold: # Most positions coherent: data repeating, no word to single out
             continue
-        hot = prof > min(threshold, np.sqrt(4/m)) # (with many frames, lower: a weak signal's word is lower too, and the
-        # run's own test below keeps chance out)
+        hot = prof > max(min_coherence, min(threshold, np.sqrt(4/m))) # (with many frames, lower: a weak signal's word is
+        # lower too, and the run's own test below keeps chance out; never under min_coherence: a word is in every frame,
+        # not a structure a few percent of them share, which many frames make significant)
         if not hot.any():
             continue
         # The longest run of coherent positions (circular: the word may straddle the fold)

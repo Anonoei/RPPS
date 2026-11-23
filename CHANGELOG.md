@@ -238,7 +238,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   unique word (65536 random QPSK symbols at 10 dB gave a "period" in 21 searches of 30, a different one each time).
   Products are clipped, and a word is taken only when chance could not have made it over every position and candidate
   period (`false_alarm`, 1e-3); with many frames the per-position threshold comes down, so real frames are found more
-  often (13 frames at 10 dB, 0 dB over 65 frames).
+  often (13 frames at 10 dB, 0 dB over 65 frames), but never under `min_coherence` (0.2): a structure a few percent of
+  frames share (pilot blocks at a short lag) is significant over thousands of frames, and not a unique word.
 - **`find_signals` on a crowded band:** a signal a small gap from a louder neighbour was measured against the
   neighbour's level, not the gap's, and dropped out of some surveys; and the receiver's roll-off reaching just past
   the band edge was reported as a narrow signal with a negative SNR.

@@ -66,6 +66,20 @@ def test_few_frames_or_a_weak_signal_still_found():
     fr = FR.find(y, "qpsk")
     assert fr is not None and fr.period == 1000 and abs(fr.uw_start - at) <= 2
 
+def test_a_structure_few_frames_share_is_not_a_word():
+    """Over thousands of short "frames" symbols that only some share (pilot blocks at a short lag) are significant,
+    but a unique word is in every frame: at coherence 0.12 they are not one"""
+    rng = np.random.default_rng(5)
+    q = rp.symbol.load("qpsk").points
+    y = q[rng.integers(0, 4, 131072)]
+    for k in range(0, len(y) - 64, 32*8): # One period-32 block in 8 holds the same 3 symbols as the next one
+        y[k + 5:k + 8] = y[k + 37:k + 40] = q[rng.integers(0, 4, 3)]
+    y = y + np.sqrt(0.05)*(rng.standard_normal(len(y)) + 1j*rng.standard_normal(len(y)))
+    fr = FR.find(y, "qpsk", max_lag=len(y)//8, min_coherence=0.0)
+    assert fr is not None and fr.period == 32 and fr.coherence < 0.2 # (significant, without the floor)
+    fr = FR.find(y, "qpsk", max_lag=len(y)//8)
+    assert fr is None or fr.coherence > 0.2
+
 def test_bursts_are_acquired_one_by_one_and_their_preamble_found():
     # Six QPSK bursts from different transmitters (each its own phase and carrier offset), a 48-symbol preamble then data
     rng = np.random.default_rng(3)
