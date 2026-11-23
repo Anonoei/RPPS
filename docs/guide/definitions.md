@@ -102,7 +102,10 @@ where its expression holds:
 - Blind analysis (`rp.analysis.identify`, `rpps solve`, the survey's framed profiles) tries every variant the choices
   make (`rp.profile.variants(name)`, the defaults first) and names the one that fits with its params
   (`demo/variants (modulation=16qam, rolloff=0.2)`); `"blind": false` on a param (a payload size) keeps it at its default.
-- Expressions join strings with `+`: `{"expr": "'k7_171_133/' + rate"}`.
+- Expressions join strings with `+` (`{"expr": "'k7_171_133/' + rate"}`) and take `min`, `max`, `abs`, `len`, `ceil`,
+  `floor`, `round` and `log2`.
+- A param may say its `"type"` (`int`, `float`, `str`, `bool`), `"min"` and `"max"`: `rpps rx -p sps=fast` is then an
+  error when the profile loads, not a failure in a step.
 - `rp.profile.info(name, **params)` evaluates `requires` with the chosen bundle (`"bw": "(1 + rolloff)*baud"`) and lists
   each param's choices.
 

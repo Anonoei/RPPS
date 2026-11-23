@@ -84,7 +84,9 @@ def info(name, baud=None, **params):
     unknown = set(params) - set(decl)
     if unknown:
         raise ConfigError(f"profile/{name}: no params {sorted(unknown)} (has {sorted(decl)})")
-    values = _config.chosen(obj, {**_config.declared(obj), **params}, f"profile/{name}")
+    values = {**_config.declared(obj), **params}
+    _config.typed(obj, values, f"profile/{name}")
+    values = _config.chosen(obj, values, f"profile/{name}")
     ps = {k: {"default": v.get("default") if isinstance(v, dict) else v,
               "comment": v.get("comment") if isinstance(v, dict) else None,
               **({"choices": list(v["choices"])} if isinstance(v, dict) and "choices" in v else {})} for k, v in decl.items()}

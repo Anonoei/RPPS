@@ -46,7 +46,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   fields is read as it comes); headers and frames take `"payload_fields"` (in a message's `fields["payload"]`); a
   step's `"message"` fields are a schema. `frame/ax25` reads AX.25 addresses, control and PID (`ax25/afsk1200` uses it);
   `header/ble_adv` names PDU types and reads AdvA and AD structures; `dvbs/qpsk` reads the TS adaptation field and PCR.
-- Expressions short-circuit `and` / `or`, as Python does.
+- Expressions short-circuit `and` / `or`, as Python does, and take `ceil`, `floor`, `round` and `log2`.
+- **Params take `"type"`** (int, float, str, bool), **`"min"` and `"max"`**, checked when a definition loads (and by
+  `rp.profile.info`).
 - The `mpower` carrier step takes a generated `"shape"` (`"16QAM"`) as the constellation step does.
 - `examples/profile_variants.py`.
 - **Words of any width**: a `sequence` word (and `word` + `bits` on a step) may be longer than 64 bits; a 100-byte

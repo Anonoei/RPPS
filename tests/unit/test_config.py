@@ -113,3 +113,29 @@ def test_a_child_narrows_the_choices():
     child = _config.merge(VARIANT, {"params": {"modulation": {"choices": {"qpsk": {"shape": "QPSK", "bits": 2}}}}})
     with pytest.raises(ConfigError, match="not one of its choices"):
         _config.resolve(child, {"modulation": "16qam"})
+
+def test_param_types_and_ranges():
+    obj = {"params": {"sps": {"default": 4, "type": "int", "min": 2, "max": 64}, "beta": {"default": 0.35, "type": "float"},
+                      "name": {"default": "x", "type": "str"}}, "v": {"param": "sps"}}
+    assert _config.resolve(obj, {"beta": 1})["v"] == 4 # an int is a float
+    for bad, msg in (({"sps": "fast"}, "not an int"), ({"sps": 4.0}, "not an int"), ({"sps": True}, "not an int"),
+                     ({"sps": 1}, "below its minimum"), ({"sps": 65}, "above its maximum"), ({"name": 3}, "not a str")):
+        with pytest.raises(ConfigError, match=msg):
+            _config.resolve(obj, bad)
+    with pytest.raises(ConfigError, match="type is one of"):
+        _config.resolve({"params": {"a": {"default": 1, "type": "integer"}}})
+
+def test_expression_functions():
+    v = {"n": 10, "k": 3}
+    assert _config.evaluate("ceil(n/k)", v) == 4 and _config.evaluate("floor(n/k)", v) == 3
+    assert _config.evaluate("round(n/4)", v) == 2 and _config.evaluate("log2(8)", v) == 3
+    with pytest.raises(ConfigError):
+        _config.evaluate("open('x')", v)
+
+def test_every_variant_of_every_profile_loads():
+    """Each combination of a shipped profile's choices loads and builds its receiver"""
+    for fam, modes in rp.profile.ls().items():
+        for mode in modes:
+            name = f"{fam}/{mode}"
+            for params in rp.profile.variants(name):
+                assert rp.profile.load(name, **params).rx() is not None, (name, params)

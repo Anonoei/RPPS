@@ -32,7 +32,7 @@ DEFINITIONS = {
                    "Hamming (7,4) or uncoded",
         "params": {
             "sps": {"default": 4, "comment": "samples per symbol"},
-            "payload": {"default": 32, "comment": "data bytes a frame"},
+            "payload": {"default": 32, "type": "int", "min": 1, "comment": "data bytes a frame"},
             "modulation": {"default": "qpsk", "comment": "the constellation, and how well the sync word must match",
                            "choices": {"qpsk": {"shape": "QPSK", "threshold": 0.6},
                                        "16qam": {"shape": "16QAM", "threshold": 0.85}}},

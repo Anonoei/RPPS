@@ -397,7 +397,10 @@ def resolve(obj, params=None, name="definition", strict=True):
         {..., "when": "modulation == '16qam'"}                  in a list: the item only where the expression holds
     ("each" lists and "when" are applied even in a definition without parameters.)
     An expression may use + - * // % ** << >> & | ^ ~, comparisons, `a if c else b`, and/or, number, string and list
-    literals, indexing, min / max / abs / len: no calls beyond those, no attributes but a choice's fields.
+    literals, indexing, min / max / abs / len / ceil / floor / round / log2: no calls beyond those, no attributes but a
+    choice's fields.
+
+    A param may say its "type" (int, float, str, bool), "min" and "max": a value outside them is an error at load.
 
     A parameter may list its "choices": the values it takes, each with a bundle of fields one choice sets together
         "modulation": {"default": "qpsk", "choices": {"qpsk": {"constellation": "qpsk", "bits": 2},
@@ -418,6 +421,7 @@ def resolve(obj, params=None, name="definition", strict=True):
         raise ConfigError(f"{name}: parameter(s) {missing} needed, e.g. load(..., {missing[0]}=...)")
     if not (decl or _uses_params(obj)):
         return obj
+    typed(obj, values, name)
     values = chosen(obj, values, name)
     out = _subst(obj, values, name)
     if decl: # The filled-in definition says what it was given: `declared` of it gives the values used, not the defaults
@@ -431,6 +435,26 @@ def _choice(choices, value):
         if c == value or (isinstance(c, str) and not isinstance(value, str) and c == str(value)):
             return c
     raise KeyError(value)
+
+_TYPES = {"int": (int,), "float": (int, float), "str": (str,), "bool": (bool,)}
+
+def typed(obj, values, name="definition"):
+    """Check each param against its "type" (int, float, str, bool), "min" and "max", where it says them: a value of the
+    wrong kind is an error when loading, not a failure later in a step"""
+    for k, spec in (obj.get("params") or {}).items():
+        v = values.get(k)
+        if not isinstance(spec, dict) or v is None:
+            continue
+        t = spec.get("type")
+        if t is not None:
+            if t not in _TYPES:
+                raise ConfigError(f"{name}: param {k}: type is one of {sorted(_TYPES)}, not {t!r}")
+            if not isinstance(v, _TYPES[t]) or (t != "bool" and isinstance(v, bool)):
+                raise ConfigError(f"{name}: {k}={v!r} is not {'an' if t == 'int' else 'a'} {t}")
+        if "min" in spec and v < spec["min"]:
+            raise ConfigError(f"{name}: {k}={v!r} is below its minimum {spec['min']}")
+        if "max" in spec and v > spec["max"]:
+            raise ConfigError(f"{name}: {k}={v!r} is above its maximum {spec['max']}")
 
 def chosen(obj, values, name="definition"):
     """The parameter values with each choice checked and its bundle's fields added as "<param>.<field>" """
@@ -479,7 +503,9 @@ def _subst(v, values, name):
         return out
     return v
 
-_FUNCS = {"min": min, "max": max, "abs": abs, "len": len}
+import math as _math
+_FUNCS = {"min": min, "max": max, "abs": abs, "len": len, "ceil": _math.ceil, "floor": _math.floor, "round": round,
+          "log2": _math.log2}
 
 def evaluate(expr, values, name="expression"):
     """Value of a small integer expression over `values` (see `resolve`): parsed, never handed to eval()"""
