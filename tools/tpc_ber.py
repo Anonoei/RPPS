@@ -2,6 +2,7 @@
 
     python tools/tpc_ber.py                          # chase 4 and 5, 1 / 2 / 4 / 8 iterations, 2.5 .. 3.5 dB
     python tools/tpc_ber.py --words 400 --chase 5 --iters 8 --ebn0 2.5 2.75 3.0
+    python tools/tpc_ber.py --update-baseline        # keep this machine's BER/FER in .benchmarks/ (--check compares)
 
 Reference: AFF3CT error_rate_references, TURBO_PROD/AWGN/BPSK/BCH1/Turbo_prod_BCH_64_57_p5_i8.txt (extended BCH (64,57)
 squared, chase 5, 8 iterations, alpha 0.5 on every half iteration): BER 1.2e-2 / 1.2e-3 / 1.2e-5 at 2.5 / 2.75 / 3.0 dB.
@@ -17,16 +18,19 @@ went from 5e-4 (2 iterations) to 2.3e-2 (4). Pyndiah's alpha rising to 1.0 also 
 past his 4 iterations (BER at 8 above BER at 4); holding it at 0.5, as AFF3CT does, keeps BER falling with iterations.
 """
 import argparse
+import sys
 import time
 
 import numpy as np
 
 import rpps as rp
 
+import _bench
+
 REF = {2.5: (1.20e-2, 0.50), 2.75: (1.20e-3, 7.03e-2), 3.0: (1.19e-5, 1.29e-3), 3.25: (2.93e-7, 7.45e-5)} # AFF3CT, chase 5, 8 iterations
 
 
-def run(words, chase, iters, ebn0, seed=1):
+def run(words, chase, iters, ebn0, rec, seed=1):
     tpc = rp.code.load("block/product/tpc_64_57_sq")
     dec = tpc.decoder
     dec.chase = chase
@@ -43,6 +47,9 @@ def run(words, chase, iters, ebn0, seed=1):
             t = time.time()
             e = (dec.decode(llr) != msg).reshape(words, -1)
             cols.append(f"{it}: {e.mean():.1e}/{e.any(axis=1).mean():.3f} ({time.time() - t:.1f} s)")
+            # Fixed seeds: the same decoder gives the same errors, any change is the decoder's
+            rec.add(f"chase {chase} iters {it} {eb:g} dB BER", e.mean(), "", "lower", tol=0.0)
+            rec.add(f"chase {chase} iters {it} {eb:g} dB FER", e.any(axis=1).mean(), "", "lower", tol=0.0)
         ref = f"   AFF3CT {REF[eb][0]:.1e}/{REF[eb][1]:.3f}" if eb in REF and chase == 5 else ""
         print(f"chase {chase}  {eb:5.2f} dB  raw {np.mean((llr < 0) != x):.3f}   " + "   ".join(cols) + ref, flush=True)
 
@@ -53,11 +60,14 @@ def main(argv=None):
     ap.add_argument("--chase", type=int, nargs="+", default=[4, 5])
     ap.add_argument("--iters", type=int, nargs="+", default=[1, 2, 4, 8])
     ap.add_argument("--ebn0", type=float, nargs="+", default=[2.5, 2.75, 3.0, 3.25, 3.5])
+    _bench.add_args(ap)
     a = ap.parse_args(argv)
+    rec = _bench.Record("tpc_ber")
     print("BER/FER per iteration count")
     for c in a.chase:
-        run(a.words, c, a.iters, a.ebn0)
+        run(a.words, c, a.iters, a.ebn0, rec)
+    return _bench.finish(a, rec)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

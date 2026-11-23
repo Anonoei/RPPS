@@ -20,6 +20,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   receive output is now data bits (Rep.DATA), not channel bits.
 
 ### Added
+- **Benchmarks keep their results per machine**: `bench_stages`, `effort_bench`, `parallel_bench`, `resample_bench`
+  and `tpc_ber` take `--save`, `--update-baseline`, `--check` (exit 1 on a regression) and `--compare FILE`
+  (`tools/_bench.py`), writing to the git-ignored `.benchmarks/<bench>/`. `parallel_bench.py` and `resample_bench.py`
+  take their positional arguments through argparse now.
 - **Definition params take `"choices"`**: the values a param takes, each optionally a bundle of fields one choice sets
   together (`{"param": "modulation.shape"}`, `modulation.bits` in an expression). A value that is not a choice is an error.
   `rp.profile.info` lists them and evaluates `requires` with the chosen bundle.

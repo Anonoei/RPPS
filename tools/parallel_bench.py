@@ -1,6 +1,7 @@
 """Frames per second of the DVB-S2 profile: the serial runner against the parallel runner, and where a frame's time goes
 
     python tools/parallel_bench.py [frames] [max_workers] [block]
+    python tools/parallel_bench.py 16 8 --update-baseline   # keep this machine's rates in .benchmarks/ (--check compares)
 
 block: samples per block fed to the receiver (default: the whole stream as one block). In blocks the serial front of one
 block overlaps the region of the one before, as it does on a live source.
@@ -9,6 +10,7 @@ A synthetic stream of normal frames (QPSK 1/2 and 8PSK 3/4, pilots on), received
 to warm up (sequences, code tables) and the second run is timed. Only what comes after the frame boundary is parallel, so
 the speed-up is bounded by the serial front (timing, carrier, frame sync).
 """
+import argparse
 import sys
 import time
 from collections import defaultdict
@@ -17,17 +19,22 @@ import numpy as np
 
 import rpps as rp
 
-N = int(sys.argv[1]) if len(sys.argv) > 1 else 16
-W = int(sys.argv[2]) if len(sys.argv) > 2 else 8
-BLOCK = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+import _bench
 
-p = rp.profile.load("dvbs2/normal", sync={"timing": {"method": "known"}})
-t = rp.profile.table("dvbs2/modcod")
-frames = [{"modcod": (4, 12)[i % 2], "pilots": 1} for i in range(N)]
-dfl = [t.row({**f, "short": 0})["kbch"] - 80 for f in frames]
-data = np.random.default_rng(1).integers(0, 2, sum(dfl)).astype(bool)
-o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=frames)
-x = (np.concatenate((o.data, np.zeros(200, np.complex64)))*np.exp(0.7j)).astype(np.complex64)
+N = W = BLOCK = 0
+p = o = x = data = None
+
+def setup(frames_n, workers, block):
+    """The profile and its transmitted stream, as the module's globals the runners read"""
+    global N, W, BLOCK, p, o, x, data
+    N, W, BLOCK = frames_n, workers, block
+    p = rp.profile.load("dvbs2/normal", sync={"timing": {"method": "known"}})
+    t = rp.profile.table("dvbs2/modcod")
+    frames = [{"modcod": (4, 12)[i % 2], "pilots": 1} for i in range(N)]
+    dfl = [t.row({**f, "short": 0})["kbch"] - 80 for f in frames]
+    data = np.random.default_rng(1).integers(0, 2, sum(dfl)).astype(bool)
+    o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=frames)
+    x = (np.concatenate((o.data, np.zeros(200, np.complex64)))*np.exp(0.7j)).astype(np.complex64)
 
 def run(rx):
     cuts = list(range(0, len(x), BLOCK or len(x)))
@@ -66,22 +73,39 @@ def region_split():
             spent[k] += v
     return total, dict(spent)
 
-base = timed(p.rx)
-print(f"{N} frames, native={rp._accel.available()}")
-print(f"serial        {base:6.2f} s  {N/base:6.2f} frames/s")
-w = 1
-while w <= W:
-    dt = timed(lambda: p.rx(parallel=rp.parallel.Parallel("thread", workers=w)))
-    print(f"thread x{w:<2}    {dt:6.2f} s  {N/dt:6.2f} frames/s  x{base/dt:.2f}")
-    w *= 2
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("frames", type=int, nargs="?", default=16)
+    ap.add_argument("max_workers", type=int, nargs="?", default=8)
+    ap.add_argument("block", type=int, nargs="?", default=0, help="samples a block (0: the whole stream)")
+    _bench.add_args(ap)
+    a = ap.parse_args(argv)
+    setup(a.frames, a.max_workers, a.block)
+    rec = _bench.Record("parallel")
+    base = timed(p.rx)
+    print(f"{N} frames, native={rp._accel.available()}")
+    print(f"serial        {base:6.2f} s  {N/base:6.2f} frames/s")
+    rec.add("serial", N/base, "frames/s")
+    w = 1
+    while w <= W:
+        dt = timed(lambda: p.rx(parallel=rp.parallel.Parallel("thread", workers=w)))
+        print(f"thread x{w:<2}    {dt:6.2f} s  {N/dt:6.2f} frames/s  x{base/dt:.2f}")
+        rec.add(f"thread x{w}", N/dt, "frames/s")
+        w *= 2
 
-for w in (2, 4, 8):
-    if w <= W:
-        dt = timed(lambda: p.rx(parallel=rp.parallel.Parallel("process", workers=w)))
-        print(f"process x{w:<2}   {dt:6.2f} s  {N/dt:6.2f} frames/s  x{base/dt:.2f}")
+    for w in (2, 4, 8):
+        if w <= W:
+            dt = timed(lambda: p.rx(parallel=rp.parallel.Parallel("process", workers=w)))
+            print(f"process x{w:<2}   {dt:6.2f} s  {N/dt:6.2f} frames/s  x{base/dt:.2f}")
+            rec.add(f"process x{w}", N/dt, "frames/s")
 
-total, spent = region_split()
-reg = sum(spent.values())
-print(f"\nregion {reg:.2f} s of {total:.2f} s ({100*reg/total:.0f}%), per kernel:")
-for k, v in sorted(spent.items(), key=lambda kv: -kv[1]):
-    print(f"  {k:10s} {v:6.3f} s  {100*v/reg:5.1f}%  {1000*v/N:6.2f} ms/frame")
+    total, spent = region_split()
+    reg = sum(spent.values())
+    print(f"\nregion {reg:.2f} s of {total:.2f} s ({100*reg/total:.0f}%), per kernel:")
+    for k, v in sorted(spent.items(), key=lambda kv: -kv[1]):
+        print(f"  {k:10s} {v:6.3f} s  {100*v/reg:5.1f}%  {1000*v/N:6.2f} ms/frame")
+        rec.add(f"region {k}", 1000*v/N, "ms/frame", "lower")
+    return _bench.finish(a, rec)
+
+if __name__ == "__main__":
+    sys.exit(main())

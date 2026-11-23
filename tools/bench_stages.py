@@ -3,14 +3,18 @@
     python tools/bench_stages.py              # every stage, 1 M samples
     python tools/bench_stages.py -n 4000000 --block 65536
     python tools/bench_stages.py --blocks     # block-rate sync stages, filters, TX shaping: best of 5 at two block sizes
+    python tools/bench_stages.py --update-baseline   # keep this machine's rates in .benchmarks/ (--check compares)
 """
 import argparse
+import sys
 import time
 
 import numpy as np
 
 import rpps as rp
 from rpps import _accel
+
+import _bench
 
 STAGES = {
     "AGC": (lambda: rp.sync.AGC(1.0, 0.01), dict(Fs=1e6)),
@@ -149,7 +153,7 @@ def chain_rate(x, block, how):
         pass
     return len(x)/(time.perf_counter() - t)
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("-n", type=int, default=1_000_000, help="samples per stage")
     ap.add_argument("--block", type=int, default=16384, help="block length")
@@ -157,7 +161,9 @@ def main():
     ap.add_argument("--no-decoders", action="store_true", help="skip the FEC decoders")
     ap.add_argument("--blocks", action="store_true", help="only the block-rate stages, filters and TX shaping, best of --repeat")
     ap.add_argument("--repeat", type=int, default=5, help="runs per block-rate stage (the best is kept)")
-    a = ap.parse_args()
+    _bench.add_args(ap)
+    a = ap.parse_args(argv)
+    rec = _bench.Record("stages_blocks" if a.blocks else "stages")
     if a.blocks:
         x, s, pre = test_signals(a.n)
         print(f"{'block stage':20s} " + " ".join(f"{f'MS/s @{b}':>12s}" for b in (4096, 65536)))
@@ -165,7 +171,9 @@ def main():
             data = x if which == "x" else s
             r = [best_rate(make, data, b, rates, a.repeat) for b in (4096, 65536)]
             print(f"{name:20s} " + " ".join(f"{v/1e6:12.2f}" for v in r))
-        return
+            for b, v in zip((4096, 65536), r):
+                rec.add(f"{name} @{b}", v/1e6, "MS/s")
+        return _bench.finish(a, rec)
     rng = np.random.default_rng(0)
     x = (rng.standard_normal(a.n) + 1j*rng.standard_normal(a.n)).astype(np.complex64)
     print(f"{'stage':16s} {'python MS/s':>12s} {'native MS/s':>12s} {'speedup':>8s}")
@@ -173,18 +181,24 @@ def main():
         py = rate(make, x[:a.python_n], a.block, rates, native=False)
         nat = rate(make, x, a.block, rates, native=True) if _accel.available() else float("nan")
         print(f"{name:16s} {py/1e6:12.3f} {nat/1e6:12.2f} {nat/py:7.0f}x")
+        rec.add(f"{name} python", py/1e6, "MS/s")
+        rec.add(f"{name} native", None if np.isnan(nat) else nat/1e6, "MS/s")
     if not _accel.available():
-        print("rpps._native is not built: python setup.py build_ext -i")
-        return
+        print("rpps._native is not built: python tools/builder.py -c")
+        return _bench.finish(a, rec)
     print(f"\nchain (FIR 129 + AGC + MM + Costas), blocks of {a.block}")
     for how in ("one thread", "pipelined"):
-        print(f"  {how:12s} {chain_rate(x, a.block, how)/1e6:6.2f} MS/s")
+        r = rec.add(f"chain {how}", chain_rate(x, a.block, how)/1e6, "MS/s")
+        print(f"  {how:12s} {r:6.2f} MS/s")
     if a.no_decoders:
-        return
+        return _bench.finish(a, rec)
     print(f"\n{'decoder':26s} {'python Mb/s':>12s} {'native Mb/s':>12s} {'speedup':>8s}")
     for name, fn, nbits in decoders(rng):
         py, nat = timed(fn, False), timed(fn, True)
         print(f"{name:26s} {nbits/py/1e6:12.4f} {nbits/nat/1e6:12.3f} {py/nat:7.0f}x")
+        rec.add(f"{name} python", nbits/py/1e6, "Mb/s")
+        rec.add(f"{name} native", nbits/nat/1e6, "Mb/s")
+    return _bench.finish(a, rec)
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
