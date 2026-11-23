@@ -115,6 +115,28 @@ A check that is not one CRC is a `"composite"` crc definition: CRC parts over tr
 --8<-- "examples/profile_variants.py"
 ```
 
+## Fields
+What a frame's bits say is a list of fields ([`rpps.link.fields`](../api/link.md)), in link headers (`"fields"`), in
+headers' and frames' `"payload_fields"` (a message's `fields["payload"]`) and in a profile step's `"message"`:
+```json
+"payload_fields": [
+  {"name": "addresses", "until": "ext == 1", "fields": [
+    {"name": "call", "type": "text", "bytes": 6, "shift": 1},
+    {"name": "ssid", "from": 51, "bits": 4}, {"name": "ext", "bits": 1}]},
+  {"name": "control", "bits": 8},
+  {"name": "pid", "bits": 8, "if": "(control & 1) == 0", "enum": {"240": "no layer 3"}}]
+```
+- A field is an unsigned integer (`bits`, an expression over the fields before it too), `signed`, scaled (`scale`,
+  `offset`), with its own bit `order` and `enum` names (`pid.name`); or `"type": "bytes"` / `"text"` (`bytes`,
+  `reverse`, `shift`).
+- `"if"` reads it only where an expression over the fields before holds, decided frame by frame (a definition's `"when"`
+  is decided at load, over its params); `"from"` reads it at a bit position.
+- A field with `"fields"` is a group: a dict, or a list with `"repeat"` (a count, an expression, or `"*"`: to the end) or
+  `"until"` (an expression over each element). Expressions see `left`, the bits not yet read.
+- A link header whose fields are conditional or sized by expressions is read as it comes, however the bits are cut.
+- `frame/ax25` (addresses, control, PID), `header/ble_adv` (PDU type names, AdvA, AD structures) and `dvbs/qpsk` (the TS
+  adaptation field and PCR) are written this way.
+
 ## Tags
 `"tags": ["dvb-s2"]` says which standards or systems use a definition. The folders say what a thing is; tags say who uses
 it; `ref` cites the clause. Tags come from [tags.json](https://github.com/Anonoei/RPPS/blob/main/config/tags.json) (a tag not listed there fails the tests), and children

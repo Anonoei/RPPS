@@ -96,6 +96,7 @@ class Runner:
 
     def __init__(self, slots, name="", entries=None, direction="rx", profile=None):
         self.slots, self.name, self.direction = list(slots), name, direction
+        self._schemas = {} # A message step's field schema, by slot
         self.profile = profile if profile is not None else name
         self.messages, self._mseq, self._handed, self._input = [], 0, {}, (1.0, 0.0)
         self.ctx = None
@@ -129,7 +130,7 @@ class Runner:
         self.ckpts, self.buf = [], []
         self._span_ops = set()
         # Steps whose output is a run of fixed-size frames ({"message": {"bits": n, "kind": k, "check": true, "fields":
-        # [{"name", "from", "bits"}]}} in the profile: TS packets, transfer frames): the runner cuts it into messages, from
+        # a schema, rpps.link.fields: [{"name", "from", "bits"}, ...]}} in the profile: TS packets, transfer frames): the runner cuts it into messages, from
         # the step's last op. check: a decoder before it reports failures (an RS), so no failed mask means all good
         self._units = {}
         if direction == "rx":
@@ -303,14 +304,23 @@ class Runner:
         u = [u[0], np.concatenate((u[1], y)), np.concatenate((u[2], f)), u[3] or known]
         while len(u[1]) >= n:
             bits, bad = u[1][:n], u[2][:n]
-            fields = {fd["name"]: int(bits[fd["from"]:fd["from"] + fd["bits"]].astype(np.int64)
-                                      @ (1 << np.arange(fd["bits"] - 1, -1, -1)))
-                      for fd in spec.get("fields", ())}
+            fields = self._unit_fields(slot, spec, bits)
             at = slot.map.back(u[0]) # Where it starts, in the slot's input
             # crc_ok: the failed mask's verdict; none at all after a checking decoder ("check": an RS) is all good
             self._message(slot, spec.get("kind"), fields, bits, (not bad.any()) if u[3] or spec.get("check") else None, at)
             u = [u[0] + n, u[1][n:], u[2][n:], u[3]]
         self._units[slot.index][1] = u
+
+    def _unit_fields(self, slot, spec, bits):
+        """What a message step's "fields" (a schema: rpps.link.fields) read of one frame; {} where they don't fit"""
+        from ..link.fields import Schema, Short
+        from ..errors import ConfigError
+        if slot.index not in self._schemas:
+            self._schemas[slot.index] = Schema(spec.get("fields", ()), "msb", f"{slot.step.id} message")
+        try:
+            return self._schemas[slot.index].parse(bits)[0]
+        except (Short, ValueError, ConfigError):
+            return {}
 
     def take_messages(self):
         """The frames decoded since the last call, by position (each once: a re-run's second decode is not handed out

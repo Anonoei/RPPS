@@ -65,7 +65,7 @@ What is in each part of RPPS, and what is not yet.
     - [X] HDLC (streaming, any block cut)
     - [X] Headers: fields, a CRC over them or a frame check sequence over header and payload, header-driven lengths
     - [X] Byte-stuffed framing: SLIP, KISS, asynchronous PPP; checksums (sum, Internet, Fletcher, Adler, XOR); composite checks
-    - [ ] AX.25 addresses
+    - [X] Fields as definitions: conditional, repeated, expression-sized, signed, scaled, enums, text (AX.25 addresses, BLE AD structures, TS adaptation fields)
     - [ ] MPEG-TS packets, CCSDS transfer frames and space packets, FX.25
 - [ ] [Profiles](https://github.com/Anonoei/RPPS/tree/main/config/profile)
     - [X] DVB-S, DVB-S2 (normal and short frames, APSK), IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
@@ -99,7 +99,7 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
   real time at 15.36 MS/s (about 1.1x slower; `nr/downlink` keeps up at 7.68 MS/s); a first-class carrier estimator for
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
-- **Links, sources, profiles:** AX.25 addresses, MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
+- **Links, sources, profiles:** MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
   block-coded headers; tun/tap, audio devices, transmitting to a radio; profiles for DMR, P25, 802.11a/g/n, ATSC, GPS C/A,
   DAB, UMTS, CCSDS turbo (and `projects/` using the BLE, ADS-B and 802.11b profiles that exist); `dvbs2/normal` dummy frames;
   positions and gaps in the parallel runner's output; GPU and FPGA backends.

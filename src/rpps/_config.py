@@ -515,11 +515,13 @@ def evaluate(expr, values, name="expression"):
                     return False
                 left = right
             return True
-        if isinstance(n, ast.BoolOp):
-            vals = [ev(x) for x in n.values]
-            if isinstance(n.op, ast.And):
-                return all(vals) and vals[-1]
-            return next((x for x in vals if x), vals[-1])
+        if isinstance(n, ast.BoolOp): # Short-circuit, as Python does: `length > 0 and flags & 16` with no flags field
+            v = None
+            for x in n.values:
+                v = ev(x)
+                if (not v) if isinstance(n.op, ast.And) else v:
+                    return v
+            return v
         if isinstance(n, ast.IfExp):
             return ev(n.body) if ev(n.test) else ev(n.orelse)
         if isinstance(n, (ast.List, ast.Tuple)):

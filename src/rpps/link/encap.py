@@ -87,6 +87,7 @@ class Frame(Encap):
     As an operator: `packet * frame` gives one frame's bits (flags, stuffing, FCS) per call; `bits / frame` the payload bits of
     the frames whose FCS checks out, however the stream is cut (an open frame waits for its closing flag in the next block)"""
     EMITS = True # Every frame, good or not, is a message (rpps.profile.message)
+    payload_schema = None # "payload_fields": what a good frame's payload says, in its message (rpps.link.fields)
 
     def _block(self, enc):
         return 8 if enc else 1
@@ -118,8 +119,15 @@ class Frame(Encap):
         out = super().decode(data)
         from ..base.control import emit
         for s, p, ok in out.ctx.pop((self, "frames"), []):
-            emit(data.meta, self, None, {"bytes": len(p)}, np.unpackbits(np.frombuffer(p, np.uint8)).astype(bool), bool(ok),
-                 data.meta.pos + s)
+            bits = np.unpackbits(np.frombuffer(p, np.uint8)).astype(bool)
+            fields = {"bytes": len(p)}
+            if ok and self.payload_schema is not None: # What the payload says ("payload_fields": rpps.link.fields)
+                from .fields import Short
+                try:
+                    fields["payload"] = self.payload_schema.parse(bits)[0]
+                except (Short, ValueError, ConfigError):
+                    pass
+            emit(data.meta, self, None, fields, bits, bool(ok), data.meta.pos + s)
         return out
 
     @staticmethod
@@ -140,4 +148,7 @@ class Frame(Encap):
                                 obj.get("min_bytes", 4))
         impl = type(name, (Frame,), dict())
         impl.name = name
+        if obj.get("payload_fields"):
+            from .fields import Schema
+            impl.payload_schema = Schema(obj["payload_fields"], "msb", f"frame {name} payload")
         return impl(i_code, i_code)

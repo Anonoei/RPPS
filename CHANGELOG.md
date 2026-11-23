@@ -40,6 +40,13 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   does, a composite check's parts too (`rp.link.checksum`).
 - **Byte-stuffed framing**: `config/frame` `"type": "bytes"` (flag, escape, escape map or XOR, optional FCS, LSB-first
   bytes), streaming any block cut as HDLC does: `frame/slip`, `frame/kiss`, `frame/ppp_async` (RFC 1662, FCS-16).
+- **Fields as definitions** (`rpps.link.fields`): signed, scaled (`scale`, `offset`), per-field `order`, `enum` names,
+  `bytes` and `text`, sizes as expressions, `"if"` (per frame, over the fields before), `"from"` positions, groups,
+  `"repeat"` (a count, an expression, `"*"`) and `"until"`. Link header `"fields"` take them (a header with conditional
+  fields is read as it comes); headers and frames take `"payload_fields"` (in a message's `fields["payload"]`); a
+  step's `"message"` fields are a schema. `frame/ax25` reads AX.25 addresses, control and PID (`ax25/afsk1200` uses it);
+  `header/ble_adv` names PDU types and reads AdvA and AD structures; `dvbs/qpsk` reads the TS adaptation field and PCR.
+- Expressions short-circuit `and` / `or`, as Python does.
 - The `mpower` carrier step takes a generated `"shape"` (`"16QAM"`) as the constellation step does.
 - `examples/profile_variants.py`.
 - **Words of any width**: a `sequence` word (and `word` + `bits` on a step) may be longer than 64 bits; a 100-byte

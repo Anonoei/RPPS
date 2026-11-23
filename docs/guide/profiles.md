@@ -97,7 +97,10 @@ start from. `rp.analysis.framing.frames.find(symbols)` does the same among symbo
 ## Decoded messages, and only some of them
 
 Every frame a profile receives is also a record, `rp.profile.Message`: its kind, the fields it decoded, its payload,
-`crc_ok`, and where it starts in the stream (`sample`, `time`, `freq`).
+`crc_ok`, and where it starts in the stream (`sample`, `time`, `freq`). What a payload says goes in
+`fields["payload"]` when its header or frame definition has `"payload_fields"` (AX.25 addresses, BLE AD structures),
+and a step's `"message"` fields are a schema too (DVB-S's TS adaptation field and PCR): see
+[Definitions](definitions.md#fields).
 
 ```python
 # docs: skip

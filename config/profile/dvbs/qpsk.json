@@ -83,10 +83,43 @@
         "check": true,
         "comment": "MPEG transport stream packets, sync byte first",
         "fields": [
-          {"name": "tei", "from": 8, "bits": 1},
-          {"name": "pusi", "from": 9, "bits": 1},
-          {"name": "pid", "from": 11, "bits": 13},
-          {"name": "cc", "from": 28, "bits": 4}
+          {
+            "name": "tei",
+            "from": 8,
+            "bits": 1
+          },
+          {
+            "name": "pusi",
+            "from": 9,
+            "bits": 1
+          },
+          {
+            "name": "pid",
+            "from": 11,
+            "bits": 13
+          },
+          {
+            "name": "afc",
+            "from": 26,
+            "bits": 2
+          },
+          {
+            "name": "cc",
+            "from": 28,
+            "bits": 4
+          },
+          {
+            "name": "adaptation",
+            "from": 32,
+            "if": "(afc & 2) == 2",
+            "fields": [
+              {"name": "length", "bits": 8},
+              {"name": "flags", "bits": 8, "if": "length > 0"},
+              {"name": "pcr_base", "bits": 33, "if": "length > 0 and (flags & 16) == 16"},
+              {"name": "pcr_reserved", "bits": 6, "if": "length > 0 and (flags & 16) == 16"},
+              {"name": "pcr_ext", "bits": 9, "if": "length > 0 and (flags & 16) == 16"}
+            ]
+          }
         ]
       }
     }

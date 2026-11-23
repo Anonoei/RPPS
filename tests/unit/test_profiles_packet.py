@@ -64,7 +64,8 @@ def test_ble_packets_round_trip(ble_signal):
     got, outs = receive_bursts(p, x, o.Fs, 4)
     assert len(outs) == 3 and np.array_equal(got, np.concatenate(pdus)) # One output per packet
     assert total(outs, "ble_adv", "frames") == 3 and total(outs, "ble_adv", "fcs_failed") == 0 and total(outs, "aa", "frames") == 3
-    assert outs[-1].stream.est["ble_adv"]["last"] == {"type": 2, "rfu": 0, "chsel": 0, "txadd": 1, "rxadd": 0, "length": 37}
+    assert outs[-1].stream.est["ble_adv"]["last"] == {"type": 2, "type.name": "ADV_NONCONN_IND", "rfu": 0, "chsel": 0,
+                                                      "txadd": 1, "rxadd": 0, "length": 37}
     assert [o.meta.pos > 0 for o in outs] == [True]*3
 
 def test_ble_any_block_cut(ble_signal):
@@ -173,8 +174,8 @@ def ax25_signal():
 
 def test_ax25_builds_the_pairs(ax25_signal):
     p = ax25_signal[0]
-    assert names(p.rx()) == ["+ShiftFreq", "+Designed", "+FMDemod", "+Matched", "+MM", "/Constellation", "/Line", "/hdlc"]
-    assert names(p.tx()) == ["*hdlc", "*Line", "*Constellation", "+Shape", "+FM"]
+    assert names(p.rx()) == ["+ShiftFreq", "+Designed", "+FMDemod", "+Matched", "+MM", "/Constellation", "/Line", "/ax25"]
+    assert names(p.tx()) == ["*ax25", "*Line", "*Constellation", "+Shape", "+FM"]
     assert p.rx().ops[4][1].ted == "gardner"
 
 def test_ax25_frames_round_trip_through_noise(ax25_signal):

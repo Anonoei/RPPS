@@ -4,10 +4,13 @@ A definition, config/header/link/<name>.json, `rp.link.load("header/ieee80211b_p
 
     {"base": "header", "type": "link", "comment": "...", "ref": "...",
      "order": "lsb",                                      field bits sent least ("lsb") or most ("msb") significant first
+     "payload_fields": [...],                             what the payload says, for its message (rpps.link.fields), read
+                                                          with the header's fields in scope: Message.fields["payload"]
      "payload_order": "lsb",                              the payload's bytes sent least significant bit first (BLE, 802.11);
                                                           out (and in, transmitting) come bytes most significant bit first,
                                                           as everywhere else. Default "msb": the payload as sent
-     "fields": [{"name": "signal", "bits": 8},
+     "fields": [{"name": "signal", "bits": 8},               (a schema: rpps.link.fields; conditional, repeated and
+                                                          expression-sized fields make a header read as it comes)
                 {"name": "length", "bits": 16,
                  "tx": "(bits*10 + signal - 1)//signal"},   transmit: its value from the payload's bits and the other
                 ...],                                         fields (an expression, as "expr" takes, worked out per frame);
@@ -50,23 +53,26 @@ class Header(Pipe):
     EMITS = True # Every frame, good or failed, is a message (rpps.profile.message)
 
     def __init__(self, name, fields, order="msb", crc=None, payload=None, preamble=None, framed=False, fcs=None,
-                 payload_order="msb"):
+                 payload_order="msb", payload_fields=None):
+        from .fields import Schema
         self.name = name
         if payload_order not in ("msb", "lsb"):
             raise ConfigError(f"header {name}: payload_order is msb or lsb, not {payload_order!r}")
         self.payload_lsb = payload_order == "lsb"
-        self.fields = [dict(f) for f in fields]
-        for f in self.fields:
-            if "name" not in f or "bits" not in f:
-                raise ConfigError(f"header {name}: a field needs 'name' and 'bits', got {f}")
+        self.schema = Schema(fields, order, f"header {name}") # (rpps.link.fields: optional, repeated, sized by expression)
+        self.fields = self.schema.fields
+        self.payload_schema = None if not payload_fields else Schema(payload_fields, "msb", f"header {name} payload")
         self.order = order
         self.crc = None if crc is None else _crc(crc)
         self.fcs = None if fcs is None else _crc(fcs)
         self.fcs_bits = 0 if self.fcs is None else self.fcs.width
         self.payload = payload
         self.framed = bool(framed)
-        self.field_bits = sum(int(f["bits"]) for f in self.fields)
-        self.header_bits = self.field_bits + (self.crc.width if self.crc is not None else 0)
+        self.crc_bits = self.crc.width if self.crc is not None else 0
+        self.field_bits = self.schema.fixed_bits # None: the header's size follows its fields (read as they come)
+        self.header_bits = None if self.field_bits is None else self.field_bits + self.crc_bits
+        if framed and self.header_bits is None:
+            raise ConfigError(f"header {name}: a framed header has fields of fixed size")
         self.preamble = np.zeros(0, dtype=bool) if not preamble else np.concatenate((
             np.ones(int(preamble.get("ones", 0)), dtype=bool),
             self._value_bits(preamble["word"], int(preamble["bits"])) if "word" in preamble else np.zeros(0, bool)))
@@ -111,22 +117,43 @@ class Header(Pipe):
         w = 1 << (np.arange(len(b)) if self.order == "lsb" else np.arange(len(b) - 1, -1, -1))
         return int(b @ w)
 
+    def need(self, bits):
+        """The header's bits, CRC included, as far as these first bits of it say (more once more of it is read)"""
+        if self.header_bits is not None:
+            return self.header_bits
+        from .fields import Short
+        try:
+            return self.schema.parse(bits)[1] + self.crc_bits
+        except Short as e:
+            return e.args[0] + self.crc_bits
+
     def parse(self, bits):
         """(fields, CRC ok) of a header's bits"""
         bits = np.asarray(bits).astype(bool)
-        out, i = {}, 0
-        for f in self.fields:
-            n = int(f["bits"])
-            out[f["name"]] = self._value(bits[i:i + n])
-            i += n
+        out, i = self.schema.parse(bits)
         ok = True
         if self.crc is not None:
             ok = self.crc.from_bits(bits[i:i + self.crc.width]) == self.crc.compute_bits(bits[:i])
         return out, ok
 
+    def payload_values(self, payload, fields=None):
+        """What `payload_fields` reads of a payload (bytes most significant bit first), the header's `fields` in scope;
+        None when it doesn't fit"""
+        if self.payload_schema is None or payload is None:
+            return None
+        from .fields import Short
+        try:
+            return self.payload_schema.parse(payload, {k: v for k, v in (fields or {}).items() if not isinstance(v, (list, dict))})[0]
+        except (Short, ValueError, ConfigError):
+            return None
+
+    def _emit(self, meta, fields, body, ok, at):
+        vals = self.payload_values(body, fields) if ok is not False else None
+        emit(meta, self, None, fields if vals is None else {**fields, "payload": vals}, body, ok, at)
+
     def build(self, values):
         """A header's bits for these field values"""
-        bits = np.concatenate([self._value_bits(int(values.get(f["name"], 0)), int(f["bits"])) for f in self.fields])
+        bits = self.schema.build(values)
         if self.crc is not None:
             bits = np.concatenate((bits, self.crc.field(bits)))
         return bits
@@ -182,13 +209,17 @@ class Header(Pipe):
             if self.framed and self.length and st.frame_left is not None and st.frame_left <= 0:
                 self._restart(st, pos0 + i) # Framed: the next frame follows this one
             if st.mode == "header":
-                take = min(self.header_bits - len(st.held), len(x) - i)
-                st.held = np.concatenate((st.held, x[i:i + take]))
-                i += take
-                self._used(st, take)
-                if len(st.held) < self.header_bits:
-                    break
+                need = self.need(st.held)
+                if len(st.held) < need: # (a header whose fields size it: what is read so far says how much more)
+                    take = min(need - len(st.held), len(x) - i)
+                    st.held = np.concatenate((st.held, x[i:i + take]))
+                    i += take
+                    self._used(st, take)
+                    if len(st.held) < need:
+                        break
+                    continue
                 fields, ok = self.parse(st.held)
+                hb = len(st.held)
                 if not ok:
                     est["crc_failed"] += 1
                     emit(data.meta, self, None, fields, None, False, st.start)
@@ -197,7 +228,7 @@ class Header(Pipe):
                 n = self.payload_bits(fields)
                 if self.framed and self.length:
                     n = min(n if n is not None else self.length, self.length - self.header_bits - self.fcs_bits)
-                if failed is not None and failed[max(0, i - self.header_bits):i + (n or 0) + self.fcs_bits].any():
+                if failed is not None and failed[max(0, i - hb):i + (n or 0) + self.fcs_bits].any():
                     est["fec_failed"] += 1 # The code under it failed: its header passing its CRC proves nothing about the data
                     emit(data.meta, self, None, fields, None, False, st.start)
                     st.mode, st.left = "drop", (n or 0) + self.fcs_bits
@@ -209,8 +240,8 @@ class Header(Pipe):
                 if self.fcs is None:
                     est["frames"] += 1
                 est["last"] = fields
-                at = st.start + self.header_bits
-                whole = self.header_bits + n + self.fcs_bits
+                at = st.start + hb
+                whole = hb + n + self.fcs_bits
                 publish(data.meta, self, {**fields, "bits": n}, at=at, out=n_out, span=n, group=st.start)
                 publish(data.meta, self, {"frame_bits": whole}, at=st.start, out=None, span=whole, group=st.start)
                 anchor(data.meta, self, at, n_out)
@@ -232,7 +263,7 @@ class Header(Pipe):
                     st.tail = np.zeros(0, bool)
                     if self.fcs is None:
                         body = self._bytes_order(st.body)
-                        emit(data.meta, self, None, st.fields, body, True if self.crc is not None else None, st.start)
+                        self._emit(data.meta, st.fields, body, True if self.crc is not None else None, st.start)
             elif st.mode == "fcs": # The frame check sequence over header and payload
                 take = min(self.fcs_bits - len(st.tail), len(x) - i)
                 st.tail = np.concatenate((st.tail, x[i:i + take]))
@@ -248,7 +279,7 @@ class Header(Pipe):
                     est["frames"] += 1
                 else:
                     est["fcs_failed"] += 1
-                emit(data.meta, self, None, st.fields, body, bool(good), st.start)
+                self._emit(data.meta, st.fields, body, bool(good), st.start)
                 st.mode = "skip"
             elif st.mode == "drop": # A failed frame's payload: used up, not given out
                 take = min(st.left, len(x) - i)
@@ -329,7 +360,7 @@ class Header(Pipe):
         if "fields" not in obj:
             raise ConfigError(f"header {name}: needs 'fields'")
         return Header(name, obj["fields"], obj.get("order", "msb"), obj.get("crc"), obj.get("payload"), obj.get("preamble"),
-                      obj.get("framed", False), obj.get("fcs"), obj.get("payload_order", "msb"))
+                      obj.get("framed", False), obj.get("fcs"), obj.get("payload_order", "msb"), obj.get("payload_fields"))
 
 def _crc(name):
     from .serial import load

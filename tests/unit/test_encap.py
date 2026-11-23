@@ -113,8 +113,8 @@ def test_crc_width_out_of_range():
 @pytest.mark.parametrize("name", HDLC)
 def test_hdlc_round_trip(name, rng):
     h = rp.link.load(f"frame/{name}").encoder
-    frames = [bytes(rng.integers(0, 256, n).astype(np.uint8)) for n in (10, 33, 100)]
-    frames.append(b"\xff"*12) # Runs of ones need bit stuffing
+    frames = [bytes(rng.integers(0, 256, n).astype(np.uint8)) for n in (max(10, h.min_bytes), 33, 100)] # (AX.25: 17 at least)
+    frames.append(b"\xff"*max(12, h.min_bytes)) # Runs of ones need bit stuffing
     got, aborts = h.deframe(h.encode(frames))
     assert aborts == 0
     assert [p for p, ok in got] == frames

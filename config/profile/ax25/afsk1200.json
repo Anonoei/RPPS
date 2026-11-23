@@ -67,7 +67,7 @@
     },
     {
       "link": "frame",
-      "name": "hdlc"
+      "name": "ax25"
     }
   ]
 }

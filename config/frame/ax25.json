@@ -1,0 +1,36 @@
+{
+  "base": "frame",
+  "extends": "hdlc",
+  "comment": "AX.25 frames in HDLC with the FCS-16: each message's payload read as the destination, source and digipeater addresses (callsign: six ASCII bytes shifted left one bit; the SSID byte: C/H bit, two reserved, the SSID, and an extension bit set on the last address), the control field, and the PID on I and UI frames",
+  "ref": "AX.25 v2.2 3.12, 4.2, 6.1",
+  "tags": ["ax.25"],
+  "min_bytes": 17,
+  "payload_fields": [
+    {
+      "name": "addresses",
+      "until": "ext == 1",
+      "fields": [
+        {"name": "call", "type": "text", "bytes": 6, "shift": 1},
+        {"name": "ch", "bits": 1},
+        {"name": "rr", "bits": 2},
+        {"name": "ssid", "bits": 4},
+        {"name": "ext", "bits": 1}
+      ]
+    },
+    {
+      "name": "control",
+      "bits": 8
+    },
+    {
+      "name": "pid",
+      "bits": 8,
+      "if": "(control & 1) == 0 or (control & 0xEF) == 3",
+      "enum": {
+        "240": "no layer 3",
+        "204": "IP",
+        "205": "ARP",
+        "207": "NET/ROM"
+      }
+    }
+  ]
+}
