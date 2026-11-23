@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <pybind11/stl.h>
+#include <stdexcept>
 
 #include <vector>
 
@@ -198,6 +199,50 @@ std::vector<long long> gf2_eliminate(py::array_t<uint64_t, py::array::c_style> A
 }
 
 
+// ---------------------------------------------------------------- blind Reed-Solomon search (rpps/analysis/code/block/rs.py)
+// _count_zeros: the sliding transform of every byte stream (variant) at every root beta^j of every field, and how often
+// it is zero (z0) or the inverted-polarity constant Q (z1) at each codeword phase. Per (variant, field) independent: the
+// items of the parallel loop write disjoint cells. M1[(p*255 + j)*256 + x] = x*beta^j, MN the same for beta^(j*n).
+py::tuple rs_count_zeros(carray<uint8_t> V_a, long long n, carray<uint8_t> M1_a, carray<uint8_t> MN_a, carray<uint8_t> Q_a,
+                         long long words, int threads) {
+    check_shape(V_a, {-1, -1}, "V");
+    check_shape(Q_a, {-1, 255}, "Q");
+    const long long Vn = V_a.shape(0), L = V_a.shape(1), P = Q_a.shape(0);
+    if (M1_a.size() != P*255*256 || MN_a.size() != P*255*256)
+        throw std::invalid_argument("rs_count_zeros: M1 and MN are P*255*256 bytes");
+    if (n < 1)
+        throw std::invalid_argument("rs_count_zeros: n >= 1");
+    const long long T = std::min(L, n*(words + 1));
+    py::array_t<int16_t> z0({n, Vn, P, 255LL}), z1({n, Vn, P, 255LL});
+    int16_t *Z0 = z0.mutable_data(), *Z1 = z1.mutable_data();
+    std::fill(Z0, Z0 + z0.size(), 0);
+    std::fill(Z1, Z1 + z1.size(), 0);
+    const uint8_t *V = V_a.data(), *M1 = M1_a.data(), *MN = MN_a.data(), *Q = Q_a.data();
+    {
+        py::gil_scoped_release nogil;
+        parallel_for(Vn*P, threads, [&](long long vp) {
+            const long long v = vp/P, p = vp % P;
+            const uint8_t *m1 = M1 + p*255*256, *mn = MN + p*255*256, *q = Q + p*255, *row = V + v*L;
+            uint8_t E[255] = {0};
+            for (long long t = 0; t < T; t++) {
+                const uint8_t x = row[t], y = t >= n ? row[t - n] : 0;
+                const bool leave = t >= n, count = t >= n - 1;
+                const long long base = count ? (((t - n + 1) % n)*Vn + v)*P*255 + p*255 : 0;
+                for (long long j = 0; j < 255; j++) {
+                    uint8_t e = static_cast<uint8_t>(m1[j*256 + E[j]] ^ x);
+                    if (leave) e ^= mn[j*256 + y];
+                    E[j] = e;
+                    if (count) {
+                        Z0[base + j] += e == 0;
+                        Z1[base + j] += e == q[j];
+                    }
+                }
+            }
+        });
+    }
+    return py::make_tuple(z0, z1);
+}
+
 } // namespace
 
 void register_analysis(py::module_ &m) {
@@ -205,6 +250,8 @@ void register_analysis(py::module_ &m) {
           py::arg("r"), py::arg("Q"), py::arg("atab"), py::arg("S"), py::arg("parity"), py::arg("k1"), py::arg("k2"));
     m.def("gf2_eliminate", &gf2_eliminate, "gf2_eliminate(A (R, words) uint64 in place, ncols, threads) -> pivot columns",
           py::arg("A"), py::arg("ncols"), py::arg("threads") = 0);
+    m.def("rs_count_zeros", &rs_count_zeros, "rs_count_zeros(V (Vn, L) uint8, n, M1, MN (P*255*256) uint8, Q (P, 255) uint8, words, threads) -> (z0, z1) (n, Vn, P, 255) int16",
+          py::arg("V"), py::arg("n"), py::arg("M1"), py::arg("MN"), py::arg("Q"), py::arg("words"), py::arg("threads") = 0);
 }
 
 } // namespace rpps

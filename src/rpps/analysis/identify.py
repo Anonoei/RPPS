@@ -287,13 +287,13 @@ def scan_rs(bits, names=None, interleavers=True):
     inters = [(None, None)]
     if interleavers:
         for nm in coding.names("interleave"):
-            enc = coding.load(f"interleave/{nm}").encoder
+            enc = cached(f"interleave/{nm}").encoder # (loaded once a process: scan_rs runs on every decoded stream)
             if hasattr(enc, "I") and hasattr(enc, "M") and getattr(enc, "symbol", 8) == 8:
                 inters.append((nm, enc))
     hyps, trials, short = [], 0, False
     bits = np.asarray(bits, dtype=np.uint8)
     for name in names:
-        code = coding.load(f"block/{name}").encoder
+        code = cached(f"block/{name}").encoder
         if getattr(code, "m", 8) != 8: # The search runs on bytes: codes over other fields (P25's GF(64)) don't apply
             continue
         n = code.den

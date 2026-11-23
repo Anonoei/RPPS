@@ -119,6 +119,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   scan runs before the block search (a K=6 code was named an LDPC (112,62) code) and, once it finds the generators,
   decodes with them and looks for the layers inside; and the block search keeps the shortest code any bit map shows
   (BCH(63,51) on QPSK came out as a (126,103) code from a map that swaps a symbol's bits).
+- **The blind Reed-Solomon search runs in C++** (`rp._native.rs_count_zeros`: the sliding transform's zero counts at
+  every phase, bit offset, field and root, the numpy loop the reference), 2.8x on one thread and more on several; it
+  was 43% of a 25-signal capture's survey. `identify.scan_rs` loads the configured codes and interleavers once a
+  process (they were loaded on every call: 97 s of that survey).
 
 ## 0.6.0 (2026-11-22)
 

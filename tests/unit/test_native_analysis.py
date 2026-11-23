@@ -64,3 +64,20 @@ def test_rs_syndromes(name):
     w = np.random.default_rng(2).integers(0, 256, (500, c.den)).astype(np.int64)
     s0, s1 = both(lambda: c.syndromes(w))
     assert np.array_equal(s0, s1)
+
+def test_rs_count_zeros_matches_python():
+    """The blind RS search's sliding transform (rs._count_zeros) in C++: the same zero counts, every phase, variant, field
+    and root; and a blind search through it still finds the code"""
+    from rpps.analysis.code.block import rs as R
+    rng = np.random.default_rng(0)
+    EXP, LOG = R._tables(R.PRIMITIVE[:4])
+    for n, Vn, L in ((16, 3, 400), (51, 5, 51*10)):
+        V = rng.integers(0, 256, (Vn, L)).astype(np.uint8)
+        saved = _accel.native
+        try:
+            _accel.native = None
+            ref = R._count_zeros(V, n, EXP, LOG, 8)
+        finally:
+            _accel.native = saved
+        got = R._count_zeros(V, n, EXP, LOG, 8)
+        assert all(np.array_equal(a, b) for a, b in zip(ref, got))
