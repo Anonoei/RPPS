@@ -146,6 +146,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   carriers, 31.9 s -> 17.2 s on 2.
 - **A profile with a guessed convolutional code no longer fails to build**: `Guess`'s text read an old definition
   layout (`"encode"`); a guess from the generators or from a mother code's puncture now prints, and is a "fec" step.
+- **`rp.analysis.profile(hint=)`**: `hint(signal)` gives what an earlier look at the same signal found (its symbol
+  rate, the convolutional definitions to try, whether to run the blind tools), so a survey of many captures of the same
+  carriers does not search for them again.
 
 ## 0.6.0 (2026-11-22)
 

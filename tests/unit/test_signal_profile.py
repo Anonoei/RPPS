@@ -161,3 +161,14 @@ def test_guessed_convolutional_codes_go_into_a_profile():
     p = SP.SignalProfile("t")
     SP._guess_steps(p, [h])
     assert p.steps[0].kind == "fec" and "generators" in p.steps[0].note and str(p)
+
+@pytest.mark.kernels
+def test_a_hint_skips_what_an_earlier_look_found(dvbs_capture):
+    """The rate and the code an earlier capture of the signal found: given, the profile comes out the same"""
+    fresh = lambda: rp.source.File("ci16t", dvbs_capture.path, Fs=8e6)
+    pick = lambda ps: min(ps, key=lambda p: abs(p.signal.mid - 1.7e6) - p.signal.width)
+    near = lambda s: {"baud": 1e6, "codes": ["k7_171_133/3_4"], "blind": False} if abs(s.mid - 1.7e6) < 2e5 else None
+    plain = pick(rp.analysis.profile(fresh(), blind=False))
+    hinted = pick(rp.analysis.profile(fresh(), blind=False, hint=near))
+    assert hinted.solved and hinted.profile_name == plain.profile_name == "dvbs/qpsk_3_4"
+    assert [s.kind for s in hinted.steps] == [s.kind for s in plain.steps]

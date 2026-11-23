@@ -296,7 +296,7 @@ def _waveform_detail(w):
 
 class _Chain:
     """A signal's chain over the blocks of its capture, and what it keeps for the profile"""
-    def __init__(self, sig, Fs, blind, baud=None, ch=None):
+    def __init__(self, sig, Fs, blind, baud=None, ch=None, codes=None):
         """ch: the channel an rp.signal.FFTBank brings this signal to baseband in (its samples are given to `step` at
         ch.Fs); None: the chain channelizes the capture's samples itself (sig.channel())"""
         from .. import sync
@@ -304,7 +304,7 @@ class _Chain:
         self.sig, self.Fs, self.baud, self.banked = sig, Fs, baud, ch is not None
         self.errors = []
         self.acq, self.mat, self.ff = sync.Acquire(baud=baud), sync.time.Mat(), sync.phase.FFCarrier()
-        self.fec = sync.AcquireFEC(blind=blind)
+        self.fec = sync.AcquireFEC(blind=blind, names=codes)
         self.raw, self.nsym, self.dead = [], 0, False
         self.near, self.nnear = [], 0 # The channel's first NEAR samples, for rpps.analysis.spectrum.waveform
         self.syms, self.nsyms = [], 0 # The first SYMS carrier-tracked symbols, for rpps.analysis.framing.frames
@@ -706,7 +706,7 @@ class _Chain:
         return p
 
 def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True, survey=None, symbols=2**18,
-            max_blocks=None, progress=None, jobs=1):
+            max_blocks=None, progress=None, jobs=1, hint=None):
     """Profiles of signals in a capture: [SignalProfile], in the order chosen
 
     source: an rp.source Source (File, Memory: a live device is best captured into Memory first, as the chains run slower
@@ -723,7 +723,10 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
         built of the signals), and "again" / "build again" for a second pass at a rate the cyclic spectrum gives
     jobs: profile the signals in this many processes (forked, each with its share of the signals and its own reading of
         the source from where this one starts: a File seeks back, Memory starts over; Linux and macOS). With jobs > 1
-        `progress` is called as ("parallel", groups done, jobs, groups left)"""
+        `progress` is called as ("parallel", groups done, jobs, groups left)
+    hint: hint(signal) -> None or {"baud": the symbol rate, "codes": the convolutional definitions to try (names in
+        config/fec/conv), "blind": False to skip the blind tools}: what an earlier look at the same signal (another
+        capture of it) found, so it is not searched for again"""
     from .spectrum.signal import survey as _survey
     tell = progress or (lambda *a: None)
     sv = survey if survey is not None else None
@@ -742,7 +745,7 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
     index = {id(s): i for i, s in enumerate(sv)}
     if jobs > 1 and len(picked) > 1:
         return _parallel(source, picked, sv, jobs, tell, dict(blocks=blocks, block=block, blind=blind, symbols=symbols,
-                                                               max_blocks=max_blocks))
+                                                               max_blocks=max_blocks, hint=hint))
 
     cap = max(blocks, max_blocks if max_blocks is not None else 8*blocks)
 
@@ -759,7 +762,8 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
             if bank is not None and not getattr(s, "holds", 0):
                 j = len(slot)
                 ch = Channel(None, bank.Fs_out[j], bank.D[j], 0.0, 0)
-            c = _Chain(s, source.Fs, blind, baud=b, ch=ch)
+            h = (hint(s) if hint is not None else None) or {}
+            c = _Chain(s, source.Fs, blind and h.get("blind", True), baud=b or h.get("baud"), ch=ch, codes=h.get("codes"))
             if ch is not None:
                 slot[id(c)] = j
             out.append(c)
