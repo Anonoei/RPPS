@@ -67,13 +67,13 @@ class Guess:
             return f"<Guess RS({d['n']},{d['k']}) poly {d['poly']:#x} fcr {d['fcr']} prim {d['prim']} {self.evidence}>"
         if self.kind == "scramble":
             return f"<Guess feedthrough scrambler taps {d['poly']} {self.evidence}>"
-        e = d["encode"]
-        if e.get("puncture") is not None:
-            pat = np.asarray(e["puncture"])
-            rate = f"{e['num']*pat.shape[1]}/{int(pat.sum())} (punctured {pat.tolist()})"
-        else:
-            rate = f"{e['num']}/{e['den']}"
-        return f"<Guess conv K={e['constraint']} rate {rate} {self.evidence}>"
+        # A convolutional guess: a mother code it extends (its puncture its own), or the generators themselves
+        what = f"extends {d['extends']}" if d.get("extends") else \
+            f"K={d.get('constraint')} generators {[''.join(map(str, g)) for g in d.get('generator', [])]}"
+        if d.get("puncture") is not None:
+            pat = np.asarray(d["puncture"])
+            what += f" punctured {pat.tolist()} (rate {pat.shape[1]}/{int(pat.sum())})"
+        return f"<Guess conv {what} {self.evidence}>"
 
     def save(self, name, path=None):
         """Write config/<domain>/<folder>/guess/<name>.json (or <path>/<folder>/guess/<name>.json). Returns the file"""

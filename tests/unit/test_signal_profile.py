@@ -151,3 +151,13 @@ def test_jobs_profile_the_signals_in_parallel_with_the_same_result(tmp_path):
     one = rp.analysis.profile(rp.source.File("ci16t", str(path), Fs=8e6), blind=False, blocks=60)
     two = rp.analysis.profile(rp.source.File("ci16t", str(path), Fs=8e6), blind=False, blocks=60, jobs=2)
     assert [str(p) for p in one] == [str(p) for p in two] and sum(p.solved for p in two) == 2
+
+def test_guessed_convolutional_codes_go_into_a_profile():
+    """A code no definition has (generators found, or a mother code's puncture) is a "fec" step with its guess"""
+    from rpps.analysis.code.conv.mother import guess_conv
+    h = Hypothesis("conv", "rate 1/2 K=6", 40.0, {"n": 2, "K": 6, "offset": 1, "streams": (0, 1), "stream": ("abs", 0),
+                                                  "g": {0: (1, 1, 0, 1, 0, 1), 1: (1, 0, 1, 1, 1, 1)}})
+    h.guess = guess_conv(h)
+    p = SP.SignalProfile("t")
+    SP._guess_steps(p, [h])
+    assert p.steps[0].kind == "fec" and "generators" in p.steps[0].note and str(p)

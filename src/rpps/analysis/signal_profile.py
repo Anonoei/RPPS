@@ -168,7 +168,7 @@ def _guess_steps(p, hyps):
     could not place (an RS code with no bytes to align it by)"""
     for h in hyps:
         g = h.guess
-        kind = {"conv-punctured": "fec", "block-blind": "fec", "rs-blind": "fec", "rs": "fec", "scrambler": "descramble",
+        kind = {"conv": "fec", "conv-punctured": "fec", "block-blind": "fec", "rs-blind": "fec", "rs": "fec", "scrambler": "descramble",
                 "scrambler-additive": "descramble", "hdlc": "frame", "frame-blind": "frame"}.get(h.kind, h.kind)
         p.add(kind, h.name, GUESS if g is not None or h.kind == "frame-blind" else FOUND,
               detail={"z": h.z, **{k: str(v) for k, v in h.params.items()}},

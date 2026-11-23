@@ -144,6 +144,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **`rp.analysis.profile(jobs=)`** profiles the signals of a capture in that many forked processes (each its share
   of the signals and its own reading of the source from where the profile starts), with the same result: two
   carriers, 31.9 s -> 17.2 s on 2.
+- **A profile with a guessed convolutional code no longer fails to build**: `Guess`'s text read an old definition
+  layout (`"encode"`); a guess from the generators or from a mother code's puncture now prints, and is a "fec" step.
 
 ## 0.6.0 (2026-11-22)
 
