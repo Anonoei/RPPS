@@ -40,11 +40,12 @@ def test_dvbs_is_identified_down_to_its_profile(dvbs):
     good = sum(np.array_equal(pk[j], ts[j]) for j in range(min(len(pk), len(ts))))
     assert good >= len(ts) - 12 # The descrambler's first frame, and the Viterbi / deinterleaver tail
 
-def run_stage(x, blocks, stage=None):
+def run_stage(x, blocks, stage=None, flush=False):
+    """x through the stage in blocks; flush: the last block ends the stream"""
     stage = stage or rp.sync.AcquireFEC()
     stream, outs, i = None, [], 0
     while i < len(x):
-        d = rp.Data(x[i:i + blocks], Fs=1e6, sps=1, stream=stream)
+        d = rp.Data(x[i:i + blocks], Fs=1e6, sps=1, stream=stream, flush=flush and i + blocks >= len(x))
         stream = d.meta.stream
         if stream.det is None: # What Acquire would have found
             stream.det = Detection(mod="qpsk", baud=1e6, sps=1.0)
@@ -72,6 +73,32 @@ def test_stage_gives_the_same_output_whatever_the_cut(dvbs):
         outs[blocks] = y
     n = min(len(v) for v in outs.values())
     assert np.array_equal(outs[777][:n], outs[50000][:n])
+
+@pytest.mark.kernels
+def test_a_stream_that_ends_early_is_decided_on_what_it_holds(dvbs):
+    """30000 symbols: past the first window (2048 + 2^14), short of the doubled one. Without an end the stage keeps
+    waiting; flushed, it decides on every symbol past `skip`, blind pass included (what identify(blind=True) gives on
+    them), whatever the cut"""
+    x = slipped(dvbs[0])[:30000]
+    _, stream = run_stage(x, 4096, rp.sync.AcquireFEC(blind=True))
+    assert not stream.est["fec"].complete
+    ref = F.identify(x[2048:], "qpsk", blind=True)
+    for blocks in (777, 4096, 30000):
+        _, stream = run_stage(x, blocks, rp.sync.AcquireFEC(blind=True), flush=True)
+        f = stream.est["fec"]
+        assert f.complete and f.found and f.name == "k7_171_133/3_4" and f.n == 30000 - 2048
+        assert [h.name for h in f.inner] == [h.name for h in ref.inner]
+
+def test_an_empty_last_block_still_ends_the_acquisition():
+    rng = np.random.default_rng(4)
+    x = noisy(np.exp(1j*np.pi/4*(2*rng.integers(0, 4, 6000) + 1)), rng)
+    stage, stream = rp.sync.AcquireFEC(), None
+    for a, b, last in ((0, 6000, False), (6000, 6000, True)):
+        d = rp.Data(x[a:b], Fs=1e6, sps=1, stream=stream, flush=last)
+        stream = d.meta.stream
+        stream.det = stream.det or Detection(mod="qpsk", baud=1e6, sps=1.0)
+        d + stage
+    assert stream.est["fec"].complete and not stream.est["fec"].found # Uncoded: decided, nothing found
 
 @pytest.mark.kernels
 def test_stage_turns_back_a_carrier_slip(dvbs):

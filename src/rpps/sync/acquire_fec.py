@@ -22,7 +22,8 @@ class AcquireFEC(Stage):
     Acquisition: symbols are held until `skip` + `window` have arrived, and the code is identified on those `window`
     (at absolute positions, so the result is the same however the stream was cut). While more symbols could tell more
     (a window shorter than the scans use, or Reed-Solomon behind a Viterbi, which needs ~100 codewords) the window doubles,
-    up to `max_wait` symbols. Then what was held is released from the window on (from a codeword start for a block code;
+    up to `max_wait` symbols. A stream that ends first (meta.flush) is decided on every symbol held past `skip`, blind
+    tools included, so a short capture gets the same look a long one does. Then what was held is released from the window on (from a codeword start for a block code;
     the `skip` symbols before it, where the sync before this was settling, are dropped).
     Tracking (convolutional codes): every `check` symbols the output is re-encoded through the code on the decoder's map.
     A mismatch above `relock` times the one at acquisition means a slip: the carrier by a turn, or the symbol timing by a
@@ -51,13 +52,16 @@ class AcquireFEC(Stage):
 
     def step(self, y, st, meta):
         det = meta.det
-        if det is None or len(y) == 0:
+        if det is None:
             return y
         if st.done:
-            return self._emit(y, st)
+            return self._emit(y, st) if len(y) else y
+        if len(y) == 0 and not (meta.flush and st.count): # (an empty last block still ends the acquisition)
+            return y
         st.held.append(y)
         st.count += len(y)
-        if st.count < self.skip + st.length:
+        end = meta.flush # The stream ends with this block: decide on what there is
+        if st.count < self.skip + st.length and not end:
             if self.name not in meta.stream.est: # Still acquiring: say so (found and complete False), and how far it got
                 from ..analysis.identify import CodeDetection # The scans are blind analysis: loaded when first needed
                 meta.stream.est[self.name] = CodeDetection(mod=det.mod)
@@ -66,10 +70,10 @@ class AcquireFEC(Stage):
             return y[:0]
         x = np.concatenate(st.held)
         st.held = [x]
-        win = x[self.skip:self.skip + st.length]
+        win = x[self.skip:] if end else x[self.skip:self.skip + st.length] # (at the end: every symbol past `skip`)
         from ..analysis.identify import identify # (blind analysis, loaded when first needed)
         fec = identify(win, det.mod, self.names, blind=False, baud=det.baud)
-        last = 2*st.length > self.max_wait - self.skip
+        last = end or 2*st.length > self.max_wait - self.skip
         if not last and not fec.complete:
             st.length *= 2
             meta.stream.est[self.name] = fec # The answer so far: complete False, more symbols may still change it
@@ -78,7 +82,8 @@ class AcquireFEC(Stage):
             fec = identify(win, det.mod, self.names, blind=True, baud=det.baud)
         st.done, st.held, st.fec = True, None, fec
         fec.complete = True # Final: this stage looks no further (even if more symbols could have shown more)
-        fec.latency = (self.skip + st.length)/det.baud if det.baud else None # Held until the window was in
+        fec.n = len(win)
+        fec.latency = (self.skip + len(win))/det.baud if det.baud else None # Held until the window was in
         meta.stream.est[self.name] = fec
         if not fec.found:
             return x

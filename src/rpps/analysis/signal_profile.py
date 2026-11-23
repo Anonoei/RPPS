@@ -314,13 +314,14 @@ class _Chain:
             self.errors.append(("channel", e, traceback.format_exc(limit=4)))
             self.dead = True
 
-    def step(self, samps):
+    def step(self, samps, last=False):
+        """One block of the capture through the chain; `last` ends the stream (the stages decide on what they hold)"""
         if self.dead:
             return
         from ..base import Data
         stage = "channel"
         try:
-            near = Data(samps, Fs=self.Fs, stream=self.stream) + self.ch.front
+            near = Data(samps, Fs=self.Fs, stream=self.stream, flush=last) + self.ch.front
             if self.nnear < NEAR and len(near):
                 self.near.append(near.data[:NEAR - self.nnear].copy())
                 self.nnear += len(self.near[-1])
@@ -712,11 +713,17 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
     index = {id(s): i for i, s in enumerate(sv)}
 
     def run(chains):
+        prev = None # One block behind, so the last one read goes in marked as the end of the stream
         for i, blk in enumerate(source(block)):
             if i >= blocks:
                 break
+            if prev is not None:
+                for ch in chains:
+                    ch.step(prev)
+            prev = blk.data
+        if prev is not None:
             for ch in chains:
-                ch.step(blk.data)
+                ch.step(prev, last=True)
 
     def build(ch):
         s = ch.sig

@@ -95,6 +95,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **`signal_profile.framed` reads profiles that end in branches** (`dvbs2/mis`): it read `.stream` off the result,
   which is `{branch: output}` there, and the AttributeError ended the framed pass for every profile. The trunk's
   headers come from the input's stream, each branch's from its own.
+- **`AcquireFEC` decides at the end of a stream**: a stream that ends (`flush`) before the window reaches `max_wait`
+  is identified on every symbol held past `skip`, blind tools included, where it used to stay "still acquiring" and the
+  blind tools never ran. `rp.analysis.profile` sends its last block as the end of the stream, so a short capture gets
+  the same look as a long one.
 
 ## 0.6.0 (2026-11-22)
 
