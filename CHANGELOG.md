@@ -191,6 +191,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   hard re-encoding test leaves short is scored by the share of |LLR| it disagrees on (`mother.soft_mismatch_batch`,
   decoded from the LLRs), against what random signs on the same reliabilities give. K=7 rate 1/2 on QPSK is identified
   down to Es/N0 2 dB (it was 6).
+- **Faster code scans**: `scan_block` screens each word alignment on 24 words before checking all of them (the
+  configured block scans 5-6x faster); `scan_defined_conv` screens every code, map and alignment on a fifth of its bits
+  (hard, and soft where there are LLRs) before the full Viterbi decode (2.5-4x); `puncture.search` skips a stream that
+  is another's bits inverted for mother codes whose generators are of odd weight (an inverted codeword is a codeword).
 
 ## 0.6.0 (2026-11-22)
 

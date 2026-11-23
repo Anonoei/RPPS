@@ -93,10 +93,15 @@ def repeat_check(count):
     return H
 
 
+SCREEN_WORDS = 24 # Words an alignment is screened on before all of them are checked
+
 def scan_block(bits, fails, r, n, name, tag=None, max_offsets=None):
     """Fraction of words satisfying every parity check, at each word alignment. Returns (hypotheses, trials)
 
     fails: words (W, n) -> (W,) bool, the words that fail some check (`config_blocks` builds these); r: number of checks
+    An alignment is screened on its first SCREEN_WORDS words: under 15% of them passing, the rest are not checked (a
+    wrong alignment passes 2^-r of the time; a code just at the cut below, two fifths, falls under 15% of 24 words
+    0.2% of the time)
     """
     bits = np.asarray(bits, dtype=np.uint8)
     hyps, trials = [], 0
@@ -106,6 +111,9 @@ def scan_block(bits, fails, r, n, name, tag=None, max_offsets=None):
         if w < 50:
             break
         words = bits[off:off+w*n].reshape(w, n)
+        if w > SCREEN_WORDS + 8 and (~fails(words[:SCREEN_WORDS])).mean() < max(0.15, 4*p0):
+            trials += 1
+            continue
         zero = int((~fails(words)).sum())
         trials += 1
         z = float(deviance_z(zero, w, p0))

@@ -60,8 +60,18 @@ def search(streams, periods=range(2, 8), steps=400, confirm=4, codes=None):
     rng = np.random.default_rng(0)
     codes = codes or mothers()
     hyps, trials = [], 0
+    # Streams that are another's bits inverted (a half turn of QPSK): for a mother whose all-ones input encodes to all
+    # ones (generators of odd weight) the inverse of a codeword is a codeword, so the twin repeats its partner's result
+    twin, seen = {}, {}
+    for tag, bits in streams.items():
+        b = np.asarray(bits[:4096], dtype=np.uint8)
+        inv = (b ^ 1).tobytes()
+        if inv in seen:
+            twin[tag] = seen[inv]
+        seen.setdefault(b.tobytes(), tag)
     for (K, gen), mname in codes.items():
         gen_list = [[int(x) for x in r] for r in gen]
+        odd = all(int(np.sum(g)) % 2 == 1 for g in gen) # All-ones in, all-ones out: an inverted codeword is one
         for P in periods:
             for pat in patterns(P):
                 code = _code(K, gen, pat)
@@ -73,6 +83,8 @@ def search(streams, periods=range(2, 8), steps=400, confirm=4, codes=None):
                         base[per] = max(k0/n0, 1e-4)
                     return base[per]
                 for tag, bits in streams.items():
+                    if odd and tag in twin:
+                        continue
                     start = len(bits)//10
                     per = steps//P
                     offs = [off for off in range(m) if len(bits[start + off:start + off + per*m]) == per*m]

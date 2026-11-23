@@ -104,7 +104,8 @@ def soft_mismatch_batch(code, llr):
     tot = np.maximum(w.sum(axis=1), 1e-300)
     return (w*off).sum(axis=1)/tot, tot**2/np.maximum((w*w).sum(axis=1), 1e-300), n
 
-def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 0.45, 0.8), decisive=20.0, llrs=None):
+def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 0.45, 0.8), decisive=20.0, llrs=None,
+                      screen=5, cut=0.85):
     """Try every convolutional definition in config/fec/conv on every bit mapping and puncture alignment
 
     A correct hypothesis lets the decoder reproduce the received bits (the channel error rate, well below
@@ -114,8 +115,9 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
     wrong code's mismatch), only definitions of the same rate are tried further (an equivalent code, the generators in
     the other order, also fits and the pick needs to see it; a code of another rate cannot). llrs: {tag: LLRs} of the
     streams that have them: a hypothesis the hard re-encoding leaves short is also scored softly (soft_mismatch_batch,
-    against what random signs on the same reliabilities give), which holds a few dB further down. Returns (hypotheses,
-    trials).
+    against what random signs on the same reliabilities give), which holds a few dB further down. Every hypothesis is
+    screened on a `screen`-th of its bits first; one not under `cut` x its baseline there (hard or soft) is not decoded
+    in full. Returns (hypotheses, trials).
     """
     from .... import code as coding
     names = names or coding.names("conv")
@@ -148,19 +150,38 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
                     if len(bits[start+off:start+off+per*nb]) == per*nb] # Every segment and alignment, decoded together
             if not jobs:
                 continue
-            ks, n = mismatch_batch(code, np.array([np.asarray(bits[start+off:start+off+per*nb], dtype=np.uint8) for _, start, off in jobs]))
             trials += len(jobs)
-            soft = None
             L_ = (llrs or {}).get(tag)
-            if L_ is not None and len(L_) >= len(bits):
-                rows = np.array([np.asarray(L_[start+off:start+off+per*nb], dtype=np.float64) for _, start, off in jobs])
-                sh, ne, _ = soft_mismatch_batch(code, rows)
+            if L_ is not None and len(L_) < len(bits):
+                L_ = None
+            bs = None
+            if L_ is not None:
                 key = (shape, "soft", tag)
                 if key not in baselines: # Random signs on these reliabilities: what a wrong code's soft share is
-                    rr = np.random.default_rng(L*1000 + nb + 1)
-                    r = np.abs(rows[:1])*np.where(rr.random(rows[:1].shape) < 0.5, -1.0, 1.0)
+                    _, st0, of0 = jobs[0]
+                    r = np.abs(np.asarray(L_[st0+of0:st0+of0+per*nb], dtype=np.float64))[None]
+                    r = r*np.where(np.random.default_rng(L*1000 + nb + 1).random(r.shape) < 0.5, -1.0, 1.0)
                     baselines[key] = max(float(soft_mismatch_batch(code, r)[0][0]), 1e-4)
-                soft = (sh, ne, baselines[key])
+                bs = baselines[key]
+            # Screen every job on a fifth of its bits: a wrong one comes in near its baseline, a right one well under it
+            # (hard, or soft when the hard decisions are too noisy); only those decoded in full
+            ps = max(per//screen, 40)
+            if ps < per:
+                hs, n_s = mismatch_batch(code, np.array([np.asarray(bits[st+of:st+of+ps*nb], dtype=np.uint8) for _, st, of in jobs]))
+                keep = hs/n_s < cut*base
+                if L_ is not None:
+                    ss, _, _ = soft_mismatch_batch(code, np.array([np.asarray(L_[st+of:st+of+ps*nb], dtype=np.float64)
+                                                                   for _, st, of in jobs]))
+                    keep |= ss < cut*bs
+                jobs = [j for j, k in zip(jobs, keep) if k]
+                if not jobs:
+                    continue
+            ks, n = mismatch_batch(code, np.array([np.asarray(bits[start+off:start+off+per*nb], dtype=np.uint8) for _, start, off in jobs]))
+            soft = None
+            if L_ is not None:
+                rows = np.array([np.asarray(L_[start+off:start+off+per*nb], dtype=np.float64) for _, start, off in jobs])
+                sh, ne, _ = soft_mismatch_batch(code, rows)
+                soft = (sh, ne, bs)
             for j, ((si, start, off), k) in enumerate(zip(jobs, ks)):
                 k = int(k)
                 z = float(-deviance_z(k, n, base)) # Fewer mismatches than a wrong code gives
