@@ -6,7 +6,8 @@
         print(p)                       # numbered steps; an unsolved one ends the list with its top candidates
     p.solved, p.to_dict(), p.rx()      # whether every step is known, a JSON-able form, the receiver (when solved)
 
-Each signal goes through the chain once: its channel (shift and decimation), Acquire (rate, modulation, offset), the
+Each signal goes through the chain once: its channel (every signal's from one rp.signal.FFTBank: one FFT of the
+capture a hop for all of them), Acquire (rate, modulation, offset), the
 matrix matched filter and feed-forward carrier, then AcquireFEC (the code, its bit map and alignment, with the blind tools
 when `blind`). When no code is found, shipped profiles that find their own frames (a preamble and a header: DVB-S2) are run
 on the timed symbols. A step is "found" (a definition covers it), "guess" (a blind find: a definition once saved, see
@@ -267,6 +268,7 @@ def _strong(fec):
         return True
     return fec.mismatch is not None and fec.baseline and fec.mismatch < STRONG*fec.baseline
 
+CHUNK = 2**16 # Channel samples a chain takes at a time
 NEAR = 2**20 # Channel samples kept for rpps.analysis.spectrum.waveform
 PM_OFFSET = 0.25 # A residual carrier this far (of the signal's width) from its centre isn't one: PM is symmetric about it
 CARRIER_SHARE = 0.01 # Power share of the strongest spectral bin (of 8192) worth a residual-carrier analysis
@@ -294,10 +296,12 @@ def _waveform_detail(w):
 
 class _Chain:
     """A signal's chain over the blocks of its capture, and what it keeps for the profile"""
-    def __init__(self, sig, Fs, blind, baud=None):
+    def __init__(self, sig, Fs, blind, baud=None, ch=None):
+        """ch: the channel an rp.signal.FFTBank brings this signal to baseband in (its samples are given to `step` at
+        ch.Fs); None: the chain channelizes the capture's samples itself (sig.channel())"""
         from .. import sync
         from ..base import Stream
-        self.sig, self.Fs, self.baud = sig, Fs, baud
+        self.sig, self.Fs, self.baud, self.banked = sig, Fs, baud, ch is not None
         self.errors = []
         self.acq, self.mat, self.ff = sync.Acquire(baud=baud), sync.time.Mat(), sync.phase.FFCarrier()
         self.fec = sync.AcquireFEC(blind=blind)
@@ -308,8 +312,8 @@ class _Chain:
             self.ch, self.dead = None, True
             return
         try:
-            self.ch = sig.channel()
-            self.stream = Stream(Fs)
+            self.ch = ch if ch is not None else sig.channel()
+            self.stream = Stream(self.ch.Fs if ch is not None else Fs)
         except Exception as e:
             self.errors.append(("channel", e, traceback.format_exc(limit=4)))
             self.dead = True
@@ -329,7 +333,10 @@ class _Chain:
         from ..base import Data
         stage = "channel"
         try:
-            near = Data(samps, Fs=self.Fs, stream=self.stream, flush=last) + self.ch.front
+            if self.banked: # Already at baseband, at the channel's rate
+                near = Data(samps, Fs=self.ch.Fs, stream=self.stream, flush=last)
+            else:
+                near = Data(samps, Fs=self.Fs, stream=self.stream, flush=last) + self.ch.front
             if self.nnear < NEAR and len(near):
                 self.near.append(near.data[:NEAR - self.nnear].copy())
                 self.nnear += len(self.near[-1])
@@ -726,25 +733,55 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
 
     cap = max(blocks, max_blocks if max_blocks is not None else 8*blocks)
 
-    def run(chains):
-        fed, prev = list(chains), None # One block behind, so the last one a chain reads goes in as the end of its stream
+    def chains_for(sigs, bauds):
+        """Chains for these signals, their channels from one rp.signal.FFTBank (one FFT of the capture a hop for all
+        of them), and which bank channel each reads"""
+        from ..signal import FFTBank
+        from .spectrum.signal import Channel
+        live = [s for s in sigs if not getattr(s, "holds", 0)]
+        bank = FFTBank(source.Fs, [(s.mid, s.width) for s in live]) if live else None
+        slot, out = {}, []
+        for s, b in zip(sigs, bauds):
+            ch = None
+            if bank is not None and not getattr(s, "holds", 0):
+                j = len(slot)
+                ch = Channel(None, bank.Fs_out[j], bank.D[j], 0.0, 0)
+            c = _Chain(s, source.Fs, blind, baud=b, ch=ch)
+            if ch is not None:
+                slot[id(c)] = j
+            out.append(c)
+        return out, bank, slot
+
+    def run(chains, bank, slot):
+        fed = [ch for ch in chains if not ch.dead and id(ch) in slot]
+        if bank is None:
+            return
+        held = {id(ch): [] for ch in fed} # A chain's channel samples go in CHUNK at a time (as a capture's blocks would)
+        def give(ch, y, last=False):
+            h = held[id(ch)]
+            if len(y):
+                h.append(y)
+            n = sum(len(v) for v in h)
+            if n >= CHUNK or (last and n):
+                ch.step(np.concatenate(h), last=last)
+                h.clear()
+            elif last:
+                ch.step(np.zeros(0, np.complex64), last=True)
         for i, blk in enumerate(source(block)):
             if i >= cap:
                 break
             if i >= blocks: # Past the common stretch: only the chains still short of a decided code
                 for ch in [ch for ch in fed if not ch.wants(symbols)]:
-                    ch.step(prev, last=True)
+                    give(ch, np.zeros(0, np.complex64), last=True)
                     fed.remove(ch)
                 if not fed:
-                    prev = None
-                    break
-            if prev is not None:
-                for ch in fed:
-                    ch.step(prev)
-            prev = blk.data
-        if prev is not None:
+                    return
+            outs = bank.step(blk.data, active=[slot[id(ch)] for ch in fed])
             for ch in fed:
-                ch.step(prev, last=True)
+                give(ch, outs[slot[id(ch)]])
+        outs = bank.flush(active=[slot[id(ch)] for ch in fed]) # The end of the stream for those still reading
+        for ch in fed:
+            give(ch, outs[slot[id(ch)]], last=True)
 
     def build(ch):
         s = ch.sig
@@ -757,17 +794,19 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
             p.add("profile", "building the profile", UNSOLVED, note=f"{type(e).__name__}: {e}")
             return p
 
-    chains = [_Chain(s, source.Fs, blind) for s in picked]
-    run(chains)
+    chains, bank, slot = chains_for(picked, [None]*len(picked))
+    run(chains, bank, slot)
     out = [build(ch) for ch in chains]
     # Where the chain found no rate (or a doubtful one) and the cyclic spectrum sees one: a second pass at that rate
     again = {}
     for k, (ch, p) in enumerate(zip(chains, out)):
         baud = ch.cyclic_rate(p) if not p.solved else None
         if baud:
-            again[k] = _Chain(ch.sig, source.Fs, blind, baud=baud)
+            again[k] = (ch.sig, baud)
     if again:
-        run(list(again.values()))
+        redo, bank2, slot2 = chains_for([sb[0] for sb in again.values()], [sb[1] for sb in again.values()])
+        run(redo, bank2, slot2)
+        again = dict(zip(again, redo))
         for k, ch in again.items():
             q = build(ch)
             if _further(q, out[k]):

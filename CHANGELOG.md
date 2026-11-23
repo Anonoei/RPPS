@@ -106,6 +106,11 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **The layers inside a convolutional code are looked for on nearly all of the window**: `identify.decode_tail`
   skips the first half of the window or the first `settle` (16384) bits, whichever is less, where it skipped the half.
   A DVB-S window of 40k symbols now shows its RS(204,188) behind the Forney interleaver (it took about 64k).
+- **`rp.signal.FFTBank`: many channels of a capture from one FFT a hop**, each at its own width and rate (decimated by a
+  power of two that keeps 4x its width), at exactly its centre (the bin grid's rounding turned back with a phase ramp
+  continuous across hops), zero phase, the same output however the input is cut. `rp.analysis.profile` brings every
+  signal to baseband with one bank where each signal's chain shifted and decimated the whole capture itself, and hands
+  each chain its samples 2^16 at a time.
 
 ## 0.6.0 (2026-11-22)
 
