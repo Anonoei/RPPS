@@ -1,14 +1,18 @@
-"""The worker of a parallel region: batches of frames through a plan (README.dev.md, Parallelism)
+"""The worker of a parallel region: batches of frames through a plan (rpps.parallel)
 
     worker(frames) -> [Result]       frames share a key; one plan per key, compiled on first use and kept
 
 The region's operators are built once per worker (building takes a moment) and shared by its plans: a `LoopKernel` applies its
 parameters to every frame as a frame start, so frames of different keys can follow one another. A worker is used by one
 thread at a time (`per_thread` makes another).
+
+`xp` is the array module the plans run on (numpy; a device's, such as CuPy for CUDA or ROCm). The batch is stacked on the host and
+the plan moves it (one upload, one download, `rpps.parallel.plan.placed`), so the results are numpy whatever `xp` is. A worker
+sent to another process goes as its recipe, on numpy (a device does not cross a fork).
 """
 import numpy as np
 
-from ..base.kernel import Form, Batch
+from ..base.kernel import Form, Batch, to_host
 from .frame import Result
 from .plan import compile
 
@@ -38,7 +42,7 @@ class PlanWorker:
         key = frame.key
         plan = self.plans.get(key)
         if plan is None:
-            plan = self.plans[key] = compile(self.steps, frame.params, self.direction, key)
+            plan = self.plans[key] = compile(self.steps, frame.params, self.direction, key, self.xp)
         return plan
 
     def __call__(self, frames):
@@ -50,13 +54,17 @@ class PlanWorker:
         plan = self.plan(frames[0])
         form = Form(*frames[0].tags)
         b = Batch(np.stack([f.data for f in frames]), form, [f.pos for f in frames], len(frames[0].data))
+        before = dict(plan.spent)
         b = plan.run(self.xp, b)
+        share = {k: (t - before.get(k, 0.0))/len(frames) for k, t in plan.spent.items() if t > before.get(k, 0.0)}
+        b.x = to_host(b.x) # (on numpy, and after a device plan's last transfer, already the host's: no copy)
         out = []
         for i, f in enumerate(frames):
             if b.bad[i] or (b.code_failed is not None and b.code_failed[i]):
                 r = Result.dropped(f, b.why.get(i, "failed" if b.bad[i] else "decoding failed"))
             else:
                 y = np.asarray(b.x[i])
-                r = Result(f.seq, y, f.pos_out, len(y), reports=list(b.notes.get(i, [])), tags=tuple(b.form[:4]))
+                r = Result(f.seq, y, f.pos_out, len(y), reports=list(b.notes.get(i, [])), tags=tuple(b.form[:4]), pos=f.pos)
+            r.spent = dict(share)
             out.append(r)
         return out

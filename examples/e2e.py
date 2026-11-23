@@ -9,7 +9,7 @@ def main():
     # num_samps = -1
     num_samps = 1024*16 # Any block size works, the stages keep the stream continuous
     # RDS is 1187.5 symbols/s. Decimate and Resample scale sps along with Fs, so sps is 16 at the sync
-    sink = rp.source.File("cf64", "data/fm_rds_250k_1Msamples.iq", Fs=250e3, sps=250e3/1187.5, cf=99.5e6)
+    sink = rp.source.File("cf32", "data/fm_rds_250k_1Msamples.iq", Fs=250e3, sps=250e3/1187.5, cf=99.5e6)
 
     demod = rp.wave.FMDemod() # FM Demod
     shift = rp.signal.filters.ShiftFreq(fo=-57e3) # Frequency shift to RDS
@@ -28,7 +28,7 @@ def main():
     track = rp.sync.quality.Track(bpsk) # Es/N0 over the last symbols
     shown = np.zeros(0, dtype=np.complex64) # The symbols on the phasor
 
-    fig, axs = plt.subplots(1,3, layout="constrained", figsize=(12,6))
+    fig, axs = rp.viz.subplots(1, 3, layout="constrained", figsize=(12, 6))
     ax_t = axs[0]
     ax_e = axs[1]
     ax_p = axs[2]
@@ -60,4 +60,5 @@ def main():
             # writer.grab_frame()
 
 if __name__ == "__main__":
-    main()
+    with rp.viz.styled(): # rpps' dark style for all the program draws, cleared axes and titles too
+        main()

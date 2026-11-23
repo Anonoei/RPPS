@@ -34,12 +34,13 @@ PILOT_POL = 1 - 2.0*_scrambler_seq(127)
 def bin_of(k):
     return np.asarray(k) % 64
 
-LTF_TIME = np.fft.ifft(np.concatenate((np.zeros(0), np.where(np.arange(64) < 27, 0, 0))).astype(complex)) if False else None
 def _ltf_time():
     X = np.zeros(64, complex)
     X[bin_of(USED)] = LTF[USED + 26]
     return np.fft.ifft(X)*np.sqrt(64) # one 64-sample LTF symbol
 LTF_SYM = _ltf_time()
+# The long training field's two symbols: where they correlate best is the frame's timing (one symbol alone matches both)
+LTF_FIND = rp.sync.Preamble(np.tile(LTF_SYM, 2), gate=0.5, name="ltf")
 
 # --- rates: Mbit/s -> (bits per subcarrier, code rate, SIGNAL RATE field R1..R4)
 RATES = {6: (1, (1, 2), "1101"), 9: (1, (3, 4), "1111"), 12: (2, (1, 2), "0101"), 18: (2, (3, 4), "0111"),
@@ -89,16 +90,6 @@ def bytes_lsb(bits):
     return bytes((b*(1 << np.arange(8))).sum(1).astype(np.uint8))
 
 # --- receiver
-def stf_metric(x, n0, n1, lag=16, win=128):
-    """Delay-16 autocorrelation over n0..n1: returns (metric array, C) with metric = |C|/P"""
-    seg = x[n0:n1 + win + lag]
-    prod = seg[:-lag]*np.conj(seg[lag:])
-    pw = np.abs(seg[lag:])**2
-    cs = np.cumsum(np.r_[0, prod]); cp = np.cumsum(np.r_[0, pw])
-    C = cs[win:win + (n1 - n0)] - cs[:(n1 - n0)]
-    P = cp[win:win + (n1 - n0)] - cp[:(n1 - n0)]
-    return np.abs(C)/np.maximum(P, 1e-30), C
-
 def fft_sym(y, start):
     return np.fft.fft(y[start:start + 64])/np.sqrt(64)
 
@@ -106,13 +97,12 @@ def receive(x, s, e, fs=FS, sig_rot=1.0):
     """One burst -> dict(rate, length, frame, fcs_ok, ...) or None. x is the capture at 20 MS/s, s..e the burst."""
     # timing from the long training field: two copies of one known symbol 64 samples apart; a wide search (the STF plateau edge is not a reliable start)
     n0 = max(0, s - 60); n1 = min(len(x), s + 800)
-    c = np.abs(np.correlate(x[n0:n1], LTF_SYM, mode="valid"))
-    if len(c) < 140:
+    if n1 - n0 < 140 + 128:
         return None
-    pair = c[:-64] + c[64:]
-    j = int(np.argmax(pair))
-    if pair[j] < 12*np.median(c):
+    est = (rp.Data(x[n0:n1], Fs=fs, flush=True) + LTF_FIND).stream.est["ltf"]
+    if not est["found"]:
         return None
+    j = est["pos"] # the first LTF symbol, from n0
     base = n0 + j - 192 # the STF starts 160 + 32 (guard) samples before the first LTF symbol
     if base < 20 or base + 20000 > len(x) + 20000 or n0 + j + 128 + 80*3 > len(x):
         return None
@@ -206,20 +196,15 @@ def receive(x, s, e, fs=FS, sig_rot=1.0):
     ok = len(psdu) == length and zlib.crc32(psdu[:-4]) == int.from_bytes(psdu[-4:], "little")
     return dict(rate=rate, length=length, frame=psdu, fcs_ok=ok, cfo=cfo + fine, start=start, nsym=nsym, stf=float(m))
 
-def bursts(x, fs=FS, factor=6.0, win=100, min_us=30):
-    p = np.abs(x)**2
-    e = p[:len(p)//win*win].reshape(-1, win).mean(1)
-    on = e > factor*np.percentile(e, 20)
-    d = np.diff(np.r_[0, on.astype(int), 0])
-    st = np.where(d == 1)[0]*win; en = np.where(d == -1)[0]*win
-    return [(s, e_) for s, e_ in zip(st, en) if (e_ - s)/fs*1e6 >= min_us]
+BURST = rp.sync.Burst(factor=6.0, win=100, min_s=30e-6, history=1 << 24) # The shortest frame: 20 us of preamble and SIGNAL, and
+# data; the floor from the whole capture (these scripts take one at once)
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("path"); ap.add_argument("--fs", type=float, default=20)
     a = ap.parse_args(argv)
     x = np.fromfile(a.path, np.complex64).astype(np.complex128)
-    bs = bursts(x)
+    bs = [(b.meta.pos, b.meta.pos + len(b)) for b in rp.Data(x, Fs=FS, flush=True) + BURST]
     out = [r for r in (receive(x, s, e) for s, e in bs) if r]
     ok = [r for r in out if r.get("fcs_ok")]
     print(f"{len(bs)} bursts; SIGNAL fields valid: {len(out)}; frames with a valid FCS: {len(ok)}")

@@ -1,5 +1,4 @@
-"""Parallel processing of frames: work units, executors, scheduler and the profile's parallel region (README.dev.md,
-Parallelism)"""
+"""Parallel processing of frames: work units, executors, scheduler and the profile's parallel region (rpps.parallel)"""
 import threading
 import time
 
@@ -231,6 +230,53 @@ def test_frame_cut_short_is_reported_and_the_next_frames_decode(s2):
     assert np.array_equal(got, want) and np.array_equal(got, data[dfl[0]:])
     assert any(r["what"] == "cut short" for r in st.control.reports)
 
+def _devices():
+    import fakedevice
+    from rpps import _accel
+    xp, backend = _accel.device()
+    return [fakedevice] + ([xp] if backend else [])
+
+@pytest.mark.parametrize("xp", _devices(), ids=lambda m: m.__name__)
+def test_on_a_device_the_output_is_the_serial_runners(s2, xp):
+    """The region on a device: the pretend one (tests/unit/fakedevice.py, which refuses implicit host/device moves as CuPy
+    does), and a real GPU when there is one. Noisy frames, some failing, come out as the serial runner gives them"""
+    p, x, o, data, dfl = s2
+    want, _ = receive(p.rx(), x, o, noise=0.5)
+    rx = p.rx(parallel=rp.parallel.Parallel("thread", workers=2, xp=xp))
+    got, _ = receive(rx, x, o, noise=0.5)
+    rx.close()
+    assert np.array_equal(got, want)
+
+def test_a_device_plan_moves_the_batch_once_each_way_and_around_host_kernels(s2):
+    import fakedevice
+    p, x, o, data, dfl = s2
+    w = rp.parallel.PlanWorker(lambda: p._build()[p.region.first:], xp=fakedevice)
+    f = Frame(0, np.zeros(33192, np.complex64), {"plscram": {"length": 100}}, tags=(rp.Data, rp.Category.UNK, rp.dtype.SYMBOLS,
+                                                                                    rp.Rep.SYMBOLS, 1e6, 1, 0.0, 0.0))
+    names = [k["kernel"] for k in w.plan(f).describe(33192)]
+    assert names[0] == "to:device" and names[-1] != "to:device"
+    for i, n in enumerate(names): # a host kernel is reached only through a download, and the device again through an upload
+        k = w.plan(f).kernels[i]
+        if k.where == "host":
+            prev = [m for m in names[:i] if m.startswith("to:")]
+            assert prev and prev[-1] == "to:host", names
+    assert names.count("to:host") >= 1 and all(a != b for a, b in zip(names, names[1:]) if a.startswith("to:"))
+    assert rp.parallel.plan.placed(w.plan(f).kernels, np) == w.plan(f).kernels # (numpy: nothing to move)
+
+def test_the_pretend_device_catches_an_implicit_move():
+    """A kernel that mixes a numpy array into device work fails on the pretend device (so CI sees it without a GPU)"""
+    import fakedevice
+    from rpps.base.kernel import Batch, Kernel, Form
+    class Leaky(Kernel):
+        name = "leaky"
+        def run(self, xp, b):
+            b.x = b.x*np.ones(b.x.shape[1], np.float32)[None, :]
+            return b
+    b = Batch(np.zeros((2, 4), np.float32), Form(rp.Data, rp.Category.UNK, rp.dtype.LLR, rp.Rep.CHANNEL, 1, 1, 0, 0), [0, 4], 4)
+    plan = rp.parallel.BatchPlan(rp.parallel.plan.placed([Leaky()], fakedevice))
+    with pytest.raises(fakedevice.DeviceError):
+        plan.run(fakedevice, b)
+
 def test_a_profile_without_a_region_refuses_parallel():
     with pytest.raises(ConfigError, match="no parallel region"):
         rp.profile.load("dvbs/qpsk_3_4").rx(parallel=rp.parallel.Parallel())
@@ -445,3 +491,34 @@ def test_native_preamble_metric_equals_the_numpy_one():
         want_m = np.abs(want_c)/np.sqrt(np.maximum(e, 1e-30)*np.sum(np.abs(pre)**2))
         np.testing.assert_allclose(c, want_c, rtol=1e-9, atol=1e-9)
         np.testing.assert_allclose(m, want_m, rtol=1e-8, atol=1e-9)
+
+def test_device_is_numpy_when_asked_or_without_a_gpu(monkeypatch):
+    from rpps import _accel
+    monkeypatch.setenv("RPPS_DEVICE", "none")
+    assert _accel.device() == (np, None)
+    monkeypatch.setenv("RPPS_DEVICE", "nope")
+    with pytest.raises(RuntimeError, match="none, cuda or hip"):
+        _accel.device()
+    monkeypatch.delenv("RPPS_DEVICE")
+    xp, backend = _accel.device()
+    assert (xp is np) == (backend is None) and backend in (None, "cuda", "hip")
+
+def test_a_device_does_not_cross_a_fork():
+    import fakedevice
+    with pytest.raises(ValueError, match="inline or thread"):
+        rp.parallel.Parallel("process", xp=fakedevice)
+
+def test_the_region_counts_its_workers_time(s2):
+    """The region's kernels run on workers (threads, processes): their time comes back with the results, into the stream's
+    load as one lane per worker, and by kernel in est["parallel"]["spent"]"""
+    p, x, o, data, dfl = s2
+    rx = p.rx(parallel=rp.parallel.Parallel("thread", workers=3))
+    got, st = receive(rx, x, o)
+    rx.close()
+    key = next(k for k in st.busy if isinstance(k, str) and k.startswith("parallel:"))
+    spent = st.est["parallel"]["spent"]
+    assert st.busy[key] == pytest.approx(sum(spent.values())) and st.busy[key] > 0
+    assert st.thread_of[key] == "parallel" and st.lanes["parallel"] == 3
+    assert any(k.startswith("rotate:") for k in spent)
+    st.add_air(len(x)/o.Fs)
+    assert st.realtime() > 0

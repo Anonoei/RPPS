@@ -1,0 +1,101 @@
+{
+ "source": "py3gpp (pip, a Python port of MATLAB 5G Toolbox functions), generated 2026-11-21: nrPSS, nrSSS, nrPBCHDMRS, nrBCH (lssb 4), nrPBCH. Values of +-1 (or +-1/sqrt 2, real and imaginary) as sign bits, 1 = negative; bits as hex, most significant first",
+ "pss": {
+  "0": "6f3959836ba322049a7b87f1d8a5f542",
+  "1": "191024d3dc3f8ec52faa16f3959836ba",
+  "2": "fc76297d50b79cacc1b5d191024d3dc2"
+ },
+ "sss": {
+  "0": "00208a98ea0317fa42daf3cf8a0c44ee",
+  "1": "a5d5c84698b0112d049efafb7d03a75e",
+  "17": "bab908d3160225a093df5f6fa074ebe8",
+  "500": "623c77092273815c0643e8a91e8fa0e4",
+  "1007": "bc96fc56a3e5bab48b56836f225e8840"
+ },
+ "dmrs": [
+  {
+   "pci": 0,
+   "ib": 0,
+   "re": "3de6dd2469ea9570423a4ef00a167174eb8f",
+   "im": "2abc371b32fb1fbb45c7c65672f3db5f6cd8"
+  },
+  {
+   "pci": 17,
+   "ib": 3,
+   "re": "8d5f4dbb442a7b391cb1bd98d1cef7cd5010",
+   "im": "c445f29accbdf6af560869cfb8d5bf592358"
+  },
+  {
+   "pci": 500,
+   "ib": 5,
+   "re": "e2273a87ab7f839af0bde1711940146b2faf",
+   "im": "c85eb9d04588a3ecba4868667755ad7f0659"
+  },
+  {
+   "pci": 1007,
+   "ib": 7,
+   "re": "1ecfb72b88c019d11f39ca28fc3b00ee0cdc",
+   "im": "4aebbc1d74cecdf883889dfcb1df655bcd9d"
+  }
+ ],
+ "bch": [
+  {
+   "pci": 17,
+   "sfn": 0,
+   "hrf": 0,
+   "mib": "01c82a",
+   "e": "0a59db4bb8bea00c69ac8ee112eb3c06933f6c3f422dbd2d21d8ded8f0ca0fca396ac66a1787e8878b8d748da5605a60f559244b47be5f0c96ac71e1edebc3060a59db4bb8bea00c69ac8ee112eb3c06933f6c3f422dbd2d21d8ded8f0ca0fca396ac66a1787e8878b8d748d"
+  },
+  {
+   "pci": 17,
+   "sfn": 37,
+   "hrf": 1,
+   "mib": "04156a",
+   "e": "6ce1e86a27cc0a78a347710cbeaac5dea02d394bdb59bdc0eb0072669074f6edc6b45fd2423f24a67266eb00f6ed9074f5878ef3beaa931ec5de179527cca3476ce1e86a27cc0a78a347710cbeaac5dea02d394bdb59bdc0eb0072669074f6edc6b45fd2423f24a67266eb00"
+  },
+  {
+   "pci": 500,
+   "sfn": 1023,
+   "hrf": 0,
+   "mib": "7ec428",
+   "e": "140a71caca4de706af8d82c6c6bea37e140a273971ca42f9ca4df97eaf8d9cbee706d43582c6b1f5c6bef58da37e904d273942f9f97ed4359cbeb1f5f58d904d140a71caca4de706af8d82c6c6bea37e140a273971ca42f9ca4df97eaf8d9cbee706d43582c6b1f5c6bef58d"
+  },
+  {
+   "pci": 3,
+   "sfn": 514,
+   "hrf": 1,
+   "mib": "405616",
+   "e": "21c0a0d89574e1ff146c60e7554bd45321c0746a5f27f5729574c0deeb9341c6e1ffb4559f18354d554b00e12bac81f9746a0a8dc0deb455be39cab200e17e0621c0a0d89574e1ff146c60e7554bd45321c0746a5f27f5729574c0deeb9341c6e1ffb4559f18354d554b00e1"
+  }
+ ],
+ "pbch": [
+  {
+   "pci": 17,
+   "v": 0,
+   "e": "0a59db4bb8bea00c69ac8ee112eb3c06933f6c3f422dbd2d21d8ded8f0ca0fca396ac66a1787e8878b8d748da5605a60f559244b47be5f0c96ac71e1edebc3060a59db4bb8bea00c69ac8ee112eb3c06933f6c3f422dbd2d21d8ded8f0ca0fca396ac66a1787e8878b8d748d",
+   "re": "6fdb582448e60eaaf2722de7d9c376ff86fac5f0ce2fc649a8be4786187ca9aa7498292fa97ed10f49e33e7b4aa04381666ce55da202",
+   "im": "c03861f2bc25bd4a7091d9e318af73a6dd542aca2e50aaa5fccee83cacaa08123c7e77b8a261707c5875f6c564ffd8b10b53953b7c6a"
+  },
+  {
+   "pci": 17,
+   "v": 0,
+   "e": "6ce1e86a27cc0a78a347710cbeaac5dea02d394bdb59bdc0eb0072669074f6edc6b45fd2423f24a67266eb00f6ed9074f5878ef3beaa931ec5de179527cca3476ce1e86a27cc0a78a347710cbeaac5dea02d394bdb59bdc0eb0072669074f6edc6b45fd2423f24a67266eb00",
+   "re": "318fedd0f718ee40a37689e9632c391a7d54cb542195dcf9a340a7270d281cea2acc9cdb168031e518e79a75f04f0c649dc2ebf94db8",
+   "im": "64691dfc35de9496246f87e89489f5752300de6bf7237923f2ca3e9870048b9b982f0bb62b9a59a00c8ba8cee8d95e62f507619aa519"
+  },
+  {
+   "pci": 500,
+   "v": 0,
+   "e": "140a71caca4de706af8d82c6c6bea37e140a273971ca42f9ca4df97eaf8d9cbee706d43582c6b1f5c6bef58da37e904d273942f9f97ed4359cbeb1f5f58d904d140a71caca4de706af8d82c6c6bea37e140a273971ca42f9ca4df97eaf8d9cbee706d43582c6b1f5c6bef58d",
+   "re": "3fea8d7b8aa2791246178aa8e78c2619f5311e410439696cd84a19f91dde00d51e93f8f285d6d180024b614476f346c728c9342edae0",
+   "im": "16917105e33fa3e651c7357c2368f6aa75d8414d2fe35699608121a5bbb293429d22cbee0db12a04d168eb4e6860e227df427a955ba0"
+  },
+  {
+   "pci": 3,
+   "v": 0,
+   "e": "21c0a0d89574e1ff146c60e7554bd45321c0746a5f27f5729574c0deeb9341c6e1ffb4559f18354d554b00e12bac81f9746a0a8dc0deb455be39cab200e17e0621c0a0d89574e1ff146c60e7554bd45321c0746a5f27f5729574c0deeb9341c6e1ffb4559f18354d554b00e1",
+   "re": "d974dd2d2138e6323032d39565bbb4b6b5c9cb27415ddfd94b93327c729e14ba33259c807f7e151e087487e8dde5509545e0937dc0ff",
+   "im": "16437a7deaf0ee154e2fc209ce77b82f4f718a26c9ca1be87a4aecbf6581113e184367cf6f70fb7d5c3a7bf95497be17905a60bd76be"
+  }
+ ]
+}

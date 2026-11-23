@@ -1,4 +1,4 @@
-"""Link headers: fields, a CRC, and the payload they announce (README.dev.md, link and Header-driven control)
+"""Link headers: fields, a CRC, and the payload they announce (rpps.profile.control)
 
 A definition, config/header/link/<name>.json, `rp.link.load("header/ieee80211b_plcp")`:
 
@@ -20,7 +20,11 @@ Receiving, each frame starts where a profile applies a change (a delimiter befor
 `length` bits after the last. The header's fields, with "bits" (the payload's length), are published from the payload's
 first bit for the payload's length, and {"frame_bits": header + payload} from the frame's first bit (rp.base.control.publish),
 so a profile can drive the rate of the payload and the length of the frame. A header whose CRC fails is counted, and its
-frame dropped; so is a frame whose FCS fails (`fcs_failed`). Out come the payloads.
+frame dropped; so is a frame whose FCS fails (`fcs_failed`). Out come the payloads. Every frame is also emitted as a
+message (rpps.profile.message) from its first bit: its fields, its payload, and crc_ok (the FCS's verdict, else the
+header CRC's, else None); a failed one too (crc_ok False, the fields as far as they were read). `select` ({field: value}) keeps only
+the frames whose fields have those values: the others are used up, counted (`skipped`), and neither given nor published
+(one of a DVB-S2 multistream's input streams by its ISI).
 Transmitting, a frame starts at each change a profile applies: its fields are the controlled values; framed, its payload
 is `length` minus the header, else everything until the next frame start (one frame per call). The fields are published
 from the payload's first bit, and {"frame_bits": the frame's bits} from the frame's first bit after the preamble, so the
@@ -35,11 +39,12 @@ from ..base import Digital, dtype
 from ..base.rpps import Pipe, FRAME, failed_of
 from ..base.types import Category, Rep
 from ..errors import ConfigError
-from ..base.control import publish, anchor
+from ..base.control import publish, anchor, emit
 
 class Header(Pipe):
     CATEGORY = Category.LINK
     SCOPE, SCOPE_NEEDS = FRAME, ("length",) # A frame's own header and payload, when a control gives its length
+    EMITS = True # Every frame, good or failed, is a message (rpps.profile.message)
 
     def __init__(self, name, fields, order="msb", crc=None, payload=None, preamble=None, framed=False, fcs=None):
         self.name = name
@@ -60,6 +65,7 @@ class Header(Pipe):
             self._value_bits(preamble["word"], int(preamble["bits"])) if "word" in preamble else np.zeros(0, bool)))
         self.values = {f["name"]: f.get("default", 0) for f in self.fields}
         self.length = None
+        self.select = None # {field: value}: the frames kept (see the module)
         self._start = True
         self.CONTROLS = {"frame": "live", "length": "live", **{f["name"]: "live" for f in self.fields}}
 
@@ -137,7 +143,7 @@ class Header(Pipe):
         st = ctx.get(key)
         st = SimpleNamespace(**vars(st)) if st is not None else SimpleNamespace(
             mode="header", held=np.zeros(0, bool), start=None, left=0, frame_left=None, pend=np.zeros(0, bool), pend_pos=None,
-            body=np.zeros(0, bool), tail=np.zeros(0, bool))
+            body=np.zeros(0, bool), tail=np.zeros(0, bool), fields=None)
         ctx[key] = st
         return st
 
@@ -150,6 +156,7 @@ class Header(Pipe):
         est = data.meta.stream.est.setdefault(self.name, {"frames": 0, "crc_failed": 0, "last": None})
         est.setdefault("fec_failed", 0)
         est.setdefault("fcs_failed", 0)
+        est.setdefault("skipped", 0)
         failed = failed_of(data) # What the decoders before could not decode: those frames are dropped
         out, n_out, i = [], 0, 0
         if self._start:
@@ -168,6 +175,7 @@ class Header(Pipe):
                 fields, ok = self.parse(st.held)
                 if not ok:
                     est["crc_failed"] += 1
+                    emit(data.meta, self, None, fields, None, False, st.start)
                     st.mode = "skip"
                     continue
                 n = self.payload_bits(fields)
@@ -175,6 +183,11 @@ class Header(Pipe):
                     n = min(n if n is not None else self.length, self.length - self.header_bits - self.fcs_bits)
                 if failed is not None and failed[max(0, i - self.header_bits):i + (n or 0) + self.fcs_bits].any():
                     est["fec_failed"] += 1 # The code under it failed: its header passing its CRC proves nothing about the data
+                    emit(data.meta, self, None, fields, None, False, st.start)
+                    st.mode, st.left = "drop", (n or 0) + self.fcs_bits
+                    continue
+                if self.select and any(fields.get(k) != v for k, v in self.select.items()):
+                    est["skipped"] += 1 # Not one of the frames kept
                     st.mode, st.left = "drop", (n or 0) + self.fcs_bits
                     continue
                 if self.fcs is None:
@@ -185,20 +198,21 @@ class Header(Pipe):
                 publish(data.meta, self, {**fields, "bits": n}, at=at, out=n_out, span=n, group=st.start)
                 publish(data.meta, self, {"frame_bits": whole}, at=st.start, out=None, span=whole, group=st.start)
                 anchor(data.meta, self, at, n_out)
-                st.mode, st.left, st.body = "payload", n, np.zeros(0, bool)
+                st.mode, st.left, st.body, st.fields = "payload", n, np.zeros(0, bool), fields
             elif st.mode == "payload":
                 take = min(st.left, len(x) - i)
                 if self.fcs is None:
                     out.append(x[i:i + take])
                     n_out += take
-                else:
-                    st.body = np.concatenate((st.body, x[i:i + take])) # Held until the FCS says it is good
+                st.body = np.concatenate((st.body, x[i:i + take])) # (with an FCS: held until it says the frame is good)
                 i += take
                 st.left -= take
                 self._used(st, take)
                 if st.left <= 0:
                     st.mode = "skip" if self.fcs is None else "fcs"
                     st.tail = np.zeros(0, bool)
+                    if self.fcs is None:
+                        emit(data.meta, self, None, st.fields, st.body, True if self.crc is not None else None, st.start)
             elif st.mode == "fcs": # The frame check sequence over header and payload
                 take = min(self.fcs_bits - len(st.tail), len(x) - i)
                 st.tail = np.concatenate((st.tail, x[i:i + take]))
@@ -206,12 +220,14 @@ class Header(Pipe):
                 self._used(st, take)
                 if len(st.tail) < self.fcs_bits:
                     break
-                if np.array_equal(self.fcs.field(np.concatenate((st.held, st.body))), st.tail):
+                good = np.array_equal(self.fcs.field(np.concatenate((st.held, st.body))), st.tail)
+                if good:
                     out.append(st.body)
                     n_out += len(st.body)
                     est["frames"] += 1
                 else:
                     est["fcs_failed"] += 1
+                emit(data.meta, self, None, st.fields, st.body, bool(good), st.start)
                 st.mode = "skip"
             elif st.mode == "drop": # A failed frame's payload: used up, not given out
                 take = min(st.left, len(x) - i)

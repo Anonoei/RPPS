@@ -2,7 +2,7 @@
 header remover
 
 Checked row for row against the operator run frame by frame (tests/unit/test_batch_kernels.py); they use only what
-numpy and cupy share, so `xp` can be either (README.dev.md, Parallelism)
+numpy and cupy share, so `xp` can be either (rpps.parallel)
 """
 import numpy as np
 
@@ -36,13 +36,15 @@ class Demap(Kernel):
         if L:
             step = max(1, self.CHUNK//(L*len(self.points)))
             for a in range(0, N, step):
-                out[a:a + step] = self._rows(xp, xp.asarray(b.x[a:a + step]))
+                out[a:a + step] = self._rows(xp, b.x[a:a + step])
         b.x = out
         b.form = Form(Mod, Category.SYMBOL, dtype.LLR, Rep.CHANNEL, *b.form[4:])
         return b
 
     def _rows(self, xp, y):
-        return llr_rows(xp, y, self.points, self.labels, self._masks, maxlog=self.maxlog, iters=self.iters, floor=self.floor)
+        pts, lab, masks = (self.const(xp, "points", lambda: self.points), self.const(xp, "labels", lambda: self.labels),
+                           self.const(xp, "masks", lambda: self._masks)) # (on a device once)
+        return llr_rows(xp, y, pts, lab, masks, maxlog=self.maxlog, iters=self.iters, floor=self.floor)
 
 _SYMBOLS = (Category.SYMBOL, dtype.SYMBOLS, Rep.SYMBOLS)
 
@@ -68,7 +70,7 @@ class Rotate(Kernel):
 
     def run(self, xp, b):
         L = b.x.shape[1]
-        b.x = (b.x*xp.asarray(self.phasors(L))[None, :]).astype(np.complex64)
+        b.x = (b.x*self.const(xp, L, lambda: self.phasors(L))[None, :]).astype(np.complex64)
         b.form = Form(Mod, *_SYMBOLS, *b.form[4:])
         return b
 
@@ -82,6 +84,7 @@ class Gather(Kernel):
         return None if n_in is None else int(self.keep(n_in).sum())
 
     def run(self, xp, b):
-        b.x = xp.asarray(b.x)[:, xp.asarray(self.keep(b.x.shape[1]))].astype(np.complex64)
+        L = b.x.shape[1]
+        b.x = b.x[:, self.const(xp, L, lambda: self.keep(L))].astype(np.complex64)
         b.form = Form(Mod, *_SYMBOLS, *b.form[4:])
         return b

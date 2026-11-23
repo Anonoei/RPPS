@@ -32,9 +32,21 @@ def qc_checks(base, z):
 
 _LAYERS = {} # (N, M, edges) -> the code's check layers: one colouring per code per process
 
+_PHI_SMALL, _PHI_TOP, _PHI_RES = 0.25, 16.0, 64.0
+_PHI_GRID = np.arange(int(_PHI_TOP*_PHI_RES) + 1)/_PHI_RES
+_PHI_TABLE = -np.log(np.tanh(0.5*np.maximum(_PHI_GRID, 1e-9)))
+
+def _phi(x):
+    """-log(tanh(x/2)), its own inverse: the sum-product check update in the log domain, as the C++ kernel computes it:
+    the series -log(x/2) + x^2/24 below 0.25 (x at least 1e-9), a table every 1/64 interpolated linearly up to 16 (error
+    under 5e-4), its last value past it"""
+    small = np.maximum(x, 1e-9)
+    with np.errstate(invalid="ignore"):
+        return np.where(x < _PHI_SMALL, -np.log(0.5*small) + small*small/24.0, np.interp(x, _PHI_GRID, _PHI_TABLE))
+
 @register("ldpc")
 class ldpc(_code):
-    """Linear code defined by sparse parity checks, with a normalised min-sum belief propagation decoder
+    """Linear code defined by sparse parity checks, decoded by belief propagation (normalised min-sum or sum-product)
 
     n: codeword length
     checks: for each parity check, the codeword positions it covers
@@ -43,8 +55,12 @@ class ldpc(_code):
     iters/alpha: maximum iterations / min-sum normalisation
     schedule: "layered" (the default: a layer of checks at a time, each codeword stopping once every check holds) or
         "flooding" (every check from the same totals, `iters` iterations: what `flood` gives the blind tools)
+    check: the layered schedule's check update, "minsum" (the default: alpha times the smallest other |q|) or
+        "sumproduct" (exact: phi of the sum of the others' phi|q|, phi(x) = -log tanh(x/2); about 0.3 dB on DVB-S2 1/2
+        in fewer iterations, each dearer). The effort level picks it (rpps._effort: max decodes sum-product);
+        flooding is always min-sum
     decode() takes hard bits or LLRs (log(P(0)/P(1)), positive means 0) for whole codewords, returns the message.
-    After a decode, `converged` says which codewords satisfied every parity check.
+    decode(x, status=True) also gives each codeword's status: -1 where it did not satisfy every parity check.
     With rpps._native the codewords are decoded on several threads, each stopping as soon as it converges (the
     numpy decoder iterates the whole batch until every codeword has).
     """
@@ -52,6 +68,8 @@ class ldpc(_code):
 
     SCHEDULES = ("layered", "flooding")
     schedule = "layered"
+    CHECKS = ("minsum", "sumproduct")
+    check = "minsum"
 
     @classmethod
     def from_config(cls, log, obj):
@@ -60,7 +78,16 @@ class ldpc(_code):
         if schedule not in cls.SCHEDULES:
             raise ValueError(f"ldpc: schedule {schedule!r}, one of {cls.SCHEDULES}")
         code.schedule = schedule
+        code.check = cls.check_of(obj)
         return code
+
+    @classmethod
+    def check_of(cls, obj):
+        """The check update a definition names (default min-sum)"""
+        check = obj.get("check", "minsum")
+        if check not in cls.CHECKS:
+            raise ValueError(f"ldpc: check {check!r}, one of {cls.CHECKS}")
+        return check
 
     @classmethod
     def _from_config(cls, log, obj):
@@ -103,7 +130,6 @@ class ldpc(_code):
         super().__init__(log, None, k, n)
         self.iters = iters
         self.alpha = alpha
-        self.converged = None
 
         M = len(self.checks)
         self.M, self.N = M, n
@@ -184,9 +210,8 @@ class ldpc(_code):
         return (np.add.reduceat(w[:, var], start, axis=1) % 2).astype(np.uint8)
 
     def decode_codewords(self, llr):
-        """Min-sum on (B, N) LLRs. Returns hard decisions (B, N); `converged` says which codewords satisfied every check"""
-        hard, self.converged = self.min_sum(llr)
-        return hard
+        """Min-sum on (B, N) LLRs: hard decisions (B, N) and which codewords satisfied every check (B,)"""
+        return self.propagate(llr)
 
     def layers(self):
         """The checks in layers that share no variable (greedy colouring, rows in order), computed once per code: the layered
@@ -236,23 +261,25 @@ class ldpc(_code):
             np.add.at(total.T, flat, msg[:, valid].T)
         return total
 
-    def min_sum(self, llr):
-        """Min-sum by the code's schedule: (hard decisions (B, N), converged (B,))"""
+    def propagate(self, llr):
+        """Belief propagation by the code's schedule: (hard decisions (B, N), converged (B,))"""
         if self.schedule == "flooding":
-            total = self.flood(llr, _effort.iters(self.iters))
+            total = self.flood(llr, _effort.scale("iters", self.iters))
             return total < 0, ~self.syndrome(total < 0).any(axis=1)
         return self.layered(llr)
 
     def layered(self, llr):
-        """Layered normalized min-sum on (B, N) LLRs: (hard decisions (B, N), converged (B,)). Each codeword stops when every
-        check holds. Layered (a layer of checks at a time, the variables updated after each) converges in about half the
-        iterations of flooding: at Eb/N0 0.9 dB (DVB-S2 1/2 normal frame) 50 layered iterations decode what 100 flooding did.
-        Keeps nothing on the code, so threads can share it"""
+        """Layered belief propagation on (B, N) LLRs, normalized min-sum or sum-product (`check`, as the effort level says):
+        (hard decisions (B, N), converged (B,)). Each codeword stops when every check holds. Layered (a layer of checks at
+        a time, the variables updated after each) converges in about half the iterations of flooding: at Eb/N0 0.9 dB
+        (DVB-S2 1/2 normal frame) 50 layered iterations decode what 100 flooding did. Keeps nothing on the code, so
+        threads can share it"""
         layers = self.layers()
-        iters = _effort.iters(self.iters)
+        iters = _effort.scale("iters", self.iters)
+        sp = _effort.choice("check", self.check) == "sumproduct"
         if _accel.native is not None:
-            return _accel.native.ldpc_minsum(np.ascontiguousarray(llr, dtype=np.float64), self.var, self.cstart.astype(np.int64),
-                                             self.deg, np.concatenate(layers), iters, float(self.alpha))
+            args = (np.ascontiguousarray(llr, dtype=np.float64), self.var, self.cstart.astype(np.int64), self.deg, np.concatenate(layers), iters)
+            return _accel.native.ldpc_sumproduct(*args) if sp else _accel.native.ldpc_minsum(*args, float(self.alpha))
         total = np.array(llr, dtype=np.float64) # (B, N): the a-posteriori values
         r = np.zeros((total.shape[0], len(self.var))) # check to variable messages, per edge
         done = np.zeros(total.shape[0], dtype=bool)
@@ -268,13 +295,17 @@ class ldpc(_code):
                 q = np.where(ok[None], t[:, self.var[e]] - rr[:, e], np.inf) # variable to check, without this check's own
                 a = np.abs(q)
                 neg = (q < 0) & ok[None]
-                i1 = np.argmin(a, axis=2)
-                m1 = np.take_along_axis(a, i1[..., None], axis=2)
-                a2 = a.copy()
-                np.put_along_axis(a2, i1[..., None], np.inf, axis=2)
-                m2 = a2.min(axis=2, keepdims=True)
                 sgn = np.where(neg.sum(axis=2, keepdims=True) % 2 == 1, -1.0, 1.0)*np.where(neg, -1.0, 1.0)
-                new = self.alpha*sgn*np.where(cols[None, None, :] == i1[..., None], m2, m1)
+                if sp:
+                    p = np.where(ok[None], _phi(a), 0.0)
+                    new = sgn*_phi(p.sum(axis=2, keepdims=True) - p)
+                else:
+                    i1 = np.argmin(a, axis=2)
+                    m1 = np.take_along_axis(a, i1[..., None], axis=2)
+                    a2 = a.copy()
+                    np.put_along_axis(a2, i1[..., None], np.inf, axis=2)
+                    m2 = a2.min(axis=2, keepdims=True)
+                    new = self.alpha*sgn*np.where(cols[None, None, :] == i1[..., None], m2, m1)
                 ev = e[ok]
                 rr[:, ev] = new[:, ok]
                 t[:, self.var[ev]] = q[:, ok] + new[:, ok]
@@ -282,9 +313,8 @@ class ldpc(_code):
             done[act] = ~self.syndrome(t < 0).any(axis=1)
         return total < 0, done
 
-    def decode(self, bits, soft=None):
+    def _decode(self, bits, soft=None):
         llr = as_llr(bits, soft, 2.0)
         llr = llr[:len(llr)//self.N*self.N].reshape(-1, self.N)
-        cw, converged = self.min_sum(llr)
-        self.converged, self.errors = converged, word_errors(llr < 0, cw, converged)
-        return cw[:, self.info].reshape(-1)
+        cw, converged = self.propagate(llr)
+        return cw[:, self.info].reshape(-1), word_errors(llr < 0, cw, converged)

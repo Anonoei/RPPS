@@ -14,6 +14,7 @@ C42 -2, QPSK -1, 8PSK -1 with C40 0, 16QAM -0.68, 64QAM -0.62, OFDM and noise 0.
 `theory` computes them for any point set, so every constellation rpps knows is a candidate. `classify` fits, for each, the
 signal's share of the measured power (what the noise does not have) and compares; the share is an Es/N0.
 """
+import math
 from functools import lru_cache
 
 import numpy as np
@@ -46,16 +47,24 @@ def _moment_table(x, p):
             M[a, b] = np.mean(pw[a]*pw[b].conj()) if b else np.mean(pw[a])
     return M
 
-def cumulant(M, p, q):
-    """C_pq from a moment table: sum over partitions of (-1)^(k-1) (k-1)! prod of the blocks' moments"""
+@lru_cache(maxsize=None)
+def _terms(p, q):
+    """The moment-cumulant formula for C_pq, partitions with the same moments merged: ((coefficient, ((a, b), ...)), ...)"""
     conj = [i >= p - q for i in range(p)] # the last q factors are conjugated
-    total = 0j
+    acc = {}
     for part in _partitions(p):
         k = len(part)
-        term = (-1)**(k - 1)*float(np.prod(range(1, k)))
-        for block in part:
-            b = sum(conj[i] for i in block)
-            term = term*M[len(block) - b, b]
+        keys = tuple(sorted((len(block) - sum(conj[i] for i in block), sum(conj[i] for i in block)) for block in part))
+        acc[keys] = acc.get(keys, 0) + (-1)**(k - 1)*math.factorial(k - 1)
+    return tuple((c, keys) for keys, c in acc.items() if c)
+
+def cumulant(M, p, q):
+    """C_pq from a moment table: sum over partitions of (-1)^(k-1) (k-1)! prod of the blocks' moments"""
+    total = 0j
+    for c, keys in _terms(p, q):
+        term = complex(c)
+        for key in keys:
+            term *= M[key]
         total += term
     return total
 
@@ -71,6 +80,11 @@ def theory(points, features=FEATURES):
     pts = np.asarray(points, dtype=np.complex128)
     pts = pts/np.sqrt(np.mean(np.abs(pts)**2))
     return measure(pts, features)
+
+@lru_cache(maxsize=256)
+def _expected(points):
+    """_vector(theory(points)), points as complex128 bytes: a candidate's values are computed once"""
+    return _vector(theory(np.frombuffer(points, dtype=np.complex128)))
 
 def _vector(c):
     """Phase-free feature values: |C40|, C42, C63 real, |C80|, C84 real"""
@@ -95,6 +109,10 @@ class Match:
 
 def candidates():
     """{name: points} of the constellations to compare with"""
+    return {name: pts.copy() for name, pts in _candidates().items()}
+
+@lru_cache(maxsize=1)
+def _candidates():
     from ... import symbol
     out = {}
     for name, c in (("BPSK", symbol.PSK(2)), ("QPSK", symbol.PSK(4)), ("8PSK", symbol.PSK(8)), ("16PSK", symbol.PSK(16)),
@@ -118,18 +136,15 @@ def classify(x, points=None, esn0_db=None, shares=np.linspace(0.05, 1.0, 96)):
     M = _moment_table(x, 8)
     c21 = float(np.real(M[1, 1]))
     raw = {name: cumulant(M, p, q) for name, p, q in FEATURES}
-    pts = candidates() if points is None else points
+    shares = np.asarray(shares, dtype=float)
+    # The measured values at every share at once (one row each): raw C_pq / (share C21)^(p/2)
+    V = np.stack([_vector({k: raw[k]/(s*c21)**(p/2) for k, p, _ in FEATURES}) for s in shares])
+    pts = _candidates() if points is None else points
     out = []
     for name, P in pts.items():
-        t = _vector(theory(P))
-        best = None
-        for s in shares:
-            S = s*c21
-            v = _vector({k: raw[k]/S**(p/2) for k, p, _ in FEATURES})
-            d = float(np.sqrt(np.sum(_W*(v - t)**2)))
-            if best is None or d < best[0]:
-                best = (d, s, v)
-        d, s, v = best
+        t = _expected(np.asarray(P, dtype=np.complex128).tobytes())
+        i = int(np.argmin(np.sum(_W*(V - t)**2, axis=1))) # the first best share, as a loop over them would pick
+        d, s, v = float(np.sqrt(np.sum(_W*(V[i] - t)**2))), float(shares[i]), V[i]
         es = 10*np.log10(s/(1 - s)) if s < 1 else None
         out.append(Match(name=name, distance=d, share=float(s), esn0_db=es, values=v, expected=t))
     out.sort(key=lambda m: m.distance)

@@ -1,7 +1,7 @@
 """Run the fast unit tests against the *installed* rpps (used by cibuildwheel's test-command).
 
 The tests and examples are copied away from the checkout so `import rpps` can only find the installed wheel; the docs
-tests read README.md and pyproject.toml from the working directory."""
+tests read README.md, docs/ and pyproject.toml from the working directory."""
 import pathlib
 import shutil
 import subprocess
@@ -12,7 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 with tempfile.TemporaryDirectory() as tmp:
     run = pathlib.Path(tmp)
-    for name in ("tests", "examples"): # tests/unit/test_examples.py runs the scripts in examples/
+    for name in ("tests", "examples", "docs"): # test_examples.py runs examples/; test_docs.py the code in docs/
         shutil.copytree(ROOT / name, run / name, ignore=shutil.ignore_patterns("__pycache__"))
     for name in ("README.md", "pyproject.toml"):
         shutil.copy(ROOT / name, run / name)

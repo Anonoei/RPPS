@@ -15,7 +15,6 @@ Use `search()` from other scripts: the answer is the gain fraction and the table
 import argparse
 import os
 import sys
-import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -69,7 +68,6 @@ def search(sdr, cf, Fs, sig, vac, gains=GAINS, verbose=True):
         group = settings[k:k + step]
         for ch, st in enumerate(group):
             radio_io.set_gain(sdr, st, channel=ch)
-        time.sleep(0.04)
         if step == 2:
             x = radio_io.grab2(sdr, 2**21)
             got = [measure_x(x[ch], cf, Fs, sig, vac) for ch in range(len(group))]

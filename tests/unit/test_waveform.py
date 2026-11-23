@@ -65,6 +65,20 @@ def test_tdd_bursts_and_their_period():
     assert b is not None and abs(b.period - 5e-3) < 0.05e-3 and abs(b.duty - 0.74) < 0.03
     assert W.on_off(_noise(len(x), 20, np.ones(len(x))), fs) is None # Steady
 
+def test_short_bursts_in_a_long_frame():
+    """Bursts much shorter than their frame (a TDMA return link: 4 ms in 30 ms, 2 ms in 110 ms): the period, not the
+    smallest lag searched (inside one burst the autocorrelation is near 1 at every lag)"""
+    fs = 200e3
+    for on, period, secs in ((4e-3, 30e-3, 0.3), (2e-3, 110e-3, 0.6)):
+        n = int(secs*fs)
+        sym = np.repeat(RNG.choice([1, 1j, -1, -1j], n//2 + 1), 2)[:n] # (QPSK at 2 samples a symbol: its envelope swings)
+        h = np.sinc(np.arange(-8, 9)/2)*np.hanning(17)
+        x = _noise(n, 20, np.convolve(sym, h/np.sqrt(np.sum(h**2)), "same"))
+        t = np.arange(n)/fs
+        x = x*((t % period) < on) + 1e-3*RNG.standard_normal(n)
+        b = W.on_off(x, fs)
+        assert b is not None and abs(b.period - period) < 0.2e-3, (on, period, b and b.period)
+
 def test_constant_envelope():
     fs = 1e6
     t = np.arange(2**16)/fs
@@ -87,3 +101,22 @@ def test_a_pilot_comb_is_named_by_its_grid_not_its_repeat():
     o = W.ofdm(_noise(len(x), 15, x), 7.68e6)
     assert o is not None and o.comb == 3 and abs(o.tu - 66.67e-6/3) < 0.3e-6
     assert o.systems and o.systems[0][0].startswith("LTE / NR 15 kHz") and "every 3rd subcarrier" in str(o)
+
+def test_filtered_psk_in_bursts_is_not_constant_envelope():
+    """The envelope of bursts is judged inside them by the smoothed power, so filtered PSK's dips between symbols count:
+    over 20 seeds and noise up to 0.1, QPSK bursts measured 1.19 at least and FM bursts 1.02 at most (threshold 1.15)"""
+    from rpps.analysis.framing import frames as FR
+    fs, q = 1e6, rp.symbol.load("qpsk").points
+    for seed in range(6):
+        rng = np.random.default_rng(seed)
+        x = np.zeros(50000, complex)
+        for k in range(5): # 35% duty, every 10 ms
+            w = FR.word_waveform(q[rng.integers(0, 4, 350)], 10.0)
+            a = k*10000 + int(rng.integers(0, 2000))
+            x[a:a + len(w)] += w[:len(x) - a]
+        n = 0.05*(rng.standard_normal(50000) + 1j*rng.standard_normal(50000))/np.sqrt(2)
+        r = W.classify(x + n, fs)
+        assert r.bursts is not None and r.kind != "constant envelope" and r.envelope > 1.17
+        fm = np.exp(1j*np.cumsum(rng.standard_normal(50000)*0.3))*((np.arange(50000) % 10000) < 3500)
+        r = W.classify(fm + n, fs)
+        assert r.bursts is not None and r.kind == "constant envelope"

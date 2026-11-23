@@ -46,8 +46,8 @@ def turbo_decode(d, K, iters=8, scale=0.75):
     """d: (3, K+4) soft streams from dematch. Returns hard bits of length K and the final LLRs."""
     t = _turbo(K)
     t.iters, t.scale = iters, scale
-    bits = t.decode(np.asarray(d, float).reshape(-1))
-    return bits.astype(np.uint8), t.llr
+    llr = t.app(np.asarray(d, float).reshape(-1)) # (the decoded bits are llr < 0)
+    return (llr < 0).astype(np.uint8), llr
 
 def selftest():
     rng = np.random.default_rng(3)

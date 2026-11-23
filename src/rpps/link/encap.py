@@ -57,6 +57,7 @@ class Frame(Encap):
 
     As an operator: `packet * frame` gives one frame's bits (flags, stuffing, FCS) per call; `bits / frame` the payload bits of
     the frames whose FCS checks out, however the stream is cut (an open frame waits for its closing flag in the next block)"""
+    EMITS = True # Every frame, good or not, is a message (rpps.profile.message)
 
     def _block(self, enc):
         return 8 if enc else 1
@@ -64,15 +65,32 @@ class Frame(Encap):
     def _process(self, coder, x, ctx, enc):
         if enc:
             if not len(x):
-                return np.zeros(0, dtype=bool)
-            return coder.encode([np.packbits(np.asarray(x, dtype=np.uint8)).tobytes()])
+                return np.zeros(0, dtype=bool), None
+            return coder.encode([np.packbits(np.asarray(x, dtype=np.uint8)).tobytes()]), None
         key = (self, "held")
-        out, held = coder.decode_stream(x, ctx.pop(key, np.zeros(0, np.uint8)))
+        prev = ctx.pop(key, np.zeros(0, np.uint8))
+        frames = []
+        out, held = coder.decode_stream(x, prev, frames)
+        base = len(prev) # frames_at indexes held + x: x[0] is at the block's position
         if ctx.get(FLUSH):
             rest = coder.decode(held) if len(held) else np.zeros(0, bool)
             out = np.concatenate((out, rest))
+            if len(held):
+                skip = len(prev) + len(x) - len(held)
+                frames += [(s + skip, p, ok) for s, p, ok in coder.frames_at(held)[0]]
         else:
             ctx[key] = held
+        ctx[(self, "frames")] = [(s - base, p, ok) for s, p, ok in frames] # For decode, which emits them
+        return out, None # (only the frames whose FCS checks out come out)
+
+    def decode(self, data):
+        """`bits / frame`: the good frames' payloads; every frame, good or not, also emitted as a message from its opening
+        flag (rpps.profile.message: bytes, crc_ok the FCS's verdict)"""
+        out = super().decode(data)
+        from ..base.control import emit
+        for s, p, ok in out.ctx.pop((self, "frames"), []):
+            emit(data.meta, self, None, {"bytes": len(p)}, np.unpackbits(np.frombuffer(p, np.uint8)).astype(bool), bool(ok),
+                 data.meta.pos + s)
         return out
 
     @staticmethod

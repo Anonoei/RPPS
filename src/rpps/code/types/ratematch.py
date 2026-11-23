@@ -63,11 +63,11 @@ class ratematch(_code):
         n = 3*self.D
         return np.concatenate([w[self.index] for w in x[:len(x)//n*n].reshape(-1, n)]) if len(x) >= n else x[:0]
 
-    def decode(self, values, soft=None):
+    def _decode(self, values, soft=None):
         llr = as_llr(values, soft)
         out = []
         for w in llr[:len(llr)//self.E*self.E].reshape(-1, self.E):
             acc = np.zeros(3*self.D)
             np.add.at(acc, self.index, w)
             out.append(acc)
-        return np.concatenate(out) if out else np.zeros(0)
+        return (np.concatenate(out) if out else np.zeros(0)), None

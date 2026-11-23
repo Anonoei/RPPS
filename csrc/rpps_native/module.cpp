@@ -3,6 +3,11 @@
 
 PYBIND11_MODULE(_native, m) {
     m.doc() = "C++ kernels for RPPS per-sample loops (optional: rpps falls back to Python without them)";
+#ifdef RPPS_SRC_HASH // rpps._srchash of csrc/rpps_native when built (setup.py), a bare token: quotes in -D differ by compiler
+#define RPPS_STR2(x) #x
+#define RPPS_STR(x) RPPS_STR2(x)
+    m.attr("SRC_HASH") = RPPS_STR(RPPS_SRC_HASH);
+#endif
     rpps::register_sync(m);
     rpps::register_filters(m);
     rpps::register_trellis(m);
@@ -14,4 +19,5 @@ PYBIND11_MODULE(_native, m) {
     rpps::register_carrier(m);
     rpps::register_resample(m);
     rpps::register_analysis(m);
+    rpps::register_polar(m);
 }

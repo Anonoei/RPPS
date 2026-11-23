@@ -124,3 +124,83 @@ def test_qc_dual_lifted_code():
     rows = np.concatenate([np.stack([np.roll(b.reshape(bc, Z), j, axis=1).reshape(-1) for j in range(Z)]) for b in B])
     assert not np.any((Gm.astype(np.int32) @ rows.T.astype(np.int32)) % 2) # every row is a check
     assert rank(rows) == rank(H)
+
+# ---- quasi-cyclic: the generator's circulants from a few dozen words, sparse checks from the generator
+
+def qc_words(rng, W):
+    """802.11n's (648, 324) QC-LDPC (Z = 27), message first"""
+    import rpps as rp
+    enc = rp.code.load("block/ldpc/ieee80211n_648_1_2").encoder
+    u = rng.integers(0, 2, (W, 324)).astype(np.uint8)
+    return np.array([enc.encode(x) for x in u]).astype(np.uint8)
+
+def test_qc_generator_and_its_sparse_checks():
+    rng = np.random.default_rng(5)
+    words = qc_words(rng, 80)
+    llr = awgn_llr(rng, words, 11.0) # about one word in eight has an error: the reliable words solve, all verify
+    noisy = (llr < 0).astype(np.uint8)
+    assert (noisy != words).any()
+    V, c, holds = L.qc_generator(noisy, 324, 27, rel=np.abs(llr))
+    assert V.shape == (12, 12, 27) and not c.any() and np.all(holds > 0.99)
+    H, r = L.qc_checks(V, 27)
+    assert r == 324 == len(H) and H.sum(axis=1).max() <= 8 # 802.11n's rows are 7 and 8 ones
+    assert not ((words.astype(np.int32) @ H.T.astype(np.int32)) % 2).any() # the code's checks
+
+def test_circulant_size():
+    rng = np.random.default_rng(6)
+    assert L.circulant_size(qc_words(rng, 60), 324) == 27
+    assert L.circulant_size(rng.integers(0, 2, (60, 648)).astype(np.uint8), 324) is None
+
+def test_qc_checks_of_four_parity_blocks():
+    """A QC-LDPC code whose block rows of checks have four parity blocks (one has three: rows of even weight alone would
+    leave the parity part singular): no pair or triple of shifted parity blocks is sparse there, so those checks come
+    from the quadruples (meeting in the middle)"""
+    from rpps.math.gf2 import rank
+    z, mb, kb = 16, 6, 6
+    rng = np.random.default_rng(7)
+    def circ(s):
+        return np.roll(np.eye(z, dtype=np.uint8), s, axis=1)
+    while True:
+        Hp = np.zeros((mb*z, mb*z), np.uint8)
+        Hu = np.zeros((mb*z, kb*z), np.uint8)
+        for i in range(mb):
+            for j in rng.choice(mb, 3 if i == 0 else 4, replace=False):
+                Hp[i*z:(i+1)*z, j*z:(j+1)*z] = circ(rng.integers(z))
+            for j in rng.choice(kb, 2, replace=False):
+                Hu[i*z:(i+1)*z, j*z:(j+1)*z] = circ(rng.integers(z))
+        if rank(Hp) == mb*z:
+            break
+    G, ok = L._solve(Hp, Hu) # p = Hp^-1 Hu u
+    assert ok
+    u = rng.integers(0, 2, (40, kb*z)).astype(np.uint8)
+    words = np.concatenate((u, (u.astype(np.int32) @ G.T.astype(np.int32)) % 2), axis=1).astype(np.uint8)
+    V, c, holds = L.qc_generator(words, kb*z, z)
+    assert np.all(holds == 1.0)
+    H, r = L.qc_checks(V, z)
+    assert r == mb*z and not ((words.astype(np.int32) @ H.T.astype(np.int32)) % 2).any()
+    assert H.sum(axis=1).max() <= 6
+
+def test_sparse_checks_with_fewer_words_than_the_dimension():
+    """Fewer words than k + 16: some are kept aside to verify on (before, every word went to the solve and nothing was
+    returned), and sparse checks still come out of the smaller null spaces"""
+    from rpps.math.gf2 import nullspace
+    rng = np.random.default_rng(8)
+    h = gallager(240, 3, 6, seed=1).astype(np.uint8)
+    G = nullspace(h)
+    words = ((rng.integers(0, 2, (100, len(G))).astype(np.int32) @ G.astype(np.int32)) % 2).astype(np.uint8)
+    assert len(words) < len(G) + 16
+    H, holds = sparse_checks(words, trials=200, patience=60, seed=0)
+    assert len(H) and np.all(holds > 0.99) and not ((words.astype(np.int32) @ H.T.astype(np.int32)) % 2).any()
+
+def test_qc_generator_with_constant_information_bits():
+    """A header's constant bits leave the information columns short of rank: the generator still predicts the words"""
+    import rpps as rp
+    rng = np.random.default_rng(10)
+    enc = rp.code.load("block/ldpc/ieee80211n_648_1_2").encoder
+    u = rng.integers(0, 2, (60, 324)).astype(np.uint8)
+    u[:, :30] = 0 # (a header that never changes)
+    words = np.array([enc.encode(x) for x in u]).astype(np.uint8)
+    V, c, holds = L.qc_generator(words, 324, 27)
+    assert np.all(holds == 1.0)
+    H, r = L.qc_checks(V, 27)
+    assert r == 324 and not ((words.astype(np.int32) @ H.T.astype(np.int32)) % 2).any()

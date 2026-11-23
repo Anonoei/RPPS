@@ -35,21 +35,21 @@ class linear(_code):
         self.log.trace(f"encoded {len(encoded)}")
         return encoded.astype(bool)
 
-    def decode(self, bits: np.ndarray):
+    def _decode(self, bits: np.ndarray):
         """Hard decode by syndrome: corrects a single bit error; a word with any other syndrome is returned as
         received with `errors` -1"""
         blocks = bits.reshape(-1, self.den).astype(np.uint8)
         self.log.trace(f"decoding {len(bits)}, {blocks.shape}")
         synd = (blocks.astype(int) @ self.check.astype(int)) % 2 # (blocks, n-k)
-        self.errors = np.zeros(len(blocks), dtype=int)
+        errors = np.zeros(len(blocks), dtype=int)
         bad = np.nonzero(synd.any(axis=1))[0]
         if len(bad):
             cols = {tuple(row): i for i, row in enumerate(self.check.astype(int) % 2)} # Syndrome of a flip of bit i
             for b in bad:
                 i = cols.get(tuple(synd[b]))
                 if i is None:
-                    self.errors[b] = -1
+                    errors[b] = -1
                     continue
                 blocks[b, i] ^= 1
-                self.errors[b] = 1
-        return blocks[:, 0:self.num].reshape(-1).astype(bool)
+                errors[b] = 1
+        return blocks[:, 0:self.num].reshape(-1).astype(bool), errors

@@ -104,14 +104,15 @@ class FakeSdr:
         self.tone, self.tone_amp, self.spur_off, self.spur_amp = tone_mhz*1e6, tone_amp, spur_off, spur_amp
         self.blocker, self.blocker_amp, self.imd, self.imd_amp = blocker_mhz*1e6, blocker_amp, imd_mhz*1e6, imd_amp
     def set_rx_freq(self, f, flush=False): self.cf = f
-    def set_rx_sample_rate(self, fs): self.fs = fs
+    def set_rx_sample_rate(self, fs, flush=False): self.fs = fs
     RANGE_DB = 83.0
-    def set_rx_gain(self, v, channel=0): self.g = v
+    def set_rx_gain(self, v, channel=0, flush=False): self.g = v
+    def flush(self): return 0
     def get_rx_gain_db(self, channel=0): return self.g*self.RANGE_DB
     def get_rx_sample_rate(self): return self.fs
     rx_channels = (0,)
-    def get_samples(self):
-        n = 2**16; t = (self.t0 + np.arange(n))/self.fs; self.t0 += n
+    def read(self, n, timeout=None):
+        t = (self.t0 + np.arange(n))/self.fs; self.t0 += n
         x = self.rng.normal(size=n) + 1j*self.rng.normal(size=n)
         x = x + self.tone_amp*np.exp(2j*np.pi*(self.tone - self.cf)*t)*(abs(self.tone - self.cf) < self.fs*0.45)
         x = x + self.spur_amp*np.exp(2j*np.pi*self.spur_off*t)

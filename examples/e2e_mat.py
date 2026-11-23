@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 def main():
     num_samps = 1024*16 # Any block size works, the stages keep the stream continuous
-    sink = rp.source.File("cf64", "data/fm_rds_250k_1Msamples.iq", Fs=250e3, sps=250e3/1187.5, cf=99.5e6)
+    sink = rp.source.File("cf32", "data/fm_rds_250k_1Msamples.iq", Fs=250e3, sps=250e3/1187.5, cf=99.5e6)
 
     demod = rp.wave.FMDemod() # FM Demod
     shift = rp.signal.filters.ShiftFreq(fo=-57e3) # Frequency shift to RDS
@@ -26,7 +26,7 @@ def main():
     pre = demod + shift + low_pass + decimate + resample + acquire # Everything up to the symbol sync
     post = sym_sync + carrier
 
-    fig, axs = plt.subplots(1,3, layout="constrained", figsize=(12,6))
+    fig, axs = rp.viz.subplots(1, 3, layout="constrained", figsize=(12, 6))
     ax_t = axs[0]
     ax_e = axs[1]
     ax_p = axs[2]
@@ -65,4 +65,5 @@ def main():
         plt.pause(0.01)
 
 if __name__ == "__main__":
-    main()
+    with rp.viz.styled(): # rpps' dark style for all the program draws, cleared axes and titles too
+        main()

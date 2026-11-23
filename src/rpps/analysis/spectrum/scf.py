@@ -28,8 +28,11 @@ import numpy as np
 def coherence(x, Fs, nfft=64, frames=None, hop=None, conjugate=False):
     """Spectral coherence by the FFT accumulation method (as rpps.analysis.spectrum.cyclic.scf): (f Hz, alpha Hz, |coherence|) over
     the points each channel pair is responsible for. |C| = |S^a(f)| / sqrt(S(f + a/2) S(f - a/2)), each channel's own power
-    the denominator, so 0 <= |C| <= 1. conjugate: X(f + a/2) X(a/2 - f), the cycle frequencies of x^2"""
+    the denominator, so 0 <= |C| <= 1. conjugate: X(f + a/2) X(a/2 - f), the cycle frequencies of x^2. Silence (zero
+    power) has coherence 0; samples that are not finite are a ValueError"""
     x = np.asarray(x, dtype=np.complex128)
+    if not np.all(np.isfinite(x)):
+        raise ValueError("coherence: the samples are not all finite (NaN or inf)")
     hop = nfft//4 if hop is None else hop
     P = (len(x) - nfft)//hop + 1 if frames is None else frames
     P = int(2**int(np.log2(max(P, 2))))
@@ -52,7 +55,8 @@ def coherence(x, Fs, nfft=64, frames=None, hop=None, conjugate=False):
         Z = Z[keep]
         alpha = fk[a] + (fk[None, :] if conjugate else -fk[None, :]) + q[keep][:, None]
         f = (fk[a] + (-fk[None, :] if conjugate else fk[None, :]))/2 + 0*q[keep][:, None]
-        c = np.abs(Z)/np.sqrt(power[a]*power[None, :])
+        den = np.sqrt(power[a]*power[None, :])
+        c = np.divide(np.abs(Z), den, out=np.zeros(Z.shape), where=den > 0) # (0 where there is no power at all)
         ff.append(f.ravel()); aa.append(alpha.ravel()); cc.append(c.ravel())
     return np.concatenate(ff), np.concatenate(aa), np.concatenate(cc)
 

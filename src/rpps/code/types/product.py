@@ -1,5 +1,6 @@
 import numpy as np
 
+from ... import _effort
 from ._code import _code, register
 
 @register("product")
@@ -24,7 +25,7 @@ class product(_code):
     After a decode `errors` is the bits corrected per word, -1 where a row or column still fails its check.
     """
     # Per half iteration, the last repeated. ALPHA is Pyndiah's ramp held at 0.5 (as AFF3CT): rising on to his 1.0 makes
-    # words that fail diverge past 4 iterations (tests/tpc_ber.py). The first half iteration has no extrinsic yet.
+    # words that fail diverge past 4 iterations (tools/tpc_ber.py). The first half iteration has no extrinsic yet.
     ALPHA = (0.0, 0.2, 0.3, 0.5) # Weight of the extrinsic in the next decoder input
     BETA = (0.2, 0.4, 0.6, 0.8, 1.0) # Extrinsic of a bit with no competing candidate (mean |W| is 1)
     BATCH = 32 # Words decoded together
@@ -57,8 +58,8 @@ class product(_code):
     def _fix(self, coder, words, n, k):
         """Decode each word (rows of `words`, n bits) with the code's hard decoder; returns words corrected and statuses"""
         dec = coder.decoder
-        msg = dec.decode(words.reshape(-1)).reshape(len(words), k).astype(np.uint8)
-        st = np.asarray(coder.errors)
+        msg, st = dec.decode(words.reshape(-1), status=True)
+        msg = msg.reshape(len(words), k).astype(np.uint8)
         fixed = coder.encoder.encode(msg.reshape(-1)).reshape(len(words), n).astype(np.uint8)
         ok = st >= 0
         words = words.copy()
@@ -69,7 +70,7 @@ class product(_code):
         """Chase-II on the rows of R (rows, n), normalized LLRs: decisions D (rows, n), their signs sD (+1 for a 0), the
         metric of each decision mD (rows,) and of the best competitor per bit mC (rows, n; inf where none). A row whose
         test patterns all fail the algebraic decoder keeps its hard decision, with no competitor on any bit"""
-        p = min(self.chase, n)
+        p = min(_effort.shift("chase", self.chase), n)
         rows = len(R)
         y = (R < 0).astype(np.uint8)
         weak = np.argsort(np.abs(R), axis=1)[:, :p] # (rows, p)
@@ -79,8 +80,9 @@ class product(_code):
         flip = np.zeros((rows, T, n), np.uint8)
         np.put_along_axis(flip, np.broadcast_to(weak[:, None, :], (rows, T, p)), np.broadcast_to(pats[None], (rows, T, p)), axis=2)
         cand ^= flip
-        msg = coder.decoder.decode(cand.reshape(-1)).reshape(rows*T, k).astype(np.uint8)
-        ok = (np.asarray(coder.errors) >= 0).reshape(rows, T)
+        msg, st = coder.decoder.decode(cand.reshape(-1), status=True)
+        msg = msg.reshape(rows*T, k).astype(np.uint8)
+        ok = (np.asarray(st) >= 0).reshape(rows, T)
         cw = coder.encoder.encode(msg.reshape(-1)).reshape(rows, T, n).astype(np.uint8)
         metric = (np.abs(R)[:, None, :]*(cw != y[:, None, :])).sum(axis=2) # correlation discrepancy to the input
         metric = np.where(ok, metric, np.inf)
@@ -105,7 +107,7 @@ class product(_code):
         M = (L < 0).astype(np.uint8)
         act = np.arange(nw) # Words still decoding
         half = 0
-        for _ in range(self.iters):
+        for _ in range(_effort.scale("iters", self.iters)):
             for axis in (0, 1): # columns, then rows
                 a = self.ALPHA[min(half, len(self.ALPHA) - 1)]
                 b = self.BETA[min(half, len(self.BETA) - 1)]
@@ -131,7 +133,7 @@ class product(_code):
                 break
         return M
 
-    def decode(self, bits, soft=None):
+    def _decode(self, bits, soft=None):
         x = np.asarray(bits)
         if self.chase is not None and x.dtype.kind == "f" and soft is not False:
             return self._decode_soft(x)
@@ -144,7 +146,7 @@ class product(_code):
                 w = w ^ self.offset
             M = w[self.lead:].reshape(self.n2, self.n1).copy()
             first = M.copy()
-            for _ in range(self.iters):
+            for _ in range(_effort.scale("iters", self.iters)):
                 M_cols, st_c = self._fix(self.cols, M.T.copy(), self.n2, self.k2)
                 M = M_cols.T
                 M, st_r = self._fix(self.rows, M, self.n1, self.k1)
@@ -153,8 +155,7 @@ class product(_code):
             good = (st_c >= 0).all() and (st_r >= 0).all() and self._clean(M)
             errs.append(int(np.count_nonzero(M != first)) if good else -1)
             out.append(M[:self.k2, :self.k1].reshape(-1)[self.reserved:])
-        self.errors = np.array(errs, dtype=int)
-        return np.concatenate(out).astype(bool) if out else np.zeros(0, bool)
+        return (np.concatenate(out).astype(bool) if out else np.zeros(0, bool)), np.array(errs, dtype=int)
 
     def _decode_soft(self, x):
         x = np.asarray(x, dtype=np.float64)
@@ -168,8 +169,7 @@ class product(_code):
             for Lw, M in zip(L[s0:s0 + self.BATCH], self._soft(L[s0:s0 + self.BATCH])):
                 errs.append(int(np.count_nonzero(M != (Lw < 0))) if self._clean(M) else -1)
                 out.append(M[:self.k2, :self.k1].reshape(-1)[self.reserved:])
-        self.errors = np.array(errs, dtype=int)
-        return np.concatenate(out).astype(bool) if out else np.zeros(0, bool)
+        return (np.concatenate(out).astype(bool) if out else np.zeros(0, bool)), np.array(errs, dtype=int)
 
     def _clean(self, M):
         """Every row and column is a codeword"""

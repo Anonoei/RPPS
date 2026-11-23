@@ -34,25 +34,22 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      # Editable, so pdoc documents src/rpps; the C++ kernels are optional (the Python loops are the fallback)
+      # The API pages are read from src/ statically (griffe); the C++ kernels are optional
       - name: Install package
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[viz,docs]"
+          python -m pip install -e ".[docs]"
 
-      # pdoc writes the package under docs/rpps and the lunr search (doc-search.html, index.js) beside it in docs/,
-      # so the whole of docs/ is published, with a redirect at its root
+      # API pages and llms files from the code (tools/gen_docs.py), then zensical build --strict into site/
       - name: Build docs
-        run: |
-          python -m pdoc -o docs --html --force --template-dir pdoc_templates src/rpps
-          echo '<!doctype html><meta http-equiv="refresh" content="0; url=rpps/">' > docs/index.html
+        run: python tools/builder.py -d
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './docs'
+          path: './site'
 
   deploy:
     name: Deploy

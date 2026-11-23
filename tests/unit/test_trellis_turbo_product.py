@@ -14,7 +14,20 @@ def test_p25_half_rate(rng):
     assert len(cw) == 196 # 48 dibits + the flush dibit, 4 bits each
     bad = cw.copy()
     bad[rng.permutation(196)[:8]] ^= True
-    assert np.array_equal(code.decoder.decode(bad), msg) and code.errors[0] == 8
+    out, errors = code.decoder.decode(bad, status=True)
+    assert np.array_equal(out, msg) and errors[0] == 8
+
+def test_paths_give_what_the_decoder_decided_was_sent(rng):
+    code = rp.code.load("block/trellis/p25_1_2")
+    dec = code.decoder
+    msg = bits(rng, 96*3).reshape(3, 96)
+    cw = np.array([code.encoder.encode(m) for m in msg])
+    bad = cw.copy()
+    bad[:, 10] ^= True
+    out, words = dec.paths(bad)
+    assert np.array_equal(out, dec.decode_batch(bad)) and np.array_equal(out, msg)
+    sent = ((words[..., None] >> np.arange(dec.n - 1, -1, -1)) & 1).astype(bool).reshape(3, -1)
+    assert np.array_equal(sent, cw) # The flipped bit is not in the path: the path is the codeword
 
 def test_p25_half_rate_soft(rng):
     code = rp.code.load("block/trellis/p25_1_2")
@@ -135,11 +148,11 @@ def test_dmr_bptc_corrects(rng):
     for nerr in (1, 4, 6):
         rx = tx.copy()
         rx[rng.permutation(196)[:nerr]] ^= True
-        assert np.array_equal(bptc.decoder.decode(il.decode(rx)), msg) and bptc.errors[0] == nerr
+        out, errors = bptc.decoder.decode(il.decode(rx), status=True)
+        assert np.array_equal(out, msg) and errors[0] == nerr
     rx = tx.copy()
     rx[:60] ^= True
-    bptc.decoder.decode(il.decode(rx))
-    assert bptc.errors[0] == -1
+    assert bptc.decoder.decode(il.decode(rx), status=True)[1][0] == -1
 
 def test_dmr_crc_mask(rng):
     crc = rp.link.load("crc/crc16_ccitt_false").encoder

@@ -17,6 +17,8 @@ import time
 from collections import Counter, defaultdict
 
 import numpy as np
+
+import rpps as rp
 from rpps.signal.sample import resample_poly
 
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
@@ -30,7 +32,8 @@ def analyse(x, channel, fs=4e6):
     floor = float(np.percentile(p[:len(p)//64*64].reshape(-1, 64).mean(1), 20))
     out = []; n_aa = 0
     xc = x.astype(np.complex128)
-    for s, e in ble_adv.bursts(xc, fs):
+    for b in rp.Data(xc, Fs=fs, flush=True) + ble_adv.BURST:
+        s, e = b.meta.pos, b.meta.pos + len(b)
         r = ble_adv.decode_burst(xc[max(0, s - 16):e + 16], channel, fs)
         if not r:
             continue

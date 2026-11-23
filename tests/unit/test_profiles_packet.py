@@ -25,6 +25,20 @@ def receive(p, x, Fs, sps, delay, cuts=None):
         outs.append(hard(rx(d)))
     return np.concatenate(outs), st
 
+def receive_bursts(p, x, Fs, sps, cuts=None):
+    """A burst profile: (the bits of every burst joined, the bursts' outputs)"""
+    rx, st, outs, i = p.rx(), None, [], 0
+    cuts = cuts or [len(x)]
+    for k, n in enumerate(cuts):
+        d = rp.Data(x[i:i + n], Fs=Fs, sps=sps, stream=st, flush=k == len(cuts) - 1)
+        st, i = d.stream, i + n
+        outs += rx(d)
+    return (np.concatenate([hard(o) for o in outs]) if outs else np.zeros(0, bool)), outs
+
+def total(outs, name, key):
+    """An estimate counted over the bursts (each burst is a stream of its own)"""
+    return sum(o.stream.est.get(name, {}).get(key, 0) for o in outs)
+
 def test_listed():
     assert {"ble", "adsb", "ax25", "ccsds"} <= set(rp.profile.ls())
 
@@ -33,41 +47,52 @@ def test_listed():
 @pytest.fixture(scope="module")
 def ble_signal():
     rng = np.random.default_rng(11)
-    p = rp.profile.load("ble/adv", sync={"timing": {"method": "known"}})
+    p = rp.profile.load("ble/adv")
     pdus = [rng.integers(0, 2, 8*n).astype(bool) for n in (6, 20, 37)]
-    tx, s, waves = p.tx(), None, []
-    for pdu in pdus:
-        d = rp.Data(pdu, Fs=1e6, sps=1, stream=s, flush=True) # each packet is a burst: its last pulses go out whole
-        s = d.stream
-        o = tx(d, fields={"type": 2, "txadd": 1})
-        waves += [o.data, np.zeros(4*17, np.complex64)]
-    x = np.concatenate([np.zeros(4*9, np.complex64)] + waves)
-    return p, x, o, pdus
+    tx = p.tx() # A burst a call, 1 ms apart (the profile's gap_s: advertising events are milliseconds apart)
+    o = tx([rp.Data(pdu, Fs=1e6, sps=1) for pdu in pdus], fields={"type": 2, "txadd": 1}, flush=True)
+    return p, np.asarray(o.data), o, pdus
 
 def test_ble_builds_the_pairs(ble_signal):
     p = ble_signal[0]
-    assert names(p.rx()) == ["+FMDemod", "+Matched", "+Known", "/Constellation", "+Delimiter", "/Marker", "/additive/ble_whiten", "/Header"]
-    assert names(p.tx()) == ["*Header", "*additive/ble_whiten", "*Marker", "*Constellation", "+Shape", "+FM"]
+    assert names(p.rx()) == ["+Burst", "+FMDemod", "+Matched", "+Preamble", "+Known", "/Constellation", "+Delimiter", "/Marker",
+                             "/additive/ble_whiten", "/Header"]
+    assert names(p.tx()) == ["*Header", "*additive/ble_whiten", "*Marker", "*Constellation", "+Shape", "+FM", "+BurstTx"]
 
 def test_ble_packets_round_trip(ble_signal):
     p, x, o, pdus = ble_signal
-    got, st = receive(p, x, o.Fs, 4, o.delay)
-    assert np.array_equal(got, np.concatenate(pdus))
-    est = st.est["ble_adv"]
-    assert est["frames"] == 3 and est["fcs_failed"] == 0 and est["last"] == {"type": 2, "rfu": 0, "chsel": 0, "txadd": 1, "rxadd": 0, "length": 37}
-    assert st.est["aa"]["frames"] == 3
+    got, outs = receive_bursts(p, x, o.Fs, 4)
+    assert len(outs) == 3 and np.array_equal(got, np.concatenate(pdus)) # One output per packet
+    assert total(outs, "ble_adv", "frames") == 3 and total(outs, "ble_adv", "fcs_failed") == 0 and total(outs, "aa", "frames") == 3
+    assert outs[-1].stream.est["ble_adv"]["last"] == {"type": 2, "rfu": 0, "chsel": 0, "txadd": 1, "rxadd": 0, "length": 37}
+    assert [o.meta.pos > 0 for o in outs] == [True]*3
 
 def test_ble_any_block_cut(ble_signal):
     p, x, o, pdus = ble_signal
-    got, _ = receive(p, x, o.Fs, 4, o.delay, cuts=[333, 1, 700, len(x) - 1034])
+    got, _ = receive_bursts(p, x, o.Fs, 4, cuts=[333, 1, 700, 2600, len(x) - 3634])
     assert np.array_equal(got, np.concatenate(pdus))
+
+def test_ble_packets_with_a_carrier_offset_and_noise(ble_signal):
+    """Each packet on its own: the preamble step finds the access address in the discriminator's output, places the bit
+    timing on it and takes the 120 kHz offset off (a level there of about half a symbol's)"""
+    p, x, o, pdus = ble_signal
+    rng = np.random.default_rng(5)
+    n = len(x)
+    noise = 0.05*(rng.standard_normal(n) + 1j*rng.standard_normal(n))
+    levels = {}
+    for cfo in (60e3, 120e3):
+        y = (x*np.exp(2j*np.pi*cfo/o.Fs*np.arange(n)) + noise).astype(np.complex64)
+        got, outs = receive_bursts(p, y, o.Fs, 4)
+        assert np.array_equal(got, np.concatenate(pdus))
+        levels[cfo] = np.array([ob.stream.est["aa_wave"]["level"] for ob in outs])
+    assert (levels[120e3] > levels[60e3]).all() and (levels[60e3] > 0.1).all() # The offset, measured (its scale: the filters')
 
 def test_ble_whitening_is_the_channel_s(ble_signal):
     """The same packets on another channel are whitened differently, and a receiver on the wrong channel sees no valid frame"""
     p, x, o, pdus = ble_signal
-    wrong = rp.profile.load("ble/adv", sync={"timing": {"method": "known"}}, channel=38)
-    got, st = receive(wrong, x, o.Fs, 4, o.delay)
-    assert len(got) == 0 and st.est["ble_adv"]["frames"] == 0 and st.est["aa"]["frames"] == 3
+    wrong = rp.profile.load("ble/adv", channel=38)
+    got, outs = receive_bursts(wrong, x, o.Fs, 4)
+    assert len(got) == 0 and total(outs, "ble_adv", "frames") == 0 and total(outs, "aa", "frames") == 3
 
 def test_ble_sync_word_is_not_whitened(ble_signal):
     p, x, o, pdus = ble_signal

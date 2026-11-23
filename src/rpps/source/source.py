@@ -1,9 +1,9 @@
 """Sources and sinks of signal blocks
 
-    src = rp.source.File("ci32t", "capture.cs16", Fs=2e6, cf=100e6)
+    src = rp.source.File("ci16t", "capture.cs16", Fs=2e6, cf=100e6)
     for out in src(4096) + (lpf + dec):          # blocks flow through the pipeline, its state carried along
         ...
-    src(4096) + (lpf + dec) >> rp.source.Sink("cf64", "out.iq")   # or straight into a sink
+    src(4096) + (lpf + dec) >> rp.source.Sink("cf32", "out.iq")   # or straight into a sink
 
 Threads: `.threaded()` puts everything before it in its own thread, and `.pipelined(pipe)` gives every stage of a
 pipeline its own, connected by bounded queues. Stages overlap where they release the GIL (numpy, the rpps._native
@@ -56,10 +56,11 @@ def _threaded(gen, depth, drop, name):
                 if drop:
                     try:
                         q.put_nowait(b)
-                    except queue.Full:
+                    except queue.Full: # Counted in source samples, whatever rate the block is at
                         meta = getattr(b, "meta", None)
                         if meta is not None:
-                            meta.stream.dropped += 1
+                            n, Fs, src = len(b), meta.state.Fs, meta.stream.src_Fs
+                            meta.stream.dropped += int(round(n * src / Fs)) if Fs and src else n
                 elif not put(b):
                     break
                 if stop.is_set():
@@ -98,6 +99,8 @@ class Blocks:
         blocks >> sink      # write every block; returns the sink
         blocks.threaded()   # everything so far runs in a thread of its own
         blocks.pipelined(a + b + c) # a, b and c each in a thread of their own
+
+    A stage that splits a block (`rp.sync.Burst`: a list of bursts) gives its pieces one by one: what follows runs on each.
     """
     def __init__(self, gen):
         self._gen = gen
@@ -109,7 +112,11 @@ class Blocks:
         def gen(src=self._gen):
             try:
                 for b in src:
-                    yield fn(b)
+                    r = fn(b)
+                    if isinstance(r, list): # A split (bursts): each piece goes on as a block
+                        yield from r
+                    else:
+                        yield r
             finally:
                 _close(src) # A generator expression would leave the source (and its threads) to the garbage collector
         return Blocks(gen())
@@ -133,8 +140,9 @@ class Blocks:
         """Run everything before this point (the source, the stages applied so far) in its own thread
 
         depth: blocks the queue to the next thread holds.
-        drop: when the queue is full, discard the block and count it in `stream.dropped` instead of waiting. Use
-            for a radio, which overruns anyway when it isn't read; the stream then has gaps (the stages carry on).
+        drop: when the queue is full, discard the block and count it in `stream.dropped` (source samples) instead of
+            waiting. Use for a radio, which overruns anyway when it isn't read; the stream then has gaps: the stages
+            carry on, and the positions of what follows count the block (`meta.pos` stays true to time).
         An exception in the thread is raised where the blocks are read; leaving the loop stops the thread (and
         closes the source).
         """
@@ -160,7 +168,7 @@ class Source:
     """Parent of the things that produce blocks. Call it with a block length for the blocks
 
     REP: the representation its blocks are (SAMPLES; a demodulator's ring of timed symbols is SYMBOLS), and APPLIED the
-    sync it has done already ({"timing"}): `profile.rx(source=src)` skips the steps before and those (README.dev.md, source).
+    sync it has done already ({"timing"}): `profile.rx(source=src)` skips the steps before and those (rpps.base, Contracts).
     ppm: how far the radio's reference is off (+15: its clock runs 15 ppm fast). The sample rate and the tuned frequency
     both come from it, so blocks carry Fs and cf times (1 + ppm 1e-6): what was actually sampled, and where."""
     REP = Rep.SAMPLES
@@ -174,7 +182,7 @@ class Source:
         s = self.stream
         s.blocks += 1
         if self.Fs:
-            s.air += len(samples) / self.Fs
+            s.add_air(len(samples) / self.Fs)
         k = 1.0 + self.ppm*1e-6
         return Data(samples, flush=flush, Fs=self.Fs*k, sps=self.sps, cf=self.cf*k, stream=s)
 
@@ -205,7 +213,7 @@ class File(Source):
     def __init__(self, fmt, path, Fs=1.0, cf=0.0, sps=0.0, scale=True):
         super().__init__(Fs, cf, sps)
         self.fmt = fmts.get(fmt)
-        import pysdrlib
+        pysdrlib = fmts.pysdrlib()
         self._f = pysdrlib.File(path, self.fmt.name, scale=scale)
         self.path = self._f.get_path()
 
@@ -311,13 +319,29 @@ class Device(Source):
     that is open already (pysdrlib.connect gives one) stays open; one this opens is closed when the blocks end
 
         for blk in rp.source.Device("hackrf", cf=100e6, Fs=10e6)(8192) + rx: ...
+
+    Positions and time come from the radio: samples it lost (an overrun) are counted in `meta.pos`, so a block after a
+    gap starts further on and the stages carry the gap into theirs (one inside a block shows at the next block), and
+    `stream.dropped` adds them up. `stream.t0` is the radio's clock (`hw_time`) where it timestamps its samples, else
+    the host's `time.monotonic()` at the first sample, so `meta.time_of(k)` dates any item.
+
+    When the device's frequency or rate changes while it streams (a "freq" / "rate" event: another program retuned it, a
+    shared-memory publisher retuned), the block is cut there and the stream starts over (`restart`) at the new setting,
+    positions counting from the change. When the device is lost (unplugged, a publisher that stopped: pysdrlib's
+    `err.Lost`), the blocks end, the last one flushing, and `lost` says why.
     """
     def __init__(self, device, cf=None, Fs=None, rx_gain=None, sps=0.0, **open_args):
-        """device: a pysdrlib device name, or a device you made (rp.source.Device(pysdrlib.device("sim", realtime=False))).
-        rx_gain: the receive gain as a fraction 0-1 of the device's range (the same on any radio), or a {stage: fraction} dict"""
+        """device: a pysdrlib driver name ("hackrf"), a target string ("hackrf@SERIAL", "shm@rpps.ch3",
+        "radiohost/hackrf-0": opened here by `pysdrlib.open`, closed by `close()` or when it is lost), or a device you made
+        (rp.source.Device(pysdrlib.device("sim", realtime=False))). rx_gain: the receive gain as a fraction 0-1 of the
+        device's range (the same on any radio), or a {stage: fraction} dict"""
+        self._opened, self.lost = False, None
         if isinstance(device, str):
-            import pysdrlib
-            device = pysdrlib.device(device)
+            pysdrlib = fmts.pysdrlib()
+            if "@" in device or "/" in device:
+                device, open_args, self._opened = pysdrlib.open(device, **open_args), {}, True
+            else:
+                device = pysdrlib.device(device)
         self.sdr = device
         self.rx_gain = rx_gain
         self._open_args = open_args
@@ -338,26 +362,67 @@ class Device(Source):
             sdr.initialize(cf=self.cf, Fs=self.Fs, rx_gain=self.rx_gain)
             self.cf, self.Fs = sdr.get_rx_freq(), sdr.get_rx_sample_rate() # What the hardware settled on
             self.stream.src_Fs = self.Fs
-            with sdr.stream(count, meta=True) as rx: # Exactly `count` samples a block; starts and stops receiving
-                for x, m in rx:
-                    self.stream.dropped += m.dropped
-                    yield self._block(x)
+            s = self.stream
+            base = None
+            from pysdrlib import err
+            try:
+                with sdr.stream(count, meta=True) as rx: # Exactly `count` samples a block; starts and stops receiving
+                    for x, m in rx:
+                        if base is None: # pysdrlib counts from this stream's start; ours may have run before
+                            base = s.pos - m.index
+                            t = m.hw_time if m.hw_time is not None else m.time
+                            if s.t0 is None and t is not None and self.Fs:
+                                s.t0 = t - s.pos/self.Fs
+                        s.pos = max(s.pos, base + m.index) # Samples the radio lost (or discarded settling) are counted
+                        s.dropped += m.dropped
+                        at = 0
+                        for ev in sorted((e for e in m.events if e.kind in ("freq", "rate")), key=lambda e: e.offset):
+                            if ev.offset > at:
+                                yield self._block(x[at:ev.offset])
+                            at = max(at, ev.offset)
+                            if ev.kind == "freq":
+                                self.cf = float(ev.value)
+                            else:
+                                self.Fs = float(ev.value)
+                            # A new setting: what the stages tracked no longer holds. Positions count from the change
+                            self.restart()
+                            s = self.stream
+                            s.src_Fs = self.Fs
+                            base = -(m.index + ev.offset)
+                            t = m.hw_time if m.hw_time is not None else m.time
+                            if t is not None and self.Fs:
+                                s.t0 = t + ev.offset/self.Fs
+                        yield self._block(x[at:])
+            except err.Lost as e: # The device (or a shared-memory publisher) is gone: the stream ends here
+                self.lost = str(e)
+                tail = getattr(e, "samples", None) # (what was there short of a whole block: pysdrlib gives it with the error)
+                tm = getattr(e, "meta", None)
+                if tm is not None and base is not None: # placed by its index, a gap before it counted as any other
+                    s.pos = max(s.pos, base + tm.index)
+                    s.dropped += tm.dropped
+                yield self._block(np.zeros(0, np.complex64) if tail is None else np.asarray(tail, np.complex64), flush=True)
+                if self._opened:
+                    self.close()
         finally:
             if mine and sdr.state["open"]:
                 sdr.close()
+
+    def close(self):
+        """Close a device this opened from a target string (one opened by name is closed when its blocks end)"""
+        if self._opened and self.sdr.state["open"]:
+            self.sdr.close()
 
 class Sink:
     """Write blocks to a file with pysdrlib's FileSink: `block >> sink` or `blocks >> sink`
 
     The file is opened when the sink is made. Use it as a context manager (or `close()`) to finish the file.
-    scale: samples in [-1, 1) are scaled up to the format's integers, which FileSink itself doesn't do
+    scale: samples in [-1, 1) are stored at the format's full scale (FileSink's `scale`, the inverse of File's)
     clip: saturate what is out of range instead of failing (FileSink counts it in `clipped` and warns when closed)
     """
     def __init__(self, fmt, path, scale=True, append=False, clip=True):
         self.fmt = fmts.get(fmt)
-        self.scale = self.fmt.full_scale if scale else 1.0
-        import pysdrlib
-        self._sink = pysdrlib.FileSink(path, self.fmt.name, append=append, open=True, clip=clip)
+        pysdrlib = fmts.pysdrlib()
+        self._sink = pysdrlib.FileSink(path, self.fmt.name, append=append, open=True, clip=clip, scale=scale)
 
     @property
     def path(self):
@@ -373,10 +438,7 @@ class Sink:
         return self._sink.clipped
 
     def write(self, data):
-        x = np.asarray(data.data if isinstance(data, base.data._Data) else data)
-        if self.scale != 1.0:
-            x = x * self.scale
-        self._sink.write(x)
+        self._sink.write(np.asarray(data.data if isinstance(data, base.data._Data) else data))
         return self
 
     def close(self):

@@ -84,16 +84,16 @@ def _serve_tcp(payload, cuts):
 def test_tcp_source_whole_samples_whatever_the_cut():
     x = _tone(5000)
     port = _serve_tcp(x.tobytes(), [3, 1001, 7, 4096])
-    blocks = list(rp.source.Socket("cf64", f"tcp://127.0.0.1:{port}", Fs=1e6)(1024))
+    blocks = list(rp.source.Socket("cf32", f"tcp://127.0.0.1:{port}", Fs=1e6)(1024))
     y = np.concatenate([b.data for b in blocks])
     assert np.array_equal(y, x) and [len(b) for b in blocks[:-1]] == [1024]*4 and blocks[-1].flush
 
 def test_udp_source_ends_on_silence():
-    src = rp.source.Socket("ci16t", "udp://127.0.0.1:0", Fs=1e6, timeout=0.5)
+    src = rp.source.Socket("ci8t", "udp://127.0.0.1:0", Fs=1e6, timeout=0.5)
     s = src._open()
     port = s.getsockname()[1]
     s.close()
-    src = rp.source.Socket("ci16t", f"udp://127.0.0.1:{port}", Fs=1e6, timeout=0.5)
+    src = rp.source.Socket("ci8t", f"udp://127.0.0.1:{port}", Fs=1e6, timeout=0.5)
     raw = (np.round(_tone(2000).view(np.float32)*127)).astype(np.int8).tobytes()
     def send():
         import time
@@ -108,4 +108,12 @@ def test_udp_source_ends_on_silence():
 
 def test_bad_urls():
     with pytest.raises(ValueError):
-        rp.source.Socket("cf64", "http://x:1")
+        rp.source.Socket("cf32", "http://x:1")
+
+def test_a_pysdrlib_before_0_5_is_refused_by_name(monkeypatch):
+    """pysdrlib < 0.5 named the formats otherwise ("cf32" two float16s): its files would be read as noise, so a source
+    refuses it with the version and the fix rather than giving samples"""
+    pysdrlib = pytest.importorskip("pysdrlib")
+    monkeypatch.setattr(pysdrlib, "__version__", "0.4.6")
+    with pytest.raises(ImportError, match=r"pysdrlib >= 0\.5, this is 0\.4\.6"):
+        rp.source.formats.get("cf32")

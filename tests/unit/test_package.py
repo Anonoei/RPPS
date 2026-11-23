@@ -40,3 +40,16 @@ def test_logging_is_opt_in(level, caplog):
         rp.logger.Logger("t").info("hello")
     finally:
         rp.logger.disable()
+
+def test_a_native_build_from_other_sources_is_stale(tmp_path):
+    from types import SimpleNamespace
+    from rpps._accel import stale
+    from rpps._srchash import source_hash
+    (tmp_path / "k.cpp").write_text("int f() { return 1; }\n")
+    built = SimpleNamespace(SRC_HASH=source_hash(tmp_path))
+    assert stale(built, tmp_path) is None
+    (tmp_path / "k.cpp").write_text("int f() { return 2; }\n")
+    assert "changed" in stale(built, tmp_path)
+    assert "predates" in stale(SimpleNamespace(), tmp_path)
+    assert stale(built, tmp_path / "missing") is None # An installed package has no sources to compare
+    assert stale(None, tmp_path) is None

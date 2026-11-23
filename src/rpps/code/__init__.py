@@ -1,4 +1,4 @@
-"""Code transform: channel bits <-> data bits (README.dev.md)
+"""Code transform: channel bits <-> data bits
 
 FEC encoders and decoders, interleaving, rate matching, scrambling (`code.scram`), line codes (`Line`: NRZI, Manchester,
 inversion), sync markers among channel bits (`Marker`), and `Uncoded` for links with no FEC.

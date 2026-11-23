@@ -28,36 +28,6 @@ SEG = 832 # Symbols per data segment
 FIELD = 313 # Segments per field
 ROLLOFF = 0.1152
 
-class ToneLock(rp.base.Stage):
-    """Derotate a stream so a tone near `f0` Hz sits at DC (a phase-locked pilot)
-
-    A block-rate PLL like fm_rx.PilotPLL: each `win` samples measure the tone's phase, then correct the
-    oscillator. `st.err` collects the phase errors so the lock can be judged afterwards.
-    """
-    def __init__(self, f0, win=16384, kp=0.4, ki=0.05):
-        self.f0, self.win, self.kp, self.ki = f0, win, kp, ki
-
-    def new_state(self, meta):
-        return SimpleNamespace(phase=0.0, freq=2*np.pi*self.f0/meta.Fs, err=[], level=[])
-
-    def step(self, x, st, meta):
-        out = np.empty_like(x)
-        for i in range(0, len(x), self.win):
-            c = x[i:i + self.win]
-            n = len(c)
-            ph = st.phase + st.freq*np.arange(n)
-            d = c*np.exp(-1j*ph)
-            out[i:i + n] = d
-            if n >= self.win//4:
-                z = np.mean(d)
-                e = float(np.angle(z))
-                st.err.append(e)
-                st.level.append(abs(z))
-                st.freq += self.ki*e/n
-                st.phase += self.kp*e
-            st.phase = (st.phase + st.freq*n) % (2*np.pi)
-        return out
-
 def find_pilot(x, Fs, cf, lower):
     """The pilot's frequency [Hz] near its nominal place, and its height over the data around it [dB]"""
     n = 2**17
@@ -78,7 +48,7 @@ def to_symbol_rate_signal(x, Fs, cf, f_pilot):
     """Centre, filter and pilot-lock. Returns the real VSB signal at Fs, and the pilot lock stage's state"""
     center = f_pilot + (3e6 - PILOT_OFFSET)
     pre = rp.signal.filters.ShiftFreq(-(center - cf)) + rp.signal.filters.low_pass(201, 3.0e6, Fs) # The 6 MHz channel, centred
-    lock = ToneLock(-(3e6 - PILOT_OFFSET)) # The pilot is 2.69 MHz below the centre
+    lock = rp.sync.ToneLock(-(3e6 - PILOT_OFFSET), win=16384, kp=0.4, ki=0.05) # The pilot is 2.69 MHz below the centre
     src = rp.source.File.__new__(rp.source.File) # unused: blocks come from the array below
     out = []
     state = None
@@ -205,7 +175,7 @@ def recover(x, Fs, cf, lower, verbose=True, refine=2, block=BLOCK_FIELDS):
     say(f"Pilot at {f_pilot/1e6:.6f} MHz: {over:.1f} dB over the data, {off:+.0f} Hz from where it should be "
         f"({off/(lower + PILOT_OFFSET)*1e6:+.1f} ppm; the HackRF's clock and the broadcaster's together)")
     y, lock = to_symbol_rate_signal(x, Fs, cf, f_pilot)
-    err = np.array(lock.err[20:])
+    err = np.array(list(lock.errs)[20:])
     say(f"Pilot lock: phase error {np.std(err):.2f} rad rms over {len(err)} windows")
     step = Fs/(2*SYMBOL_RATE)
     pos0 = 1.0

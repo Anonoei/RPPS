@@ -7,8 +7,8 @@ from ._code import _code, register
 class fsm(_code):
     """Trellis code given as a finite state machine: P25's 1/2 and 3/4 rate trellis codes, ATSC's 8VSB trellis code
 
-    Each step takes k input bits (most significant first) in state s, sends the n-bit word output[s][u] (most
-    significant first) and moves to next[s][u]. Tables are (states, 2^k), or flat lists of states*2^k (row = state).
+    Each step takes k input bits (most significant first) in state s, sends the n-bit word `output[s][u]` (most
+    significant first) and moves to `next[s][u]`. Tables are (states, 2^k), or flat lists of states*2^k (row = state).
         start: the state the encoder starts in (default 0); null: unknown (the decoder starts from any)
         tail: input words of zeros appended by the encoder (P25: one), decoded and dropped; end: the state the
               path must end in (null: any)
@@ -18,7 +18,7 @@ class fsm(_code):
               of a constellation (trellis-coded modulation: Ungerboeck, pragmatic), in label order, decoding complex symbols
     Bit decoding takes hard bits or LLRs (positive = 0). decode() takes one sequence, decode_batch() a (W, ...) array
     of independent ones (all the same length) and returns the input bits of each.
-    After decode(), `errors` is the number of received bits (hard decided) that differ from the decoded path's words.
+    With status=True, each sequence's errors are the received bits (hard decided) that differ from its decoded path's words.
     """
     soft = True
 
@@ -116,7 +116,18 @@ class fsm(_code):
         ob = self.out_bits.astype(np.float64)
         return llr.reshape(W, -1, self.n), lambda v: np.einsum("wn,sun->wsu", v, ob) # Sum of the LLRs where the word has a 1
 
-    def decode_batch(self, x, soft=None):
+    def decode_batch(self, x, soft=None, status=False):
+        """Sequences (W, ...) decoded together: bits (W, ...), or (bits, errors per sequence) with status=True"""
+        bits, errors, _ = self._batch(x, soft)
+        return (bits, errors) if status else bits
+
+    def paths(self, x, soft=None):
+        """Sequences (W, ...) decoded together: (bits (W, ...), the encoder's output word at every step of each decoded path
+        (W, T): what the decoder decided was sent, before any mapping to levels)"""
+        bits, _, out = self._batch(x, soft)
+        return bits, out
+
+    def _batch(self, x, soft):
         x = np.asarray(x)
         if soft is None:
             soft = x.dtype.kind == "f"
@@ -162,21 +173,20 @@ class fsm(_code):
         return words, self.out[prev, words]
 
     def _finish(self, x, soft, words, path_out):
-        """Input bits of the decoded paths, and `errors` against what was received"""
+        """(input bits of the decoded paths, their errors against what was received (None for a code on levels), the paths'
+        output words)"""
         W, T = words.shape
         keep = T - self.tail
         bits = ((words[:, :keep, None] >> np.arange(self.k - 1, -1, -1)) & 1).astype(bool).reshape(W, -1)
-        self._path_out = path_out
         if self.levels is None:
             rx = (x.reshape(W, T, self.n) < 0) if soft else x.reshape(W, T, self.n).astype(bool)
             sent = ((path_out[..., None] >> np.arange(self.n - 1, -1, -1)) & 1).astype(bool)
-            self.errors = np.count_nonzero(rx != sent, axis=(1, 2))
-        else:
-            self.errors = None
-        return bits
+            return bits, np.count_nonzero(rx != sent, axis=(1, 2)), path_out
+        return bits, None, path_out
 
-    def decode(self, bits, soft=None):
+    def _decode(self, bits, soft=None):
         x = np.asarray(bits)
         per = self.n // self.sym_bits if self.levels is not None else self.n
         x = x[:len(x)//per*per]
-        return self.decode_batch(x[None], soft)[0]
+        bits, errors, _ = self._batch(x[None], soft)
+        return bits[0], errors

@@ -1,4 +1,4 @@
-"""Known structure among the symbols of a frame (README.dev.md, symbol): physical headers, pilot blocks, phase scrambling
+"""Known structure among the symbols of a frame (rpps.symbol): physical headers, pilot blocks, phase scrambling
 
 These work frame by frame. A frame starts wherever a profile applies a change to them (rpps.profile.control): a frame
 sync publishes each frame's start, a header publishes what follows it, and each step restarts its frame there. Used on
@@ -29,7 +29,7 @@ from ..base import Mod, dtype
 from ..base.types import Category, Rep
 from ..errors import ConfigError
 from ..base.rpps import FRAME
-from ..base.control import publish, anchor
+from ..base.control import publish, anchor, emit
 from .modulation import Modulation
 
 def _bits(value, n):
@@ -98,10 +98,14 @@ class Header(_Frame):
 
         rx: frame -> payload. Each frame's header is decoded (soft, every message tried: the code is short) and its fields
             published from the payload's first symbol (rp.base.control.publish). A header with more than `max_errors` bit errors
-            is refused, and the frame dropped. Its estimates are in stream.est[name]: frames, refused, last errors.
+            is refused, and the frame dropped. Its estimates are in stream.est[name]: frames, refused, last errors. Each header
+            is also emitted as a message (rpps.profile.message) from its first symbol, its fields and bit errors with it:
+            crc_ok True when taken, False when refused.
         tx: payload -> frame, the header built from the fields as last controlled (`control(modcod=..., ...)`).
     Frames start where a profile says (a frame sync before it), or at the start of the stream.
     """
+    EMITS = True # Every header, taken or refused, is a message (rpps.profile.message)
+
     def __init__(self, name, constellation, phase, rotate, known, rows, n, scramble, fields, max_errors=None, cycle=None):
         super().__init__()
         self.name = name
@@ -188,10 +192,12 @@ class Header(_Frame):
             est["errors"] = errors
             if errors > self.max_errors:
                 est["refused"] += 1
+                emit(data.meta, self, None, {**fields, "errors": int(errors)}, None, False, st.pos)
                 st.mode = "skip"
                 continue
             est["frames"] += 1
             at = st.pos + self.length
+            emit(data.meta, self, None, {**fields, "errors": int(errors)}, None, True, st.pos)
             publish(data.meta, self, fields, at=at, out=n_out)
             anchor(data.meta, self, at, n_out)
             st.mode = "payload"
@@ -234,7 +240,7 @@ class Pilots(_Frame):
 
     The frame has `slots` slots of `slot` symbols; with `pilots` on, a block of `length` pilots (each `value`) follows
     every `every` slots but the last (DVB-S2: 90, 16, 36, (1+j)/sqrt2). On receive, symbols past the end of a frame are
-    dropped (counted in stream.est[name]["extra"]): the next frame starts where a profile says."""
+    dropped (counted in `stream.est[name]["extra"]`): the next frame starts where a profile says."""
     CONTROLS = {"slots": "live", "pilots": "live"}
 
     def __init__(self, slot=90, every=16, length=36, value=(1 + 1j)/np.sqrt(2), slots=None, pilots=True, name="pilots"):

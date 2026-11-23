@@ -17,6 +17,13 @@
       "comment": "the Reed-Solomon code: rs/ccsds_255_223_dual (the standard's dual basis) or rs/ccsds_255_223 (conventional)"
     }
   },
+  "requires": {
+    "baud": null,
+    "Fs": "baud*sps",
+    "bw": "1.35*baud",
+    "min_samples": "2*sps*(32 + 8*255*depth)",
+    "comment": "any symbol rate: given, or measured"
+  },
   "steps": [
     {
       "wave": "shape",
@@ -75,6 +82,14 @@
       "code": "block",
       "name": {
         "param": "rs"
+      },
+      "message": {
+        "kind": "frame",
+        "bits": {
+          "expr": "8*223*depth"
+        },
+        "check": true,
+        "comment": "a transfer frame: the RS data of its depth codewords"
       }
     }
   ]

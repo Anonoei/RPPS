@@ -13,7 +13,7 @@ class CPSync(Stage):
 
         carriers = samples + rp.sync.CPSync(64, 16) + rp.wave.OFDMRx(64, 16)
 
-    First class (README.dev.md, Sync methods): block estimation over windows at absolute stream positions, `window` seconds
+    First class (rpps.sync): block estimation over windows at absolute stream positions, `window` seconds
     (at least `min_symbols` OFDM symbols). In a window, the correlation of every sample with the one n_fft later, summed over
     a prefix's length and folded over the window's symbols, peaks where the prefixes start: gamma(t) = sum r[k] r*[k + N]
     over the prefix at t. The ML metric |gamma(t)| - rho * energy(t)/2 (rho = snr/(snr + 1)) takes the timing; the angle of

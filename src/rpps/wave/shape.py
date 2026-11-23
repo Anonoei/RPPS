@@ -1,4 +1,4 @@
-"""Pulse shaping and its matched filter: the wave pair of a symbol pulse (README.dev.md, Wave pairs)
+"""Pulse shaping and its matched filter: the wave pair of a symbol pulse (rpps.wave, Wave pairs)
 
 The pulses themselves are definitions (config/pulse, built by rp.signal.filters.load("pulse/...")); these apply them:
 

@@ -14,7 +14,7 @@ class TLL(Stage):
 
         symbols = matched + rp.sync.time.TLL(sps=4, bw=0.01)
 
-    Second class (README.dev.md, Sync methods): a loop updated once per symbol. Each symbol is interpolated at its
+    Second class (rpps.sync): a loop updated once per symbol. Each symbol is interpolated at its
     instant, and a timing error detector (`ted`: "zx", zero crossing (Gardner), on the symbol before it, the sample half
     way and this one; "el", early-late, on the samples half a symbol either side of this one) gives the timing error, which a proportional-integral loop filter (rpps.sync.pll.PILoop, from `bw` as a fraction of the
     symbol rate) turns into the next instant. Needs no decisions and no carrier, so it runs before carrier recovery.

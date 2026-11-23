@@ -36,13 +36,8 @@ def crc24(bits, init=0x555555):
         raise ValueError("only the advertising CRC init (0x555555) is set up")
     return _CRC24.field(bits).astype(int).tolist()
 
-def bursts(x, fs=FS, factor=6.0, win=8, min_us=60, max_us=3000):
-    p = np.abs(x)**2
-    e = p[:len(p)//win*win].reshape(-1, win).mean(1)
-    on = e > factor*np.percentile(e, 20)
-    d = np.diff(np.r_[0, on.astype(int), 0])
-    st = np.where(d == 1)[0]*win; en = np.where(d == -1)[0]*win
-    return [(s, e_) for s, e_ in zip(st, en) if min_us <= (e_ - s)/fs*1e6 <= max_us]
+BURST = rp.sync.Burst(factor=6.0, win=8, min_s=60e-6, max_s=3e-3, history=1 << 26) # A packet: 80 us to 2.1 ms on air; the floor from
+# the whole capture (these scripts take one at once)
 
 def demod(seg, fs=FS):
     """Instantaneous frequency (Hz) with the burst's mean removed, smoothed over one symbol"""
@@ -100,7 +95,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     x = np.fromfile(a.path, np.complex64).astype(np.complex128)
     fs = a.fs*1e6
-    bs = bursts(x, fs)
+    bs = [(b.meta.pos, b.meta.pos + len(b)) for b in rp.Data(x, Fs=fs, flush=True) + BURST]
     res = []
     for s, e in bs:
         r = decode_burst(x[max(0, s - 16):e + 16], a.channel, fs)

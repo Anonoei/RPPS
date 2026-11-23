@@ -1,7 +1,7 @@
 """The worked examples in examples/ run and their own checks pass
 
 Each one is a script that asserts what it shows; this runs it as `python examples/<name>.py` would. The examples
-that need a capture, a radio or a display (e2e, e2e_mat, live_profile, window) are not run here."""
+that need a capture, a radio or a display (e2e, e2e_mat, e2e_profile, live_profile, window) are not run here."""
 import runpy
 from pathlib import Path
 
@@ -10,7 +10,7 @@ import pytest
 EXAMPLES = Path(__file__).resolve().parents[2]/"examples"
 
 FAST = ["quickstart", "list_definitions", "operators", "soft_decisions", "channel_and_sync", "profile_loopback",
-        "own_definitions", "streaming_io"]
+        "own_definitions", "streaming_io", "integrating", "channel_shm"]
 KERNELS = ["parallel_rx"] # seconds with the C++ kernels, minutes without
 SLOW = ["unknown_signal"] # tens of seconds even with them
 
@@ -36,6 +36,6 @@ def test_slow_example(name, monkeypatch):
 
 def test_every_example_is_run_or_listed():
     """A new example joins one of the lists above (or the ones that need hardware, here)"""
-    needs_more = {"e2e", "e2e_mat", "live_profile", "window"}
+    needs_more = {"e2e", "e2e_mat", "e2e_profile", "live_profile", "window"}
     have = {p.stem for p in EXAMPLES.glob("*.py")}
     assert have == set(FAST) | set(KERNELS) | set(SLOW) | needs_more

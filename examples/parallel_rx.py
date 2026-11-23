@@ -10,7 +10,7 @@ the serial runner's, bit for bit, for any block cut, worker count and batch size
 
 Here: DVB-S2 normal frames (QPSK 1/2 and 8PSK 3/4 alternating, pilots on, each frame's own MODCOD from its header),
 received serially and in parallel. Each runner is run once to warm up the shared tables and the second run is timed,
-as tests/parallel_bench.py does in more detail. The `__main__` guard is needed: process workers import this file.
+as tools/parallel_bench.py does in more detail. The `__main__` guard is needed: process workers import this file.
 """
 import sys
 import time
@@ -20,7 +20,7 @@ import numpy as np
 import rpps as rp
 
 def main(frames=8, workers=4):
-    # Timing known: the transmitter's. The carrier and frame sync still run (README.dev.md "Parallelism")
+    # Timing known: the transmitter's. The carrier and frame sync still run (rpps.parallel)
     p = rp.profile.load("dvbs2/normal", sync={"timing": {"method": "known"}})
     table = rp.profile.table("dvbs2/modcod")
     fields = [{"modcod": (4, 12)[i % 2], "pilots": 1} for i in range(frames)] # one header per frame

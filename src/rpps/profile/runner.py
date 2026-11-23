@@ -63,7 +63,7 @@ class Change:
         return f"<Change {self.step} {self.fields} at {self.at}: fwd {sorted(self.fwd)} @{self.hop}:{self.pos} back {self.back}>"
 
 class _Ckpt:
-    __slots__ = ("pos", "ctx", "slots", "states", "out_pos", "changes", "keys", "call", "outs", "est", "log")
+    __slots__ = ("pos", "ctx", "slots", "states", "out_pos", "changes", "keys", "call", "outs", "est", "log", "mseq")
 
 def _attrs(op):
     """An operator's attributes, to put back after a re-run (its parameters: what `control` changes)"""
@@ -87,9 +87,17 @@ class Runner:
 
     fields (transmit): the fields of the frames that start in this block, over the profile's schedule: one dict for all of
     them, or a list, one per frame in order (then the schedule)
+
+    Receiving, the frames its steps decoded come out of `take_messages()` (rpps.profile.message), placed in the stream
+    the runner was given. profile: the profile's name, for them
     """
-    def __init__(self, slots, name="", entries=None, direction="rx"):
+    HANDED = 4096 # Keys of messages handed out kept, so a re-run doesn't hand one out twice
+    kinds = None # The message kinds handed out (Profile.rx(kinds=...)), None: all
+
+    def __init__(self, slots, name="", entries=None, direction="rx", profile=None):
         self.slots, self.name, self.direction = list(slots), name, direction
+        self.profile = profile if profile is not None else name
+        self.messages, self._mseq, self._handed, self._input = [], 0, {}, (1.0, 0.0)
         self.ctx = None
         self.entries = dict(entries or {})
         self._step_slots = {}
@@ -120,6 +128,18 @@ class Runner:
                             self.span = i if self.span is None else min(self.span, i)
         self.ckpts, self.buf = [], []
         self._span_ops = set()
+        # Steps whose output is a run of fixed-size frames ({"message": {"bits": n, "kind": k, "check": true, "fields":
+        # [{"name", "from", "bits"}]}} in the profile: TS packets, transfer frames): the runner cuts it into messages, from
+        # the step's last op. check: a decoder before it reports failures (an RS), so no failed mask means all good
+        self._units = {}
+        if direction == "rx":
+            for sid, idx in self._step_slots.items():
+                spec = self.slots[idx[-1]].step.spec.get("message")
+                if spec:
+                    if self.span is not None and idx[-1] >= self.span:
+                        from ..errors import ConfigError
+                        raise ConfigError(f"{name}: step {sid!r} cuts messages inside the re-run span")
+                    self._units[idx[-1]] = [spec, None]
         self.stop = len(self.slots) # Slots this runner runs itself: a parallel runner stops where its region starts
 
     # ---- the operators
@@ -145,6 +165,7 @@ class Runner:
     def __call__(self, data, fields=None):
         self._call += 1
         self._stream = data.meta.stream
+        self._input = (data.meta.Fs or 1.0, data.meta.cf)
         _control.of(self._stream)
         if self.ctx is not None:
             ctx = dict(self.ctx)
@@ -233,6 +254,11 @@ class Runner:
         if not slot.map:
             slot.map.add(piece.meta.pos, out.meta.pos, rate or 1.0)
         ctl = self._stream.control
+        if ctl is not None and ctl.messages:
+            mine = [m for m in ctl.messages if m[0] is op]
+            ctl.messages = [m for m in ctl.messages if m[0] is not op]
+            for _, kind, fields, bits, ok, at in mine:
+                self._message(slot, kind, fields, bits, ok, at)
         if ctl is not None and (ctl.anchors or ctl.published):
             mine = [a for a in ctl.anchors if a[0] is op]
             ctl.anchors = [a for a in ctl.anchors if a[0] is not op]
@@ -242,7 +268,66 @@ class Runner:
             ctl.published = [p for p in ctl.published if p[0] is not op]
             for _, fields, at, o, span, group in pubs:
                 self._accept(slot.index, fields, at, None if o is None else out.meta.pos + o, span, slot.step.id, group)
+        if slot.index in self._units: # (after the anchors: they place its frames)
+            self._cut_units(slot, out)
         return out
+
+    # ---- messages
+
+    def _message(self, slot, kind, fields, bits, ok, at):
+        """A frame a slot's op emitted, at position `at` of its input: placed in the runner's input, kept until taken"""
+        from .message import Message
+        sample = int(round(self._back(at, slot.index, 0)))
+        kind = kind or slot.step.id
+        Fs, cf = self._input
+        t0 = self._stream.t0
+        payload, n = Message.payload_of(bits)
+        q = self._stream.est.get("quality")
+        m = Message(self.profile, kind, fields, payload, n, ok, sample, (t0 or 0.0) + sample/Fs, cf or None,
+                    copy.copy(q) if q is not None else None)
+        self.messages.append((self._mseq, slot.index, (slot.index, sample, kind), m))
+        self._mseq += 1
+
+    def _cut_units(self, slot, out):
+        """A message step's output, cut into its frames: each one emitted from where it starts (a frame cut by a block
+        waits for the rest; a gap in the positions starts over)"""
+        spec, u = self._units[slot.index]
+        n = int(spec["bits"])
+        y = np.asarray(out.data)
+        y = (y < 0) if y.dtype.kind == "f" else y.astype(bool)
+        f = failed_of(out)
+        f = np.zeros(len(y), bool) if f is None else np.asarray(f, bool)
+        known = failed_of(out) is not None
+        if u is None or u[0] + len(u[1]) != out.meta.pos:
+            u = [out.meta.pos, y[:0], f[:0], known]
+        u = [u[0], np.concatenate((u[1], y)), np.concatenate((u[2], f)), u[3] or known]
+        while len(u[1]) >= n:
+            bits, bad = u[1][:n], u[2][:n]
+            fields = {fd["name"]: int(bits[fd["from"]:fd["from"] + fd["bits"]].astype(np.int64)
+                                      @ (1 << np.arange(fd["bits"] - 1, -1, -1)))
+                      for fd in spec.get("fields", ())}
+            at = slot.map.back(u[0]) # Where it starts, in the slot's input
+            # crc_ok: the failed mask's verdict; none at all after a checking decoder ("check": an RS) is all good
+            self._message(slot, spec.get("kind"), fields, bits, (not bad.any()) if u[3] or spec.get("check") else None, at)
+            u = [u[0] + n, u[1][n:], u[2][n:], u[3]]
+        self._units[slot.index][1] = u
+
+    def take_messages(self):
+        """The frames decoded since the last call, by position (each once: a re-run's second decode is not handed out
+        again)"""
+        out = []
+        for _, _, key, m in self.messages:
+            if key not in self._handed:
+                self._handed[key] = None
+                out.append(m)
+        self.messages = []
+        while len(self._handed) > self.HANDED:
+            self._handed.pop(next(iter(self._handed)))
+        return sorted((m for m in out if self.kinds is None or m.kind in self.kinds), key=lambda m: m.sample)
+
+    def to_input(self, pos):
+        """A position in this runner's output, in its input (the stream it was given)"""
+        return self._back(pos, len(self.slots), 0)
 
     @staticmethod
     def _slice(data, a, b, ctx, flush):
@@ -481,6 +566,7 @@ class Runner:
         c.keys = set(self._keys)
         c.est = copy.deepcopy(st.est)
         c.log = len(_control.of(st).log)
+        c.mseq = self._mseq
         self.ckpts.append(c)
 
     def _restore(self, c):
@@ -505,6 +591,8 @@ class Runner:
         ctl = _control.of(st)
         span_ids = {id(e) for o, e in self._logent.values() if o >= self.span}
         ctl.log = ctl.log[:c.log] + [e for e in ctl.log[c.log:] if id(e) not in span_ids]
+        # So are its messages
+        self.messages = [m for m in self.messages if m[1] < self.span or m[0] < c.mseq]
 
     def _rewind(self, late):
         """Back to the last checkpoint before the earliest late change; None when re-running is given up"""

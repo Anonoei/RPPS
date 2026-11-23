@@ -97,7 +97,8 @@ def cmd_show(args):
 
 
 def cmd_rx(args):
-    """Receive a capture with a profile: the data bits out, as bytes (most significant bit first) to --out"""
+    """Receive a capture with a profile: the data bits out, as bytes (most significant bit first) to --out; --messages:
+    every frame decoded, one JSON line each (rp.profile.Message)"""
     import numpy as np
     import rpps as rp
     params = _params(args.param)
@@ -107,15 +108,29 @@ def cmd_rx(args):
         sync[kind] = {"method": method}
     rp.set_effort(args.effort)
     p = rp.profile.load(args.profile, sync=sync or None, **params)
-    rx = p.rx()
+    rx = p.rx(kinds=args.kinds.split(",") if args.kinds else None)
     src = rp.source.File(args.fmt, args.file, Fs=args.fs, cf=args.cf, sps=args.sps or p.params.get("sps", 0.0))
     bits = []
+    n_msgs = 0
     for block in src(args.block):
         out = rx(block)
-        x = np.asarray(out.data)
-        bits.append(x < 0 if x.dtype.kind == "f" else x.astype(bool))
+        if args.messages:
+            for m in rx.take_messages():
+                print(json.dumps(m.to_dict()))
+                n_msgs += 1
+        if isinstance(out, dict): # A profile that branches: one branch's output
+            name = args.branch or list(out)[-1]
+            if name not in out:
+                raise SystemExit(f"{args.profile} has no branch {name!r} (has {', '.join(out)})")
+            out = out[name]
+        for o in out if isinstance(out, list) else [out]: # (a profile with a burst step: one output per burst)
+            x = np.asarray(o.data)
+            bits.append(x < 0 if x.dtype.kind == "f" else x.astype(bool))
     bits = np.concatenate(bits) if bits else np.zeros(0, bool)
-    print(f"{args.file}: {len(bits)} bits out of {args.profile}")
+    if args.messages:
+        print(f"{args.file}: {n_msgs} messages, {len(bits)} bits out of {args.profile}", file=sys.stderr)
+    else:
+        print(f"{args.file}: {len(bits)} bits out of {args.profile}" + (f" ({args.branch})" if args.branch else ""))
     if args.out:
         Path(args.out).write_bytes(np.packbits(bits).tobytes())
         print(f"wrote {args.out}")
@@ -136,9 +151,10 @@ def _params(pairs):
 def cmd_tx(args):
     """Transmit with a profile: data (a file's bytes, or random) through its transforms to samples in a file
 
-    --packet N splits the data into packets of N bytes, each sent as a burst of its own (its pulses complete), with --gap
-    zero samples between them; otherwise it is one stream. --field NAME=VALUE sets the fields of every frame's header
-    (the profile's schedule or defaults otherwise)."""
+    --packet N splits the data into packets of N bytes, each sent as a burst of its own (its pulses complete), --gap
+    seconds apart; otherwise it is one stream. A profile with a burst step places the bursts itself (rpps.sync.BurstTx):
+    --gap overrides its gap_s, --hop its carrier offsets, --rate-out its output rate (MF-TDMA, hopping). --field
+    NAME=VALUE sets the fields of every frame's header (the profile's schedule or defaults otherwise)."""
     import numpy as np
     import rpps as rp
     p = rp.profile.load(args.profile, **_params(args.param))
@@ -150,14 +166,33 @@ def cmd_tx(args):
     size = 8*args.packet if args.packet else len(bits)
     fields = _params(args.field) or None
     tx, stream, n_out, Fs = p.tx(), None, 0, None
+    from rpps.profile.burst import BurstTxRunner
+    bursts = isinstance(tx, BurstTxRunner)
+    if bursts:
+        bt = tx.burst_tx
+        if args.gap is not None:
+            bt.gap_s = args.gap
+        if args.hop:
+            bt.hop = [float(f) for f in args.hop.split(",")]
+        if args.rate_out:
+            bt.Fs = args.rate_out
+        bt.reset()
+    elif args.hop or args.rate_out:
+        raise SystemExit(f"{args.profile} has no burst step: --hop and --rate-out place bursts")
+    starts = list(range(0, len(bits), max(size, 1)))
     with rp.source.Sink(args.fmt, args.out) as sink:
-        for a in range(0, len(bits), max(size, 1)):
-            d = rp.Data(bits[a:a + size], Fs=args.rate, sps=1, stream=stream, flush=True)
-            stream = d.stream
-            o = tx(d, fields=fields)
-            x = np.asarray(o.data, dtype=np.complex64)
-            if args.packet and args.gap:
-                x = np.concatenate((x, np.zeros(args.gap, np.complex64)))
+        for k, a in enumerate(starts):
+            last = k == len(starts) - 1
+            if bursts:
+                o = tx(rp.Data(bits[a:a + size], Fs=args.rate, sps=1), fields=fields, flush=last)
+                x = np.asarray(o.data, dtype=np.complex64)
+            else:
+                d = rp.Data(bits[a:a + size], Fs=args.rate, sps=1, stream=stream, flush=True)
+                stream = d.stream
+                o = tx(d, fields=fields)
+                x = np.asarray(o.data, dtype=np.complex64)
+                if args.packet and args.gap:
+                    x = np.concatenate((x, np.zeros(int(round(args.gap*o.Fs)), np.complex64)))
             sink.write(x)
             n_out, Fs = n_out + len(x), o.Fs
     print(f"{args.out}: {n_out} samples at {Fs:g} Hz ({len(data)} bytes through {args.profile})")
@@ -336,7 +371,7 @@ def main(argv=None):
     p_rx.add_argument("profile", help="profile, e.g. dvbs2/normal")
     p_rx.add_argument("file", help="capture file")
     p_rx.add_argument("--fs", type=float, required=True, help="sample rate [Hz]")
-    p_rx.add_argument("--fmt", default="cf64", help="sample format (default: cf64)")
+    p_rx.add_argument("--fmt", default="cf32", help="sample format (default: cf32)")
     p_rx.add_argument("--cf", type=float, default=0.0, help="centre frequency [Hz]")
     p_rx.add_argument("--sps", type=float, default=0.0, help="samples per symbol (default: the profile's sps parameter)")
     p_rx.add_argument("--block", type=int, default=1 << 16, help="samples per block (default: 65536)")
@@ -345,19 +380,25 @@ def main(argv=None):
     p_rx.add_argument("--effort", default="balanced", choices=("fast", "balanced", "max"),
                       help="speed against recovered SNR (default: balanced; see rpps._effort)")
     p_rx.add_argument("--out", help="write the bits out as bytes here")
+    p_rx.add_argument("--branch", help="a profile that branches: the branch whose bits go out (default: the last)")
+    p_rx.add_argument("--messages", action="store_true", help="print every frame decoded, one JSON line each (to stdout)")
+    p_rx.add_argument("--kinds", metavar="KIND,...", help="only these message kinds, and only the steps they need "
+                      "(default: all; rp.profile.info(name).kinds lists them)")
     p_rx.set_defaults(fn=cmd_rx)
 
     p_tx = sub.add_parser("tx", help="transmit data with a profile into a sample file")
     p_tx.add_argument("profile", help="profile, e.g. ble/adv")
     p_tx.add_argument("out", help="sample file to write")
     p_tx.add_argument("--rate", type=float, required=True, help="rate of the data at the profile's first step (bits or symbols a second)")
-    p_tx.add_argument("--fmt", default="cf64", help="sample format (default: cf64)")
+    p_tx.add_argument("--fmt", default="cf32", help="sample format (default: cf32)")
     src = p_tx.add_mutually_exclusive_group(required=True)
     src.add_argument("--in", dest="input", help="the data: this file's bytes")
     src.add_argument("--random", type=int, help="the data: this many random bytes")
     p_tx.add_argument("--seed", type=int, default=0, help="seed of --random")
     p_tx.add_argument("--packet", type=int, default=0, help="bytes a packet, each sent as a burst of its own")
-    p_tx.add_argument("--gap", type=int, default=0, help="zero samples after each packet")
+    p_tx.add_argument("--gap", type=float, default=None, help="seconds between packets (a burst profile: its gap_s otherwise)")
+    p_tx.add_argument("--hop", default="", metavar="F1,F2,...", help="a burst profile: carrier offsets [Hz] cycled burst by burst")
+    p_tx.add_argument("--rate-out", type=float, default=None, help="a burst profile: output sample rate (the bursts' own otherwise)")
     p_tx.add_argument("--param", action="append", default=[], metavar="NAME=VALUE", help="a profile parameter (repeatable)")
     p_tx.add_argument("--field", action="append", default=[], metavar="NAME=VALUE", help="a header field of every frame (repeatable)")
     p_tx.set_defaults(fn=cmd_tx)
@@ -365,7 +406,7 @@ def main(argv=None):
     p_sv = sub.add_parser("survey", help="find and list the signals in a capture file")
     p_sv.add_argument("file", help="capture file")
     p_sv.add_argument("--fs", type=float, required=True, help="sample rate [Hz]")
-    p_sv.add_argument("--fmt", default="cf64", help="sample format, see rp.source.formats.ls() (default: cf64, complex float32 pairs)")
+    p_sv.add_argument("--fmt", default="cf32", help="sample format, see rp.source.formats.ls() (default: cf32, complex float32 pairs)")
     p_sv.add_argument("--cf", type=float, default=0.0, help="centre frequency [Hz] (default: 0)")
     p_sv.add_argument("--samples", type=int, default=2**17, help="samples to read (default: 131072)")
     p_sv.add_argument("--plot", action="store_true", help="show the survey plot (needs matplotlib)")
@@ -374,7 +415,7 @@ def main(argv=None):
     p_pr = sub.add_parser("profile", help="every step that processes each signal of a capture, and what is unknown")
     p_pr.add_argument("file", help="capture file")
     p_pr.add_argument("--fs", type=float, required=True, help="sample rate [Hz]")
-    p_pr.add_argument("--fmt", default="cf64", help="sample format (default: cf64); a gqrx .cs16 is ci32t")
+    p_pr.add_argument("--fmt", default="cf32", help="sample format (default: cf32); a gqrx .cs16 is ci16t")
     p_pr.add_argument("--cf", type=float, default=0.0, help="centre frequency [Hz] (default: 0)")
     p_pr.add_argument("--samples", type=int, default=2**17, help="samples the survey reads (default: 131072)")
     p_pr.add_argument("--signals", help="only these, by survey index: 0,3")

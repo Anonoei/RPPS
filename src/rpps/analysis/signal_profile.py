@@ -1,6 +1,6 @@
 """A signal's profile: every step it takes to process it, as far as analysis can tell, and what it might be where it can't
 
-    profiles = rp.analysis.profile(rp.source.File("ci32t", "capture.cs16", Fs=100e6))   # every signal the survey finds
+    profiles = rp.analysis.profile(rp.source.File("ci16t", "capture.cs16", Fs=100e6))   # every signal the survey finds
     profiles = rp.analysis.profile(src, signals=[0, 3])                                   # or some of them
     for p in profiles:
         print(p)                       # numbered steps; an unsolved one ends the list with its top candidates

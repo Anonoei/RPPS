@@ -1,4 +1,4 @@
-"""What each step of a profile builds (README.dev.md, Profiles)
+"""What each step of a profile builds (rpps.profile)
 
 A step is one dict with one category key, `{"<category>": "<kind>", ...its parameters}`, in receive order. Building it
 gives a Step: the operators it runs on receive and on transmit, and the representations it takes and gives on receive.
@@ -31,7 +31,10 @@ The kinds (`python -m rpps steps` lists them with the sync methods):
     code     fec (type block / conv / interleave, name, args), scramble (name, args; length: frames of that many bits from
              the first), line (invert, nrzi, nrzm, manchester, thomas), marker (a word before each frame: length, or frames by
              control), uncoded
-    link     crc, frame (HDLC), header (fields, crc, fcs, payload)
+    link     crc, frame (HDLC), header (fields, crc, fcs, payload; select: the frames with those field values)
+    grid     resource grids (rpps.grid), receive only: lte_cell (offset, span, resolution, acquire, lose, gate), lte_grid
+             (n_rb), and the channels on its frames, lte_pbch, lte_pcfich, lte_pdcch (rntis), lte_pdsch; nr_cell (offset,
+             span, resolution, period, acquire, lose, gate, fc), nr_grid, nr_pbch, nr_pdcch (rntis), nr_pdsch
 """
 from dataclasses import dataclass, field
 
@@ -69,7 +72,7 @@ def _need(spec, key, where):
 
 # ---- the registry: what each category's kinds build, and the methods of the sync kinds that have them
 
-REGISTRY = {c: {} for c in ("signal", "sync", "wave", "symbol", "code", "link")}
+REGISTRY = {c: {} for c in ("signal", "sync", "grid", "wave", "symbol", "code", "link")}
 METHODS = {} # sync kind -> {method: builder(m, rep, ctx) -> operator}
 
 def register_step(category, kind):
@@ -91,7 +94,7 @@ def register_step(category, kind):
 
 def register_sync_method(kind, method):
     """Register a method of a sync kind ("timing", "carrier", "equalize"): builder(m, rep, ctx) -> the stage, where m is the
-    step merged with the profile's defaults and the load-time overrides (README.dev.md, Sync methods)"""
+    step merged with the profile's defaults and the load-time overrides (rpps.sync)"""
     def deco(builder):
         table = METHODS.setdefault(kind, {})
         if method in table:
@@ -223,7 +226,7 @@ def _sync_method(kind, spec, ctx):
     return chosen
 
 _SYNC_DEFAULTS = {
-    "timing": {"method": "oerder_meyr"}, # first class: block estimation tracked across windows (README.dev.md, Sync methods)
+    "timing": {"method": "oerder_meyr"}, # first class: block estimation tracked across windows (rpps.sync)
     "carrier": {"method": "mpower"},     # first class likewise; the loops (mm, gardner, costas) are there by name
     "align": {"method": "align"},
     "puncture": {"method": "reencode"},
@@ -249,8 +252,10 @@ def _om(m, rep, ctx):
 
 @register_sync_method("timing", "mm")
 def _mm(m, rep, ctx):
+    """Mueller & Muller: "alpha" (loop gain), "interp" (interpolation factor), "biphase" (Manchester symbols, timed on
+    their mid-symbol transition: RDS)"""
     from .. import sync
-    return sync.time.MM(m.get("alpha", 0.3), ted="mm")
+    return sync.time.MM(m.get("alpha", 0.3), interp=m.get("interp", 32), biphase=m.get("biphase", False), ted="mm")
 
 @register_sync_method("timing", "gardner")
 def _gardner(m, rep, ctx):
@@ -265,8 +270,9 @@ def _tll(m, rep, ctx):
 
 @register_sync_method("timing", "known")
 def _known(m, rep, ctx):
+    """Known timing; `anchor`: the name of a preamble step whose find starts the symbol grid (one grid per burst)"""
     from .. import sync
-    return sync.time.Known(m.get("sps", ctx["params"].get("sps")))
+    return sync.time.Known(m.get("sps", ctx["params"].get("sps")), anchor=m.get("anchor"))
 
 @register_sync_method("timing", "fixed")
 def _fixed(m, rep, ctx):
@@ -326,6 +332,45 @@ def _sync_one(kind):
         register_step("sync", kind)(lambda _, spec, rep, ctx: ([(STAGE, make(_sync_method(kind, spec, ctx), ctx))], [], rep))
         return make
     return deco
+
+@register_step("sync", "burst")
+def _burst(kind, spec, rep, ctx):
+    """Per-burst demodulation (rpps.profile.burst): the stream cut into its bursts, the steps after this one built anew for
+    each. {"sync": "burst", "factor": 6, "win": 8, "min_s": 60e-6, "max_s": 3e-3} (rpps.sync.Burst's settings).
+    Transmitting (rpps.profile.burst.BurstTxRunner, rpps.sync.BurstTx): "gap_s" between bursts, "ramp_s" power ramps,
+    "Fs" the output rate (null: the bursts' own), "hop" carrier offsets [Hz] cycled burst by burst"""
+    from .. import sync
+    if rep is not None and rep != Rep.SAMPLES:
+        raise ConfigError(f"sync burst: cuts samples, not {rep}")
+    op = sync.Burst(spec.get("factor", 6.0), spec.get("win", 100), spec.get("min_s", 0.0), spec.get("max_s"),
+                    spec.get("percentile", 20), spec.get("history", 1 << 17), spec.get("settle", 512), spec.get("quiet", 3.0))
+    hop = spec.get("hop")
+    if hop is not None and (not isinstance(hop, list) or not hop):
+        raise ConfigError("sync burst: hop is a list of carrier offsets [Hz]")
+    try:
+        tx = sync.BurstTx(spec.get("Fs"), spec.get("gap_s", 0.0), spec.get("ramp_s", 0.0), hop)
+    except ValueError as e:
+        raise ConfigError(f"sync burst: {e}") from None
+    return [(STAGE, op)], [(STAGE, tx)], Rep.SAMPLES
+
+@register_step("sync", "preamble")
+def _preamble(kind, spec, rep, ctx):
+    """A burst's preamble (rpps.sync.Preamble): by its repetition ({"repeat": 16, "window": 128}), or by its waveform, made
+    from bits (a `sequence` word, or `word` + `bits`, after `lead` bits) through the profile's own transmit side, from the
+    steps after this one down to the symbol mapping (the profile builds it: rpps.profile.Profile._templates). Timing
+    {"method": "known", "anchor": <its name>} then places the symbols on what it found.
+    "attach": true transmits it (Preamble.attach_tx) before every stream (burst): for a preamble no later step sends
+    (a marker step sends a word of its own)"""
+    from .. import sync
+    m = dict(spec)
+    named = "sequence" in m or "word" in m
+    if not named and "repeat" not in m:
+        raise ConfigError("sync preamble: needs a `sequence` (or `word` and `bits`) or a `repeat`")
+    if m.get("attach") and not named:
+        raise ConfigError("sync preamble: attach sends its waveform, made from a `sequence` or `word` (a repeat alone has none)")
+    op = sync.Preamble(None, m.get("repeat"), m.get("window"), m.get("search"), m.get("gate", 0.5),
+                       m.get("offset", 0), m.get("correct", False), m.get("name", "preamble"), pending=named)
+    return [(STAGE, op)], [(STAGE, op.attach_tx())] if m.get("attach") else [], rep
 
 @_sync_one("align")
 def _align(m, ctx):
@@ -421,6 +466,64 @@ def _given(spec, keys, **convert):
 
 def _complex(v):
     return complex(v[0], v[1]) if isinstance(v, (list, tuple)) else complex(v)
+
+# ---- grid (receive only): a resource grid's cell search, its frames, the channels read off them
+
+@register_step("grid", "lte_cell")
+def _lte_cell(kind, spec, rep, ctx):
+    """LTE cell search and half-frame timing (rpps.grid.lte.LteCell): samples from the first subframe 0, in half-frames"""
+    from ..grid import lte
+    if rep is not None and rep != Rep.SAMPLES:
+        raise ConfigError(f"grid lte_cell: takes samples, not {rep}")
+    return [(STAGE, lte.LteCell(**_given(spec, ("offset", "span", "resolution", "acquire", "lose", "gate", "name"))))], [], Rep.SAMPLES
+
+@register_step("grid", "lte_grid")
+def _lte_grid(kind, spec, rep, ctx):
+    """Subframes to grid frames with every port's channel (rpps.grid.lte.LteGrid)"""
+    from ..grid import lte
+    return [(STAGE, lte.LteGrid(**_given(spec, ("n_rb", "cell"))))], [], Rep.SYMBOLS
+
+def _lte_channel(kind, spec, rep, ctx):
+    """A channel on LTE grid frames (rpps.grid.lte.channels): gives bits, publishes what it decoded"""
+    from ..grid import lte
+    name = spec.get("id", kind)
+    if kind == "lte_pbch":
+        op = lte.PBCH(name=name)
+    elif kind == "lte_pcfich":
+        op = lte.PCFICH(name=name)
+    elif kind == "lte_pdcch":
+        op = lte.PDCCH(**_given(spec, ("rntis",)), name=name)
+    else:
+        op = lte.PDSCH(name=name)
+    return [(STAGE, op)], [], Rep.DATA
+
+for _k in ("lte_pbch", "lte_pcfich", "lte_pdcch", "lte_pdsch"):
+    register_step("grid", _k)(_lte_channel)
+
+@register_step("grid", "nr_cell")
+def _nr_cell(kind, spec, rep, ctx):
+    """NR cell search and slot timing, LEO Doppler tracked (rpps.grid.nr.NrCell): samples from a frame start, in slots"""
+    from ..grid import nr
+    if rep is not None and rep != Rep.SAMPLES:
+        raise ConfigError(f"grid nr_cell: takes samples, not {rep}")
+    return [(STAGE, nr.NrCell(**_given(spec, ("offset", "span", "resolution", "period", "acquire", "lose", "gate", "fc", "name"))))], [], Rep.SAMPLES
+
+@register_step("grid", "nr_grid")
+def _nr_grid(kind, spec, rep, ctx):
+    """Slots to grid frames (rpps.grid.nr.NrGrid)"""
+    from ..grid import nr
+    return [(STAGE, nr.NrGrid(**_given(spec, ("cell", "period"))))], [], Rep.SYMBOLS
+
+def _nr_channel(kind, spec, rep, ctx):
+    """A channel on NR grid frames (rpps.grid.nr.channels)"""
+    from ..grid.nr import channels as ch
+    name = spec.get("id", kind)
+    op = {"nr_pbch": lambda: ch.PBCH(name=name), "nr_pdcch": lambda: ch.PDCCH(**_given(spec, ("rntis",)), name=name),
+          "nr_pdsch": lambda: ch.PDSCH(**_given(spec, ("fc",)), name=name)}[kind]()
+    return [(STAGE, op)], [], Rep.DATA
+
+for _k in ("nr_pbch", "nr_pdcch", "nr_pdsch"):
+    register_step("grid", _k)(_nr_channel)
 
 # ---- wave (pairs)
 
@@ -538,7 +641,11 @@ def _link(kind, spec, rep, ctx):
     from .. import link
     if kind in ("crc", "frame", "header"):
         name = _need(spec, "name", f"link {kind}")
-        make = lambda: link.load(f"{kind}/{name}")
+        def make():
+            op = link.load(f"{kind}/{name}")
+            if kind == "header" and spec.get("select"): # {"select": {"isi": 1}}: only the frames with those field values
+                op.select = dict(spec["select"])
+            return op
         return _pair(make(), make(), Rep.PACKETS)
 
 for _cat, _fn, _kinds in (("wave", _wave, ("shape", "stagger", "fm", "am", "ssb", "ofdm")),

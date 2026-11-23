@@ -1,6 +1,13 @@
 """RPPS parent classes"""
 import numpy as np
 
+from .meta import timed
+
+def _stream_of(data):
+    """The Stream a block belongs to (its time goes there), None for what is not a block"""
+    meta = getattr(data, "meta", None)
+    return getattr(meta, "stream", None)
+
 
 def align(ctx, key, x, block, pad, log=None):
     """Whole blocks of x for a stage that works on `block` items at a time
@@ -28,7 +35,7 @@ def align(ctx, key, x, block, pad, log=None):
     return x[:n]
 
 STREAM, FRAME = "stream", "frame"
-# Scope of an operator's state (README.dev.md, Parallelism). STREAM: it carries state from one frame to the next (trackers,
+# Scope of an operator's state (rpps.parallel). STREAM: it carries state from one frame to the next (trackers,
 # frame sync, convolutional decoders), so frames can't be processed apart. FRAME: it holds nothing across a frame start, so
 # a frame is a pure function of its data and the parameters controls gave it. Default STREAM (safe).
 
@@ -71,12 +78,12 @@ class Pipe:
         """data * pipe: encode, after checking the pipe takes what data is"""
         from .data import expect
         expect(self, data, self.takes(True), True)
-        return self.encode(data)
+        return timed(_stream_of(data), self, self.encode, data)
     def __rtruediv__(self, data):
         """data / pipe: decode, after checking the pipe takes what data is"""
         from .data import expect
         expect(self, data, self.takes(False), False)
-        return self.decode(data)
+        return timed(_stream_of(data), self, self.decode, data)
 
     def __mul__(self, other):
         if isinstance(other, Pipe):
@@ -92,7 +99,8 @@ class Pipeline(Pipe):
     """Pipes (and stages) applied in order. Build one by combining pipes: `a * b * c` or `a + b + c`
 
     data * pipeline: every item encodes in order. data / pipeline: every item decodes, last item first.
-    data + pipeline: every item processes in order (stages). Pipelines nest and flatten.
+    data + pipeline: every item processes in order (stages). Pipelines nest and flatten. A stage that splits the data
+    (`rp.sync.Burst`) makes the rest run on every piece, and the pipeline gives the list of what they made.
     """
     __slots__ = ("items",)
     def __init__(self, *items):
@@ -135,9 +143,18 @@ class Pipeline(Pipe):
         from .data import _Data
         if not isinstance(data, _Data):
             return NotImplemented
+        out, split = [data], False
         for it in self.items:
-            data = data + it
-        return data
+            nxt = []
+            for d in out:
+                r = d + it
+                if isinstance(r, list):
+                    nxt += r
+                    split = True
+                else:
+                    nxt.append(r)
+            out = nxt
+        return out if split else out[0]
 
 
 class Stage(Pipe):
@@ -180,7 +197,7 @@ class BitStage(Stage):
 
 def tag_stages(package, category):
     """Give every Stage class defined in `package` (a module or package name, submodules included) the Category `category`,
-    unless the class sets its own. In this architecture the package is the category (README.dev.md)"""
+    unless the class sets its own. In this architecture the package is the category (rpps.base)"""
     import importlib, pkgutil, sys
     root = importlib.import_module(package)
     names = [package]

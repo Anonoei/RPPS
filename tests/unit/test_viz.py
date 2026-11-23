@@ -42,3 +42,11 @@ def test_iq_eye_phasor_spectrogram_survey(x):
     rp.viz.phasor(None, x[::4])
     rp.viz.spectrogram.spectrogram(None, x.reshape(8, -1), Fs=1e6)
     rp.viz.survey(None, rp.analysis.survey(x, 1e6))
+
+
+def test_eye_is_upright_and_takes_a_block_with_no_traces():
+    """Amplitude up (not inverted); a short last block, no whole trace in it, draws nothing instead of failing"""
+    eye.IQ(None, np.zeros(0, np.complex64), 8, phase=0.0, beta=0.35)
+    lines = eye.IQ(None, np.exp(2j*np.pi*0.01*np.arange(400)).astype(np.complex64), 8)
+    lo, hi = lines[0][0].axes.get_ylim() if isinstance(lines, tuple) else lines[0].axes.get_ylim()
+    assert lo < hi

@@ -48,3 +48,18 @@ def test_fresh_takes_out_an_overlapping_bpsk(pair):
     wiener, _ = scf.fresh(y, FS, a[:half], (0.0,), taps=24, train=slice(0, half))
     fr, _ = scf.fresh(y, FS, a[:half], (-125e3, 0.0, 125e3), taps=24, conj_shifts=(40e3,), train=slice(0, half))
     assert sinr(fr) > sinr(wiener) + 1.5
+
+@pytest.mark.filterwarnings("error")
+def test_silence_has_no_coherence_and_no_warning():
+    """All-zero samples (a display's channel with nothing in it): coherence 0, no 0/0 warning, no NaN; every cyclic view
+    of them finite. NaN samples are a ValueError saying so"""
+    from rpps.analysis.spectrum import cyclic
+    x = np.zeros(20000, complex)
+    for conj in (False, True):
+        f, a, c = scf.coherence(x, 1e6, conjugate=conj)
+        assert len(c) and np.all(c == 0)
+    assert scf.cycle_frequencies(x, 1e6) == []
+    for part in cyclic.alpha_profile(x, 1e6):
+        assert np.all(np.isfinite(part))
+    with pytest.raises(ValueError, match="not all finite"):
+        scf.coherence(np.full(20000, np.nan + 0j), 1e6)

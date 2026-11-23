@@ -22,7 +22,13 @@ differs from the hard decisions, or -1 when a CRC-aided decoder found no path th
 """
 import numpy as np
 
+from ... import _accel, _effort
 from ._code import _code, register, as_llr, word_errors
+
+def _check_n(N):
+    """N is a power of 2 (what `transform` checks, without building G)"""
+    if N < 1 or N & (N - 1):
+        raise ValueError(f"polar: N {N} is not a power of 2")
 
 def transform(N):
     """G = F^(x n) for N = 2^n, uint8"""
@@ -76,7 +82,7 @@ def sc(llr, decide):
     Returns (u (W, N) uint8, Lu (W, N): each u_i's LLR given the u before it as decided)"""
     L = np.asarray(llr, dtype=np.float64)
     W, N = L.shape
-    transform(N) # checks N
+    _check_n(N)
     u = np.zeros((W, N), np.uint8)
     Lu = np.zeros((W, N))
 
@@ -105,8 +111,16 @@ def scl(llr, frozen, size):
     Returns (u (W, P, N) uint8, metric (W, P): each path's penalty, smaller is likelier)"""
     L = np.asarray(llr, dtype=np.float64)
     W, N = L.shape
-    transform(N)
+    _check_n(N)
     frozen = np.asarray(frozen, dtype=bool)
+    if _accel.native is not None and hasattr(_accel.native, "polar_scl"): # (the C++ kernel: this function is its reference)
+        u, pm = _accel.native.polar_scl(np.ascontiguousarray(L), np.ascontiguousarray(frozen), int(size))
+        return u, pm
+    return _scl(L, frozen, size)
+
+def _scl(L, frozen, size):
+    """The reference list decoder (numpy, every frame and path at once)"""
+    W, N = L.shape
     state = {"u": np.zeros((W, 1, N), np.uint8), "pm": np.zeros((W, 1))}
 
     def node(Ln, i0):
@@ -187,18 +201,18 @@ class polar(_code):
         flat = words.reshape(-1, self.K)
         return np.array([self.crc.syndrome(w) == 0 for w in flat]).reshape(words.shape[:-1])
 
-    def decode(self, bits):
+    def _decode(self, bits):
         x = np.asarray(bits)
         llr = as_llr(x[:len(x)//self.N*self.N]).reshape(-1, self.N)
         W = len(llr)
         if W == 0:
-            self.errors = np.zeros(0, int)
-            return np.zeros(0, bool)
+            return np.zeros(0, bool), np.zeros(0, int)
         ok = np.ones(W, bool)
-        if self.size <= 1 and self.crc is None:
+        size = _effort.scale("list", self.size) # (the effort level: max lists 4 paths where the definition decodes SC)
+        if size <= 1 and self.crc is None:
             u, _ = sc(llr, lambda i, L: np.zeros(len(L), np.uint8) if self.frozen[i] else (L < 0).astype(np.uint8))
         else:
-            paths, _ = scl(llr, self.frozen, max(self.size, 1))
+            paths, _ = scl(llr, self.frozen, size)
             if self.crc is None:
                 u = paths[:, 0]
             else:
@@ -206,5 +220,4 @@ class polar(_code):
                 pick = np.where(good.any(axis=1), np.argmax(good, axis=1), 0)
                 ok = good.any(axis=1)
                 u = paths[np.arange(W), pick]
-        self.errors = word_errors(llr < 0, encode_u(u), ok)
-        return u[:, self.info[:self.num]].reshape(-1).astype(bool)
+        return u[:, self.info[:self.num]].reshape(-1).astype(bool), word_errors(llr < 0, encode_u(u), ok)

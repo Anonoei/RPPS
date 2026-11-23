@@ -47,7 +47,6 @@ class rs(_code):
         if len(punct) > self.nroots:
             raise ValueError(f"RS({n}, {num}): {len(punct)} punctured symbols, more than the {self.nroots} parity symbols")
         self.t = self.nroots // 2
-        self.errors = None
         # Generator polynomial, highest degree first
         g = np.array([1], dtype=np.int64)
         for i in range(self.nroots):
@@ -148,7 +147,7 @@ class rs(_code):
             raise ValueError(f"erasures: {len(erasures)} lists for {W} codewords")
         return list(erasures)
 
-    def decode(self, bits, symbols=False, erasures=None, soft=None):
+    def _decode(self, bits, symbols=False, erasures=None, soft=None):
         rx, rel = self._received(bits, symbols, soft)
         W = len(rx)
         cw = np.zeros((W, self.n), dtype=np.int64)
@@ -157,7 +156,7 @@ class rs(_code):
         if _accel.native is not None:
             return self._decode_native(cw, given, rel, symbols)
         S = self.syndromes(cw)
-        self.errors = np.zeros(W, dtype=int)
+        errors = np.zeros(W, dtype=int)
         for w in range(W):
             if not S[w].any():
                 continue
@@ -174,9 +173,9 @@ class rs(_code):
                         cw[w] = trial
                         break
                     fixed = None
-            self.errors[w] = -1 if fixed is None else fixed
+            errors[w] = -1 if fixed is None else fixed
         out = cw[:, :self.num].reshape(-1)
-        return out if symbols else self.to_bits(out)
+        return (out if symbols else self.to_bits(out)), errors
 
     def _decode_native(self, cw, given, rel, symbols):
         """`decode` in C++ (rpps._native.cyclic_decode, the codewords on several threads), the soft retries included"""
@@ -200,9 +199,8 @@ class rs(_code):
                     if err[0] >= 0 and self._trusted(cw[w], one[0], set(np.nonzero(mask)[0].tolist())):
                         out[w], errors[w] = one[0], err[0]
                         break
-        self.errors = errors.astype(int)
         res = out[:, :self.num].reshape(-1)
-        return res if symbols else self.to_bits(res)
+        return (res if symbols else self.to_bits(res)), errors.astype(int)
 
     RETRY_MARGIN = 2 # Parity symbols a soft retry must leave unused: erasing enough positions decodes any word to *some*
                      # codeword, so a retry is kept only when the checks it did not spend (each passes a wrong word 1 time

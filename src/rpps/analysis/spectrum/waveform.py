@@ -223,16 +223,40 @@ class Bursts:
 
     __repr__ = __str__
 
-def on_off(x, Fs, smooth=2e-6, contrast=10.0, min_off=0.03):
-    """Whether the power switches on and off: Bursts, or None (steady, or too weak to tell). smooth: the power is averaged
-    over this long; contrast: the on level over the off level needed (power ratio); min_off: the least time off"""
+def _gate(x, Fs, smooth=2e-6, contrast=10.0):
+    """The power averaged over `smooth` (32 samples at least) against the level between its floor and its top: (on, w),
+    on[k] for the window x[k:k+w]; None without `contrast` between them"""
     p = np.abs(np.asarray(x))**2
-    w = max(2, int(Fs*smooth))
+    w = max(32, int(Fs*smooth)) # (at least 32 samples: in a narrow cut, a symbol's own envelope swings at 2 us)
     e = np.convolve(p, np.ones(w)/w, mode="valid")
     lo, hi = np.percentile(e, 2), np.percentile(e, 98)
     if hi < contrast*lo:
         return None
-    on = e > np.sqrt(lo*hi)
+    return e > np.sqrt(lo*hi), w
+
+def on_samples(x, Fs, smooth=2e-6, contrast=10.0):
+    """The samples of x inside its bursts (a boolean mask): those every window of the smoothed power over them is on,
+    so a filtered signal's dips between symbols stay in and the bursts' edges stay out. All of x when it doesn't switch"""
+    g = _gate(x, Fs, smooth, contrast)
+    if g is None:
+        return np.ones(len(x), bool)
+    on, w = g
+    c = np.concatenate(([0], np.cumsum(on)))
+    i = np.arange(w - 1, len(on)) # sample i is in windows i-w+1 .. i: all on
+    m = np.zeros(len(x), bool)
+    m[i] = c[i + 1] - c[i - w + 1] == w
+    return m
+
+def on_off(x, Fs, smooth=2e-6, contrast=10.0, min_off=0.03):
+    """Whether the power switches on and off: Bursts, or None (steady, or too weak to tell). smooth: the power is averaged
+    over this long, and over 32 samples at least; contrast: the on level over the off level needed (power ratio);
+    min_off: the least time off. The
+    period (None when the bursts are not regular enough: autocorrelation under 0.5) is found from 0.5 ms to half of
+    the record"""
+    g = _gate(x, Fs, smooth, contrast)
+    if g is None:
+        return None
+    on, _w = g
     duty = float(on.mean())
     if duty > 1 - min_off:
         return None
@@ -241,12 +265,23 @@ def on_off(x, Fs, smooth=2e-6, contrast=10.0, min_off=0.03):
     o = o - o.mean()
     fs2 = Fs/dec
     r = autocorr(o) if len(o) > 8 else np.zeros(1)
-    lo_, hi_ = int(0.5e-3*fs2), min(len(r)//2, int(50e-3*fs2))
+    r = r*len(r)/np.maximum(len(r) - np.arange(len(r)), 1) # Per lag over the overlap: a long lag has fewer terms to sum
+    # The period: a peak past the autocorrelation's first dip (before it, the lags inside one burst, which are always
+    # near 1), from 0.5 ms to half the record (two periods; at most 0.5 s: frames of a satellite TDMA network)
+    lo_, hi_ = int(0.5e-3*fs2), min(len(r)//2, int(0.5*fs2))
     period = None
     if hi_ > lo_ + 2:
-        k = int(np.argmax(r[lo_:hi_])) + lo_
-        if r[k] > 0.5:
-            period = k/fs2
+        d = np.diff(r[:hi_])
+        dip = int(np.argmax(d > 0)) if (d > 0).any() else hi_
+        start = max(lo_, dip)
+        if start < hi_ - 2: # A true peak (not the range's end), the earliest within 10% of the highest (not a multiple)
+            seg = r[start:hi_]
+            peaks = np.flatnonzero((seg[1:-1] >= seg[:-2]) & (seg[1:-1] >= seg[2:])) + 1
+            if len(peaks):
+                top = seg[peaks].max()
+                k = start + int(peaks[np.argmax(seg[peaks] >= 0.9*top)])
+                if r[k] > 0.5:
+                    period = k/fs2
     return Bursts(duty, period, duty*period if period else None)
 
 class Waveform:
@@ -288,9 +323,7 @@ def classify(x, Fs):
     t = tones(x, Fs)
     b = None if t is not None else on_off(x, Fs) # Tones beat: their envelope swings without switching off
     o = None if t is not None else ofdm(x, Fs)
-    # A burst's on and off move the envelope statistic: judge it over the on part only
-    on = x
-    if b is not None:
-        p = np.abs(x)**2
-        on = x[p > 0.1*np.percentile(p, 98)]
+    # A burst's on and off move the envelope statistic: judge it over the on part only, by the smoothed power (a
+    # threshold on each sample's would drop filtered PSK's dips between symbols, and call it constant envelope)
+    on = x if b is None else x[on_samples(x, Fs)]
     return Waveform(t, o, b, envelope(on) if len(on) > 64 else None)

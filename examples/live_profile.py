@@ -1,9 +1,9 @@
 """Profile the signals of a live stream: capture from a pysdrlib source, find every signal, pick some, and print each one's
 profile (rp.analysis.profile: every step that processes it, and what it might be where that is unknown)
 
-    python examples/live_profile.py --tcpiq HOST:PORT --format int16 --cf 1.2e9 --fs 25e6     # raw I/Q over TCP
+    python examples/live_profile.py --tcpiq HOST:PORT --format ci16 --cf 1.2e9 --fs 25e6     # raw I/Q over TCP
     python examples/live_profile.py --radio hackrf --cf 851e6 --fs 10e6 --gain 0.6             # a radio here
-    python examples/live_profile.py --remote tcp://10.0.10.35:5555 --cf 851e6 --fs 10e6        # one a pysdrlib server hosts
+    python examples/live_profile.py --remote tcp://HOST:5555 --cf 851e6 --fs 10e6              # one a pysdrlib server hosts
 
 The stream is captured into memory first (`--seconds`; the analysis runs slower than the radio, which would drop samples
 under it), surveyed, and the signals listed. `--pick 0,3` (or `all`) chooses which to profile; without it you are asked.
@@ -14,19 +14,15 @@ import sys
 
 import numpy as np
 import pysdrlib
-from pysdrlib.base import convert
+import pysdrlib.tcpiq
 
 import rpps as rp
-
-FORMATS = {"int8": convert.INT8, "uint8": convert.UINT8, "int16": convert.INT16, "int12": convert.INT12,
-           "float32": convert.FLOAT32}
 
 def source(args):
     """The rp.source.Device the arguments name"""
     if args.tcpiq:
         host, _, port = args.tcpiq.rpartition(":")
-        dev = pysdrlib.device("tcpiq", FORMATS[args.format])
-        return rp.source.Device(dev, cf=args.cf, Fs=args.fs, host=host, port=int(port))
+        return rp.source.Device("tcpiq", cf=args.cf, Fs=args.fs, host=host, port=int(port), sample_format=args.format)
     if args.remote: # The server picks a radio that can tune and sample as asked (or the --radio kind)
         sdr = pysdrlib.connect(args.remote, args.radio, reuse=True, program="rpps live_profile",
                                need={"freq": args.cf, "rate": args.fs})
@@ -68,7 +64,8 @@ def main():
     src.add_argument("--tcpiq", metavar="HOST:PORT", help="raw interleaved I/Q from a TCP server")
     src.add_argument("--remote", metavar="ADDRESS", help="a radio a pysdrlib server hosts (tcp://host:5555)")
     src.add_argument("--radio", metavar="DRIVER", help="pysdrlib driver (default: the first radio found / the server hosts)")
-    ap.add_argument("--format", default="int16", choices=sorted(FORMATS), help="--tcpiq sample format (default int16)")
+    ap.add_argument("--format", default="ci16", choices=pysdrlib.tcpiq.FORMATS,
+                    help="--tcpiq sample format, SigMF's name (default ci16: int16 I and Q)")
     ap.add_argument("--cf", type=float, required=True, help="centre frequency, Hz (for --tcpiq: what the stream is)")
     ap.add_argument("--fs", type=float, required=True, help="sample rate, samples/s")
     ap.add_argument("--gain", type=float, default=None, help="receive gain, a fraction 0-1 of the radio's range")

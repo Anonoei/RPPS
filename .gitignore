@@ -27,5 +27,8 @@ logs/
 !.vscode/*.code-snippets
 !*.code-workspace
 
-# Built by pdoc (CI/CD publishes it; builder.py -d writes it here)
-docs/
+# Built by tools/builder.py -d (CI/CD publishes site/); generated from the code by tools/gen_docs.py
+site/
+docs/api/
+docs/llms.txt
+docs/llms-full.txt

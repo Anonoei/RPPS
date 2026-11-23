@@ -21,7 +21,10 @@ from . import iir as _iir
 
 MAX_BYTES = 64 * 2**20 # Coefficient files are small: anything bigger is the wrong file
 
-DTYPES = {"f32": "<f4", "f64": "<f8", "cf32": "<c8", "cf64": "<c16", "i8": "i1", "u8": "u1", "i16": "<i2", "i32": "<i4"}
+# Raw dtypes by pysdrlib's names (rp.source.formats): a complex format is named by the bits of its I alone, as in SigMF, so
+# cf32 is two float32 (numpy complex64) and cf64 two float64
+DTYPES = {"f16": "<f2", "f32": "<f4", "f64": "<f8", "cf32": "<c8", "cf64": "<c16", "i8t": "i1", "ui8": "u1", "i16t": "<i2",
+          "i32t": "<i4"}
 EXTENSIONS = {".npy": "npy", ".npz": "npz", ".coe": "coe",
               ".txt": "text", ".csv": "text", ".tsv": "text", ".dat": "text", ".taps": "text",
               ".h": "source", ".c": "source", ".cc": "source", ".cpp": "source", ".hpp": "source", ".py": "source",
@@ -104,8 +107,8 @@ def _read_coe(text, name):
 def read_table(path, fmt=None, dtype=None, key=None):
     """The numbers of a file as a list of 1-D arrays (one per row of text, one for a vector).
 
-    fmt: text, npy, npz, raw, source, coe (default from the extension). dtype: for raw files, f32 f64 cf32 cf64 i8 u8 i16 i32 or a
-    numpy dtype string. key: the array to take from an .npz"""
+    fmt: text, npy, npz, raw, source, coe (default from the extension). dtype: for raw files, f16 f32 f64 cf32 cf64 i8t ui8 i16t i32t (pysdrlib's names)
+    or a numpy dtype string. key: the array to take from an .npz"""
     path = Path(path)
     if path.stat().st_size > MAX_BYTES:
         raise ValueError(f"{path.name} is {path.stat().st_size} bytes: that is not a coefficient file")
@@ -122,7 +125,10 @@ def read_table(path, fmt=None, dtype=None, key=None):
     if fmt == "raw":
         dtype = dtype or IMPLIED_DTYPE.get(ext)
         if dtype is None:
-            raise ValueError(f"{path.name}: a raw file has no header, say dtype= (f32, f64, cf32, cf64, i16...)")
+            raise ValueError(f"{path.name}: a raw file has no header, say dtype= (f32, f64, cf32, i16t... or a numpy dtype)")
+        if isinstance(dtype, str) and dtype not in DTYPES and dtype[:1] not in "<>=|":
+            # A bare numpy code reads wrong silently ("i8" is int64 to numpy, int8 to an SDR tool): names or explicit dtypes only
+            raise ValueError(f"dtype {dtype!r}: one of {sorted(DTYPES)}, or a numpy dtype with its byte order (\"<i2\")")
         dt = np.dtype(DTYPES.get(dtype, dtype))
         if path.stat().st_size % dt.itemsize:
             raise ValueError(f"{path.name}: {path.stat().st_size} bytes is not a whole number of {dtype} values")

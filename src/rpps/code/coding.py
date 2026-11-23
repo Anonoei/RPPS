@@ -109,10 +109,11 @@ class Coding(base.rpps.Pipe):
         return coder.num/coder.den if decode else coder.den/coder.num
 
     def _process(self, coder, x, ctx, enc):
-        """Run whole blocks through the coder (ctx is this call's stream state, for coders that carry some)"""
+        """Run whole blocks through the coder (ctx is this call's stream state, for coders that carry some): (output, the
+        decoder's errors per codeword, or None)"""
         if not len(x):
-            return np.zeros(0, dtype=bool)
-        return coder.encode(x) if enc else coder.decode(x)
+            return np.zeros(0, dtype=bool), None
+        return (coder.encode(x), None) if enc else coder.decode(x, status=True)
 
     def _run(self, data, enc):
         self.log.debug(f"{'Coding' if enc else 'Decoding'} {data}")
@@ -126,23 +127,24 @@ class Coding(base.rpps.Pipe):
         ctx = dict(data.ctx)
         self._frame_start(data, ctx, enc)
         x = align(ctx, (self, enc), x, self._block(enc), pad=enc, log=self.log)
-        y = self._process(self.encoder if enc else self.decoder, x, ctx, enc)
+        y, errs = self._process(self.encoder if enc else self.decoder, x, ctx, enc)
         rep = self.ENCODE_GIVES if enc else self.DECODE_GIVES
         if np.asarray(y).dtype.kind == "f": # Soft values that went through (an interleaver): still LLRs
             out = data.derive(y, self.CATEGORY, dtype.LLR, Mod, ctx, rep=rep)
         else:
             out = data.derive(y, self.CATEGORY, dtype.BITS, Digital, ctx, rep=rep)
-        out.failed = None if enc else self._failed(failed_of(data), len(data), len(x), len(y))
+        if not enc:
+            out.failed = self._failed(failed_of(data), len(data), len(x), len(y), errs)
+            out.errors = errs
         return out
 
-    def _failed(self, prev, n_data, n_in, n):
+    def _failed(self, prev, n_data, n_in, n, errs):
         """The `failed` mask of a decode's output (None: all decoded): its own verdict per codeword when it has one (a later
         code's success clears an earlier failure: BCH after LDPC), else what came in failed, carried block by block through
         a permutation (an interleaver); nothing known otherwise. prev: the input's mask over n_data items, of which the
-        decoder took n_in (whole blocks, the same items when nothing was held back)"""
+        decoder took n_in (whole blocks, the same items when nothing was held back); errs: the decode's status"""
         if not n:
             return None
-        errs = getattr(self.decoder, "errors", None)
         mask = None
         if errs is not None and len(errs) and n % len(errs) == 0:
             mask = np.repeat(np.asarray(errs) < 0, n//len(errs))
@@ -156,12 +158,6 @@ class Coding(base.rpps.Pipe):
     @abstractmethod
     def load(name: str, obj: dict):
         """Load coding from json"""
-
-    @property
-    def errors(self):
-        """Per codeword of the last decode: bits (Reed-Solomon: symbols) corrected, -1 where it failed. None for
-        decoders without codewords (Viterbi, BCJR of a convolutional code)"""
-        return getattr(self.decoder, "errors", None)
 
 
     @property
@@ -319,21 +315,21 @@ class Convolutional(Coding):
                 ctx[key] = st
             else:
                 ctx.pop(key, None)
-            return y
+            return y, None # (no codewords)
         # A decoder of whole frames (bcjr) collects the stream and decodes it at the end
         prev = ctx.pop(key, None)
         if prev is not None:
             x = np.concatenate((prev, x))
         if not final:
             ctx[key] = x
-            return np.zeros(0, dtype=bool)
+            return np.zeros(0, dtype=bool), None
         if not len(x):
-            return np.zeros(0, dtype=bool)
+            return np.zeros(0, dtype=bool), None
         if enc:
-            return coder.encode(x)
+            return coder.encode(x), None
         # A soft-output decoder (BCJR) gives its a-posteriori LLRs on: the next code step (an outer Reed-Solomon code's
         # erasures, an iterative receiver) still has the soft values
-        return coder.app(x) if hasattr(coder, "app") else coder.decode(x)
+        return (coder.app(x) if hasattr(coder, "app") else coder.decode(x)), None
 
 class Interleaver(Coding):
     SCOPE = FRAME # A block interleaver; a Forney one carries delay lines (STREAM, set when loaded)
@@ -362,9 +358,9 @@ class Interleaver(Coding):
 
     def _process(self, coder, x, ctx, enc):
         if not len(x):
-            return np.zeros(0, dtype=bool)
+            return np.zeros(0, dtype=bool), None
         if hasattr(coder, "block_bits"): # A block interleaver keeps nothing between blocks
-            return coder.encode(x) if enc else coder.decode(x)
+            return (coder.encode(x) if enc else coder.decode(x)), None
         key = (self, enc, "delay")
         ctx[key] = state = dict(ctx.get(key, {})) # The delay lines go on from the previous call
-        return coder.encode(x, state=state) if enc else coder.decode(x, state=state)
+        return (coder.encode(x, state=state) if enc else coder.decode(x, state=state)), None

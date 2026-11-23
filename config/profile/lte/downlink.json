@@ -1,0 +1,102 @@
+{
+  "base": "profile",
+  "comment": "LTE downlink (FDD, normal cyclic prefix) to the system information: cell search on the PSS and SSS, the resource grid of every subframe with the channel of each antenna port from the cell's reference signals, then four branches reading each subframe in turn. The PBCH gives the MIB and, by its CRC mask, the port count every other channel needs; the PCFICH the CFI, the size of its subframe's control region; the PDCCH searches the common search space for DCIs to the SI-RNTI, and a format 1A sets the allocation of its subframe's PDSCH, which gives SIB1 and the other SI messages (transport blocks with a good CRC-24A). The sample rate sets the FFT (15.36 MS/s: 1024, 50 RB)",
+  "ref": "3GPP TS 36.211 6.6-6.11, 36.212 5.3, 36.213 7.1",
+  "tags": ["lte"],
+  "params": {
+    "offset": {
+      "default": 0.0,
+      "comment": "where the carrier is from the centre of the samples [Hz]"
+    },
+    "n_rb": {
+      "default": 50,
+      "comment": "resource blocks: 6, 15, 25, 50, 75, 100 at 1.92, 3.84, 7.68, 15.36, 23.04, 30.72 MS/s"
+    }
+  },
+  "requires": {
+    "baud": "15e3",
+    "Fs": "1.92e6 if n_rb == 6 else 3.84e6 if n_rb == 15 else 7.68e6 if n_rb == 25 else 15.36e6 if n_rb == 50 else 23.04e6 if n_rb == 75 else 30.72e6",
+    "bw": "180e3*n_rb",
+    "min_samples": "Fs*0.08",
+    "comment": "baud: the subcarrier spacing; the MIB every 40 ms, SIB1 every 20 ms after it"
+  },
+  "steps": [
+    {
+      "grid": "lte_cell",
+      "id": "cell",
+      "offset": {
+        "param": "offset"
+      }
+    },
+    {
+      "grid": "lte_grid",
+      "n_rb": {
+        "param": "n_rb"
+      }
+    },
+    {
+      "branch": "channels",
+      "order": ["pbch", "pcfich", "pdcch", "pdsch"],
+      "frame": {
+        "expr": "8 + 4200*n_rb"
+      },
+      "branches": {
+        "pbch": [
+          {"grid": "lte_pbch", "id": "pbch"}
+        ],
+        "pcfich": [
+          {"grid": "lte_pcfich", "id": "pcfich"}
+        ],
+        "pdcch": [
+          {
+            "grid": "lte_pdcch",
+            "id": "pdcch",
+            "rntis": [65535]
+          }
+        ],
+        "pdsch": [
+          {"grid": "lte_pdsch", "id": "pdsch"}
+        ]
+      }
+    }
+  ],
+  "controls": {
+    "pbch": {
+      "drive": {
+        "pcfich": {
+          "ports": "ports"
+        },
+        "pdcch": {
+          "ports": "ports",
+          "phich_ng": "phich_ng"
+        },
+        "pdsch": {
+          "ports": "ports"
+        }
+      }
+    },
+    "pcfich": {
+      "drive": {
+        "pdcch": {
+          "cfi": "cfi"
+        },
+        "pdsch": {
+          "cfi": "cfi"
+        }
+      }
+    },
+    "pdcch": {
+      "drive": {
+        "pdsch": {
+          "rnti": "rnti",
+          "riv": "riv",
+          "mcs": "mcs",
+          "rv": "rv",
+          "tpc": "tpc",
+          "distributed": "distributed",
+          "flag": "flag"
+        }
+      }
+    }
+  }
+}

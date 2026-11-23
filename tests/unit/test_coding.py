@@ -64,9 +64,9 @@ def test_rs_corrects_errors(rng):
     for w in range(len(bad)): # t = 8 symbol errors per word
         pos = rng.choice(204, 8, replace=False)
         bad[w, pos] ^= rng.integers(1, 256, 8).astype(np.uint8)
-    out = rs.decode(bad.reshape(-1), symbols=True)
+    out, errors = rs.decode(bad.reshape(-1), symbols=True, status=True)
     assert np.array_equal(np.asarray(out).reshape(-1), msg)
-    assert (rs.errors == 8).all()
+    assert (errors == 8).all()
 
 @pytest.mark.parametrize("name", configs("conv"))
 def test_conv_clean_round_trip(name, rng):
@@ -101,9 +101,9 @@ def test_ldpc_corrects_noise(rng):
     coded = code.encode(msg)
     rx = (1.0 - 2.0*coded.astype(float)) + rng.normal(0, 0.6, len(coded))
     llr = 2*rx/0.6**2
-    out = np.asarray(code.decode(llr)).astype(bool)
-    assert (out != msg).mean() < 0.01
-    assert code.converged.mean() > 0.9
+    out, errors = code.decode(llr, status=True)
+    assert (np.asarray(out).astype(bool) != msg).mean() < 0.01
+    assert (errors >= 0).mean() > 0.9 # Converged: every check holds
 
 def test_registry_lists_all_types():
     assert {"linear", "repeat", "rs", "bch", "ldpc", "conv", "viterbi", "forney"} <= set(rp.code.types.REGISTRY)
@@ -211,7 +211,7 @@ def _tpc_words(code, W, ebn0, seed):
 def test_turbo_product_code_soft_beats_hard(ebn0, soft_max):
     """Chase-Pyndiah on LLRs decodes the (64,57)^2 code far below the hard iterative decoder. 32 words (104k bits) per point;
     over 20 seeds (chase 4, 4 iterations): soft at most 1.2e-4 at 3.25 dB and no errors at 3.75 dB; hard 1.8e-2 .. 3.6e-2.
-    The AFF3CT reference (chase 5, 8 iterations) is 1.2e-3 at 2.75 dB and 1.2e-5 at 3.0 dB (tests/tpc_ber.py)"""
+    The AFF3CT reference (chase 5, 8 iterations) is 1.2e-3 at 2.75 dB and 1.2e-5 at 3.0 dB (tools/tpc_ber.py)"""
     tpc = rp.code.load("block/product/tpc_64_57_sq")
     hard = rp.code.init("hard", {**rp._config.read(rp._config.find("fec", "block/product/tpc_64_57_sq")), "chase": None})
     msg, llr = _tpc_words(tpc, 32, ebn0, 7)
@@ -219,7 +219,8 @@ def test_turbo_product_code_soft_beats_hard(ebn0, soft_max):
     ber_hard = np.mean(hard.decoder.decode(llr) != msg)
     assert ber_soft < soft_max and ber_hard > 1e-2
     assert ber_soft < ber_hard/20
-    assert np.array_equal(tpc.decoder.decode(4.0*(1 - 2.0*(tpc.encoder.encode(msg)))), msg) and (tpc.decoder.errors == 0).all()
+    out, errors = tpc.decoder.decode(4.0*(1 - 2.0*(tpc.encoder.encode(msg))), status=True)
+    assert np.array_equal(out, msg) and (errors == 0).all()
 
 def test_turbo_product_code_iterations_do_not_hurt():
     """Near the threshold (3.0 dB) each doubling of the iterations lowers BER and FER: measured 1.1e-2 / 1.2e-3 / 2.3e-4

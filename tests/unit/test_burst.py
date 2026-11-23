@@ -37,3 +37,65 @@ def test_every_burst_on_its_own_carrier_and_phase():
         assert min(errs) == 0
         rot.add(int(np.argmin(errs)))
     assert len(rot) == 1
+
+def test_burst_kinds_each_on_its_own_preamble():
+    """A network's burst types (here two lengths), each with its own unique word: what all the bursts share is a symbol or
+    two, so each kind's preamble is found from its own bursts and every burst acquired on its kind's"""
+    rng = np.random.default_rng(3)
+    q = rp.symbol.load("qpsk").points
+    fs, baud = 2e6, 250e3
+    pres = [q[rng.integers(0, 4, 40)], q[rng.integers(0, 4, 40)]]
+    x = np.zeros(int(0.03*fs), complex)
+    sent, at = [], 2000
+    for i in range(12):
+        kind = i % 2
+        syms = np.concatenate((pres[kind], q[rng.integers(0, 4, 200 if kind == 0 else 450)]))
+        w = FR.word_waveform(syms, fs/baud)
+        w = w*np.exp(1j*rng.uniform(0, 2*np.pi) + 2j*np.pi*rng.uniform(-2e3, 2e3)/fs*np.arange(len(w)))
+        x[at:at + len(w)] += w
+        sent.append((kind, syms))
+        at += len(w) + 600
+    x += 0.06*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    r = burst.demodulate(x, fs)
+    assert len(r.preambles) == 2 and all(len(p) >= 32 for p in r.preambles)
+    assert len(r.bursts) == 12 and all(b.ok for b in r.bursts)
+    kinds = [b.kind for b in r.bursts]
+    assert len(set(kinds[0::2])) == 1 and len(set(kinds[1::2])) == 1 and kinds[0] != kinds[1] # Each type its own kind
+    assert np.median([b.evm for b in r.bursts]) < 0.2
+
+def test_burst_kinds_when_the_gate_misses_by_tens_of_symbols():
+    """A long burst's gate can open tens of symbols from its start: the preamble is still found (a wider alignment)"""
+    from types import SimpleNamespace
+    rng = np.random.default_rng(9)
+    pts = np.exp(1j*np.pi/4*np.array([1, 3, 5, 7]))
+    uw = pts[rng.integers(0, 4, 64)]
+    B = []
+    for i in range(8):
+        lead = rng.integers(0, 25) # symbols of noise before the preamble: the gate opened that early
+        s = np.concatenate((0.3*(rng.standard_normal(lead) + 1j*rng.standard_normal(lead)), uw, pts[rng.integers(0, 4, 4000)]))
+        s = s*np.exp(1j*rng.uniform(0, 2*np.pi)) # each burst its own phase
+        B.append(SimpleNamespace(symbols=s, start=0, stop=len(s)))
+    kinds, member = burst.burst_kinds(B, 1.0, pts)
+    assert len(kinds) == 1 and len(kinds[0]) >= 60 and member == [0]*8
+
+def test_bursts_far_off_carrier():
+    """Bursts 30 kHz off at 250 kBd (0.75 rad a symbol, too much for the preamble search's pieces): each burst's blind
+    offset comes off first, so every one is acquired and its offset reported in full"""
+    rng = np.random.default_rng(11)
+    q = rp.symbol.load("qpsk").points
+    fs, baud = 2e6, 250e3
+    pre = q[rng.integers(0, 4, 48)]
+    x = np.zeros(int(0.04*fs), complex)
+    at, offs = 2000, []
+    for i in range(8):
+        syms = np.concatenate((pre, q[rng.integers(0, 4, 700)]))
+        w = FR.word_waveform(syms, fs/baud)
+        f = 30e3 + rng.uniform(-1e3, 1e3)
+        w = w*np.exp(1j*rng.uniform(0, 2*np.pi) + 2j*np.pi*f/fs*np.arange(len(w)))
+        x[at:at + len(w)] += w
+        offs.append(f)
+        at += len(w) + 800
+    x += 0.05*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    r = burst.demodulate(x, fs, mod="qpsk", baud=baud, preamble=pre)
+    assert len(r.bursts) == 8 and all(b.ok for b in r.bursts)
+    assert all(abs(b.cfo - f) < 300 for b, f in zip(r.bursts, offs)) and np.median([b.evm for b in r.bursts]) < 0.2

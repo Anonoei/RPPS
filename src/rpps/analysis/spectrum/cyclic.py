@@ -303,12 +303,21 @@ def _at_symbols(x, Fs, baud, orders, pfa):
 
 def features(x, Fs, lo=None, hi=None, pfa=1e-3, orders=(1, 2, 4, 8, 12), mask=True, max_samples=2**22):
     """Symbol rate and carrier lines of baseband samples x (see the module). lo/hi: the symbol rates searched, Hz
-    (default Fs/64 .. Fs/1.5). pfa: false-alarm probability of a line. mask: filter to the occupied band first"""
+    (default Fs/64 .. Fs/1.5). pfa: false-alarm probability of a line. mask: filter to the occupied band first
+
+    Silence (zeros, too few samples) has no lines, whatever np.seterr the caller set; samples that are not finite (NaN,
+    inf) are a ValueError that says so"""
     x = np.asarray(x, dtype=np.complex128)[:max_samples]
+    if not np.all(np.isfinite(x)):
+        raise ValueError("features: the samples are not all finite (NaN or inf)")
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
+        return _features(x, Fs, lo, hi, pfa, orders, mask)
+
+def _features(x, Fs, lo, hi, pfa, orders, mask):
     n = len(x)
     lo = Fs/64 if lo is None else lo
     hi = Fs/1.5 if hi is None else hi
-    p2 = np.mean(np.abs(x)**2)
+    p2 = np.mean(np.abs(x)**2) if n else 0.0
     env = float(np.mean(np.abs(x)**4)/max(p2**2, 1e-300)) if n else 0.0
     bw, edges = Fs, (-Fs/2, Fs/2)
     if mask and n >= 1024:
@@ -318,10 +327,13 @@ def features(x, Fs, lo=None, hi=None, pfa=1e-3, orders=(1, 2, 4, 8, 12), mask=Tr
     out = dict(lines=[], carrier={}, envelope=env, bandwidth=bw, pfa=pfa)
     if n < 256:
         return Features(**out)
-    sq = _tag(lines(np.abs(x)**2, Fs, lo, hi, pfa), "|x|^2")
+    # A sequence that varies only by rounding (a constant, a pure carrier) has no lines, though its residue, scored against a
+    # floor of the same residue, would show some
+    e = np.abs(x)**2
+    sq = _tag(lines(e, Fs, lo, hi, pfa), "|x|^2") if np.ptp(e) > 1e-9*np.max(e) else []
     d = x[1:]*np.conj(x[:-1])
     d = np.angle(d)
-    dd = _tag(lines(d**2, Fs, lo, hi, pfa), "|d|^2")
+    dd = _tag(lines(d**2, Fs, lo, hi, pfa), "|d|^2") if np.ptp(d) > 1e-9 else []
     out["lines"] += sq + dd
     sig_sq = [l for l in sq if l.significant]
     base = None

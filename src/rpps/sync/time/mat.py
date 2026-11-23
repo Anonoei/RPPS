@@ -4,7 +4,7 @@ import numpy as np
 
 from ...base import Meta, Stage
 from ...signal.filters.shaping import rrc_pulse
-from ...math.interp import peak
+from ...math.interp import peak, fractional, REACH
 
 def matrix_mf(x, centres, sps, beta=0.2, span=8):
     """Matched filter + symbol sampling as a (banded) matrix: y = W @ x
@@ -46,11 +46,44 @@ def centres_in(n, t0, sps, span=8):
     return t0 + sps*np.arange(int((last - t0)//sps) + 1)
 
 def best_tau(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
-    """Symbol timing in [0, sps) maximising the matched-filter output energy
+    """Symbol timing in [0, sps) maximising the matched-filter output energy, from x[lo:hi]
 
     The symbol lattice is tau + k*sps in absolute sample index, so results from different
     segments of x are comparable. Returns (tau, mean |y|^2)
+
+    The matched filter runs once, as a convolution; its output is band-limited, so each of the `grid` candidate timings
+    reads it at its own symbol instants with a 12-tap windowed sinc (math.interp.fractional: -56 dB at 2 samples a
+    symbol), in chunks. A segment too short for the convolution's edges takes the filter matrix for each candidate
+    (`_best_tau_rows`), which gives the same answer.
     """
+    hi = len(x) if hi is None else hi
+    L = int(np.ceil(span*sps))
+    if hi - lo < 4*L + 8*sps:
+        return _best_tau_rows(x, sps, beta, span, lo, hi, grid)
+    h = rrc_pulse(np.arange(-L, L + 1)/sps, beta)
+    h /= np.sqrt(np.sum(h**2))
+    z = np.convolve(np.asarray(x[lo:hi], dtype=np.complex128), h, mode="valid") # z[i]: output at sample lo + L + i
+    z = z.astype(np.complex64) # (the interpolator's native path; its error is far above single precision's)
+    taps = 2*REACH
+    t0, t1 = lo + L + REACH, lo + L + len(z) - REACH - 1 # Absolute positions the interpolator reads whole
+    taus = np.arange(grid)*sps/grid
+    ks = [np.arange(np.ceil((t0 - tau)/sps), np.ceil((t1 - tau)/sps)) for tau in taus]
+    pos = np.concatenate([tau + k*sps for tau, k in zip(taus, ks)]) - (lo + L)
+    count = np.array([len(k) for k in ks], dtype=np.float64)
+    which = np.repeat(np.arange(grid), [len(k) for k in ks])
+    energy = np.zeros(grid)
+    for a in range(0, len(pos), TAU_CHUNK):
+        y = fractional(z, pos[a:a + TAU_CHUNK], taps)
+        energy += np.bincount(which[a:a + TAU_CHUNK], weights=(y.real.astype(np.float64)**2 + y.imag.astype(np.float64)**2),
+                              minlength=grid)
+    energy = np.divide(energy, count, out=np.zeros(grid), where=count > 0)
+    g, d = peak(energy, circular=True, log=False)
+    return ((g + d)*sps/grid) % sps, float(energy[g])
+
+TAU_CHUNK = 1 << 16 # Symbol instants interpolated at a time by best_tau
+
+def _best_tau_rows(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
+    """best_tau by the filter matrix, rebuilt for each candidate timing: for segments too short to convolve"""
     hi = len(x) if hi is None else hi
     seg = x[:hi]
     S = span*sps
@@ -66,7 +99,7 @@ def best_tau(x, sps, beta=0.2, span=8, lo=0, hi=None, grid=16):
 class Mat(Stage):
     """Matrix matched filter and symbol timing
 
-    Needs meta.stream.det (see rpps.sync.detect) for beta and the timing offset. Symbols are
+    Needs meta.det (see rpps.sync.detect) for beta and the timing offset. Symbols are
     taken from a lattice t_next + k*sps in the (fractional) sps of Meta, then the lattice is nudged by a
     block-wise energy-maximum estimate (`track` = fraction of it applied) to follow the clock.
 
@@ -84,22 +117,23 @@ class Mat(Stage):
         return SimpleNamespace(buffer=None, t_next=0.0, beta=self.beta, base=0, det=None) # det None: not started
 
     def _start(self, st, meta: Meta):
-        det = meta.stream.det
+        det = meta.det
         S = self.span*meta.sps
         st.t_next = det.tau + np.ceil((S + 5 - det.tau)/meta.sps)*meta.sps
         st.beta = self.beta or det.beta
         st.det = det
 
     def step(self, samples, st, meta: Meta):
-        if meta.stream.det is None: # Still acquiring
+        if meta.det is None: # Still acquiring
             return samples[:0]
         if st.det is None:
             self._start(st, meta)
         sps = meta.sps
-        if st.det is not meta.stream.det:
-            # Refined estimates: move to their lattice (absolute index = st.base + buffer index)
-            st.det = meta.stream.det
-            k = np.ceil((st.base + st.t_next - st.det.tau)/sps)
+        if st.det is not meta.det:
+            # Refined estimates: move to their lattice (absolute index = st.base + buffer index), its point nearest the
+            # next symbol. (Not the first point at or after it: a refined timing a hair earlier would skip a symbol)
+            st.det = meta.det
+            k = np.round((st.base + st.t_next - st.det.tau)/sps)
             st.t_next = st.det.tau + k*sps - st.base
         samples = samples if st.buffer is None else np.concatenate((st.buffer, samples))
         centres = centres_in(len(samples), st.t_next, sps, self.span)

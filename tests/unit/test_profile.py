@@ -1,4 +1,4 @@
-"""Profiles: a whole signal from one config file (README.dev.md, Profiles)"""
+"""Profiles: a whole signal from one config file (rpps.profile)"""
 import numpy as np
 import pytest
 
@@ -73,7 +73,7 @@ def test_any_block_cut_on_receive():
         assert np.array_equal(got, ref[:len(got)]) and len(got) >= len(ref) - 64
 
 def test_a_runner_adds_to_blocks_like_a_stage():
-    """`src(n) + p.rx()` (the README's receive loop) gives what calling the runner on each block does"""
+    """`src(n) + p.rx()` (the receive loop the guides use) gives what calling the runner on each block does"""
     rng = np.random.default_rng(2)
     p = rp.profile.load("ieee80211b/2m", sync=KNOWN)
     wave = p.tx()(rp.Data(rng.integers(0, 256, 30).astype(np.uint8), Fs=1e6, sps=1))
@@ -212,3 +212,10 @@ def test_domain_loader_keeps_the_given_parameters():
     assert _config.load("profile", "ieee802154/2450", params={"sps": 8}).params == {"sps": 8}
     assert rp.profile.load("ieee802154/2450", sps=8).params == {"sps": 8}
     assert rp.profile.load("ieee802154/2450").params == {"sps": 4}
+
+def test_mm_timing_step_takes_biphase():
+    """{"sync": "timing", "method": "mm", "biphase": true}: M&M on Manchester symbols (RDS: examples/e2e_profile.py)"""
+    p = rp.profile.Profile("x", {"steps": [{"sync": "timing", "method": "mm", "alpha": 0.05, "biphase": True},
+                                           {"symbol": "constellation", "name": "psk/bpsk"}]})
+    mm = p.rx().ops[0][1]
+    assert isinstance(mm, rp.sync.time.MM) and mm.biphase and mm.ted == "mm"

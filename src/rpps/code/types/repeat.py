@@ -20,18 +20,17 @@ class repeat(_code):
         self.log.trace(f"encoded {len(encoded)}")
         return encoded
 
-    def decode(self, bits: np.ndarray):
+    def _decode(self, bits: np.ndarray):
         bits = np.asarray(bits)
         blocks = bits[:len(bits)//self.den*self.den].reshape(-1, self.den)
         self.log.trace(f"decoding {len(bits)}, {blocks.shape}")
 
         if bits.dtype.kind == "f": # LLRs add up: the sum is the combined LLR
             decoded = np.sum(blocks, axis=1) < 0
-            self.errors = np.count_nonzero((blocks < 0) != decoded[:, None], axis=1)
-            return decoded
+            return decoded, np.count_nonzero((blocks < 0) != decoded[:, None], axis=1)
         ones = np.sum(blocks.astype(int), axis=1)
         decoded = (2*ones > self.den).astype(bits.dtype)
-        self.errors = np.minimum(ones, self.den - ones)
-        self.errors[2*ones == self.den] = -1 # A tie (even count): no majority
+        errors = np.minimum(ones, self.den - ones)
+        errors[2*ones == self.den] = -1 # A tie (even count): no majority
         self.log.trace(f"decoded {len(decoded)}")
-        return decoded
+        return decoded, errors

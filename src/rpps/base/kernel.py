@@ -1,4 +1,4 @@
-"""Kernels: the batch face of an operator, beside the operator it belongs to (README.dev.md, Parallelism)
+"""Kernels: the batch face of an operator, beside the operator it belongs to (rpps.parallel)
 
 A region frame is whole, so what an operator does to it is a function of the frame and of the parameters controls gave it: no
 state across calls. A `Kernel` is that function over a batch of frames, one frame per row of an `[N, L]` array:
@@ -7,8 +7,14 @@ state across calls. A `Kernel` is that function over a batch of frames, one fram
 
 `xp` is the array module (numpy; cupy on a GPU), so a kernel is written once. A kernel is immutable once built and holds its
 constants (a keystream, a permutation, a code's graph), made once for its parameters, so they can live on a device and be
-exported (`describe`). Rows that cannot be processed are marked in `batch.bad` (with a reason) and carry zeros on: the shape of
+exported (`describe`). A constant goes to a device once: `self.const(xp, key, make)` keeps what `make()` gives, as an
+array of `xp`. Rows that cannot be processed are marked in `batch.bad` (with a reason) and carry zeros on: the shape of
 a batch never changes with the data.
+
+Where a batch lives: `b.x` is an array of `xp` (on a device, a device array); `bad`, `why`, `code_failed`, `notes` and
+`pos` stay on the host (small). A kernel that needs numpy says so (`where = "host"`, a C++ decoder, a `LoopKernel`): a
+plan on another array module puts a `ToHost` before it and a `ToDevice` after, so every crossing is in `describe()`.
+Nothing converts implicitly: `to_host(a)` is the one way back.
 
 An operator gives one with `op.kernel(params, how)` (params: its controlled parameters; how: `/` decode, `*` encode, `+` stage;
 returns None for what it has no kernel for). A step whose operators do not is run by `LoopKernel`: the existing
@@ -47,10 +53,28 @@ class Batch:
         if not self.bad[row]:
             self.bad[row], self.why[row] = True, str(why)
 
+def to_host(a):
+    """A numpy array of `a` (a device array's copy back, `a.get()`; a numpy array as it is)"""
+    if type(a) is np.ndarray:
+        return a
+    get = getattr(a, "get", None)
+    return get() if get is not None else np.asarray(a)
+
 class Kernel:
     """A batch function. Subclasses set `name` and give `run`; `shape` says the output length for an input length (None: not
-    known before running; given None, None), `consts` the arrays it was built with"""
+    known before running; given None, None), `consts` the arrays it was built with. where: "any" (runs on the `xp` it is
+    given) or "host" (numpy only)"""
     name = "kernel"
+    where = "any"
+
+    def const(self, xp, key, make):
+        """`make()` as an array of `xp`, made and moved once per array module and key (a constant stays on its device)"""
+        cache = self.__dict__.setdefault("_consts", {})
+        k = (xp.__name__ if hasattr(xp, "__name__") else id(xp), key)
+        v = cache.get(k)
+        if v is None:
+            v = cache[k] = xp.asarray(make())
+        return v
 
     def shape(self, n_in):
         return n_in
@@ -68,3 +92,17 @@ class Kernel:
 
     def __repr__(self):
         return f"<{type(self).__name__} {self.name}>"
+
+class ToHost(Kernel):
+    """The batch back to the host (before a kernel that needs numpy)"""
+    name = "to:host"
+    def run(self, xp, b):
+        b.x = to_host(b.x)
+        return b
+
+class ToDevice(Kernel):
+    """The batch onto the device of `xp` (after a kernel that ran on the host)"""
+    name = "to:device"
+    def run(self, xp, b):
+        b.x = xp.asarray(b.x)
+        return b

@@ -1,4 +1,30 @@
-"""Header-driven control: the control path that runs back up a chain (README.dev.md, Header-driven control)
+"""Header-driven control: the control path that runs back up a chain
+
+Headers set what follows: DVB-S2 PLS (modulation, LDPC rate, pilots, frame length, per frame), the 802.11b PLCP (payload
+rate, mid-packet), length fields (802.15.4, BLE, ADS-B), the P25 NID, adaptive links. The change has to land at the right
+place without losing lock:
+
+1. **Publish with a position.** A step calls `rp.base.control.publish(meta, op, fields, at=, out=, span=)`: `at` is the
+   absolute input position the fields apply from, `out` where that falls in this call's output, `span` how long they
+   hold. A frame sync publishes `{"frame": k}` at each start. A step that drops or inserts items reports
+   `rp.base.control.anchor(meta, op, at, out)`. Everything lands in `stream.control` (`log`, `fields(step)`, `reports`,
+   `rerun`, `buffer`).
+2. **Map fields to parameters.** `controls`, keyed by the publishing step's id, says which steps take which parameters,
+   usually through a table (below). The loader refuses unknown steps or parameters, ambiguous ids, and parameters a step
+   does not declare.
+3. **Change at a position.** A **live** change keeps state (constellation, puncturing, LDPC rate, frame length; taken
+   through `control(**params)`), a **restart** rebuilds from the position (interleaver depth, a Viterbi's constraint
+   length, FFT size). QPSK to BPSK changes the constellation and the carrier estimator's power, not the timing. What the
+   last frame left in a step is dropped and reported, never joined to the next.
+4. **Positions translate** between representations through each step's rate and delay; that is why every block carries
+   its absolute position. A change for a later step travels with the data like a tag.
+5. **Late changes re-run.** A change for a step before its publisher is carried back through the position maps, and the
+   runner re-runs from a checkpoint (`rpps.profile.runner`). A change whose data has left the buffer is not applied
+   backwards: the frames are dropped and reported. Standards that announce ahead (DVB-S2) never re-run.
+
+**Transmit:** each frame's fields come from the caller (`fields=`, one dict or one per frame), else the entry's
+`schedule`, else its defaults; `frame` gives the items one frame takes. A header step that publishes drives the steps
+after it (the 802.11b PLCP builder switches the rate where its payload starts).
 
 A header step (a physical header, a link header) and a frame sync publish what they decoded, with the absolute stream
 position it applies from. A profile's `controls` maps those fields, through an optional table, to parameters of other

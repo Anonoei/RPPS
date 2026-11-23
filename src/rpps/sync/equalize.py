@@ -81,7 +81,7 @@ class LMS(_Equalizer):
 
         eq = rp.sync.equalize.LMS(11, points=rp.symbol.load("QPSK").points, training=known_symbols)
 
-    With neither, the constellation is the detected one (meta.stream.det, see rp.sync.Acquire), so after the
+    With neither, the constellation is the detected one (meta.det, see rp.sync.Acquire), so after the
     carrier correction: `... + rp.sync.phase.FFCarrier() + rp.sync.equalize.LMS(7, 0.002)`.
     """
     __slots__ = ("points", "training")
@@ -97,7 +97,7 @@ class LMS(_Equalizer):
 
     def step(self, samples, st, meta):
         if st.points is None and self.training is None: # The detected constellation, once there is one
-            det = meta.stream.det
+            det = meta.det
             if det is None:
                 return samples[:0]
             from .acquire import candidates
@@ -119,7 +119,7 @@ class BlockLS(Stage):
 
         symbols = timed + carrier + rp.sync.equalize.BlockLS(rp.symbol.load("QPSK"), taps=7)
 
-    First class (README.dev.md, Sync methods): block estimation, where LMS and CMA adapt per symbol. Windows sit at
+    First class (rpps.sync): block estimation, where LMS and CMA adapt per symbol. Windows sit at
     absolute stream positions, `window` seconds (at least `min_symbols`). On each, the taps w (symbol spaced, centred:
     output n uses inputs n - taps//2 .. n + taps//2) solve min |X w - d|^2, d the constellation points nearest to X w,
     `iters` times; the window's solution is blended with the last (`blend` of the old: the tracking across windows), and

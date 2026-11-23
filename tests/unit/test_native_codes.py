@@ -77,7 +77,7 @@ def test_fsm_batches(name, rng):
         x = np.array([code.modulate(e) for e in enc]) + 0.6*rng.standard_normal((12, len(enc[0])//code.sym_bits))
     else:
         x = np.array([noisy_llr(e, rng, ebn0=3.0) for e in enc])
-    ref, got = both(lambda: (code.decode_batch(x), code.errors))
+    ref, got = both(lambda: code.decode_batch(x, status=True))
     assert np.array_equal(ref[0], got[0])
     assert (ref[1] is None and got[1] is None) or np.array_equal(ref[1], got[1])
 
@@ -96,9 +96,10 @@ def test_turbo(maxlog, rng):
     code.decoder.maxlog = maxlog
     msg = rng.integers(0, 2, 2*104).astype(bool)
     llr = noisy_llr(code.encoder.encode(msg), rng, ebn0=0.5)
-    ref, got = both(lambda: (code.decoder.decode(llr), code.decoder.llr.copy()))
+    ref, got = both(lambda: (code.decoder.decode(llr), code.decoder.app(llr)))
     assert np.array_equal(ref[0], got[0])
     assert np.allclose(ref[1], got[1], rtol=1e-6, atol=1e-6)
+    assert np.array_equal(got[0], got[1] < 0) # decode's bits are app's signs
 
 def test_syndrome_trellis(rng):
     code = rp.code.load("block/hamming/15_11", decoder="trellis")
@@ -113,7 +114,7 @@ def test_ldpc_one_codeword_at_a_time(rng):
     k = code.decoder.num # 50: the construction's H has dependent rows
     for _ in range(10):
         llr = noisy_llr(code.encoder.encode(rng.integers(0, 2, k).astype(bool)), rng, ebn0=2.5)
-        ref, got = both(lambda: (code.decoder.decode(llr), code.decoder.converged.copy()))
+        ref, got = both(lambda: code.decoder.decode(llr, status=True))
         assert np.array_equal(ref[0], got[0]) and np.array_equal(ref[1], got[1])
 
 def test_ldpc_batch_is_each_codeword_on_its_own(rng):
@@ -124,8 +125,9 @@ def test_ldpc_batch_is_each_codeword_on_its_own(rng):
     def each():
         out, conv = [], []
         for w in llr.reshape(40, n):
-            out.append(code.decoder.decode(w))
-            conv.append(code.decoder.converged[0])
+            o, e = code.decoder.decode(w, status=True)
+            out.append(o)
+            conv.append(e[0] >= 0)
         return np.array(out), np.array(conv)
     saved = _accel.native
     _accel.native = None
@@ -133,7 +135,8 @@ def test_ldpc_batch_is_each_codeword_on_its_own(rng):
         ref = each()
     finally:
         _accel.native = saved
-    got = code.decoder.decode(llr).reshape(40, k), code.decoder.converged
+    o, e = code.decoder.decode(llr, status=True)
+    got = o.reshape(40, k), e >= 0
     assert np.array_equal(ref[0], got[0]) and np.array_equal(ref[1], got[1]) and got[1].sum() > 30
 
 # ---------------------------------------------------------------- Reed-Solomon, BCH
@@ -149,7 +152,7 @@ def test_rs_errors(name, n_err, rng):
     code = rp.code.load(f"block/{name}")
     k, m = code.decoder.num, code.decoder.m
     cw = corrupt_symbols(code, rng.integers(0, 1 << m, k*30), rng, n_err, m)
-    ref, got = both(lambda: (code.decoder.decode(cw.reshape(-1), symbols=True), code.decoder.errors.copy()))
+    ref, got = both(lambda: code.decoder.decode(cw.reshape(-1), symbols=True, status=True))
     assert np.array_equal(ref[0], got[0]) and np.array_equal(ref[1], got[1])
 
 def test_rs_erasures_and_soft_retries(rng):
@@ -161,7 +164,7 @@ def test_rs_erasures_and_soft_retries(rng):
         pos = rng.choice(204, 12, replace=False)
         w[pos] ^= rng.integers(1, 256, 12)
         e[pos[:8]] = True # 8 of the 12 known: 8 erasures + 4 errors <= 16
-    ref, got = both(lambda: (code.decoder.decode(cw.reshape(-1), symbols=True, erasures=erased), code.decoder.errors.copy()))
+    ref, got = both(lambda: code.decoder.decode(cw.reshape(-1), symbols=True, erasures=erased, status=True))
     assert np.array_equal(ref[0], got[0]) and np.array_equal(ref[1], got[1]) and (got[1] >= 0).all()
     # soft: 10 errors (beyond t = 8), the corrupted bytes least reliable
     cw = corrupt_symbols(code, msg, rng, 10)
@@ -169,7 +172,7 @@ def test_rs_erasures_and_soft_retries(rng):
     llr = np.where(bits, -4.0, 4.0) + 0.1*rng.standard_normal(bits.shape)
     clean = code.decoder.to_bits(code.encoder.encode(msg, symbols=True)).reshape(20, 204, 8)
     llr[bits != clean] = np.where(bits[bits != clean], -0.3, 0.3)
-    ref, got = both(lambda: (code.decoder.decode(llr.reshape(-1)), code.decoder.errors.copy()))
+    ref, got = both(lambda: code.decoder.decode(llr.reshape(-1), status=True))
     assert np.array_equal(ref[0], got[0]) and np.array_equal(ref[1], got[1])
 
 def test_bch(rng):
@@ -178,7 +181,7 @@ def test_bch(rng):
     cw = code.encoder.encode(rng.integers(0, 2, k*3).astype(bool)).reshape(3, n).copy()
     for w, ne in zip(cw, (5, 12, 14)):
         w[rng.choice(n, ne, replace=False)] ^= True
-    ref, got = both(lambda: (code.decoder.decode(cw.reshape(-1)), code.decoder.errors.copy()))
+    ref, got = both(lambda: code.decoder.decode(cw.reshape(-1), status=True))
     assert np.array_equal(ref[0], got[0]) and np.array_equal(ref[1], got[1])
     assert list(got[1][:2]) == [5, 12]
 
@@ -230,3 +233,18 @@ def test_equalizers(which, rng):
     ref, got = both(lambda: stage_run(make, y, cut, Fs=1e3, sps=1))
     assert len(ref) == len(got) > 5900
     assert np.allclose(ref, got, atol=1e-3)
+
+# --- Polar list decoding: polar_scl against the numpy reference (rpps/code/types/polar.py _scl)
+
+@pytest.mark.parametrize("N,size", [(8, 1), (32, 4), (128, 8), (512, 8), (1024, 16)])
+def test_polar_scl_matches_python(N, size, rng):
+    """The same paths in the same order and the same metrics: candidates ranked stably, 0s before 1s on a tie"""
+    import sys
+    pol = sys.modules["rpps.code.types.polar"]
+    frozen = np.zeros(N, bool)
+    frozen[pol.pw_order(N)[:N - max(1, N//3)]] = True
+    llr = rng.normal(1.0, 1.5, (4, N))*rng.choice([-1, 1], (4, N))
+    llr[0, :4] = 0.0 # (ties)
+    u1, m1 = _accel.native.polar_scl(llr, frozen, size)
+    u2, m2 = pol._scl(llr, frozen, size)
+    assert np.array_equal(u1, u2) and np.allclose(m1, m2, rtol=1e-12, atol=1e-9)

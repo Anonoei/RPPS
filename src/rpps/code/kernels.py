@@ -1,7 +1,7 @@
 """Batch kernels of the code operators: `BlockDecode` of a block code or interleaver, `XorMask` of an additive scrambler
 
 Checked row for row against the operator run frame by frame (tests/unit/test_batch_kernels.py); they use only what
-numpy and cupy share, so `xp` can be either (README.dev.md, Parallelism)
+numpy and cupy share, so `xp` can be either (rpps.parallel)
 """
 import numpy as np
 
@@ -22,6 +22,8 @@ class BlockDecode(Kernel):
     def __init__(self, coder, block, soft, category, rep, name="block"):
         self.coder, self.block, self.soft, self.category, self.rep = coder, int(block), bool(soft), category, rep
         self.name = f"decode:{name}"
+
+    where = "host" # (the decoders are C++ and numpy; a device decoder is a kernel of its own)
 
     def shape(self, n_in):
         return None # a code says how many items a block gives, not every coder how its input and output relate
@@ -44,7 +46,8 @@ class BlockDecode(Kernel):
             return b
         x = self._in(b, b.x[:, :used])
         try:
-            y = np.asarray(self.coder.decode(x.reshape(-1))).reshape(N, -1)
+            y, errs = self.coder.decode(x.reshape(-1), status=True)
+            y = np.asarray(y).reshape(N, -1)
         except RPPSError: # one frame's block was bad: find which, the others go on
             rows = []
             for i in range(N):
@@ -61,11 +64,11 @@ class BlockDecode(Kernel):
             for i, r in enumerate(rows):
                 if r is not None:
                     y[i] = r
+            errs = None # (decoded row by row: no verdict per codeword)
         soft = y.dtype.kind == "f"
         b.x = y
         b.form = Form(Mod if soft else Digital, self.category, dtype.LLR if soft else dtype.BITS, self.rep, *b.form[4:])
-        errs = getattr(self.coder, "errors", None) # This decoder's verdict per row (the operator's FAILED mask, per frame)
-        if errs is not None and len(errs) and len(errs) % N == 0:
+        if errs is not None and len(errs) and len(errs) % N == 0: # This decoder's verdict per row (the FAILED mask, per frame)
             b.code_failed = (np.asarray(errs).reshape(N, -1) < 0).any(axis=1)
         return b
 
@@ -84,7 +87,7 @@ class XorMask(Kernel):
 
     def run(self, xp, b):
         L = b.x.shape[1]
-        m = xp.asarray(self.mask[np.arange(L) % len(self.mask)])[None, :]
+        m = self.const(xp, L, lambda: self.mask[np.arange(L) % len(self.mask)])[None, :]
         if b.form.dt == dtype.LLR and self.rep == Rep.DATA: # Descrambling (encoding decides first, as the operator does)
             b.x = (b.x*(1.0 - 2.0*m)).astype(b.x.dtype)
             b.form = Form(Mod, self.category, dtype.LLR, self.rep, *b.form[4:])

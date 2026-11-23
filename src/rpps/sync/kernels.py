@@ -1,7 +1,7 @@
 """Batch kernels of the sync operators: `PilotLine` of `PilotPhase`
 
 Checked row for row against the operator run frame by frame (tests/unit/test_batch_kernels.py); they use only what
-numpy and cupy share, so `xp` can be either (README.dev.md, Parallelism)
+numpy and cupy share, so `xp` can be either (rpps.parallel)
 """
 import numpy as np
 
@@ -32,22 +32,22 @@ class PilotLine(Kernel):
         if L < self.total or not len(self.pos):
             b.x = b.x.astype(np.complex64) # (a frame cut short is left as it came; with nothing to measure the symbols pass)
             return b
-        Y = xp.asarray(b.x[:, :self.total]).astype(np.complex128)
+        Y = b.x[:, :self.total].astype(np.complex128)
         ph = xp.zeros((N, len(self.pos)))
         k = 1 if self.lead is not None else 0
         if len(self.starts):
-            idx = xp.asarray(self.starts[:, None] + np.arange(self.length)[None, :])
+            idx = self.const(xp, "idx", lambda: self.starts[:, None] + np.arange(self.length)[None, :])
             blocks = Y[:, idx]                                                   # (N, blocks, length)
             ph[:, k:] = xp.angle((blocks*np.conj(self.value)).mean(axis=2))
         ph = xp.unwrap(ph, axis=1)
         if len(self.pos) > 1:
             d = self.pos - self.pos.mean()
-            slope = (ph*xp.asarray(d)[None, :]).sum(axis=1)/float((d*d).sum())
+            slope = (ph*self.const(xp, "d", lambda: d)[None, :]).sum(axis=1)/float((d*d).sum())
             icpt = ph.mean(axis=1) - slope*float(self.pos.mean())
         else:
             slope, icpt = xp.zeros(N), ph[:, 0]
         turn = icpt[:, None] + slope[:, None]*xp.arange(self.total)[None, :]
-        out = xp.asarray(b.x).astype(np.complex128)
+        out = b.x.astype(np.complex128)
         out[:, :self.total] = Y*xp.exp(-1j*turn)
         b.x = out.astype(np.complex64)
         return b

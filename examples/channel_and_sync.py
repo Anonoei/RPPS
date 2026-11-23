@@ -5,7 +5,7 @@
 The channel is a chain of stages like any other (`rp.signal.channel`: AWGN, CFO, PhaseOffset, ClockDrift, Multipath,
 Fading, Gain), so the impairments are the ones a radio gives and they stream block by block.
 
-The receiver uses the first-class sync of README.dev.md ("Sync methods"): estimate from a window with block operations,
+The receiver uses the first-class sync of rpps.sync: estimate from a window with block operations,
 then carry the estimate across windows with a slow loop. `Acquire` finds the symbol rate, modulation, roll-off and
 frequency offset from the stream itself; `time.Mat` takes the symbols with a matrix matched filter at the detected rate;
 `phase.FFCarrier` removes frequency and phase feed-forward; `quality.Monitor` reports Es/N0 as the symbols go by.

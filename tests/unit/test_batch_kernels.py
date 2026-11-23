@@ -1,4 +1,4 @@
-"""Batch kernels against the operators they are the batch form of, frame by frame (README.dev.md, Parallelism)
+"""Batch kernels against the operators they are the batch form of, frame by frame (rpps.parallel)
 
 Each kernel is run on a batch and every row compared with the operator run alone on that frame (the `LoopKernel` path, which
 is the oracle): bits exactly, soft values to float32 rounding."""
@@ -9,7 +9,8 @@ import pytest
 
 import rpps as rp
 from rpps.base.data import Mod
-from rpps.base.kernel import Form, Batch
+from rpps.base.kernel import Form, Batch, to_host
+import fakedevice
 from rpps.parallel.kernel import LoopKernel, kernel_of
 from rpps.profile.steps import DECODE, ENCODE, STAGE
 
@@ -31,7 +32,36 @@ def both(op, how, X, f, live=None, rtol=1e-5, atol=1e-4):
     else:
         np.testing.assert_array_equal(got.x, ref.x)
     assert tuple(got.form[:4]) == tuple(ref.form[:4])
+    for xp in DEVICES:
+        dev = on_device(k, mk(), xp)
+        assert list(dev.bad) == list(got.bad) and dev.x.shape == got.x.shape and dev.x.dtype == got.x.dtype, xp.__name__
+        if got.x.dtype.kind in "fc":
+            np.testing.assert_allclose(dev.x, got.x, rtol=rtol, atol=atol, err_msg=xp.__name__)
+        else:
+            np.testing.assert_array_equal(dev.x, got.x, err_msg=xp.__name__)
     return k, got, ref
+
+def _devices():
+    """The pretend device always (tests/unit/fakedevice.py), and a real GPU when there is one (rpps._accel.device(): CuPy on
+    CUDA or ROCm; RPPS_DEVICE=none leaves it out)"""
+    from rpps import _accel
+    xp, backend = _accel.device()
+    return [fakedevice] + ([xp] if backend else [])
+
+DEVICES = _devices()
+
+def on_device(k, b, xp=fakedevice):
+    """A kernel on a device, as a plan runs it there: uploaded, run (a host kernel between explicit transfers),
+    downloaded once. On the pretend device anything implicit raises"""
+    from rpps.base.kernel import ToDevice, ToHost
+    b = ToDevice().run(xp, b)
+    if k.where == "host":
+        b = ToDevice().run(xp, k.run(np, ToHost().run(xp, b)))
+    else:
+        b = k.run(xp, b)
+    b.x = to_host(b.x)
+    assert type(b.x) is np.ndarray and type(b.bad) is np.ndarray
+    return b
 
 def noisy_symbols(c, n, rows, noise, seed):
     rng = np.random.default_rng(seed)

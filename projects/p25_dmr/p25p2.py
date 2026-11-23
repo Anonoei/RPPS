@@ -58,10 +58,10 @@ def emi_decode(bits, k_info, n_total, erase_tail):
     """Decode a shortened / punctured derived code: bits = k_info + parity hexbits as sent (info first, MSB first), n_total hexbits sent; the code is shortened to the front (35 - k_info zeros)
     and punctured at the end (erase_tail hexbits, erased). Returns (info bits as a list of 0/1 of length 6*k_info, corrected symbols) or (None, -1)"""
     code = _RS_EMI[(k_info, n_total, erase_tail)]
-    info = code.decode(np.asarray(bits[:6*n_total], np.uint8))
-    if code.errors[0] < 0:
+    info, errors = code.decode(np.asarray(bits[:6*n_total], np.uint8), status=True)
+    if errors[0] < 0:
         return None, -1
-    return [int(b) for b in info], int(code.errors[0])
+    return [int(b) for b in info], int(errors[0])
 
 
 # ---- bit helpers, ISCH and DUID codes ------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -342,8 +342,8 @@ class Decoder:
         else:
             if len(parts) == 4:
                 hx = [int("".join(map(str, p[6*i:6*i + 6])), 2) for p in parts for i in range(4)] + [int("".join(map(str, sl.ess_a[6*i:6*i + 6])), 2) for i in range(28)]
-                info = _RS_ESS.decode(np.array(hx), symbols=True)
-                ok = _RS_ESS.errors[0] >= 0
+                info, errors = _RS_ESS.decode(np.array(hx), symbols=True, status=True)
+                ok = errors[0] >= 0
                 self.stats["ess rs ok" if ok else "ess rs fail"] += 1
                 if ok:
                     bits = "".join(format(int(h), "06b") for h in info)

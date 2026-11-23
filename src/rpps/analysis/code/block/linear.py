@@ -172,11 +172,15 @@ def sparse_checks(words, rel=None, w_max=None, trials=150, verify=400, seed=0, k
     words = np.asarray(words, dtype=np.uint8)
     W, n = words.shape
     w_max = w_max or max(6, min(40, n//4))
-    R = min(W, (k if k is not None else n) + 16)
-    # Checks are verified on words they were not computed from (a null space vector holds on those by construction)
+    # Checks are verified on words they were not computed from (a null space vector holds on those by construction): those
+    # are kept aside first, even when that leaves fewer than k + 16 to solve from (sparse checks still come out)
+    hold = min(64, max(32, W//5))
+    R = min(W - hold, (k if k is not None else n) + 16)
+    if R < 4:
+        return np.zeros((0, n), np.uint8), np.zeros(0)
     order = (np.argsort((1.0/(1.0 + np.exp(np.minimum(np.asarray(rel, dtype=float), 50.0)))).sum(axis=1), kind="stable")
              if rel is not None else np.arange(W))
-    npool = min(4*R, max(R, W - 64))
+    npool = min(4*R, W - hold)
     pool = words[order[:npool]]
     rest = order[npool:]
     if len(rest) < 32:

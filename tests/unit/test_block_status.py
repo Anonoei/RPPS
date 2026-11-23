@@ -1,5 +1,6 @@
 """Per-codeword decode status, syndrome-table / cyclic codes (Golay), Reed-Solomon erasures and puncturing"""
 import itertools
+import threading
 
 import numpy as np
 import pytest
@@ -22,8 +23,8 @@ def test_rs_p25_on_air_words(ref, word, rng):
     bad = w.copy()
     pos = rng.permutation(24)[:code.t]
     bad[pos] ^= rng.integers(1, 64, len(pos))
-    out = code.decode(bad, symbols=True)
-    assert np.array_equal(out, w[:code.num]) and code.errors[0] == code.t
+    out, errors = code.decode(bad, symbols=True, status=True)
+    assert np.array_equal(out, w[:code.num]) and errors[0] == code.t
 
 def _rs_trial(code, rng, n_err, n_era):
     info = rng.integers(0, 2**code.m, code.num)
@@ -33,8 +34,8 @@ def _rs_trial(code, rng, n_err, n_era):
     rx = cw.copy()
     rx[err] ^= rng.integers(1, 2**code.m, n_err)
     rx[era[:n_era//2]] ^= rng.integers(1, 2**code.m, n_era//2) # Half the erased symbols are wrong too
-    out = code.decode(rx, symbols=True, erasures=[era])
-    return np.array_equal(out, info), int(code.errors[0])
+    out, errors = code.decode(rx, symbols=True, erasures=[era], status=True)
+    return np.array_equal(out, info), int(errors[0])
 
 def test_rs_errors_and_erasures(rng):
     code = rp.code.load("block/p25p2_63_35").decoder
@@ -57,8 +58,9 @@ def test_rs_erasure_mask_form(rng):
     mask[:, :12] = True # 12 erasures: the whole capacity
     rx = cw.copy()
     rx[:, :12] = 0
-    assert np.array_equal(code.decode(rx.reshape(-1), symbols=True, erasures=mask), info.reshape(-1))
-    assert (code.errors >= 0).all()
+    out, errors = code.decode(rx.reshape(-1), symbols=True, erasures=mask, status=True)
+    assert np.array_equal(out, info.reshape(-1))
+    assert (errors >= 0).all()
 
 @pytest.mark.parametrize("ref,sent", [("p25p2_soemi", 45), ("p25p2_ioemi", 52)])
 def test_rs_punctured(ref, sent, rng):
@@ -75,7 +77,7 @@ def test_rs_punctured(ref, sent, rng):
     d = code.decoder
     full = rp.code.RS(d.n, d.num, m=6, fcr=1).encoder.encode(msg, symbols=False) # The same word, nothing punctured
     restored = np.count_nonzero(d.to_symbols(full)[d.puncture]) # Punctured symbols the decoder had to fill in
-    assert np.array_equal(out.data, msg) and code.errors[0] == t + restored
+    assert np.array_equal(out.data, msg) and out.errors[0] == t + restored
 
 def test_rs_soft_retry_erases_unreliable(rng):
     code = rp.code.load("block/p25p2_63_35").decoder
@@ -84,18 +86,19 @@ def test_rs_soft_retry_erases_unreliable(rng):
     llr = np.where(b, -4.0, 4.0)
     for p in rng.permutation(63)[:20]: # 20 wrong symbols (t = 14), each received weakly
         llr[6*p:6*p + 6] *= -0.1
-    out = code.decode(llr)
-    assert np.array_equal(code.to_symbols(out), info) and code.errors[0] == 20
-    code.decode(llr < 0, soft=False)
-    assert code.errors[0] == -1 # The same word from hard bits is beyond errors-only decoding
+    out, errors = code.decode(llr, status=True)
+    assert np.array_equal(code.to_symbols(out), info) and errors[0] == 20
+    _, errors = code.decode(llr < 0, soft=False, status=True)
+    assert errors[0] == -1 # The same word from hard bits is beyond errors-only decoding
 
 def test_rs_dvb_unchanged(rng):
     code = rp.code.load("block/rs/204_188")
     msg = bits(rng, 8*188*2)
     cw = (rp.Data(msg, flush=True) * code).data.copy()
     cw[:64] ^= True # 8 byte errors in the first word
-    assert np.array_equal((rp.Data(cw, flush=True) / code).data, msg)
-    assert list(code.errors) == [8, 0]
+    out = rp.Data(cw, flush=True) / code
+    assert np.array_equal(out.data, msg)
+    assert list(out.errors) == [8, 0]
 
 # --- cyclic codes, syndrome decoder -------------------------------------------------------------------------
 
@@ -107,7 +110,8 @@ def test_golay_corrects_every_three_error_pattern(rng):
     for idx in rng.permutation(len(pats))[:300]:
         rx = cw.copy()
         rx[list(pats[idx])] ^= True
-        assert np.array_equal(code.decoder.decode(rx), msg) and code.errors[0] == 3
+        out, errors = code.decoder.decode(rx, status=True)
+        assert np.array_equal(out, msg) and errors[0] == 3
 
 def test_golay23_is_perfect():
     dec = rp.code.Golay(23).decoder
@@ -122,8 +126,7 @@ def test_extended_golay_detects_four(rng):
     for _ in range(50):
         rx = cw.copy()
         rx[rng.permutation(24)[:4]] ^= True
-        code.decoder.decode(rx)
-        assert code.errors[0] == -1
+        assert code.decoder.decode(rx, status=True)[1][0] == -1
 
 def test_cyclic_shortened(rng):
     code = rp.code.Cyclic(23, 12, 0xC75, extend=True, shorten=6) # (18,6,8)
@@ -132,8 +135,9 @@ def test_cyclic_shortened(rng):
     cw = (rp.Data(msg, flush=True) * code).data.copy().reshape(-1, 18)
     for w in cw:
         w[rng.permutation(18)[:3]] ^= True
-    assert np.array_equal((rp.Data(cw.reshape(-1), flush=True) / code).data, msg)
-    assert (code.errors == 3).all()
+    out = rp.Data(cw.reshape(-1), flush=True) / code
+    assert np.array_equal(out.data, msg)
+    assert (out.errors == 3).all()
 
 def test_cyclic_rejects_non_generator():
     with pytest.raises(ValueError):
@@ -153,22 +157,21 @@ def test_linear_own_decoder_flags_instead_of_raising(rng):
     msg = bits(rng, 6*40)
     cw = code.encoder.encode(msg).reshape(-1, 10).copy()
     cw[::2, [0, 3]] ^= True # Syndrome 1110 ^ 0111 = 1001: no single flip makes it
-    code.decoder.decode(cw.reshape(-1))
-    assert list(code.errors) == [-1, 0]*20
+    assert list(code.decoder.decode(cw.reshape(-1), status=True)[1]) == [-1, 0]*20
 
 def test_trellis_decoder_status(rng):
     code = rp.code.load("block/hamming/7_4")
     msg = bits(rng, 4*30)
     cw = code.encoder.encode(msg).reshape(-1, 7).copy()
     cw[::2, 3] ^= True
-    out = code.decoder.decode(cw.reshape(-1))
+    out, errors = code.decoder.decode(cw.reshape(-1), status=True)
     assert np.array_equal(out, msg)
-    assert list(code.errors) == [1, 0]*15
+    assert list(errors) == [1, 0]*15
 
 def test_repeat_status():
     rep = rp.code.load("block/repeat/3").decoder
-    rep.decode(np.array([1, 1, 0, 0, 0, 0, 1, 1, 1], dtype=np.uint8))
-    assert list(rep.errors) == [1, 0, 0]
+    _, errors = rep.decode(np.array([1, 1, 0, 0, 0, 0, 1, 1, 1], dtype=np.uint8), status=True)
+    assert list(errors) == [1, 0, 0]
 
 def test_ldpc_status(rng):
     code = rp.code.load("block/ldpc/gallager_96_48")
@@ -176,17 +179,63 @@ def test_ldpc_status(rng):
     cw = code.encoder.encode(msg)
     llr = (1.0 - 2.0*cw)*4.0
     llr[5] *= -1
-    code.decoder.decode(llr)
-    assert list(code.errors) == [1, 0, 0, 0]
+    assert list(code.decoder.decode(llr, status=True)[1]) == [1, 0, 0, 0]
 
 def test_crc_status(rng):
     crc = rp.link.load("crc/crc16_xmodem")
     sent = crc.encoder.encode(bits(rng, 40))
-    crc.encoder.decode(sent)
-    assert list(crc.errors) == [0]
+    assert list(crc.encoder.decode(sent, status=True)[1]) == [0]
     sent[3] ^= True
-    crc.encoder.decode(sent)
-    assert list(crc.errors) == [-1]
+    assert list(crc.encoder.decode(sent, status=True)[1]) == [-1]
 
 def test_conv_has_no_word_status():
-    assert rp.code.load("conv/k7_133_171/1_2").errors is None
+    code = rp.code.load("conv/k7_133_171/1_2")
+    llr = 4.0*(1.0 - 2.0*code.encoder.encode(np.zeros(64, bool)))
+    assert code.decoder.decode(llr, status=True)[1] is None
+
+# --- the status comes with the decode, and nothing of it stays on the code ---------------------------------------
+
+def _golay24_words(rng, n, flips):
+    """n extended Golay codewords of random messages with `flips` bits wrong in each (4: detected, -1)"""
+    code = rp.code.load("block/golay/24_12")
+    msg = bits(rng, 12*n)
+    cw = code.encoder.encode(msg).reshape(n, 24).copy()
+    for w in cw:
+        w[rng.permutation(24)[:flips]] ^= True
+    return code, msg, cw.reshape(-1)
+
+def test_decoding_leaves_no_status_on_the_code(rng):
+    code, _, cw = _golay24_words(rng, 4, 4)
+    out = rp.Data(cw, flush=True) / code
+    assert list(out.errors) == [-1]*4 and out.failed.all()
+    for obj in (code, code.decoder):
+        assert not hasattr(obj, "errors") and not hasattr(obj, "ok")
+
+def test_threads_sharing_a_code_keep_their_own_status(rng, monkeypatch):
+    """Thread A decodes clean words and, before its decode returns, thread B decodes uncorrectable ones with the same
+    code object: A's output still says A's words decoded"""
+    code, msg, clean = _golay24_words(rng, 8, 0)
+    _, _, bad = _golay24_words(rng, 8, 4)
+    dec, inner = code.decoder, code.decoder._decode
+    a_in, b_done = threading.Event(), threading.Event()
+    def held(x, *args, **kw):
+        out = inner(x, *args, **kw)
+        if threading.current_thread().name == "A":
+            a_in.set()
+            assert b_done.wait(10)
+        return out
+    monkeypatch.setattr(dec, "_decode", held)
+    got = {}
+    def run(name, cw):
+        got[name] = rp.Data(cw, flush=True) / code
+        if name == "B":
+            b_done.set()
+    a = threading.Thread(target=run, args=("A", clean), name="A")
+    a.start()
+    assert a_in.wait(10)
+    b = threading.Thread(target=run, args=("B", bad), name="B")
+    b.start()
+    b.join(10)
+    a.join(10)
+    assert np.array_equal(got["A"].data, msg) and list(got["A"].errors) == [0]*8 and got["A"].failed is None
+    assert list(got["B"].errors) == [-1]*8 and got["B"].failed.all()

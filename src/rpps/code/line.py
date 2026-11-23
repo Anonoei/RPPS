@@ -14,7 +14,7 @@ so they need no reference level and ignore an inverted signal.
 Decoding keeps soft values soft: an inversion negates LLRs, a differential code takes the box-plus of neighbours
 (sign times the smaller magnitude), Manchester the difference of the two halves. In a profile: {"code": "line", "name": "nrzi"}.
 Manchester as a pulse (first half +1, second -1, at the sample level) is `rp.signal.filters.ShapingBiphase` instead
-(README.dev.md, Grey areas): this is the bit-level form, 2 channel bits per data bit.
+(rpps.base, Grey areas): this is the bit-level form, 2 channel bits per data bit.
 """
 import numpy as np
 
@@ -58,12 +58,6 @@ class Line(Pipe):
             return 1.0
         return 0.5 if decode else 2.0
 
-    @property
-    def errors(self):
-        """Manchester: invalid pairs (00, 11) in the last decode, which it marks `failed` (a frame holding one is dropped by a
-        link header); None for the other codes"""
-        return self._errors
-    _errors = None
     CONFIDENT = 0.5 # Soft halves both this far (times the block's mean magnitude) from 0 and of one sign: an invalid pair
 
     # ---- encode
@@ -108,7 +102,6 @@ class Line(Pipe):
         x = np.asarray(data.data, dtype=np.float64) if soft else np.asarray(data.bits()).astype(bool)
         key = (self, "rx")
         self._frame_start(data, ctx, key)
-        self._errors = None
         if self.name == "invert":
             y = -x if soft else ~x
         elif self.name in ("nrzi", "nrzm"):
@@ -135,7 +128,6 @@ class Line(Pipe):
             else:
                 y = (a != b) if MID[self.name] else (a == b)
             bad = np.zeros(len(y), bool) # (any pair of halves is a valid bit)
-            self._errors = 0
         else:
             x = align(ctx, key, x, 2, pad=False)
             a, b = x[0::2], x[1::2]
@@ -145,8 +137,7 @@ class Line(Pipe):
                 bad = (np.sign(a) == np.sign(b)) & (np.minimum(np.abs(a), np.abs(b)) > sure)
             else:
                 y = b if self.name == "manchester" else a
-                bad = a == b
-            self._errors = int(np.count_nonzero(bad))
+                bad = a == b # Manchester: an invalid pair (00, 11) is marked `failed` (a link header drops its frame)
         if soft:
             out = data.derive(y.astype(dtype.LLR.dtype), self.CATEGORY, dtype.LLR, Mod, ctx, rep=Rep.DATA)
         else:

@@ -10,19 +10,18 @@ Every block carries three tags (see rpps.base.types):
     Digital  bits and bytes
 """
 
-from time import perf_counter
 
 import numpy as np
 
 from .types import Category, Rep, dtype, REP_OF
-from .meta import Meta, forward
+from .meta import Meta, forward, timed
 from .rpps import FLUSH
 from ..errors import StreamError
 
 class _Data:
     __slots__ = (
         "_data",
-        "CAT", "REP", "DT", "ctx", "meta", "failed"
+        "CAT", "REP", "DT", "ctx", "meta", "failed", "errors"
     )
 
     def __init__(self, data=None, cat=Category.UNK, dt=None, ctx=None, meta=None, rep=None):
@@ -35,6 +34,9 @@ class _Data:
         # Bool mask, True where a decoder could not decode the item (rpps.code.Coding sets it from its codewords' status):
         # it goes along with the items (a step that keeps their number keeps it), and a link header drops such frames
         self.failed = None
+        # The decode that made this block, per codeword: bits (Reed-Solomon: symbols) corrected, -1 where it failed. None
+        # unless a code with codewords decoded it (a marker: its word's bit errors per frame). Not carried to later blocks
+        self.errors = None
 
     @property
     def flush(self):
@@ -65,8 +67,8 @@ class _Data:
 
     @property
     def det(self):
-        """What `rp.sync.Acquire` detected (baud, modulation, cfo...), None before"""
-        return self.meta.stream.det
+        """What `rp.sync.Acquire` detected (baud, modulation, cfo...) for this block, None before"""
+        return self.meta.det
 
     def state(self, stage):
         """The carried state of a stage in this stream (loop estimates, filter history...), None before it ran"""
@@ -82,19 +84,23 @@ class _Data:
         meta.refresh()
         meta.flush = self.flush
         st = meta.state_of(stage)
-        t = perf_counter()
-        out = stage.step(self._data, st, meta)
         stream = meta.stream
-        busy = stream.busy
-        busy[stage] = busy.get(stage, 0.0) + perf_counter() - t
+        out = timed(stream, stage, stage.step, self._data, st, meta)
         out = np.asarray(out)
         if out.dtype in (np.complex128, np.float64): # Samples are single precision throughout
             out = out.astype(np.complex64 if out.dtype.kind == "c" else np.float32)
         cat = getattr(stage, "CATEGORY", None) or Category.SIGNAL
+        gap = 0 # Items a source lost before this block (a radio's overrun, a dropped block): carried into the outputs
+        if self.meta.timed:
+            seen = stream.in_pos.get(stage)
+            if seen is not None and self.meta.pos > seen:
+                gap = self.meta.pos - seen
+            stream.in_pos[stage] = self.meta.pos + len(self)
         if self.REP in (Rep.CHANNEL, Rep.DATA): # A stage on bits: same class, representation and form
             out_meta = meta.fork()
             start = stream.out_pos.get(stage)
-            out_meta.pos = meta.pos if start is None else start
+            out_meta.pos = meta.pos if start is None else start + gap
+            out_meta.timed = True
             stream.out_pos[stage] = out_meta.pos + len(out)
             return self.derive(out, cat, self.DT, ctx=dict(self.ctx), meta=out_meta, rep=self.REP)
         # One value per symbol is symbols: a stage that takes samples to one per symbol (timing recovery, an FFT) gives
@@ -111,7 +117,10 @@ class _Data:
         start = stream.out_pos.get(stage)
         if start is None: # First block this stage sees in the stream: its outputs start where its input is, at the new rate
             start = int(round(meta.pos * meta.op.Fs / meta.state.Fs)) if meta.state.Fs else 0
+        elif gap: # A gap at the input's rate, at the output's
+            start += int(round(gap * meta.op.Fs / meta.state.Fs)) if meta.state.Fs else gap
         out_meta.pos = start # Then it counts its own outputs: independent of how the blocks were cut
+        out_meta.timed = True
         stream.out_pos[stage] = start + len(out)
         return Analog(out, cat, dt, dict(self.ctx), out_meta, rep)
 
@@ -159,7 +168,7 @@ class _Data:
     def copy(self):
         """Create a copy of data (the stream state is copied too)"""
         out = type(self)(self._data, self.CAT, self.DT, dict(self.ctx), self.meta, self.REP)
-        out.failed = self.failed
+        out.failed, out.errors = self.failed, self.errors
         return out
 
 class Analog(_Data):
@@ -351,6 +360,7 @@ def Data(data, ctx=None, flush=False, Fs=None, sps=None, cf=None, stream=None, d
     if d is None:
         raise TypeError(f"Cannot convert {type(data)}")
     d.meta.pos = d.meta.stream.pos # The stream's source position: this block follows what it produced before
+    d.meta.timed = True
     d.meta.stream.pos += len(d)
     return d # type: ignore
 

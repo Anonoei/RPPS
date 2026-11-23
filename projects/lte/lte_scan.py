@@ -24,7 +24,6 @@ import io
 import json
 import os
 import sys
-import time
 import types
 from collections import Counter
 
@@ -51,12 +50,8 @@ def open_radio():
 set_gain, grab, clipped = radio_io.set_gain, radio_io.grab, radio_io.clipped
 
 def quick_gain(sdr):
-    """Highest gain on the ladder that does not clip (a detection setting; identification then runs the full search)"""
-    for g in radio_io.LADDER:
-        set_gain(sdr, g); time.sleep(0.03)
-        if clipped(grab(sdr, 2**18)) < 1e-4:
-            return g
-    return radio_io.LADDER[-1]
+    """Highest gain that does not clip (a detection setting; identification then runs the full search)"""
+    return sdr.find_gain(count=2**18, max_clip=1e-4, confirm=0)
 
 def sweep(sdr, lo, hi, step=16e6, nfft=2**14):
     """Stitched power spectrum (Hz, dB) of lo..hi [Hz]; the DC spike of every tile masked"""
@@ -174,7 +169,7 @@ def capture(sdr, carrier_mhz, cls, seconds, tune=True, keep=None, psd=None):
             g, _ = gain_search.search(sdr, cf, CAPTURE_FS, sig, vac, verbose=False)
         else:
             g = quick_gain(sdr)
-        set_gain(sdr, g); time.sleep(0.05)
+        set_gain(sdr, g)
         x = grab(sdr, int(CAPTURE_FS*seconds))
     finally:
         sdr.stop_rx()

@@ -9,7 +9,7 @@ In a profile: {"sync": "delimit", "word": "0x1ACFFC1D", "bits": 32, "length": 81
 {"code": "marker", "word": "0x1ACFFC1D", "bits": 32, "length": 8160}; or both name a `sequence` of type "word".
 Without `length` the frames are whatever a profile's control delimits (`frame`, from a header on transmit, a delimiter on
 receive): the word goes before each, and is stripped from the start of each (Mode S: a preamble before frames of 56 or 112
-bits). Soft values pass through; `errors` holds the word's mismatched bits per frame of the last decode.
+bits). Soft values pass through; the decoded data's `errors` holds the word's mismatched bits per frame stripped.
 """
 import numpy as np
 
@@ -30,7 +30,6 @@ class Marker(Pipe):
         self.length = None if length is None else int(length)
         if self.length is not None and self.length <= 0:
             raise ValueError("Marker: the frame length in bits after the word is positive (or None: frames by control)")
-        self.errors = None
 
     def __str__(self):
         return f"Marker({self.n}+{self.length if self.length else 'frame'})"
@@ -65,6 +64,7 @@ class Marker(Pipe):
         ctx = dict(data.ctx)
         soft = isinstance(data, Mod) and data.is_soft
         x = np.asarray(data.data, dtype=np.float64) if soft else np.asarray(data.bits()).astype(bool)
+        errors = None
         if self.length is None: # The word at each frame start is stripped (held while it is not all in yet)
             key = (self, "strip")
             if self._start:
@@ -80,7 +80,7 @@ class Marker(Pipe):
                 else:
                     w = head[:self.n]
                     hard = w < 0 if soft else w.astype(bool)
-                    self.errors = np.array([int(np.count_nonzero(hard != self.word[:len(hard)]))])
+                    errors = np.array([int(np.count_nonzero(hard != self.word[:len(hard)]))])
                     y = head[self.n:]
                     anchor(data.meta, self, data.meta.pos + self.n - len(held), 0) # The first bit after the word
         else:
@@ -88,8 +88,11 @@ class Marker(Pipe):
             frames = x.reshape(-1, self.n + self.length)
             head = frames[:, :self.n]
             hard = head < 0 if soft else head
-            self.errors = np.count_nonzero(hard != self.word[None, :], axis=1)
+            errors = np.count_nonzero(hard != self.word[None, :], axis=1)
             y = frames[:, self.n:].reshape(-1)
         if soft:
-            return data.derive(y.astype(dtype.LLR.dtype), self.CATEGORY, dtype.LLR, Mod, ctx, rep=Rep.DATA)
-        return data.derive(y, self.CATEGORY, dtype.BITS, Digital, ctx, rep=Rep.DATA)
+            out = data.derive(y.astype(dtype.LLR.dtype), self.CATEGORY, dtype.LLR, Mod, ctx, rep=Rep.DATA)
+        else:
+            out = data.derive(y, self.CATEGORY, dtype.BITS, Digital, ctx, rep=Rep.DATA)
+        out.errors = errors
+        return out

@@ -2,8 +2,12 @@ import numpy as np
 
 from collections import namedtuple
 
-Channel = namedtuple("Channel", "front Fs decimation")
-Channel.__doc__ = """What brings a Signal to baseband: `block + channel.front` is the signal at Fs `Fs` (the capture's Fs / `decimation`)"""
+Channel = namedtuple("Channel", "front Fs decimation delay settle")
+Channel.__doc__ = """What brings a Signal to baseband: `block + channel.front` is the signal at Fs `Fs` (the capture's Fs / `decimation`)
+
+delay: the front's group delay [s] (what a block's `meta.delay` gains through it)
+settle: output samples a new stream starts with before every filter is full of signal (its start-up transient: the
+    filters are linear phase, so twice the delay); a display drops these from a stream's first block"""
 
 class Signal:
     """A signal found in a spectrum
@@ -17,6 +21,7 @@ class Signal:
     clipped: it runs into the edge of the capture's band, so its width and centre are only what is inside
     baud_est / baud_strength: symbol rate from the |x|^2 line of the channelized signal (None: no clear line)
     holds: how many other signals lie inside it (a band that holds some is a raised floor, a transponder's, not a signal)
+    id: its number, kept from survey to survey by `Survey.match`
     Fs, cf, bin_hz: the capture's rates and the spectrum's resolution
     """
     def __init__(self, mid, width, bottom, height, snr=None, *, lo=None, hi=None, power=None, peak_freq=None,
@@ -37,6 +42,7 @@ class Signal:
         self.baud_est = None
         self.baud_strength = 0.0
         self.holds = 0
+        self.id = None
 
     @property
     def freq(self):
@@ -47,7 +53,7 @@ class Signal:
 
         Shift + multi-stage decimation (rp.signal.channelize), then a sharp filter at the low rate to drop the neighbours
         the decimation lets through: passband to `guard`*width/2 (the pulse skirts reach past the 99% width).
-        Returns Channel(front, Fs, decimation): `block + channel.front`.
+        Returns Channel(front, Fs, decimation, delay, settle): `block + channel.front`.
         """
         from ...signal.filters import low_pass_kaiser
         from ...signal import channelize as _channel
@@ -58,7 +64,9 @@ class Signal:
         if self.width*guard < Fs:
             sel = low_pass_kaiser(0.5*self.width*guard, 0.2*self.width, atten_db, Fs)
             front = Pipeline(front, sel)
-        return Channel(front, Fs, D)
+        from ...base import Data
+        delay = (Data(np.zeros(1, np.complex64), Fs=self.Fs) + front).meta.delay # (a stream of its own: front holds no state)
+        return Channel(front, Fs, D, delay, int(np.ceil(2*delay*Fs)))
 
     def esn0_db(self, baud=None):
         """Es/N0 [dB] from the in-band SNR: the noise in the signal's width (snr) is that density times width, the
@@ -118,7 +126,8 @@ class Survey(list):
 
     def pick(self, near=None, freq=None, index=None, strongest=False):
         """One signal. near: closest to this offset from the capture's centre [Hz], freq: closest to this absolute
-        frequency [Hz], index: by position, strongest: highest in-band power (also the default for one argument less)"""
+        frequency [Hz], index: by position, strongest: highest in-band SNR, not total power, which a wide pedestal under the
+        carriers would win (also the default for one argument less)"""
         if not len(self):
             raise ValueError("No signals to pick from")
         if index is not None:
@@ -128,6 +137,29 @@ class Survey(list):
         if near is not None:
             return min(self, key=lambda s: abs(s.mid - near))
         return max(self, key=lambda s: s.snr if s.snr is not None else s.height)
+
+    def match(self, previous, near=0.5, ratio=(0.75, 4/3)):
+        """Carry signal ids over from an earlier survey of the same band (frame to frame), so a signal keeps its id.
+
+        A signal is the earlier one whose centre is within `near` of its width and whose width is within `ratio` of its own
+        (the closest such); each earlier signal is matched once. Unmatched signals get new ids, after every id `previous`
+        used. Sets Signal.id in place and returns self"""
+        taken, ids = set(), [s.id for s in previous if s.id is not None]
+        nxt = max(ids) + 1 if ids else 0
+        for s in sorted(self, key=lambda s: -s.snr if s.snr is not None else -s.height): # Strongest choose first
+            best = None
+            for p in previous:
+                if p.id is None or p.id in taken:
+                    continue
+                d = abs(p.freq - s.freq)
+                if d <= near*s.width and ratio[0] <= s.width/p.width <= ratio[1] and (best is None or d < best[0]):
+                    best = (d, p)
+            if best is None:
+                s.id, nxt = nxt, nxt + 1
+            else:
+                s.id = best[1].id
+                taken.add(s.id)
+        return self
 
     def plot(self, ax=None, chosen=None):
         """Draw the spectrum with every signal shaded and numbered. Returns the axes"""
@@ -352,8 +384,60 @@ def _edge_boxes(pw, nfft, K=31, inner=0.06, T=EDGE_DB, w_frac=0.005, min_w=2.0, 
 
 HOLD_DB = 10.0 # dB: a signal inside a wider band holds it up (a raised floor) only standing this far above its own floor
 
+def _spectrum(samps, Fs, nfft, edge):
+    """The averaged spectrum and its noise floor, as find_signals and measure_band see them.
+    Returns (nfft, averages K, power per bin, per-segment power, dB, floor dB)"""
+    samps = np.asarray(samps)
+    N = len(samps)
+    if nfft is None:
+        nfft = 1 << int(np.clip(np.floor(np.log2(max(N//16, 64))), 6, 16))
+    seg, wp = _segments(samps, nfft, 0.5)
+    K = len(seg)
+    pw = np.fft.fftshift(seg.sum(axis=0)/(K*wp*Fs))
+    segs = np.fft.fftshift(seg/(wp*Fs), axes=1)
+    db = 10*np.log10(pw + 1e-30)
+    inner = slice(int(max(edge, 0.05)*nfft), nfft - int(max(edge, 0.05)*nfft)) # Not the receiver filter's roll-off
+    kf = max(3, nfft//128)
+    low = 10*np.log10(np.convolve(pw[inner], np.ones(kf)/kf, mode="same") + 1e-30)[kf:-kf]
+    floor = _quiet_level(low) # Start from the quiet part: signals can fill the band
+    for _ in range(3): # The smoothed spectrum is steady, so a tight band above the start holds just the noise
+        floor = float(np.median(low[low < floor + 1.0]))
+    return nfft, K, pw, segs, db, floor
+
+def _duty(segs, e0, e1, noise_p):
+    """Fraction of the time a band is on (find_signals' Signal.duty), None when too weak or narrow to tell"""
+    on = segs[:, e0:e1+1].sum(axis=1) # Band power in each time segment, against the noise in the same band
+    mean_p = on.mean()
+    # Bursty if the band power swings between noise and a level above it. Halfway between noise and the average
+    # is the dividing line; a continuous signal stays above it, so a weak one isn't mistaken for bursts. Too few
+    # bins or too weak to tell the swing from the estimate's own scatter: no answer
+    scatter = mean_p*np.sqrt(2/(e1 - e0 + 1))
+    return float(np.mean(on > (noise_p + mean_p)/2)) if mean_p - noise_p > 4*scatter else None
+
+def measure_band(samps, Fs, freq, bw, cf=0.0, nfft=None, edge=0.02):
+    """A band given by hand (a channel plan, a band a user typed) measured as find_signals measures what it finds: a
+    Signal with power, SNR, height, peak and duty filled in, so typed and found signals compare alike
+
+    freq: the band's centre [Hz, absolute: cf + offset], bw: its width [Hz], cf: the capture's centre frequency.
+    The noise is the capture's floor (the band may be all signal); the band is cut to the capture's edges (clipped)."""
+    nfft, K, pw, segs, db, floor = _spectrum(samps, Fs, nfft, edge)
+    bin_hz = Fs/nfft
+    mid = freq - cf
+    e0 = int(np.clip(np.floor((mid - bw/2)/bin_hz + nfft/2), 0, nfft - 1))
+    e1 = int(np.clip(np.ceil((mid + bw/2)/bin_hz + nfft/2) - 1, e0, nfft - 1))
+    clipped = mid - bw/2 < -Fs/2 or mid + bw/2 > Fs/2
+    band = pw[e0:e1+1]
+    local = 10**(floor/10)
+    n = e1 - e0 + 1
+    snr = 10*np.log10(max(np.sum(band - local), 1e-30)/(local*n))
+    sig = Signal(((e0 + e1 + 1)/2 - nfft/2)*bin_hz, n*bin_hz, floor, float(db[e0:e1+1].max() - floor), float(snr),
+                 lo=(e0 - nfft/2)*bin_hz, hi=(e1 + 1 - nfft/2)*bin_hz, power=float(10*np.log10(band.sum()*bin_hz + 1e-30)),
+                 peak_freq=float((e0 + int(np.argmax(band)) - nfft/2)*bin_hz), duty=_duty(segs, e0, e1, local*n),
+                 resolved=n >= 8, clipped=clipped, Fs=Fs, cf=cf, bin_hz=bin_hz)
+    return sig
+
 def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occupied=0.99, min_bins=4, edge=0.02,
-                 cf=0.0, split_db=3.0, min_across=8, min_band_snr_db=None, edges=True, edge_db=EDGE_DB):
+                 cf=0.0, split_db=3.0, min_across=8, min_band_snr_db=None, edges=True, edge_db=EDGE_DB, nested=True):
     """Find signals in a spectrum
 
     Averages periodograms (more samples means a finer, quieter spectrum), finds the noise floor, and takes every
@@ -376,23 +460,10 @@ def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occ
     edge_db: how steep an edge is [dB per 1% of the band]
     min_band_snr_db: weakest in-band SNR reported [dB] (None: no limit. A wide signal can be well above the noise in
         every bin and still have an in-band SNR under 0 dB, so the detection threshold is the better gate)
-    Returns a Survey (a list of Signal sorted by frequency).
+    nested: keep the bands that hold other signals (Signal.holds, a transponder's pedestal). False: only the signals
+    Returns a Survey (a list of Signal sorted by frequency, ids 0, 1... in that order).
     """
-    samps = np.asarray(samps)
-    N = len(samps)
-    if nfft is None:
-        nfft = 1 << int(np.clip(np.floor(np.log2(max(N//16, 64))), 6, 16))
-    seg, wp = _segments(samps, nfft, 0.5)
-    K = len(seg)
-    pw = np.fft.fftshift(seg.sum(axis=0)/(K*wp*Fs))
-    segs = np.fft.fftshift(seg/(wp*Fs), axes=1)
-    db = 10*np.log10(pw + 1e-30)
-    inner = slice(int(max(edge, 0.05)*nfft), nfft - int(max(edge, 0.05)*nfft)) # Not the receiver filter's roll-off
-    kf = max(3, nfft//128)
-    low = 10*np.log10(np.convolve(pw[inner], np.ones(kf)/kf, mode="same") + 1e-30)[kf:-kf]
-    floor = _quiet_level(low) # Start from the quiet part: signals can fill the band
-    for _ in range(3): # The smoothed spectrum is steady, so a tight band above the start holds just the noise
-        floor = float(np.median(low[low < floor + 1.0]))
+    nfft, K, pw, segs, db, floor = _spectrum(samps, Fs, nfft, edge)
     k = max(3, nfft//1024*2 + 1)
     smooth_sigma = 4.34*np.sqrt(1.5/(K*k)) # Of the spectrum smoothed over k bins (neighbouring bins are correlated)
     thr = floor + (min_snr_db if min_snr_db is not None else max(4*smooth_sigma, MARGIN))
@@ -467,13 +538,7 @@ def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occ
         n = max(e1 - e0 + 1, 1)
         band = pw[e0:e1+1]
         snr = 10*np.log10(max(np.sum(band - local), 1e-30)/(local*len(band)))
-        on = segs[:, e0:e1+1].sum(axis=1) # Band power in each time segment, against the noise in the same band
-        noise_p, mean_p = local*len(band), on.mean()
-        # Bursty if the band power swings between noise and a level above it. Halfway between noise and the average
-        # is the dividing line; a continuous signal stays above it, so a weak one isn't mistaken for bursts. Too few
-        # bins or too weak to tell the swing from the estimate's own scatter: no answer
-        scatter = mean_p*np.sqrt(2/len(band))
-        duty = float(np.mean(on > (noise_p + mean_p)/2)) if mean_p - noise_p > 4*scatter else None
+        duty = _duty(segs, e0, e1, local*len(band))
         if min_band_snr_db is not None and snr < min_band_snr_db:
             continue
         out.append(Signal(
@@ -494,6 +559,10 @@ def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occ
     for a in out: # A band holding other signals (a transponder's noise pedestal under its carriers) is not one signal: they
         # stand well above it (a carrier's own peak, or ripple on it, doesn't)
         a.holds = sum(1 for b in out if b is not a and a.lo <= b.mid <= a.hi and b.width < 0.5*a.width and b.snr >= HOLD_DB)
+    if not nested:
+        out = [a for a in out if not a.holds]
+    for i, a in enumerate(out):
+        a.id = i
     return Survey(out, Fs, cf, nfft, K, freq, db, float(floor))
 
 def survey(source, Fs=None, cf=None, samples=2**17, more=2**20, baud=True, **kw):

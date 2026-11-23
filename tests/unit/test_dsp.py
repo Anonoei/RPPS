@@ -191,6 +191,19 @@ def test_signal_fields_and_survey_pick(rng):
     assert a.duty > 0.9 and a.resolved
     assert sv.pick(near=140e3) is b and sv.pick(freq=100e6 - 190e3) is a and sv.pick(index=1) is b
     assert sv.pick(strongest=True) in sv
+    assert [s.id for s in sv] == [0, 1] and all(s.power is not None for s in sv)
+
+def test_survey_match_keeps_ids_frame_to_frame(rng):
+    Fs = 1e6
+    first = rp.analysis.find_signals(two_bands(rng, 1 << 17, Fs, -200e3, 150e3, 60e3), Fs)
+    first[0].id, first[1].id = 7, 3 # Ids from earlier frames
+    # The next frame: the same two, drifted a little, and a new one between them
+    x = two_bands(rng, 1 << 17, Fs, -195e3, 155e3, 60e3) + two_bands(rng, 1 << 17, Fs, -20e3, 400e3, 30e3)
+    nxt = rp.analysis.find_signals(x, Fs).match(first)
+    by = {round(s.mid/1e4): s.id for s in nxt}
+    near = lambda f: min(nxt, key=lambda s: abs(s.mid - f))
+    assert near(-195e3).id == 7 and near(155e3).id == 3 and near(-20e3).id == 8 # New ones count on from the highest
+    assert len({s.id for s in nxt}) == len(nxt), by
 
 def test_signal_channel_isolates_and_decimates(rng):
     Fs = 1e6
@@ -203,12 +216,26 @@ def test_signal_channel_isolates_and_decimates(rng):
     assert abs(f[np.argmax(p)]) < 40e3 # Brought to baseband
     assert p[np.abs(f) < 35e3].sum() > 50*p[np.abs(f) > 90e3].sum() # The neighbour is gone
 
+@pytest.mark.parametrize("Fs, mid, width", [(20e6, 3e6, 200e3), (2e6, 0.0, 500e3), (10e6, -1e6, 25e3)])
+def test_channel_settle_is_the_start_up_transient(Fs, mid, width):
+    """Channel.settle: the first output samples of a new stream, before every filter is full, and no more (a carrier at
+    the channel's centre is flat from there on); delay is what meta.delay gains"""
+    from rpps.analysis.spectrum.signal import Signal
+    ch = Signal(mid, width, 0, 0, Fs=Fs).channel()
+    x = np.exp(2j*np.pi*mid/Fs*np.arange(int(Fs*0.01))).astype(np.complex64)
+    out = rp.Data(x, Fs=Fs) + ch.front
+    assert out.meta.delay == pytest.approx(ch.delay)
+    y = np.abs(out.data)
+    level = np.median(y[len(y)//2:])
+    off = np.nonzero(np.abs(y - level) > 1e-3*level)[0]
+    assert off.max() < ch.settle <= off.max() + 8 # all of the transient, a few samples spare at most
+
 def test_survey_from_a_file_keeps_its_place(rng, tmp_path):
     Fs = 1e6
     x = two_bands(rng, 1 << 17, Fs, -200e3, 150e3, 60e3)
-    path = tmp_path / "cap.cf64"
+    path = tmp_path / "cap.cf32"
     x.tofile(path)
-    src = rp.source.File("cf64", str(path), Fs=Fs, cf=50e6)
+    src = rp.source.File("cf32", str(path), Fs=Fs, cf=50e6)
     src.seek(1000)
     sv = rp.analysis.survey(src, samples=1 << 16)
     assert src.cur_samp == 1000 # Peeking doesn't use samples up
@@ -217,7 +244,7 @@ def test_survey_from_a_file_keeps_its_place(rng, tmp_path):
 def test_choose_without_a_display_takes_the_strongest(rng, capsys):
     x = two_bands(rng, 1 << 16, 1e6, -200e3, 150e3, 60e3)
     sv = rp.analysis.find_signals(x, 1e6)
-    import matplotlib
+    matplotlib = pytest.importorskip("matplotlib") # choose() asks matplotlib whether there is a display
     matplotlib.use("Agg")
     assert sv.choose() is sv.pick(strongest=True)
     assert "strongest" in capsys.readouterr().out
@@ -263,6 +290,9 @@ def test_a_carrier_on_a_raised_floor_has_its_snr_over_that_floor():
     assert abs(a.esn0_db(1e6) - 15.0) < 1.0 and abs(b.esn0_db(1e6) - 20.0) < 1.0 # Not 12 dB more, over the thermal floor
     big = max(sv, key=lambda s: s.width)
     assert big.width > 30e6 and big.holds >= 2
+    only = rp.analysis.find_signals(x.astype(np.complex64), Fs, nested=False) # Without the pedestal: just the carriers
+    assert only and not any(s.holds for s in only) and all(s.width < 30e6 for s in only)
+    assert any(abs(s.mid + 10e6) < 1e6 for s in only) and any(abs(s.mid - 5e6) < 1e6 for s in only)
 
 def test_carriers_narrower_than_the_edge_window_are_not_boxed_with_their_gaps(rng):
     # 383 kHz carriers 750 kHz apart at 100 MS/s, strong and weak by turns: narrower than the edge step's +-w (0.5% of
@@ -277,3 +307,15 @@ def test_carriers_narrower_than_the_edge_window_are_not_boxed_with_their_gaps(rn
         s = min(found, key=lambda s: abs(s.mid - m))
         assert s.mid == pytest.approx(m, abs=60e3) and s.width == pytest.approx(383e3, rel=0.15)
     assert all(s.width < 600e3 for s in found)
+
+def test_a_band_given_by_hand_measures_as_a_found_one(rng):
+    Fs = 1e6
+    x = two_bands(rng, 1 << 17, Fs, -200e3, 150e3, 60e3)
+    found = rp.analysis.find_signals(x, Fs, cf=100e6)[1]
+    typed = rp.analysis.measure_band(x, Fs, 100e6 + 150e3, 60e3, cf=100e6)
+    assert typed.power is not None and typed.Fs == Fs and typed.freq == pytest.approx(100e6 + 150e3, abs=1e3)
+    assert typed.power == pytest.approx(found.power, abs=0.5) and typed.snr == pytest.approx(found.snr, abs=1.0)
+    assert typed.duty > 0.9 and not typed.clipped
+    quiet = rp.analysis.measure_band(x, Fs, 100e6 + 400e3, 60e3, cf=100e6) # Only noise there
+    assert quiet.snr < typed.snr - 20
+    assert rp.analysis.measure_band(x, Fs, 100e6 + 490e3, 60e3, cf=100e6).clipped

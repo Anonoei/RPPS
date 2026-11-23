@@ -8,7 +8,7 @@ from .conv import termination_of, generators_of
 class viterbi(_code):
     """Viterbi decoder for feed-forward convolutional codes (rate 1/n, any constraint length)
 
-    generator: (n, K) taps. generator[j][i] multiplies the input delayed by i, the same convention as `conv`
+    generator: (n, K) taps. `generator[j][i]` multiplies the input delayed by i, the same convention as `conv`
     puncture: optional (n, P) 0/1 pattern, 1 = bit was sent. Punctured positions are decoded as erasures
     invert: optional n 0/1 flags: outputs the encoder sent inverted (their values are turned back before decoding)
     terminated: the encoder was flushed with K-1 zeros, so the path ends in state 0 (and the tail is dropped).
@@ -81,7 +81,10 @@ class viterbi(_code):
     def terminated(self):
         return self.termination == "zero"
 
-    def decode(self, bits: np.ndarray, soft=None, state=None, final=True):
+    def _decode(self, bits, soft=None, state=None, final=True):
+        return self._path(bits, soft, state, final), None # No codewords: no status
+
+    def _path(self, bits: np.ndarray, soft=None, state=None, final=True):
         llr = self.depuncture(as_llr(bits, soft))                              # (T, n)
         if self.invert is not None:
             llr = llr*self.invert[None, :] # An inverted output's 0 means 1 (erasures stay 0)

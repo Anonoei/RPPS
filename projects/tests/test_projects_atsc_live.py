@@ -63,7 +63,8 @@ def test_rs_matches_rp_on_mixed_damage():
     saved = _accel.native
     _accel.native = None # the Python reference loop
     try:
-        d1 = np.asarray(ref.decode(bad.reshape(-1).astype(np.int64), symbols=True)).reshape(-1, 187).astype(np.uint8); e1 = np.asarray(ref.errors)
+        d1, e1 = ref.decode(bad.reshape(-1).astype(np.int64), symbols=True, status=True)
+        d1 = np.asarray(d1).reshape(-1, 187).astype(np.uint8); e1 = np.asarray(e1)
     finally:
         _accel.native = saved
     assert (e0 == e1).all() and (d0[e0 >= 0] == d1[e0 >= 0]).all()
