@@ -743,6 +743,22 @@ def _blind(head, c, y=None):
         m = puncture_period(code)
         info = code.decoder.decode(bits[:len(bits)//m*m]).astype(np.uint8)
         return [(v, g)] + solve(info)
+    # A convolutional code no definition has, before block codes: a convolutional code is a linear code over any block
+    # length too, and the block search would name it one (scan_conv relabels short periodic checks as linear-block)
+    sub = {k: v for k, v in head.items() if k[0] == "abs"}
+    cv = detect_fec(sub, blocks=False, max_offsets=32).verdict
+    if cv is not None and cv.kind == "conv":
+        g = guess_conv(cv)
+        if g is not None:
+            from ..code import Conv
+            p = cv.params
+            gens = np.asarray([p["g"][i] for i in sorted(p["g"])], dtype=np.uint8).reshape(p["n"], p["K"])
+            bits = np.asarray(head[p["stream"]][p["offset"]:], dtype=np.uint8)
+            info = Conv(gens).decoder.decode(bits[:len(bits)//p["n"]*p["n"]]).astype(np.uint8)
+            return [(cv, g)] + solve(info)
+    # Every map: one that swaps the bits within a symbol cuts across codewords of odd length, and can still show weaker
+    # structure at a multiple of it, so the shortest code (then the most checks) of all the maps is the one
+    best = None
     for key, bits in _distinct(head, c).items():
         llr = None
         if y is not None: # Soft values on this map: the cleanest words are the ones a sparse check search uses
@@ -754,8 +770,10 @@ def _blind(head, c, y=None):
         if found:
             for h, _ in found:
                 h.params["stream"] = key
-            return found
-    return []
+            n, k = found[0][0].params.get("n", 1 << 30), found[0][0].params.get("k", 0)
+            if best is None or (n, k) < best[0]:
+                best = ((n, k), found)
+    return best[1] if best else []
 
 
 def _finish(out, c, profiles, baud=None):

@@ -317,3 +317,29 @@ def test_a_prbs_or_noisy_fill_is_not_a_low_rate_code():
     flips = rng.random(len(fill)) < 0.03
     out = B.solve_block(fill ^ flips, n=192, offset=0)
     assert not out or out[0][0].kind == "frame-blind"
+
+def _qpsk(bits, rng, sigma=0.1):
+    q = rp.symbol.load("qpsk")
+    s = q.modulate(np.asarray(bits[:len(bits)//2*2], np.uint8))*1j
+    return (s + sigma*(rng.standard_normal(len(s)) + 1j*rng.standard_normal(len(s)))).astype(np.complex64)
+
+@pytest.mark.kernels
+def test_an_unknown_convolutional_code_is_not_taken_for_a_block_code():
+    # K=6 (65, 57), in no definition: a convolutional code is linear over any block length, so the block search would
+    # name it a code of some length; the convolutional scan goes first and gives its generators
+    rng = np.random.default_rng(6)
+    g = [[1, 1, 0, 1, 0, 1], [1, 0, 1, 1, 1, 1]]
+    s = _qpsk(conv(Logger().Child("t", 0), 1, 2, g, 6, [[1], [1]]).encode(rng.integers(0, 2, 40000).astype(bool))[1:], rng)
+    f = F.identify(s[:2**14], "qpsk", blind=True)
+    assert [h.kind for h in f.inner][:1] == ["conv"]
+    assert sorted(map(list, f.guesses[0].definition["generator"])) == sorted(g)
+
+@pytest.mark.kernels
+def test_an_odd_length_block_code_on_qpsk_is_found_at_its_length():
+    # BCH(63,51) on QPSK: a map that swaps the bits of a symbol cuts across words of odd length and still shows
+    # structure at 126; of every map's find, the shortest code is the one
+    rng = np.random.default_rng(7)
+    b = bchgf(Logger().Child("t", 0), 63, 51, 6, 0x43, 2).encode(rng.integers(0, 2, 51*1100).astype(bool))[5:]
+    f = F.identify(_qpsk(b, rng)[:2**15], "qpsk", blind=True)
+    h = f.inner[0]
+    assert (h.params["n"], h.params["k"]) == (63, 51) and f.guesses[0].definition["type"] == "bch"

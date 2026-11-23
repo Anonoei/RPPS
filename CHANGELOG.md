@@ -115,6 +115,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   (configured and unconfigured convolutional codes, puncturing, RS behind a Viterbi, scramblers in cascade and with
   three taps, BCH) at several Es/N0, the fewest symbols `identify(blind=True)` names each at, and the seconds it
   takes; `--save`/`--check` like the other benchmarks.
+- **Blind identification names an unknown convolutional code and an odd-length block code right**: the convolutional
+  scan runs before the block search (a K=6 code was named an LDPC (112,62) code) and, once it finds the generators,
+  decodes with them and looks for the layers inside; and the block search keeps the shortest code any bit map shows
+  (BCH(63,51) on QPSK came out as a (126,103) code from a map that swaps a symbol's bits).
 
 ## 0.6.0 (2026-11-22)
 
