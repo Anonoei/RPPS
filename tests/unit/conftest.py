@@ -7,6 +7,7 @@ for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "RPPS
 import numpy as np
 import pytest
 
+@pytest.hookimpl(optionalhook=True) # only with pytest-xdist; the wheel tests run without it
 def pytest_xdist_auto_num_workers(config):
     """`-n auto`: half the cores, so the machine stays usable while the suite runs; every core on CI (where `CI` is set,
     as GitHub does). RPPS_TEST_WORKERS chooses"""
