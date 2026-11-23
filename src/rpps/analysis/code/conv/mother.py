@@ -103,8 +103,7 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
     from .... import code as coding
     names = names or coding.names("conv")
     hyps, trials = [], 0
-    rng = np.random.default_rng(0)
-    decided = None # The rate (bits in, bits out a puncture period) of an overwhelming fit
+    decided, baselines = None, {} # The rate (bits in, bits out a puncture period) of an overwhelming fit
     for name in names:
         code = cached(f"conv/{name}")
         enc = code.encoder
@@ -115,9 +114,15 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
         L = pat.shape[1]
         nb = int(pat.sum())
         per = max(steps//L, 1)
-        rand = rng.integers(0, 2, per*nb).astype(np.uint8)
-        k0, n0 = mismatch(code, rand)
-        base = max(k0/n0, 1e-4) # What a wrong hypothesis gets
+        # What a wrong hypothesis gets: measured once per code shape (puncture period, bits a period) and
+        # shared, so equivalent codes (the generators the other way round, an output inverted) tie exactly and the pick
+        # is the same whichever codes were tried before (a draw per code made the winner of a tie a matter of chance)
+        shape = (L, nb)
+        if shape not in baselines:
+            rand = np.random.default_rng(L*1000 + nb).integers(0, 2, per*nb).astype(np.uint8)
+            k0, n0 = mismatch(code, rand)
+            baselines[shape] = max(k0/n0, 1e-4)
+        base = baselines[shape]
         for tag, bits in streams.items():
             starts = sorted({int(len(bits)*f) for f in segments if int(len(bits)*f) + nb + per*nb <= len(bits)})
             if not starts and len(bits) >= int(len(bits)*skip) + nb + per*nb:

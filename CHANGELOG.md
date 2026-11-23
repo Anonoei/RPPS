@@ -173,6 +173,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **`rp.analysis.profile(hint=)`**: `hint(signal)` gives what an earlier look at the same signal found (its symbol
   rate, the convolutional definitions to try, whether to run the blind tools), so a survey of many captures of the same
   carriers does not search for them again.
+- **Equivalent convolutional codes tie exactly in the configured scan**: the error rate a wrong code gets is measured
+  once per code shape and shared, where each code drew its own random bits off one generator in turn; which of two
+  equivalent codes won (the generators the other way round, an output inverted) depended on the codes tried before.
 
 ## 0.6.0 (2026-11-22)
 
