@@ -35,6 +35,11 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **A child profile patches single steps**: `"steps"` as a dict, by step id (`"id"`, else the kind): a dict merges
   into the step, `null` takes it out, `"+before:<id>"` / `"+after:<id>"` / `"+start"` / `"+end"` put steps in
   (`_config.patch_steps`). A list still replaces every step.
+- **Checksums**: `config/crc` `"type": "checksum"`, `algorithm` sum, internet (RFC 1071), fletcher (16 / 32), adler
+  (Adler-32) or xor (LRC), with word size, endianness, negation, xorout, bit and byte order; it goes wherever a CRC
+  does, a composite check's parts too (`rp.link.checksum`).
+- **Byte-stuffed framing**: `config/frame` `"type": "bytes"` (flag, escape, escape map or XOR, optional FCS, LSB-first
+  bytes), streaming any block cut as HDLC does: `frame/slip`, `frame/kiss`, `frame/ppp_async` (RFC 1662, FCS-16).
 - The `mpower` carrier step takes a generated `"shape"` (`"16QAM"`) as the constellation step does.
 - `examples/profile_variants.py`.
 - **Words of any width**: a `sequence` word (and `word` + `bits` on a step) may be longer than 64 bits; a 100-byte

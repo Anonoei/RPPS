@@ -64,7 +64,8 @@ What is in each part of RPPS, and what is not yet.
     - [X] CRC
     - [X] HDLC (streaming, any block cut)
     - [X] Headers: fields, a CRC over them or a frame check sequence over header and payload, header-driven lengths
-    - [ ] PPP, KISS, AX.25 addresses
+    - [X] Byte-stuffed framing: SLIP, KISS, asynchronous PPP; checksums (sum, Internet, Fletcher, Adler, XOR); composite checks
+    - [ ] AX.25 addresses
     - [ ] MPEG-TS packets, CCSDS transfer frames and space packets, FX.25
 - [ ] [Profiles](https://github.com/Anonoei/RPPS/tree/main/config/profile)
     - [X] DVB-S, DVB-S2 (normal and short frames, APSK), IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
@@ -89,7 +90,7 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
 
 - **Codes:** NR polar parity-check bits (an uplink message of 12-19 bits), LDPC limited-buffer rate matching from a
   transport block's TBS_LBRM, HARQ combining across redundancy versions; LDPC tables for CCSDS AR4JA / C2, DVB-S2X, DVB-T2,
-  ATSC 3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; Fletcher and Internet checksums; fountain codes.
+  ATSC 3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; fountain codes.
 - **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
   spread spectrum, space-time codes; a burst step in a parallel region; a channelized burst step (receiving MF-TDMA or a hopping carrier); a preamble `offset`
   with known timing `anchor` (the grid lands off); the transmit side of branches (and of `grid`:
@@ -98,7 +99,7 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
   real time at 15.36 MS/s (about 1.1x slower; `nr/downlink` keeps up at 7.68 MS/s); a first-class carrier estimator for
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
-- **Links, sources, profiles:** PPP, KISS, AX.25 addresses, MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
+- **Links, sources, profiles:** AX.25 addresses, MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
   block-coded headers; tun/tap, audio devices, transmitting to a radio; profiles for DMR, P25, 802.11a/g/n, ATSC, GPS C/A,
   DAB, UMTS, CCSDS turbo (and `projects/` using the BLE, ADS-B and 802.11b profiles that exist); `dvbs2/normal` dummy frames;
   positions and gaps in the parallel runner's output; GPU and FPGA backends.

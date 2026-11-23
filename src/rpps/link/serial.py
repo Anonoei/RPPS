@@ -7,9 +7,15 @@
            {"base": "crc", "type": "composite",     a check from CRC parts over transformed views of the message
             "parts": [{"crc": "crc8_smbus"}, {"crc": "crc8_smbus", "input": ["nibble_swap"]}],
             "combine": "concat"}                    (or "xor"); goes wherever a crc does (see `rpps.link.check`)
+           {"base": "crc", "type": "checksum",      a sum, ones' complement (Internet), Fletcher, Adler or XOR checksum
+            "algorithm": "internet", ...}           (see `rpps.link.checksum`); goes wherever a crc does
     frame  {"base": "frame", "type": "hdlc", "flag": "0x7E", "stuff": 5, "nrzi": false,
             "fcs": "crc16_x25",                     the name of a crc definition
             "min_bytes": 4}
+           {"base": "frame", "type": "bytes",       byte stuffing (SLIP, KISS, asynchronous PPP; see `bytestuff`)
+            "flag": "0xC0", "escape": "0xDB",
+            "escapes": {"0xC0": "0xDC", "0xDB": "0xDD"},   what follows the escape for each byte, or "xor": "0x20" for
+            "fcs": null, "refin": false}                   the bytes in "escaped"; an optional fcs; refin: LSB first
     header {"base": "header", "type": "link", "fields": [...], "crc": ..., "payload": "..."}   fields, CRC and payload length of a
             frame's header, driven and published through a profile (see rpps.link.header)
 """

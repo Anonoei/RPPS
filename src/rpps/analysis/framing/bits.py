@@ -60,6 +60,8 @@ def scan_hdlc(streams, names=None, min_frames=3):
     hyps, trials = [], 0
     for name in names:
         h = encap.load(f"frame/{name}").encoder
+        if not isinstance(h, encap.hdlc): # (byte-stuffed framing: no bit flags to count)
+            continue
         f = h.flag_bits
         for tag, bits in streams.items():
             for pol in (0, 1):

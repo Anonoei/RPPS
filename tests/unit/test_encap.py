@@ -12,6 +12,8 @@ CHECK = {
     "crc24_ble": 0xC25A56, "crc24_lte_a": 0xCDE703, "crc24_lte_b": 0x23EF52, "crc16_gsm": 0xCE3C, "crc16_genibus": 0xD64E,
 }
 
+HDLC = [n for n in rp.link.ls()["frame"] if isinstance(rp.link.load(f"frame/{n}").encoder, rp.link.hdlc)] # (not byte stuffing)
+
 @pytest.mark.parametrize("name", rp.link.ls()["crc"])
 def test_crc_loads_and_self_checks(name):
     crc = rp.link.load(f"crc/{name}").encoder # A wrong definition raises on load (its own check value)
@@ -108,7 +110,7 @@ def test_crc_width_out_of_range():
     with pytest.raises(ValueError):
         rp.link.crc(rp.logger.Logger(), 65, 1)
 
-@pytest.mark.parametrize("name", rp.link.ls()["frame"])
+@pytest.mark.parametrize("name", HDLC)
 def test_hdlc_round_trip(name, rng):
     h = rp.link.load(f"frame/{name}").encoder
     frames = [bytes(rng.integers(0, 256, n).astype(np.uint8)) for n in (10, 33, 100)]
@@ -118,7 +120,7 @@ def test_hdlc_round_trip(name, rng):
     assert [p for p, ok in got] == frames
     assert all(ok for p, ok in got)
 
-@pytest.mark.parametrize("name", rp.link.ls()["frame"])
+@pytest.mark.parametrize("name", HDLC)
 def test_hdlc_bad_fcs_flagged(name, rng):
     h = rp.link.load(f"frame/{name}").encoder
     frames = [bytes(rng.integers(0, 256, 40).astype(np.uint8)) for _ in range(3)]

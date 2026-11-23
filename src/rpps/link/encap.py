@@ -27,16 +27,24 @@ class Encap(Coding):
     def load(name: str, obj: dict):
         """Load from json: the `type` picks CRC or HDLC"""
         t = obj.get("type")
-        if t in ("crc", "composite"):
+        if t in ("crc", "composite", "checksum"):
             return CRC.load(name, obj)
-        if t == "hdlc":
+        if t in ("hdlc", "bytes"):
             return Frame.load(name, obj)
-        raise ConfigError(f"Unknown encapsulation type {t!r} in {name}: have crc, composite, hdlc")
+        raise ConfigError(f"Unknown encapsulation type {t!r} in {name}: have crc, composite, checksum, hdlc, bytes")
 
 
 def _int(obj, key, default=0):
     v = obj.get(key, default)
     return int(v, 0) if isinstance(v, str) else v
+
+
+def _hex(v):
+    return int(v, 0) if isinstance(v, str) else int(v)
+
+def _flat(v):
+    """A list with the lists in it (an "each" range among single values) spread out"""
+    return [y for x in v for y in (_flat(x) if isinstance(x, list) else [x])]
 
 
 class CRC(Encap):
@@ -48,6 +56,11 @@ class CRC(Encap):
         log = Logger().Child("Coding", _config.LOG_CODING).Child(name)
         if obj.get("type") == "composite":
             i_code = _composite(log, name, obj)
+        elif obj.get("type") == "checksum":
+            from .checksum import checksum
+            i_code = checksum(log, obj.get("algorithm", "sum"), obj.get("width", 8), obj.get("word", 8), obj.get("endian", "big"),
+                              obj.get("negate", False), _int(obj, "xorout"), obj.get("refin", False), obj.get("order", "big"),
+                              _int(obj, "check") if "check" in obj else None, f"crc {name}")
         else:
             i_code = _crc_code(log, obj["width"], _int(obj, "poly"), _int(obj, "init"), obj.get("refin", False),
                                obj.get("refout", False), _int(obj, "xorout"), _int(obj, "check") if "check" in obj else None)
@@ -68,7 +81,8 @@ def _composite(log, name, obj):
 
 
 class Frame(Encap):
-    """Framing (HDLC) defined by config; the FCS is another config, `fcs`, from config/crc
+    """Framing (HDLC: bit stuffing; bytes: byte stuffing, SLIP / KISS / PPP) defined by config; the FCS is another config,
+    `fcs`, from config/crc
 
     As an operator: `packet * frame` gives one frame's bits (flags, stuffing, FCS) per call; `bits / frame` the payload bits of
     the frames whose FCS checks out, however the stream is cut (an open frame waits for its closing flag in the next block)"""
@@ -112,8 +126,18 @@ class Frame(Encap):
     def load(name, obj):
         from . import serial
         log = Logger().Child("Coding", _config.LOG_CODING).Child(name)
-        fcs = serial.load(f"crc/{obj['fcs']}").encoder
-        i_code = _hdlc_code(log, fcs, _int(obj, "flag", 0x7E), obj.get("stuff", 5), obj.get("nrzi", False), obj.get("min_bytes", 4))
+        if obj.get("type") == "bytes":
+            from .bytestuff import bytestuff
+            fcs = serial.load(f"crc/{obj['fcs']}").encoder if obj.get("fcs") else None
+            esc = {_hex(k): _hex(v) for k, v in obj["escapes"].items()} if obj.get("escapes") else None
+            i_code = bytestuff(log, _int(obj, "flag", 0xC0), _int(obj, "escape", 0xDB), esc,
+                               _int(obj, "xor") if "xor" in obj else None,
+                               [_hex(b) for b in _flat(obj["escaped"])] if "escaped" in obj else None, fcs, obj.get("refin", False),
+                               obj.get("min_bytes", 1))
+        else:
+            fcs = serial.load(f"crc/{obj['fcs']}").encoder
+            i_code = _hdlc_code(log, fcs, _int(obj, "flag", 0x7E), obj.get("stuff", 5), obj.get("nrzi", False),
+                                obj.get("min_bytes", 4))
         impl = type(name, (Frame,), dict())
         impl.name = name
         return impl(i_code, i_code)
