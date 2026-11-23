@@ -133,3 +133,21 @@ def test_progress_reports_each_stage(dvbs_capture):
     assert [a[1] for a in reads] == list(range(1, 13)) and all(a[2] == 12 for a in reads)
     builds = [a for a in seen if a[0] == "build"]
     assert builds[-1][1:] == (len(ps), len(ps), 0)
+
+@pytest.mark.kernels
+def test_jobs_profile_the_signals_in_parallel_with_the_same_result(tmp_path):
+    """Two carriers in a File: jobs=2 forks two workers, each seeking back to where the profile's reading starts"""
+    rng = np.random.default_rng(9)
+    def carrier(sps, f, n_pk):
+        ts = rng.integers(0, 256, (n_pk, 188)).astype(np.uint8)
+        ts[:, 0] = 0x47
+        w = rp.profile.load("dvbs/qpsk_3_4", sps=sps).tx()(rp.Data(np.unpackbits(ts.reshape(-1)).astype(bool), Fs=1e6, sps=1, flush=True))
+        x = np.asarray(w.data)
+        return x*np.exp(2j*np.pi*f*np.arange(len(x)))
+    a, b = carrier(8, 1.7e6/8e6, 250), carrier(16, -2.1e6/8e6, 125)
+    n = min(len(a), len(b))
+    path = tmp_path/"two.cs16"
+    capture(path, a[:n] + b[:n], 8e6, 0.0, rng)
+    one = rp.analysis.profile(rp.source.File("ci16t", str(path), Fs=8e6), blind=False, blocks=60)
+    two = rp.analysis.profile(rp.source.File("ci16t", str(path), Fs=8e6), blind=False, blocks=60, jobs=2)
+    assert [str(p) for p in one] == [str(p) for p in two] and sum(p.solved for p in two) == 2

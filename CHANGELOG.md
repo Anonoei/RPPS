@@ -141,6 +141,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **The configured convolutional scan stops trying other rates once one fits overwhelmingly**
   (`scan_defined_conv(decisive=20)`): codes of the same rate are still tried (an equivalent, the generators the other
   way round, must be seen), the rest are not. A K=7 rate 1/2 stream is identified 4x faster.
+- **`rp.analysis.profile(jobs=)`** profiles the signals of a capture in that many forked processes (each its share
+  of the signals and its own reading of the source from where the profile starts), with the same result: two
+  carriers, 31.9 s -> 17.2 s on 2.
 
 ## 0.6.0 (2026-11-22)
 

@@ -706,7 +706,7 @@ class _Chain:
         return p
 
 def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True, survey=None, symbols=2**18,
-            max_blocks=None, progress=None):
+            max_blocks=None, progress=None, jobs=1):
     """Profiles of signals in a capture: [SignalProfile], in the order chosen
 
     source: an rp.source Source (File, Memory: a live device is best captured into Memory first, as the chains run slower
@@ -720,7 +720,10 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
     blind: run the blind tools where no definition fits (tens of seconds a signal)
     progress: called as progress(stage, done, total, left) as the work goes: stage "read" (blocks read of the stretch
         planned: `blocks`, then `max_blocks` once some chains read on; `left` the chains still reading), "build" (profiles
-        built of the signals), and "again" / "build again" for a second pass at a rate the cyclic spectrum gives"""
+        built of the signals), and "again" / "build again" for a second pass at a rate the cyclic spectrum gives
+    jobs: profile the signals in this many processes (forked, each with its share of the signals and its own reading of
+        the source from where this one starts: a File seeks back, Memory starts over; Linux and macOS). With jobs > 1
+        `progress` is called as ("parallel", groups done, jobs, groups left)"""
     from .spectrum.signal import survey as _survey
     tell = progress or (lambda *a: None)
     sv = survey if survey is not None else None
@@ -737,6 +740,9 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
             idx = [signals] if isinstance(signals, (int, np.integer)) else list(signals)
             picked = [sv[i] for i in idx]
     index = {id(s): i for i, s in enumerate(sv)}
+    if jobs > 1 and len(picked) > 1:
+        return _parallel(source, picked, sv, jobs, tell, dict(blocks=blocks, block=block, blind=blind, symbols=symbols,
+                                                               max_blocks=max_blocks))
 
     cap = max(blocks, max_blocks if max_blocks is not None else 8*blocks)
 
@@ -827,6 +833,34 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
                                                                               else "nothing")))
                 out[k] = q
     return out
+
+_JOB = None # What a forked worker of `_parallel` profiles (inherited, not pickled)
+
+def _parallel(source, picked, sv, jobs, tell, kw):
+    """profile() of `picked` in `jobs` forked processes: the signals dealt round robin, results in their order"""
+    import multiprocessing as mp
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    global _JOB
+    jobs = min(jobs, len(picked))
+    groups = [picked[k::jobs] for k in range(jobs)]
+    _JOB = (source, getattr(source, "cur_samp", None), groups, sv, kw)
+    out = {}
+    try:
+        with ProcessPoolExecutor(jobs, mp_context=mp.get_context("fork")) as ex:
+            futs = {ex.submit(_parallel_part, k): k for k in range(jobs)}
+            for done, f in enumerate(as_completed(futs), 1):
+                for s, p in zip(groups[futs[f]], f.result()):
+                    out[id(s)] = p
+                tell("parallel", done, jobs, jobs - done)
+    finally:
+        _JOB = None
+    return [out[id(s)] for s in picked]
+
+def _parallel_part(k):
+    source, start, groups, sv, kw = _JOB
+    if start is not None and hasattr(source, "seek"):
+        source.seek(start)
+    return profile(source, signals=groups[k], survey=sv, **kw)
 
 def _further(q, p):
     """Whether profile q got further than p: solved, a profile, or more steps found before the first unsolved one"""
