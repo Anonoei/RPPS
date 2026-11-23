@@ -294,6 +294,15 @@ def _tll(m, rep, ctx):
     return sync.time.TLL(m.get("sps", ctx["params"].get("sps")), m.get("bw", 0.01), m.get("damping", 0.7071), m.get("name", "timing"),
                          m.get("ted", "zx"))
 
+@register_sync_method("timing", "mat")
+def _mat(m, rep, ctx):
+    """The matched filter and timing in one (rpps.sync.time.MatTrack): the profile fuses the `wave shape` step's matched
+    filter into it. "device": true evaluates it on the GPU of rpps._accel.device()"""
+    from .. import sync
+    return sync.time.MatTrack(m.get("sps"), m.get("window", 1e-3), m.get("min_symbols", 2048), m.get("bw", 0.25),
+                              m.get("delta"), m.get("grid", 16), m.get("gate", 0.02), m.get("relock", 4), m.get("group", 16),
+                              m.get("device", False), m.get("name", "timing"))
+
 @register_sync_method("timing", "known")
 def _known(m, rep, ctx):
     """Known timing; `anchor`: the name of a preamble step whose find starts the symbol grid (one grid per burst)"""
@@ -465,7 +474,7 @@ def _frame(m, ctx):
         return sync.FrameSync(None, None, m.get("threshold"), m.get("max_length"), m.get("name", "frame"), pending=True)
     h = symbol.load_header(m["header"])
     return sync.FrameSync(h.preamble, h.words() if m.get("words", True) else None, m.get("threshold"), m.get("max_length"),
-                          m.get("name", "frame"))
+                          m.get("name", "frame"), device=m.get("device", False))
 
 def _word(m, where):
     """(word, bits, order) a step gives: a `sequence` of type word, or `word` + `bits` (+ `order`) inline"""

@@ -117,13 +117,13 @@ class Profile:
 
     @staticmethod
     def _fuse(steps):
-        """A matched filter right before a timing that is known (not estimated) is evaluated by it, at the instants it samples:
-        the step of the filter keeps no operator (Oerder & Meyr needs the filter's output at every sample, so nothing fuses)"""
-        from ..sync.time import Known
+        """A matched filter right before a timing that evaluates it at the instants it samples (Known, MatTrack) is taken over by
+        it: the step of the filter keeps no operator (Oerder & Meyr needs the filter's output at every sample, so nothing fuses)"""
+        from ..sync.time import Known, MatTrack
         from ..wave import Matched
         for a, b in zip(steps, steps[1:]):
             if (a.category == "wave" and a.kind == "shape" and len(a.rx) == 1 and isinstance(a.rx[0][1], Matched) and a.rx[0][1].unit
-                    and b.category == "sync" and b.kind == "timing" and len(b.rx) == 1 and isinstance(b.rx[0][1], Known)):
+                    and b.category == "sync" and b.kind == "timing" and len(b.rx) == 1 and isinstance(b.rx[0][1], (Known, MatTrack))):
                 b.rx[0][1].fuse(a.rx[0][1])
                 a.rx = []
 

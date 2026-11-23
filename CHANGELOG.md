@@ -25,6 +25,23 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   receive output is now data bits (Rep.DATA), not channel bits.
 
 ### Added
+- **A parallel region on a GPU, CUDA or ROCm/HIP alike** (`Parallel("thread", xp=xp)` with `xp, _ =
+  rp._accel.device()`): layered min-sum LDPC (`rp.code.kernels.LdpcDecode`), BCH (`BchDecode`: syndromes on the device,
+  only words with errors located on the host) and soft demapping (`Demap`) run hand-written device kernels, portable CUDA C
+  that NVRTC and hiprtc compile as it is (`rpps.base.kernel.device_functions`); a block interleaver that is a permutation
+  gathers (`Permute`), a code a frame switches off passes (`Identity`), and a framed header of fixed size is read in a
+  batch (`rp.link.kernels.HeaderDecode`), so the DVB-S2 region stays on the device from one upload to one download. On
+  numpy each is the host decoder as before. On an AMD Radeon 860M against 16 CPU threads: the DVB-S2 region 1.9x faster,
+  the receiver 1.35x (LDPC 2.1-2.6x, BCH 2.7-3.8x, demap 4.5-7.9x at 16-64 frames a batch); bit for bit with the serial
+  runner. Measure with the new `tools/device_bench.py` and `tools/parallel_bench.py --device --batch N`. Building CuPy
+  for ROCm and running the GPU tests: Contributing, "Device kernels (GPU)".
+- **`timing: mat`, the matched filter and timing in one (`rp.sync.time.MatTrack`)**: a profile fuses its matched filter
+  into it, evaluated only at the symbol instants; the timing is the filter's energy maximum (as `Mat`, MatRRC) tracked
+  across windows, measured a group of windows at a time so a GPU does one launch a group (`"device": true`). It follows a
+  clock 20 ppm off on DVB-S2 like `oerder_meyr`, and any block cut gives the same symbols. With `{"frame": {"device":
+  true}}` frame sync's metric runs on the GPU too (`FrameSync(device=True)`); `tools/parallel_bench.py --timing mat
+  --device` measures the receiver with both.
+- **A region's frame that its header's CRC fails is dropped** (`crc_ok` False) instead of failing the batch.
 - **A profile's `requires` narrows a search:** `rp.profile.fits(name, baud=, bw=, Fs=, seconds=, input=)` says why a
   measured signal can't be that profile (None when it may), and `rp.profile.candidates(...)` lists the variants that may.
   `rp.analysis.profile`'s framed search tries only profiles whose rate admits the acquired one, and `identify(baud=)`

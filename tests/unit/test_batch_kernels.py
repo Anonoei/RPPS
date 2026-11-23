@@ -151,6 +151,105 @@ def test_ldpc_dvbs2_frame_batch():
     X = coded_frames(code, 1, 3, 3, noise=1.0)
     both(code, DECODE, X, SOFT)
 
+GPUS = [xp for xp in DEVICES if xp is not fakedevice]
+
+def test_which_codes_have_device_kernels():
+    """A layered LDPC code and a binary BCH code find their errors on a device; a permuting interleaver gathers; a code a
+    frame switches off passes; other block codes decode on the host"""
+    from rpps.code.kernels import BchDecode, BlockDecode, Identity, LdpcDecode, Permute
+    k = lambda op, live=None: kernel_of(SimpleNamespace(id="t", rx=[(DECODE, op)], tx=[]), live or {})
+    assert type(k(rp.code.load("block/ldpc/dvbs2_64800_1_2"))) is LdpcDecode
+    assert type(k(rp.code.load("block/bch/dvbs2_1_2"))) is BchDecode
+    assert type(k(rp.code.load("block/hamming/7_4"))) is BlockDecode
+    assert type(k(rp.code.load("interleave/dvbs2_8psk"))) is Permute
+    assert type(k(rp.code.load("interleave/dvbs2_8psk"), {"name": None})) is Identity
+
+@pytest.mark.parametrize("flips", [0, 3, 12, 13])
+@pytest.mark.parametrize("name", ["bch/dvbs2_1_2", "bch/dvbs2_short_1_2"])
+def test_bch_on_every_device(name, flips):
+    """Up to t errors a codeword corrected, more reported (code_failed), as the host decoder, on each device"""
+    code = rp.code.load(f"block/{name}")
+    X = coded_frames(code, 2, 3, 11 + flips, flips=flips)
+    k, got, _ = both(code, DECODE, X, HARD)
+    if flips <= 12:
+        assert not got.code_failed.any()
+    for xp in DEVICES:
+        dev = on_device(k, Batch(np.array(X), HARD, [0]*3, X.shape[1]), xp)
+        np.testing.assert_array_equal(dev.code_failed, got.code_failed)
+
+def _bbframes(rows, kbch, dfl, seed, bad_crc=()):
+    h = rp.link.load("header/dvbs2_bb")
+    rng = np.random.default_rng(seed)
+    out = []
+    for i in range(rows):
+        head = h.build({**h.values, "dfl": dfl, "syncd": int(rng.integers(0, 1 << 16))})
+        if i in bad_crc:
+            head[-1] ^= True
+        out.append(np.concatenate((head, rng.integers(0, 2, kbch - len(head)).astype(bool))))
+    return h, np.array(out)
+
+BITS_DATA = form(rp.Category.CODE, rp.dtype.BITS, rp.Rep.DATA, Digital)
+
+def test_header_kernel_is_the_operator():
+    """The BBHEADER read in a batch: the payload `dfl` announces, as the operator one frame at a time"""
+    from rpps.link.kernels import HeaderDecode
+    h, X = _bbframes(4, 32208, 32128, 1)
+    k, got, _ = both(h, DECODE, X, BITS_DATA, live={"length": 32208})
+    assert type(k) is HeaderDecode and got.x.shape == (4, 32128)
+    np.testing.assert_array_equal(got.x, X[:, 80:80 + 32128])
+
+def test_header_kernel_drops_a_failed_crc_and_reads_nothing_of_a_short_row():
+    h, X = _bbframes(3, 32208, 1000, 2, bad_crc=(1,))
+    k = kernel_of(SimpleNamespace(id="t", rx=[(DECODE, h)], tx=[]), {"length": 32208})
+    for xp in [np] + DEVICES:
+        b = Batch(xp.asarray(X), BITS_DATA, [0]*3, X.shape[1])
+        b = k.run(xp, b)
+        assert list(b.bad) == [False, True, False] and "CRC" in b.why[1]
+        np.testing.assert_array_equal(to_host(b.x)[[0, 2]], X[[0, 2], 80:1080])
+    short = k.run(np, Batch(X[:, :40], BITS_DATA, [0]*3, 40))
+    assert short.x.shape == (3, 0) and not short.bad.any()
+
+def test_interleaver_switched_off_passes():
+    il = rp.code.load("interleave/dvbs2_8psk")
+    X = np.random.default_rng(3).normal(size=(3, 64800)).astype(np.float32)
+    both(il, DECODE, X, SOFT, live={"name": None})
+
+def test_ldpc_on_the_pretend_device_is_the_host_decoder():
+    """Without kernels of its own (fakedevice), LdpcDecode moves the batch explicitly and decodes on the host"""
+    code = rp.code.load("block/ldpc/dvbs2_64800_1_2")
+    X = coded_frames(code, 1, 2, 7, noise=1.4)
+    k = kernel_of(SimpleNamespace(id="t", rx=[(DECODE, code)], tx=[]), {})
+    ref = k.run(np, Batch(np.array(X), SOFT, [0, 0], X.shape[1]))
+    dev = on_device(k, Batch(np.array(X), SOFT, [0, 0], X.shape[1]), fakedevice)
+    np.testing.assert_array_equal(dev.x, ref.x)
+    np.testing.assert_array_equal(dev.code_failed, ref.code_failed)
+
+@pytest.mark.skipif(not GPUS, reason="no GPU (rpps._accel.device())")
+@pytest.mark.parametrize("name,noise", [("dvbs2_64800_1_2", 1.0), ("dvbs2_64800_3_4", 0.7), ("dvbs2_16200_8_9", 0.45)])
+def test_device_ldpc_equals_the_host_where_it_converges(name, noise):
+    """float32 on the device, float64 on the host: the same codewords and verdicts above threshold, several per row"""
+    code = rp.code.load(f"block/ldpc/{name}")
+    X = coded_frames(code, 2, 6, 8, noise=noise)
+    k = kernel_of(SimpleNamespace(id="t", rx=[(DECODE, code)], tx=[]), {})
+    ref = k.run(np, Batch(np.array(X), SOFT, [0]*6, X.shape[1]))
+    dev = on_device(k, Batch(np.array(X), SOFT, [0]*6, X.shape[1]), GPUS[0])
+    assert not ref.code_failed.any()
+    np.testing.assert_array_equal(dev.x, ref.x)
+    np.testing.assert_array_equal(dev.code_failed, ref.code_failed)
+
+@pytest.mark.skipif(not GPUS, reason="no GPU (rpps._accel.device())")
+def test_device_ldpc_near_threshold_fails_no_more_frames_than_the_host():
+    """At the waterfall float32 and float64 part on a few ties: frame failures within a margin measured over seeds"""
+    code = rp.code.load("block/ldpc/dvbs2_64800_1_2")
+    k = kernel_of(SimpleNamespace(id="t", rx=[(DECODE, code)], tx=[]), {})
+    host = dev = 0
+    for seed in range(3):
+        X = coded_frames(code, 1, 8, 20 + seed, noise=2.75)
+        host += int(k.run(np, Batch(np.array(X), SOFT, [0]*8, X.shape[1])).code_failed.sum())
+        dev += int(on_device(k, Batch(np.array(X), SOFT, [0]*8, X.shape[1]), GPUS[0]).code_failed.sum())
+    assert 0 < host < 24, host # (at the waterfall: some frames fail, not all)
+    assert abs(dev - host) <= 3, (dev, host)
+
 def test_block_interleaver():
     il = rp.code.load("interleave/dvbs2_8psk")
     rng = np.random.default_rng(6)

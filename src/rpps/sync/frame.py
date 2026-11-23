@@ -14,12 +14,56 @@ import numpy as np
 
 from .. import _accel
 from ..base import Stage, BitStage
+from ..base.kernel import device_functions, has_device_kernels, to_host
 from ..signal.filters.convolve import convolve
 from ..base.control import publish, anchor
 from . import track
 
 NATIVE_CORRELATION = 256 # Longest preamble (symbols) correlated directly in C++; longer ones go through the FFT
 LONG_WORD = 64 # Delimiter: a longer word is matched by FFT correlation rather than window by window
+
+# FrameSync's metric on a device: a thread a position, the correlation with the (conjugated) preamble and the energy of its
+# window, |c| / sqrt(E_window E_preamble). Portable CUDA C
+FRAME_SOURCE = r"""
+extern "C" __global__ void pre_metric(const float2 *y, const long long npos, const float2 *pre, const int L, const float ep,
+                                      float2 *c, float *m) {
+    const long long j = (long long)blockIdx.x*blockDim.x + threadIdx.x;
+    if (j >= npos) return;
+    float cr = 0.0f, ci = 0.0f, e = 0.0f;
+    for (int l = 0; l < L; l++) {
+        const float2 v = y[j + l], p = pre[l];
+        cr += v.x*p.x - v.y*p.y; ci += v.x*p.y + v.y*p.x;
+        e += v.x*v.x + v.y*v.y;
+    }
+    c[j] = make_float2(cr, ci);
+    m[j] = sqrtf(cr*cr + ci*ci)/sqrtf(fmaxf(e, 1e-30f)*ep);
+}
+// For candidate k at js[k]: the n symbols after the preamble turned back by its correlation's phase, as (re, im) floats (a
+// row of the words' matrix product), and the energy of all L + n. A block a candidate, its threads over the symbols
+extern "C" __global__ void pre_tails(const float2 *y, const long long *js, const float2 *c, const int L, const int n,
+                                     float *tail, float *e) {
+    __shared__ float part[128];
+    const long long k = blockIdx.x, j = js[k];
+    const float2 cc = c[j];
+    const float a = fmaxf(sqrtf(cc.x*cc.x + cc.y*cc.y), 1e-30f), pr = cc.x/a, pi = -cc.y/a;
+    float acc = 0.0f;
+    for (int i = threadIdx.x; i < L + n; i += blockDim.x) {
+        const float2 v = y[j + i];
+        acc += v.x*v.x + v.y*v.y;
+        if (i >= L) {
+            tail[k*2*n + 2*(i - L)] = v.x*pr - v.y*pi;
+            tail[k*2*n + 2*(i - L) + 1] = v.x*pi + v.y*pr;
+        }
+    }
+    part[threadIdx.x] = acc;
+    __syncthreads();
+    for (int w = blockDim.x/2; w > 0; w >>= 1) {
+        if (threadIdx.x < w) part[threadIdx.x] += part[threadIdx.x + w];
+        __syncthreads();
+    }
+    if (threadIdx.x == 0) e[k] = part[0];
+}
+"""
 
 def word_errors(n_bits, false_alarm=1e-6, positions=1, polarity=False):
     """The most bit errors a match of an `n_bits` word may have while random bits stay under `false_alarm` matches over
@@ -58,7 +102,7 @@ class FrameSync(Stage):
     """
     CONTROLS = {}
 
-    def __init__(self, preamble, words=None, threshold=None, max_length=None, name="frame", pending=False):
+    def __init__(self, preamble, words=None, threshold=None, max_length=None, name="frame", pending=False, device=False):
         if preamble is None and not pending:
             raise ValueError("FrameSync: a preamble, or pending=True (set_template gives it later)")
         if pending and words is not None:
@@ -73,6 +117,7 @@ class FrameSync(Stage):
         self.threshold = float(threshold if threshold is not None else (0.6 if words is None else 0.5))
         self.name = name
         self.max_length = None if max_length is None else int(max_length)
+        self.device, self._xp = bool(device), None # device: the metric on the GPU of rpps._accel.device() (numpy without one)
 
     def set_template(self, preamble, first=0, span=None):
         """The known symbols that start each frame (a profile makes them from a word, through its own transmit side down to
@@ -99,6 +144,11 @@ class FrameSync(Stage):
         if hi - lo <= 0 or len(y) < L:
             return [], None
         a, b = max(lo - L, 0), min(hi + L, len(y) - L + 1)
+        if self.device:
+            if self._xp is None:
+                self._xp = _accel.device()[0]
+            if has_device_kernels(self._xp):
+                return self._peaks_device(self._xp, y, a, b, lo, hi), None
         seg = y[a:b + L - 1]
         rest = y[a:]
         if _accel.native is not None and L <= NATIVE_CORRELATION: # C++: the direct correlation and its normalisation, on several threads
@@ -120,6 +170,47 @@ class FrameSync(Stage):
             if m[j] >= w.max():
                 out.append((i, float(np.angle(c[j])), float(m[j])))
         return out, (c, a)
+
+    def _peaks_device(self, xp, y, a, b, lo, hi):
+        """`_peaks` with the metric on a device, in single precision: the correlation and window energy of every position
+        (a thread each), the words of the promising ones ranked in one matrix product; the positions over the threshold and
+        their neighbourhoods (for the largest within L) come back, the rest stays there"""
+        L, n = self.L, self.n
+        fs = device_functions(xp, FRAME_SOURCE, ("pre_metric", "pre_tails"))
+        f = fs["pre_metric"]
+        rest = xp.asarray(np.ascontiguousarray(y[a:], dtype=np.complex64))
+        npos = b - a
+        c = xp.empty(npos, dtype=np.complex64)
+        m = xp.empty(npos, dtype=np.float32)
+        pre = self._dconst(xp, "pre", lambda: np.conj(self.preamble).astype(np.complex64))
+        T = 256
+        f(((npos + T - 1)//T,), (T,), (rest, np.int64(npos), pre, np.int32(L), np.float32(self._ep), c, m))
+        if self.words is not None:
+            js = xp.nonzero((m > 0.3) & (xp.arange(npos) + L + n <= len(rest)))[0]
+            out = xp.zeros_like(m)
+            if len(js):
+                K = len(js)
+                tail = xp.empty((K, 2*n), dtype=np.float32) # (re, im) pairs of each candidate's continuation, phase taken off
+                e = xp.empty(K, dtype=np.float32)
+                fs["pre_tails"]((K,), (128,), (rest, js.astype(np.int64), c, np.int32(L), np.int32(n), tail, e))
+                best = (tail @ self._dconst(xp, "words", lambda: self._words_ri)).max(axis=1)
+                out[js] = (xp.abs(c[js]) + best)/xp.sqrt(xp.maximum(e, 1e-30)*(L + n))
+            m = out
+        j = xp.nonzero(m > self.threshold)[0]
+        if not len(j):
+            return []
+        nb = xp.clip(j[:, None] + xp.arange(-(L - 1), L)[None, :], 0, npos - 1) # (the neighbourhood, clipped as numpy slices)
+        top = m[j] >= m[nb].max(axis=1)
+        j = j[top]
+        jj, ph, mm = to_host(j), to_host(xp.angle(c[j])), to_host(m[j])
+        return [(a + int(k), float(p), float(v)) for k, p, v in zip(jj, ph, mm) if lo <= a + int(k) < hi]
+
+    def _dconst(self, xp, key, make):
+        cache = self.__dict__.setdefault("_dconsts", {})
+        v = cache.get(key)
+        if v is None:
+            v = cache[key] = xp.asarray(make())
+        return v
 
     def _with_words(self, y, c, m, cs):
         """The metric over the preamble and its best continuation, where the preamble alone is promising (> 0.3: random

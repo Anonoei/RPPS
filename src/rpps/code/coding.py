@@ -245,10 +245,24 @@ def _block_kernel(self, params, how):
         return None
     if params:
         self.control(**params)
-    if self.decoder is None or (self.folder == "interleave" and not hasattr(self.decoder, "block_bits")):
+    from .kernels import BlockDecode, BchDecode, Identity, LdpcDecode, Permute, permutation_of
+    if self.decoder is None: # (switched off for this frame: the items pass)
+        return Identity(self.CATEGORY, str(self.name))
+    if self.folder == "interleave" and not hasattr(self.decoder, "block_bits"):
         return None
-    from .kernels import BlockDecode
-    return BlockDecode(self.decoder, self._block(False), self.decision == Decision.SOFT, self.CATEGORY, self.DECODE_GIVES, str(self.name))
+    from .types.bchgf import bchgf
+    from .types.ldpc import ldpc
+    args = (self.decoder, self._block(False), self.decision == Decision.SOFT, self.CATEGORY, self.DECODE_GIVES, str(self.name))
+    if self.folder == "interleave": # (a permutation gathers on any array module)
+        perm = permutation_of(self.decoder, self._block(False))
+        return BlockDecode(*args) if perm is None else Permute(perm, *args)
+    # A plain layered LDPC code and a binary BCH code decode on a device when the plan runs on one (a subclass decodes in
+    # its own way)
+    if type(self.decoder) is ldpc and self.decoder.schedule == "layered":
+        return LdpcDecode(*args)
+    if type(self.decoder) is bchgf:
+        return BchDecode(*args)
+    return BlockDecode(*args)
 
 class Block(Coding):
     SCOPE = FRAME # Whole codewords

@@ -12,6 +12,7 @@ and its rate across windows and gates outliers; the correction is evaluated per 
 | Estimates | Operator | Profile method |
 |---|---|---|
 | symbol timing | `time.OerderMeyr`: square-law, cubic interpolation; follows a clock 200 ppm off | `timing: oerder_meyr` (default) |
+| symbol timing, the matched filter fused in | `time.MatTrack`: the matched filter's energy maximum (MatRRC), read only at the instants; on a GPU too | `timing: mat` |
 | carrier frequency and phase | `phase.MPower`: M-th power of the phase, FFT acquisition | `carrier: mpower` (default) |
 | channel | `equalize.BlockLS`: least squares per window against decisions | `equalize: ls` (default) |
 | OFDM timing and frequency | `CPSync`: from the cyclic prefix | |
@@ -47,6 +48,10 @@ locked loop around a detector from `time.ted`: `ted="zx"` zero crossing, `"el"` 
 
 - `time.Known`: timing that is given, not estimated (a loopback, a source whose timing is known); fuses the matched
   filter before it (`timing: known`).
+- On a GPU (`rpps._accel.device()`, CUDA or ROCm/HIP; numpy without one), by `"device": true` in a step's sync settings:
+  `time.MatTrack` (`timing: mat`: the held samples filtered and read at the instants on the device, windows measured a
+  group at a time) and `FrameSync` (`frame`: the preamble metric, and the header words ranked in one matrix product). Both
+  agree with their numpy paths to single-precision rounding: the same frames, the same symbols to 1e-4.
 - `detect`, `Detection`, `rate.find_baud`: the feed-forward estimates `Acquire` runs (rate, timing, modulation, offset,
   phase); blind analysis uses them too.
 - `quality`: Es/N0, Eb/N0 and EVM of locked symbols, once (`measure`), over a window (`Track`) or on the stream

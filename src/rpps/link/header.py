@@ -105,6 +105,19 @@ class Header(Pipe):
         self.values = {**self.values, **{k: v for k, v in fields.items() if v is not None}}
         self._start = True
 
+    def kernel(self, params, how):
+        """The batch decoder of a framed header of fixed size with a known frame length, its payload as sent, no FCS and no
+        `select` (rpps.link.kernels.HeaderDecode); None otherwise (the frames go through the operator one at a time)"""
+        if how != "/":
+            return None
+        if params:
+            self.control(**params)
+        if not (self.framed and self.length and self.header_bits is not None and self.fcs is None and not self.select
+                and not self.payload_lsb):
+            return None
+        from .kernels import HeaderDecode
+        return HeaderDecode(self, self.length)
+
     # ---- bits
 
     def _value_bits(self, v, n):

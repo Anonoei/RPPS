@@ -109,6 +109,49 @@ Pitfalls found the hard way:
   (`OPENBLAS_NUM_THREADS=1` shows it).
 - **Benchmark best-of-N in one process** (`tools/bench_stages.py`, `parallel_bench.py`, `resample_bench.py`).
 
+## Device kernels (GPU)
+
+A parallel region runs on a GPU through CuPy (`rpps._accel.device()`, `rpps.parallel`), built for CUDA or for ROCm/HIP with
+one API; nothing in RPPS names a vendor. CuPy is not a dependency: keep it in its own environment.
+
+```
+pyenv virtualenv 3.12.11 rpps-gpu && pyenv shell rpps-gpu
+pip install -e ".[dev]"
+pip install cupy-cuda12x                                        # NVIDIA: a wheel
+CUPY_INSTALL_USE_HIP=1 ROCM_HOME=/opt/rocm HCC_AMDGPU_TARGET=gfx1152 pip install --no-binary cupy cupy   # AMD: from source
+```
+
+The ROCm build needs hipcub, rocthrust, hiprand/rocrand and hipfft/rocfft installed; `HCC_AMDGPU_TARGET` is the GPU's
+`gfx` name (`rocminfo`). With CuPy present, `test_batch_kernels.py` and `test_parallel.py` run every kernel on the GPU as
+well as on the pretend device (`tests/unit/fakedevice.py`, which CI uses); `RPPS_DEVICE=none` leaves the GPU out.
+
+- **Array kernels** use only what numpy and cupy share (`xp`). **Device kernels** of their own (`LdpcDecode`,
+  `BchDecode`, `Demap`) are portable CUDA C that NVRTC and hiprtc both compile (`rpps.base.kernel.device_functions`): no
+  warp intrinsics or warp-width assumptions, no vendor headers. On numpy, or a module without kernels (fakedevice), they
+  run the host decoder, which stays the reference.
+- They compute in float32 (consumer GPUs run float64 at a fraction of the rate): tests compare decisions where the host
+  converges, and frame failures at the waterfall within a margin.
+- Measure with `python tools/device_bench.py` (per kernel, host against device, by batch size) and
+  `python tools/parallel_bench.py 64 4 --device --batch 16` (the DVB-S2 region end to end), on an idle machine: the host
+  side uses every core, so a busy one flatters the GPU.
+
+Pitfalls found the hard way:
+- **The batch is the fastest axis** in a device kernel's arrays (LDPC's `total[N, B]`, `r[E, B]`): neighbouring threads
+  then touch neighbouring words. Codeword-major, the same kernel was 11-13x slower once the batch outgrew the cache.
+- **Compact what is done.** A wavefront runs while any of its lanes works: LDPC moves the codewords still decoding into
+  a narrower array as others converge, else a few stragglers cost a whole batch every iteration.
+- **No boolean indexing or `bool()` in a device path:** each is a search and a wait for the device. Index with integer
+  constants (`Gather`), and read back once per loop at most.
+- **float64 is slow on consumer GPUs** (the generic array demapper was 3x slower than the C++ one until it had a float32
+  kernel of its own).
+- **An integrated GPU shares the CPU's power:** with every core busy the Radeon 860M held 800-900 MHz of its 3000
+  (158 GFLOP/s SGEMM, 16 GB/s), so a GPU path that wins on an idle machine can tie with the CPU on a loaded one, and a
+  CPU front competes with a GPU region inside one receiver. Check `pp_dpm_sclk` (or `rocm-smi --showclocks`) and the
+  load before trusting a number.
+- **ROCm packages out of step:** a hipcub newer than rocprim fails CuPy's build (`segmented_reduce_config_selector`). Build
+  against the hipcub release that matches rocprim (`HIPCUB_VERSION` = `ROCPRIM_VERSION` in their `*_version.hpp`), for
+  example by pointing `ROCM_HOME` at a copy of `/opt/rocm` made of links with that hipcub's headers in `include/hipcub`.
+
 
 ## Testing
 
