@@ -34,13 +34,15 @@ class AcquireFEC(Stage):
     acquiring it holds the answer so far with complete False (before any, found False and `n` the symbols held so far): a
     code found then may still gain the layers inside it, so a decoder is best built once complete, which it is once the stage
     stops looking.
-    names: only these convolutional definitions. blind: also look for unknown codes (a `Guess`, never decoded)
+    names: only these convolutional definitions. blind: also look for unknown codes (a `Guess`, never decoded), unless the
+    rate came from a symbol-rate line weaker than `min_line` over its floor (Acquire took it anyway: a guess; None: always)
     """
-    __slots__ = ("window", "skip", "max_wait", "names", "blind", "check", "relock", "name")
+    __slots__ = ("window", "skip", "max_wait", "names", "blind", "check", "relock", "name", "min_line")
 
-    def __init__(self, window=2**14, skip=2048, max_wait=2**18, names=None, blind=False, check=4096, relock=4.0, name="fec"):
+    def __init__(self, window=2**14, skip=2048, max_wait=2**18, names=None, blind=False, check=4096, relock=4.0, name="fec",
+                 min_line=5.0):
         self.window, self.skip, self.max_wait = int(window), int(skip), int(max_wait)
-        self.names, self.blind = names, blind
+        self.names, self.blind, self.min_line = names, blind, min_line
         self.check, self.relock, self.name = int(check), float(relock), name
 
     def __str__(self):
@@ -80,7 +82,10 @@ class AcquireFEC(Stage):
             st.length *= 2
             meta.stream.est[self.name] = fec # The answer so far: complete False, more symbols may still change it
             return y[:0]
-        if self.blind: # The blind tools take most of the time and don't decide completeness: once, on the final window
+        # The blind tools take most of the time and don't decide completeness: once, on the final window; and not on a
+        # rate Acquire only guessed (no symbol-rate line of min_line over its floor: symbols at a wrong rate fit no code)
+        guessed = self.min_line is not None and getattr(det, "line", None) is not None and det.line < self.min_line
+        if self.blind and not guessed:
             fec = identify(win, det.mod, self.names, blind=True, baud=det.baud, prior=fec)
         st.done, st.held, st.fec = True, None, fec
         fec.complete = True # Final: this stage looks no further (even if more symbols could have shown more)

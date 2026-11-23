@@ -216,6 +216,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   at the first 2^15 symbols only, the same in every window from there: a convolutional code found is only decoded
   again for what is inside it, and with nothing configured found the blind pass goes straight to the blind tools (a
   DVB-S stream 4.8 s -> 3.4 s).
+- **`AcquireFEC(min_line=5.0)`: no blind tools on a rate Acquire only guessed.** When the rate came from no
+  symbol-rate line at least `min_line` over its floor (taken anyway), the symbols are at a wrong rate and no code fits:
+  the configured scans still run, the blind ones (the puncture search, block and convolutional searches, the layers
+  inside) don't. A rate given (a hint, the cyclic spectrum's second pass) has no line and is always searched.
 
 ## 0.6.0 (2026-11-22)
 

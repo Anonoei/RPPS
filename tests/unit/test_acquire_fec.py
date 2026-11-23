@@ -227,3 +227,24 @@ def test_conv_encoder_matches_the_register_loop(name, rng):
     st = {}
     split = np.concatenate((enc.encode(b[:420], st, False), enc.encode(b[420:], st, True))) # Whole puncture periods (2, 3, 5, 7)
     assert np.array_equal(split, enc.encode(b))
+
+@pytest.mark.kernels
+def test_the_blind_tools_skip_a_rate_acquire_only_guessed():
+    # An unknown K=6 code: the blind tools find its generators when the rate came from a clear symbol-rate line, and
+    # aren't run when Acquire took a rate with no line over its floor (symbols at a wrong rate fit no code)
+    from rpps.code.types.conv import conv
+    from rpps.logger import Logger
+    rng = np.random.default_rng(14)
+    b = conv(Logger().Child("t", 0), 1, 2, [[1, 1, 0, 1, 0, 1], [1, 0, 1, 1, 1, 1]], 6, [[1], [1]]).encode(
+        rng.integers(0, 2, 70000).astype(bool))[1:]
+    x = noisy(rp.symbol.load("qpsk").modulate(np.asarray(b[:len(b)//2*2], np.uint8))*1j, rng, 0.1)
+    def run(line):
+        stage, stream = rp.sync.AcquireFEC(blind=True), None
+        for i in range(0, len(x), 8192):
+            d = rp.Data(x[i:i + 8192], Fs=1e6, sps=1, stream=stream, flush=i + 8192 >= len(x))
+            stream = d.meta.stream
+            stream.det = stream.det or Detection(mod="qpsk", baud=1e6, sps=1.0, line=line)
+            d + stage
+        return stream.est["fec"]
+    assert any(g.kind == "conv" for g in run(12.0).guesses)
+    assert not run(3.0).guesses
