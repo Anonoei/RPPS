@@ -172,3 +172,28 @@ def test_a_hint_skips_what_an_earlier_look_found(dvbs_capture):
     hinted = pick(rp.analysis.profile(fresh(), blind=False, hint=near))
     assert hinted.solved and hinted.profile_name == plain.profile_name == "dvbs/qpsk_3_4"
     assert [s.kind for s in hinted.steps] == [s.kind for s in plain.steps]
+
+@pytest.mark.kernels
+def test_tdma_bursts_are_demodulated_one_by_one_and_their_code_found():
+    """QPSK bursts (a shared 32-symbol preamble, then BCH(63,51) words), each with its own carrier phase and offset:
+    the continuous chain can't follow them; each is acquired on its preamble and the code found in the payloads"""
+    from rpps.code.types.bchgf import bchgf
+    from rpps.logger import Logger
+    rng = np.random.default_rng(1)
+    q = rp.symbol.load("qpsk")
+    pre = np.asarray(q.points)[rng.integers(0, 4, 32)]
+    code = bchgf(Logger().Child("t", 0), 63, 51, 6, 0x43, 2)
+    Fs, sps = 1.6e6, 16
+    shape = rp.wave.Shape(sps, rp.signal.filters.load("pulse/rrc/0p35"))
+    xs = []
+    for _ in range(60):
+        bits = np.asarray(code.encode(rng.integers(0, 2, 51*16).astype(bool)), np.uint8)
+        w = np.asarray((rp.Data(np.concatenate([pre, q.modulate(bits)]).astype(np.complex64), Fs=Fs/sps, sps=1) + shape).data)
+        xs += [np.zeros(int(rng.integers(1200, 2400)), np.complex64),
+               w*np.exp(1j*(2*np.pi*rng.uniform(-200, 200)/Fs*np.arange(len(w)) + rng.uniform(0, 2*np.pi)))]
+    x = np.concatenate(xs + [np.zeros(2000, np.complex64)])
+    x = x*np.exp(2j*np.pi*150e3/Fs*np.arange(len(x)))
+    y = (x + 0.02*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))).astype(np.complex64)
+    p = min(rp.analysis.profile(rp.source.Memory(y, Fs=Fs), blind=False), key=lambda p: abs(p.signal.mid - 150e3))
+    kinds = [s.kind for s in p.steps]
+    assert "demodulate" in kinds and "60 bursts" in str(p) and "BCH(63,51)" in str(p)

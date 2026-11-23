@@ -356,3 +356,15 @@ def test_a_code_carrying_random_bits_says_so():
     word = rng.integers(0, 2, 24).astype(np.uint8)
     f = F.identify(_qpsk(enc(_feedthrough(np.tile(word, 3000), (23, 18))), rng)[:2**15], "qpsk", blind=True)
     assert f.found and any(h.kind.startswith("scrambler") for h in f.inner) and f.payload is None
+
+def test_a_code_laid_out_from_each_frames_start():
+    # Frames (a burst's payload after its preamble) of BCH(63,51) words from their start, cut to uneven lengths: the
+    # rank of every frame's words at 0, 63, 126... is short by the code's checks; random frames give nothing
+    rng = np.random.default_rng(10)
+    code = bchgf(Logger().Child("t", 0), 63, 51, 6, 0x43, 2)
+    rows = [np.asarray(code.encode(rng.integers(0, 2, 51*16).astype(bool)), np.uint8)[:int(rng.integers(950, 1008))]
+            for _ in range(40)]
+    assert BK.frame_units(rows) == (63, 12)
+    n, d = BK.frame_units([r ^ (rng.random(len(r)) < 1e-3) for r in rows]) # bit errors: n + 48 words at a time
+    assert n == 63 and 0 < d <= 12
+    assert BK.frame_units([rng.integers(0, 2, 1000).astype(np.uint8) for _ in range(40)]) == (None, 0)

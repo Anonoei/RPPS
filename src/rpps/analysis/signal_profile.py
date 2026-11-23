@@ -449,6 +449,15 @@ class _Chain:
         lost = det is None or p.steps[1].status == UNSOLVED or "doubtful" in (p.steps[1].note or "")
         if kind is None and w.bursts is None:
             return None
+        if kind is None and w.bursts is not None and not p.solved and (w.bursts.duty or 1.0) < 0.9:
+            # Bursts the continuous chain could not lock to: each demodulated on its own preamble, the code in its payload
+            q = SignalProfile(p.name, p.signal)
+            q.symbols, q.det = p.symbols, p.det
+            q.steps.append(p.steps[0])
+            q.add("waveform", str(w), FOUND, detail=_waveform_detail(w),
+                  note=f"the linear chain's reading, not used: {p.steps[1].what}" if len(p.steps) > 1 else None)
+            self._bursts(q, np.concatenate(self.near))
+            return q
         if kind is None or kind == "constant envelope" and not lost:
             # Only bursts, or a constant envelope the PSK chain locked onto anyway (a carrier is one PSK point): noted
             p.steps.insert(2 if len(p.steps) > 1 else 1, Step("waveform", str(w), FOUND, detail=_waveform_detail(w)))
@@ -474,6 +483,55 @@ class _Chain:
         else:
             self._fsk(q, np.concatenate(self.near))
         return q
+
+    def _bursts(self, q, x):
+        """TDMA bursts (rpps.analysis.spectrum.burst.demodulate: each acquired on its kind's preamble) into q, and for each
+        kind the code laid out from where its payload starts (linear.frame_units on every bit map: one rotation is
+        common to all bursts and unknown), else what the payload bits are like"""
+        from .spectrum import burst
+        from .code.block.linear import frame_units, solve_block
+        from .framing.payload import verdict
+        from .identify import bit_streams, _distinct
+        from .. import symbol
+        try:
+            r = burst.demodulate(x, self.ch.Fs)
+        except Exception as e:
+            q.add("demodulate", "bursts, each on its preamble", UNSOLVED, note=f"{type(e).__name__}: {e}")
+            return
+        ok = [b for b in r.bursts if b.ok and b.symbols is not None]
+        q.add("demodulate", str(r), FOUND if ok else UNSOLVED, detail={"mod": r.mod, "baud": r.baud, "bursts": len(r.bursts),
+              "demodulated": len(ok), "kinds": len(r.preambles or [r.preamble])},
+              note="blind (rpps.analysis.spectrum.burst): each burst acquired on its own preamble")
+        c = symbol.load_or_generate(r.mod)
+        kinds = r.preambles or [r.preamble]
+        for kind, pre in enumerate(kinds):
+            group = [b for b in ok if (b.kind or 0) == kind and len(b.symbols) > len(pre)]
+            if len(group) < 4:
+                continue
+            pays = [np.asarray(b.symbols[len(pre):], dtype=np.complex64) for b in group]
+            best = None
+            for key in _distinct(bit_streams(pays[0], c, differential=False), c):
+                rows = [bit_streams(y, c, differential=False, keys=[key])[key] for y in pays]
+                n, d = frame_units(rows)
+                if n is not None and (best is None or (n, -d) < (best[0], -best[1])):
+                    best = (n, d, key, rows)
+            label = f"kind {kind} ({len(pre)}-symbol preamble, {len(group)} bursts)" if len(kinds) > 1 else f"{len(group)} bursts"
+            if best is None:
+                key = next(iter(_distinct(bit_streams(pays[0], c, differential=False), c)))
+                bits = np.concatenate([bit_streams(y, c, differential=False, keys=[key])[key] for y in pays])
+                v = verdict(bits)
+                q.add("fec", f"the payload of {label}", UNSOLVED, note=f"no block code laid out from its start; the bits are {v.kind}: {v.why}")
+                continue
+            n, d, key, rows = best
+            units = np.concatenate([r_[o:o + n] for r_ in rows for o in range(0, len(r_) - n + 1, n)])
+            found = solve_block(units, n=n, offset=0)
+            if found:
+                for h, g in found:
+                    q.add("fec", f"{h.name} in the payload of {label}", GUESS, detail={"z": h.z, "map": str(key), "n": n},
+                          note=f"blind, on the bursts' payloads laid end to end from their starts: {g!r}" if g is not None else None)
+            else:
+                q.add("fec", f"a length-{n} code in the payload of {label}", GUESS, detail={"n": n, "deficiency": d, "map": str(key)},
+                      note=f"{d} checks a word on the bursts' payload words; not identified further")
 
     def _fsk(self, q, x):
         """A constant envelope: FSK / MSK / GMSK by the instantaneous frequency (rpps.analysis.modulation.fsk), else unsolved"""

@@ -178,6 +178,11 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **`Mat` keeps a refined timing's first symbol inside its buffer**: moving to a refined detection's lattice could put
   the next symbol's matched-filter support before the samples kept, which now raises (numpy used to wrap round to the
   end of the block); it goes on to the first symbol whose support is there.
+- **TDMA bursts in `rp.analysis.profile`**: a bursty signal the continuous chain cannot lock to is demodulated burst by
+  burst on its preamble (`spectrum.burst.demodulate`), and the code in each burst kind's payload found where it is laid
+  out from the payload's start: `code.block.linear.frame_units(rows)`, the shortest length whose words at 0, n, 2n... of
+  every frame are short of rank, on every bit map (one unknown rotation is common to the bursts); then `solve_block`
+  names it (BCH, LDPC checks, cyclic...), or the payload's randomness is reported.
 
 ## 0.6.0 (2026-11-22)
 

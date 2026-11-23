@@ -69,6 +69,29 @@ def find_length(bits, min_len=4, max_len=None, extra=EXTRA):
             return _longer(b, n, off, max_len, extra) + (defs,)
     return None, None, defs
 
+def frame_units(rows, min_len=4, max_len=None, extra=EXTRA, trials=6, seed=0):
+    """The length of a block code whose words lie end to end from where each frame starts: rows are bits that each start
+    at a frame's start (a burst's payload after its preamble, a frame's after its unique word), of any lengths. For each
+    n the words at 0, n, 2n... of every row are stacked: a code of length n leaves them short of rank. Returns (n,
+    deficiency) for the shortest that is, or (None, 0). Rows are many short frames where `find_length` wants one long
+    stream: a code laid out per frame breaks at every frame's end there, here it doesn't. As for `find_length`, n + extra
+    words at a time (a word with a bit error adds to the rank: fewer words, fewer of them), the best of `trials` draws"""
+    rows = [np.asarray(r, dtype=np.uint8) for r in rows if len(r)]
+    if not rows:
+        return None, 0
+    rng = np.random.default_rng(seed)
+    L = max(len(r) for r in rows)
+    for n in range(min_len, (max_len or L) + 1):
+        W = np.array([r[o:o + n] for r in rows for o in range(0, len(r) - n + 1, n)], dtype=np.uint8)
+        if len(W) < n + extra: # Too few words for the rank to say anything (and fewer still for longer n)
+            break
+        m = n + extra
+        draws = [W] if len(W) <= m else [W[rng.choice(len(W), m, replace=False)] for _ in range(trials)]
+        d = max(n - rank(w) for w in draws)
+        if d > 0:
+            return n, d
+    return None, 0
+
 def _longer(b, n, off, max_len, extra):
     """A code of length n may be part of a longer one (LDPC: a band of checks on n consecutive bits): rows of m*n bits short
     of rank by more than m times rows of n are. Returns (length, offset), the longest such, aligned"""
