@@ -190,7 +190,8 @@ def _parent(path, ref):
 
 def merge(parent, child):
     """A child definition over its parent: dicts merge key by key, lists and values replace, null deletes. comment and ref
-    are the child's own; tags add to the parent's; params merge by name (a bare value pins the parent's default)"""
+    are the child's own; tags add to the parent's; params merge by name (a bare value pins the parent's default); "steps"
+    given as a dict patches the parent's steps by id (see `patch_steps`)"""
     out = {k: v for k, v in parent.items() if k not in _NOT_INHERITED}
     for k, v in child.items():
         if k == "extends":
@@ -212,10 +213,59 @@ def merge(parent, child):
                 else:
                     ps[name] = pv
             out[k] = ps
+        elif k == "steps" and isinstance(v, dict) and isinstance(out.get(k), list):
+            out[k] = patch_steps(out[k], v)
         elif isinstance(v, dict) and isinstance(out.get(k), dict):
             out[k] = _deep(out[k], v)
         else:
             out[k] = v
+    return out
+
+STEP_KINDS = ("signal", "sync", "wave", "symbol", "code", "link", "grid", "branch") # The keys that say what a step is
+
+def step_id(step):
+    """A profile step's id: its "id", else its kind ({"sync": "timing"}: "timing"), as a profile names it"""
+    if "id" in step:
+        return str(step["id"])
+    return next((str(step[k]) for k in STEP_KINDS if k in step and isinstance(step[k], str)), None)
+
+def patch_steps(steps, patch):
+    """A parent's steps with a child's changes, by step id (`step_id`), in the order given:
+        "<id>": {...}           merged into that step (as dicts merge: null deletes a key)
+        "<id>": null            the step taken out
+        "+before:<id>": [...]   steps put in before it; "+after:<id>" after it
+        "+start": [...]         steps put first; "+end" last
+    An id two steps share is an error: give them "id"s"""
+    out = [dict(s) for s in steps]
+    def at(sid):
+        hits = [i for i, s in enumerate(out) if step_id(s) == sid]
+        if len(hits) != 1:
+            have = [step_id(s) for s in out]
+            raise ConfigError(f"steps: {'no' if not hits else 'more than one'} step {sid!r} to patch (have {have}"
+                              + ("; give them \"id\"s)" if hits else ")"))
+        return hits[0]
+    def new(v, key):
+        if not isinstance(v, list) or not all(isinstance(x, dict) for x in v):
+            raise ConfigError(f"steps: {key!r} takes a list of steps, not {v!r}")
+        return [dict(x) for x in v]
+    for key, v in patch.items():
+        if key == "comment":
+            continue
+        if key == "+start":
+            out[:0] = new(v, key)
+        elif key == "+end":
+            out += new(v, key)
+        elif key.startswith(("+before:", "+after:")):
+            where, _, sid = key[1:].partition(":")
+            i = at(sid) + (where == "after")
+            out[i:i] = new(v, key)
+        elif v is None:
+            del out[at(key)]
+        elif isinstance(v, dict):
+            i = at(key)
+            out[i] = _deep(out[i], v)
+        else:
+            raise ConfigError(f"steps: {key!r} takes a dict (merged into the step) or null (taken out), not {v!r}")
     return out
 
 def _deep(a, b):
@@ -240,7 +290,12 @@ def expand(path, _chain=()):
     chain = (*_chain, path.resolve())
     if parent.resolve() in chain:
         raise ConfigError(f"extends loops: {' -> '.join(str(p) for p in (*chain, parent.resolve()))}")
-    return merge(expand(parent, chain), obj)
+    try:
+        return merge(expand(parent, chain), obj)
+    except ConfigError as e:
+        if str(path) in str(e):
+            raise
+        raise ConfigError(f"{path}: {e}") from None
 
 # ---- Tags: who uses a definition (a standard, a system), from the list in config/tags.json
 

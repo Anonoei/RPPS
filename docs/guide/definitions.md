@@ -63,6 +63,10 @@ child's own category first, so `"extends": "rs/p25"` in fec/block works). The ch
  "params": {"gamma": 2.85}}
 ```
 - Dicts merge key by key, lists and values replace, `null` deletes a key the parent has.
+- A child profile changes single steps with `"steps"` as a dict, by step id (its `"id"`, else its kind: `"timing"`):
+  `{"shape": {"pulse": "rrc/0p20"}, "carrier": null, "+after:timing": [{"sync": "agc"}], "+end": [...]}` merges into a
+  step, takes one out and puts steps in (`+before:<id>`, `+after:<id>`, `+start`, `+end`). Two steps with the same id
+  can't be patched until they have `"id"`s; a list still replaces them all.
 - `comment` and `ref` are each file's own; `tags` add to the parent's; `params` merge by name, and a bare value pins the
   parent's default (`"params": {"code": "k7_171_133/3_4"}`).
 - `"abstract": true` marks a parent that is not a definition on its own (a family's shared fields: the mother codes

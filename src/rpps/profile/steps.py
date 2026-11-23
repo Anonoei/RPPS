@@ -21,7 +21,8 @@ The kinds (`python -m rpps steps` lists them with the sync methods):
 
     signal   filter (a definition), lowpass / highpass / bandpass / bandstop (designed in Hz: cutoff + taps, or transition +
              atten_db), decimate, resample (up/down), channelize (freq, width), shift (freq), conjugate (spectral inversion),
-             dc_block, deemphasis, stage (any Stage class by module path)
+             dc_block, deemphasis
+    every    class: your own operator by module path, in the category it does ("class", "args"; wave: "tx_class")
     sync     timing, carrier, equalize, agc (methods), frame (a physical header's preamble), delimit (a word among bits:
              word + bits, a word sequence, or a link header's preamble; length, keep, polarity, errors), align (a repeating
              marker), puncture, pilots, squelch, quality (Es/N0 and EVM to est), ofdm
@@ -134,18 +135,45 @@ def _one(make):
     """A receive-only step of one stage made by make(spec, ctx)"""
     return lambda kind, spec, rep, ctx: ([(STAGE, make(spec, ctx))], [], rep)
 
-def _stage_class(path):
-    """The class a "stage" step names by module path ("rpps.signal.DCBlock", "mypkg.dsp.Gain")"""
+def _class(path, base, cat):
+    """The class a "class" step names by module path ("rpps.signal.DCBlock", "mypkg.dsp.Gain"): a subclass of `base`
+    whose CATEGORY, when it says one, is the step's"""
     import importlib
-    from ..base import Stage
+    from ..base.types import Category
     mod, _, name = str(path).rpartition(".")
     try:
         cls = getattr(importlib.import_module(mod), name) if mod else None
     except (ImportError, AttributeError):
         cls = None
-    if not (isinstance(cls, type) and issubclass(cls, Stage)):
-        raise ConfigError(f"stage step: {path!r} is not a Stage class (a module path, e.g. rpps.signal.DCBlock)")
+    if not (isinstance(cls, type) and issubclass(cls, base)):
+        raise ConfigError(f"{cat} class step: {path!r} is not a {base.__name__} class (a module path, e.g. "
+                          f"{'rpps.signal.DCBlock' if base.__name__ == 'Stage' else 'mypkg.link.MyFrame'})")
+    own = getattr(cls, "CATEGORY", None)
+    if own is not None and own != Category[cat.upper()]:
+        raise ConfigError(f"{cat} class step: {path} does {own}, not {cat}: name it in a {str(own).lower()} step")
     return cls
+
+_GIVES = {"symbol": Rep.CHANNEL, "code": Rep.DATA, "link": Rep.PACKETS} # What a transform of each category gives on receive
+
+def _class_step(kind, spec, rep, ctx):
+    """Your own operator, by its class's module path, in the category it does: {"<category>": "class", "class": "mypkg.X",
+    "args": {...}}. signal and sync: a Stage, receive only. wave: a Stage on receive, "tx_class" (and "tx_args") the one
+    on transmit. symbol, code, link: a Pipe, decoding on receive and encoding on transmit (one of each, from "args")"""
+    from ..base import Stage, Pipe
+    cat = next(k for k in ("signal", "sync", "wave", "symbol", "code", "link") if spec.get(k) == "class")
+    path, args = _need(spec, "class", f"{cat} class"), spec.get("args", {})
+    if cat in ("signal", "sync", "wave"):
+        st = _class(path, Stage, cat)(**args)
+        tx = []
+        if cat == "wave" and spec.get("tx_class"):
+            tx = [(STAGE, _class(spec["tx_class"], Stage, cat)(**spec.get("tx_args", args)))]
+        return [(STAGE, st)], tx, getattr(st, "GIVES", None) or rep
+    cls = _class(path, Pipe, cat)
+    if issubclass(cls, Stage): # (a Stage is a Pipe too, but processes rather than encodes and decodes)
+        raise ConfigError(f"{cat} class step: {path} is a Stage, not a Pipe that encodes and decodes: name it in a signal, "
+                          "sync or wave step")
+    rx = cls(**args)
+    return [(DECODE, rx)], [(ENCODE, cls(**args))], getattr(rx, "DECODE_GIVES", None) or _GIVES[cat]
 
 # ---- signal (receive only)
 
@@ -212,10 +240,8 @@ def _designed_fir(kind, spec, rep, ctx):
 for _k in ("lowpass", "highpass", "bandpass", "bandstop"):
     register_step("signal", _k)(_designed_fir)
 
-@register_step("signal", "stage")
-def _signal_stage(kind, spec, rep, ctx):
-    """Any Stage, by its class's module path: {"signal": "stage", "class": "mypkg.Gain", "args": {"k": 2}}"""
-    return [(STAGE, _stage_class(_need(spec, "class", "stage step"))(**spec.get("args", {})))], [], rep
+for _cat in ("signal", "sync", "wave", "symbol", "code", "link"):
+    register_step(_cat, "class")(_class_step)
 
 # ---- sync (receive only)
 

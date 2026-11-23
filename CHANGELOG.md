@@ -7,6 +7,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 ## Unreleased
 
 ### Breaking
+- **`{"signal": "stage"}` is `{"signal": "class"}`**, and every category takes a `class` step: your own operator by
+  module path (`"class"`, `"args"`), a Stage for signal, sync and wave (`"tx_class"` for the transmit side), a Pipe for
+  symbol, code and link (decoding on receive, encoding on transmit). A class whose CATEGORY is another category's is
+  refused.
 - **BLE, IEEE 802.11b and 802.15.4 payload bytes are in the standards' bit order.** Those standards send each octet
   least significant bit first; `ble/adv` and `ieee80211b/long` sent (and read) their payloads most significant bit first,
   so a real packet's payload came out bit-reversed per byte (its CRC still passed: it is over the bits as sent), and
@@ -28,6 +32,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   choices (defaults first; a param with `"blind": false` stays at its default), and `identify` (`match_profile`), the
   survey's framed profiles and `rpps solve` try each; a match carries `profile_params` beside `profile_name`.
   `match_profile` returns (name, steps, params).
+- **A child profile patches single steps**: `"steps"` as a dict, by step id (`"id"`, else the kind): a dict merges
+  into the step, `null` takes it out, `"+before:<id>"` / `"+after:<id>"` / `"+start"` / `"+end"` put steps in
+  (`_config.patch_steps`). A list still replaces every step.
 - The `mpower` carrier step takes a generated `"shape"` (`"16QAM"`) as the constellation step does.
 - `examples/profile_variants.py`.
 - **Words of any width**: a `sequence` word (and `word` + `bits` on a step) may be longer than 64 bits; a 100-byte

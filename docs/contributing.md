@@ -65,7 +65,7 @@ setup.py             builds the native module and copies config/
 - **An implementation** (a code type, a sync method): put it in its category's package (`rpps.base`, The rule); subclass
   `Pipe`, `Stage` or `BitStage` with `CATEGORY`, `takes` and `SCOPE`; register its loader and its profile step
   (`rp.profile.steps.register_step`, `register_sync_method`), or name any `Stage` by module path in a profile
-  (`{"signal": "stage", "class": "mypkg.Gain", "args": {...}}`). A code type subclasses `code.types._code._code` and defines
+  (`{"signal": "class", "class": "mypkg.Gain", "args": {...}}`). A code type subclasses `code.types._code._code` and defines
   `_decode(x, ...) -> (output, errors per codeword or None)`, keeping nothing of the call on itself. Write Python first
   with a block-cut test; move hot loops to C++ after.
 - **A sync estimator:** block operations over windows at absolute positions, tracked by `sync.track`. A per-sample loop is

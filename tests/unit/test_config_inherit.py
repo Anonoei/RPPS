@@ -88,3 +88,27 @@ def test_save_needs_a_destination(monkeypatch):
     monkeypatch.setattr(_config, "_EXTRA", [])
     with pytest.raises(ConfigError, match="destination"):
         _config.save("crc", "crc", "x", {"base": "crc"})
+
+def test_a_child_patches_single_steps(layer):
+    layer("profile/t/base", {"base": "profile", "comment": "parent", "params": {"sps": {"default": 4}},
+                             "steps": [{"wave": "shape", "pulse": "rrc/0p35", "sps": {"param": "sps"}}, {"sync": "timing"},
+                                       {"sync": "carrier", "order": 2, "constellation": "bpsk"},
+                                       {"symbol": "constellation", "id": "map", "name": "bpsk"}]})
+    layer("profile/t/child", {"base": "profile", "extends": "t/base", "comment": "child",
+                              "steps": {"shape": {"pulse": "rrc/0p20"}, "carrier": None,
+                                        "+after:timing": [{"sync": "carrier", "id": "loop", "method": "costas", "order": 2}],
+                                        "map": {"mapping": "R180"}}})
+    got = rp.profile.load("t/child").obj["steps"]
+    assert got == [{"wave": "shape", "pulse": "rrc/0p20", "sps": 4}, {"sync": "timing"},
+                   {"sync": "carrier", "id": "loop", "method": "costas", "order": 2},
+                   {"symbol": "constellation", "id": "map", "name": "bpsk", "mapping": "R180"}]
+    assert [s.id for s in rp.profile.load("t/child").steps] == ["shape", "timing", "loop", "map"]
+
+def test_patching_an_id_two_steps_share_is_an_error(layer):
+    layer("profile/t/two", {"base": "profile", "comment": "p", "steps": [{"sync": "timing"}, {"sync": "timing"}]})
+    layer("profile/t/bad", {"base": "profile", "extends": "t/two", "comment": "c", "steps": {"timing": {"x": 1}}})
+    with pytest.raises(ConfigError, match="more than one step 'timing'.*give them"):
+        rp.profile.load("t/bad")
+    layer("profile/t/none", {"base": "profile", "extends": "t/two", "comment": "c", "steps": {"+after:nope": []}})
+    with pytest.raises(ConfigError, match="no step 'nope'"):
+        rp.profile.load("t/none")

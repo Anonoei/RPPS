@@ -22,7 +22,7 @@ class Gain(Stage):
 def test_every_category_and_kind_is_registered():
     kinds = steps.kinds()
     assert {"signal", "sync", "wave", "symbol", "code", "link"} <= set(kinds)
-    assert {"filter", "decimate", "stage", "dc_block", "deemphasis", "shift"} <= set(kinds["signal"])
+    assert {"filter", "decimate", "class", "dc_block", "deemphasis", "shift"} <= set(kinds["signal"])
     assert {"timing", "carrier", "equalize", "squelch"} <= set(kinds["sync"])
     assert {"oerder_meyr", "mm", "gardner", "known", "fixed", "tll"} <= set(steps.methods("timing"))
 
@@ -46,7 +46,7 @@ def test_register_step_rejects_a_taken_name():
 def test_generic_stage_step_runs_a_user_class(tmp_path):
     """A profile in a user's config directory names a class by its module path"""
     prof = {"base": "profile", "comment": "gain then DC block",
-            "steps": [{"signal": "stage", "class": "test_registry.Gain", "args": {"k": 2.0}},
+            "steps": [{"signal": "class", "class": "test_registry.Gain", "args": {"k": 2.0}},
                       {"signal": "dc_block"}]}
     d = tmp_path / "profile" / "mine"
     d.mkdir(parents=True)
@@ -63,7 +63,7 @@ def test_generic_stage_step_runs_a_user_class(tmp_path):
 
 def test_stage_step_needs_a_stage():
     with pytest.raises(ConfigError, match="not a Stage"):
-        steps.build({"signal": "stage", "class": "json.JSONDecoder"}, rp.base.types.Rep.SAMPLES, steps.context())
+        steps.build({"signal": "class", "class": "json.JSONDecoder"}, rp.base.types.Rep.SAMPLES, steps.context())
 
 def test_tll_timing_method_from_a_profile_step():
     st = steps.build({"sync": "timing", "method": "tll", "bw": 0.01, "sps": 4}, rp.base.types.Rep.SAMPLES, steps.context())
@@ -77,3 +77,31 @@ def test_load_any_definition_by_path():
         rp.load("nope/x")
     with pytest.raises(ConfigError, match="name a definition"):
         rp.load("crc")
+
+class Swap(rp.base.rpps.Pipe):
+    """A link operator of a user's own: each pair of bits swapped (its own inverse)"""
+    CATEGORY = rp.base.types.Category.LINK
+    def __init__(self, n=2):
+        self.n = n
+    def takes(self, encode):
+        return None
+    def _swap(self, data):
+        x = np.asarray(data.data).astype(bool)
+        whole = len(x)//self.n*self.n
+        y = np.concatenate((x[:whole].reshape(-1, self.n)[:, ::-1].reshape(-1), x[whole:]))
+        return data.derive(y, self.CATEGORY, rp.dtype.BITS, rp.base.Digital, data.ctx, rep=rp.base.types.Rep.PACKETS)
+    encode = decode = _swap
+
+def test_a_pipe_class_step_in_a_transform_category():
+    st = steps.build({"link": "class", "class": "test_registry.Swap", "args": {"n": 2}}, rp.base.types.Rep.DATA, steps.context())
+    assert [how for how, _ in st.rx] == ["/"] and [how for how, _ in st.tx] == ["*"] and st.gives == rp.base.types.Rep.PACKETS
+    bits = np.array([1, 0, 0, 0, 1, 1], bool)
+    out = rp.Data(bits) * st.tx[0][1]
+    assert np.array_equal(np.asarray(out.data), [0, 1, 0, 0, 1, 1])
+    assert np.array_equal(np.asarray((out / st.rx[0][1]).data), bits)
+
+def test_a_class_step_in_the_wrong_category():
+    with pytest.raises(ConfigError, match="does LINK, not code"):
+        steps.build({"code": "class", "class": "test_registry.Swap"}, rp.base.types.Rep.DATA, steps.context())
+    with pytest.raises(ConfigError, match="is a Stage, not a Pipe"):
+        steps.build({"link": "class", "class": "test_registry.Gain"}, rp.base.types.Rep.DATA, steps.context())

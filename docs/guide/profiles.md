@@ -46,7 +46,10 @@ I into Q while Q is half a symbol late.
   `{"symbol": "constellation", "name": "psk/qpsk"}`.
 - Sync steps name **what** is estimated (`carrier`, `timing`, `equalize`, `frame`) and get the first-class method; a
   loop is chosen in `defaults`: `{"timing": {"method": "gardner", "alpha": 0.3}}`.
-- Any `Stage` can be a step by module path: `{"signal": "stage", "class": "mypkg.Gain", "args": {...}}`.
+- Your own operator is a step by module path, in the category it does: `{"signal": "class", "class": "mypkg.Gain",
+  "args": {...}}`. A `signal` or `sync` class is a `Stage` run on receive only; a `wave` class a `Stage` on receive
+  and `"tx_class"` the one on transmit; a `symbol`, `code` or `link` class a `Pipe`, decoding on receive and encoding on
+  transmit. A class whose `CATEGORY` is another category's is refused.
 - Variants of one signal (QPSK or 16QAM, RRC 0.2 or 0.35, a step only some modes have) are params with `"choices"` and
   steps with `"when"`: [Definitions](definitions.md#variants-choices-and-when).
 - `"controls"` lets a header's fields drive other steps (DVB-S2's MODCOD, 802.11b's rate): see
