@@ -111,6 +111,12 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   bits match, and `rp.math.prob.log_binom_half_cdf`.
 
 ### Changed
+- **The blind puncture search decodes a mother code's patterns together** (`analysis.code.conv.puncture.search`): every
+  pattern of a mother decodes on the mother's trellis with erasures where it punctures, so a mother's periods, patterns,
+  streams and offsets go through in a batch per length (`puncture.mismatches`, row for row what each punctured code's
+  `mismatch_batch` gives): 72 Viterbi calls where there were 1764, the search about 1.5x faster. Its random baselines are
+  seeded by the mother, pattern and length, so they no longer depend on what was tried before: the same hypotheses and
+  picks, z values within a few tenths of before.
 - **`rp.sync.detect` scores each candidate at its own Es/N0 from the symbols' moments** (`quality.m2m4`, the
   quasi-hybrid likelihood test) instead of letting each fit its own noise, which at low SNR named the densest candidate
   (QPSK at 4 dB was 64QAM 19 times in 20, noise alone 32APSK); where the fit's own winner reads over 12.5 dB, the fit,

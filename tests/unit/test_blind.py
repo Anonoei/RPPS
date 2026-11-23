@@ -198,6 +198,27 @@ def test_unknown_puncture_pattern_on_a_known_mother_code():
     q2 = q.points[rng.integers(0, 4, 8000)] + 0.1*(rng.standard_normal(8000) + 1j*rng.standard_normal(8000))
     assert PU.best(*PU.search(F.bit_streams(q2, q, differential=False))) == (None, None)
 
+@pytest.mark.parametrize("P", [2, 3, 5])
+def test_puncture_mismatches_in_one_batch_are_each_patterns_own(P):
+    """Every pattern of a mother decoded together on the mother's trellis: the counts mismatch_batch gives under each
+    pattern's own punctured code, row for row (a codeword stream, a punctured one at every offset, random bits)"""
+    from rpps.code.coding import mismatch_batch
+    rng = np.random.default_rng(P)
+    K, gen = 7, ((1, 0, 1, 1, 0, 1, 1), (1, 1, 1, 1, 0, 0, 1))
+    pats = PU.patterns(P)
+    sent = conv(Logger().Child("t", 0), 1, 2, [list(g) for g in gen], 7, pats[0].astype(int).tolist()).encode(
+        rng.integers(0, 2, 3000).astype(bool)).astype(np.uint8)
+    rows = []
+    for pat in pats:
+        m, per = int(pat.sum()), 400//P
+        rows += [(pat, sent[off:off + per*m]) for off in range(m)]
+        rows += [(pat, rng.integers(0, 2, per*m).astype(np.uint8)), (pat, rng.integers(0, 2, 4*per*m).astype(np.uint8))]
+    k, n = PU.mismatches(K, gen, rows)
+    for (pat, h), kk, nn in zip(rows, k, n):
+        want, wn = mismatch_batch(PU._code(K, gen, pat), h[None])
+        assert (kk, nn) == (int(want[0]), wn)
+    assert min(k[:int(pats[0].sum())]) == 0 # (the stream's own pattern, at its offset: nothing differs)
+
 @pytest.mark.kernels
 def test_blind_identify_peels_a_punctured_code_and_the_bch_inside():
     rng = np.random.default_rng(5)
