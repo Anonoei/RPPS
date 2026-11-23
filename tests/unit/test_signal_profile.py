@@ -197,3 +197,28 @@ def test_tdma_bursts_are_demodulated_one_by_one_and_their_code_found():
     p = min(rp.analysis.profile(rp.source.Memory(y, Fs=Fs), blind=False), key=lambda p: abs(p.signal.mid - 150e3))
     kinds = [s.kind for s in p.steps]
     assert "demodulate" in kinds and "60 bursts" in str(p) and "BCH(63,51)" in str(p)
+
+@pytest.mark.kernels
+def test_a_box_holding_two_carriers_is_split_at_the_cyclic_rate():
+    """Two DVB-S carriers side by side, given as one survey box: no lock on the box, the cyclic spectrum's 1 MBd needs
+    well under its width, so each carrier in it is profiled at that rate"""
+    import copy
+    rng = np.random.default_rng(12)
+    def carrier(f, n_pk=400):
+        ts = rng.integers(0, 256, (n_pk, 188)).astype(np.uint8)
+        ts[:, 0] = 0x47
+        w = rp.profile.load("dvbs/qpsk_3_4", sps=8).tx()(rp.Data(np.unpackbits(ts.reshape(-1)).astype(bool), Fs=1e6, sps=1, flush=True))
+        x = np.asarray(w.data)
+        return x*np.exp(2j*np.pi*f/8e6*np.arange(len(x)))
+    a, b = carrier(-0.75e6), carrier(0.75e6)
+    n = min(len(a), len(b))
+    y = (a[:n] + b[:n] + 0.03*(rng.standard_normal(n) + 1j*rng.standard_normal(n))).astype(np.complex64)
+    src = rp.source.Memory(y, Fs=8e6)
+    sv = list(rp.analysis.survey(src))
+    box = copy.copy(sv[0])
+    box.mid, box.width = 0.0, 2.9e6
+    box.lo, box.hi = -1.45e6, 1.45e6
+    ps = rp.analysis.profile(src, signals=[box], survey=sv + [box], blind=False)
+    solved = [p for p in ps if p.solved and p.profile_name == "dvbs/qpsk_3_4"]
+    assert len(solved) == 2 and all("." in p.name.split(":")[0] for p in solved)
+    assert sorted(round(p.signal.mid/1e5) for p in solved) == [-8, 8] or sorted(round(p.signal.mid/1e5) for p in solved) == [-7, 7]

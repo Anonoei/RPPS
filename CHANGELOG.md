@@ -183,6 +183,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   out from the payload's start: `code.block.linear.frame_units(rows)`, the shortest length whose words at 0, n, 2n... of
   every frame are short of rank, on every bit map (one unknown rotation is common to the bursts); then `solve_block`
   names it (BCH, LDPC checks, cyclic...), or the payload's randomness is reported.
+- **A survey box that holds carriers side by side is split**: when the cyclic spectrum's rate needs well under the box
+  (the chain could not lock to it), the box's own channel samples are surveyed again and each carrier in it profiled on
+  its own ("signal 16.1", "signal 16.2"...), its rate acquired alone in its channel; the one that gets furthest stands
+  for the box.
 
 ## 0.6.0 (2026-11-22)
 

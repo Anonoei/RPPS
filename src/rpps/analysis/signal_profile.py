@@ -317,6 +317,29 @@ class _Chain:
             self.errors.append(("channel", e, traceback.format_exc(limit=4)))
             self.dead = True
 
+    def split(self, baud, beta=0.35, fill=0.6):
+        """When the cyclic spectrum's rate needs well under the box (its (1 + beta) x baud under `fill` of the width: carriers
+        side by side the survey took for one): the carriers in it, from a survey of this chain's own channel samples, as
+        Signals of the capture (each at most (1 + beta) x baud wide); [] otherwise"""
+        import copy
+        if not self.near or (1 + beta)*baud >= fill*self.sig.width:
+            return []
+        from .spectrum.signal import survey
+        from ..source import Memory
+        try:
+            subs = survey(Memory(np.concatenate(self.near), Fs=self.ch.Fs), baud=False)
+        except Exception:
+            return []
+        out = []
+        for g in subs:
+            if g.width < 0.4*baud or abs(g.mid) > self.sig.width: # Too narrow to carry this rate, or outside the box
+                continue
+            s = copy.copy(self.sig)
+            s.mid, s.width = self.sig.mid + g.mid, min(g.width, (1 + beta)*baud)
+            s.lo, s.hi = s.mid - s.width/2, s.mid + s.width/2
+            out.append(s)
+        return out
+
     def wants(self, symbols):
         """Whether more of the capture could still tell this chain something: its code not decided yet, and fewer than
         `symbols` symbols seen"""
@@ -868,15 +891,36 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
         out.append(build(ch))
         tell("build", k + 1, len(chains), len(chains) - k - 1)
     # Where the chain found no rate (or a doubtful one) and the cyclic spectrum sees one: a second pass at that rate
-    again = {}
+    again, parts, extra = {}, {}, []
     for k, (ch, p) in enumerate(zip(chains, out)):
         baud = ch.cyclic_rate(p) if not p.solved else None
         if baud:
-            again[k] = (ch.sig, baud)
-    if again:
-        redo, bank2, slot2 = chains_for([sb[0] for sb in again.values()], [sb[1] for sb in again.values()])
+            subs = ch.split(baud) # A box holding carriers side by side: each of them on its own (its rate acquired
+            if len(subs) > 1:     # alone in its channel: the box's line can be a beat between them)
+                parts[k] = [(s, None) for s in subs]
+            else:
+                again[k] = (ch.sig, baud)
+    todo = list(again.values()) + [sb for v in parts.values() for sb in v]
+    if todo:
+        redo, bank2, slot2 = chains_for([sb[0] for sb in todo], [sb[1] for sb in todo])
         run(redo, bank2, slot2, stage="again")
-        again = dict(zip(again, redo))
+        split_chains = redo[len(again):]
+        again = dict(zip(again, redo[:len(again)]))
+        i = 0
+        for k, subs in parts.items():
+            mine = split_chains[i:i + len(subs)]
+            i += len(subs)
+            built = [build(c) for c in mine]
+            for q, c in zip(built, mine):
+                q.steps.insert(1, Step("split", f"one of {len(subs)} carriers the survey's box held side by side (its cyclic "
+                                                "spectrum's rate needs well under the box)", GUESS))
+            box = out[k].name.split(":")[0] # "signal 16": each carrier in it is "signal 16.1", "signal 16.2"...
+            for j, q in enumerate(built):
+                q.name = f"{box}.{j + 1}: {q.signal.mid/1e6:+.3f} MHz, {q.signal.width/1e3:.0f} kHz wide"
+            best = max(range(len(built)), key=lambda j: _reach(built[j]))
+            if _further(built[best], out[k]):
+                out[k] = built[best]
+            extra += [q for j, q in enumerate(built) if j != best or out[k] is not q]
         for j, (k, ch) in enumerate(again.items()):
             q = build(ch)
             tell("build again", j + 1, len(again), len(again) - j - 1)
@@ -885,7 +929,7 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
                                        GUESS, note="the first pass found " + (out[k].steps[1].what if len(out[k].steps) > 1
                                                                               else "nothing")))
                 out[k] = q
-    return out
+    return out + extra
 
 _JOB = None # What a forked worker of `_parallel` profiles (inherited, not pickled)
 
@@ -915,9 +959,11 @@ def _parallel_part(k):
         source.seek(start)
     return profile(source, signals=groups[k], survey=sv, **kw)
 
+def _reach(x):
+    """How far a profile got: solved, a profile, steps found before the first unsolved one"""
+    n = next((i for i, st in enumerate(x.steps) if st.status == UNSOLVED), len(x.steps))
+    return (x.solved, bool(x.profile_name), n)
+
 def _further(q, p):
-    """Whether profile q got further than p: solved, a profile, or more steps found before the first unsolved one"""
-    def reach(x):
-        n = next((i for i, st in enumerate(x.steps) if st.status == UNSOLVED), len(x.steps))
-        return (x.solved, bool(x.profile_name), n)
-    return reach(q) > reach(p)
+    """Whether profile q got further than p (`_reach`)"""
+    return _reach(q) > _reach(p)
