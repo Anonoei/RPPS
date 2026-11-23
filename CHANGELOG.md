@@ -210,6 +210,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   `csrc/rpps_native` has now (`rpps._accel.stale`); rebuild with `python tools/builder.py -c`. Installed packages are not checked.
 
 ### Changed
+- **`Survey.match` ids are a signal's own:** a signal missing for a survey or a few (`hold`, 8) gets its id back when it
+  returns, and a new signal takes an id never used before in the chain, so signals coming and going never renumber the
+  others (`survey.lost`, `survey.next_id` carry it on).
 - `stream.busy` holds each operator's own time (what it runs inside it is counted for the inner operator, not twice)
   and includes pipes.
 - `rp.source.Sink` leaves scaling to pysdrlib's `FileSink(scale=True)` (the inverse of `File`'s) instead of its own:
@@ -231,6 +234,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   is shown and every package has a docstring.
 
 ### Fixed
+- **`find_signals` on a crowded band:** a signal a small gap from a louder neighbour was measured against the
+  neighbour's level, not the gap's, and dropped out of some surveys; and the receiver's roll-off reaching just past
+  the band edge was reported as a narrow signal with a negative SNR.
 - `rp.source` refuses a pysdrlib older than 0.5 (ImportError naming the version and the fix): its format names
   differ ("cf32" was two float16), so a capture was read as noise and nothing locked.
 - Eye diagrams (`rp.viz.eye`) are upright (they were drawn upside down), take a block with no whole trace (a stream's

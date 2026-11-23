@@ -205,6 +205,27 @@ def test_survey_match_keeps_ids_frame_to_frame(rng):
     assert near(-195e3).id == 7 and near(155e3).id == 3 and near(-20e3).id == 8 # New ones count on from the highest
     assert len({s.id for s in nxt}) == len(nxt), by
 
+def test_survey_ids_are_stable_through_a_dropout_and_a_new_signal(rng):
+    """A signal missing for a survey gets its id back when it returns; a new one never takes or shifts another's id"""
+    Fs = 1e6
+    both = lambda: two_bands(rng, 1 << 17, Fs, -200e3, 150e3, 60e3)
+    one = lambda: two_bands(rng, 1 << 17, Fs, -200e3, 600e3, 60e3) # (the second one out of band: gone)
+    s0 = rp.analysis.find_signals(both(), Fs)
+    ids = {round(s.mid/1e5): s.id for s in s0}
+    s1 = rp.analysis.find_signals(one(), Fs).match(s0)
+    assert len(s1) == 1 and s1[0].id == ids[-2] and [p.id for p, _ in s1.lost] == [ids[2]]
+    s2 = rp.analysis.find_signals(both() + two_bands(rng, 1 << 17, Fs, -400e3, 600e3, 30e3), Fs).match(s1) # back, and a new one
+    near = lambda sv, f: min(sv, key=lambda s: abs(s.mid - f))
+    assert near(s2, -200e3).id == ids[-2] and near(s2, 150e3).id == ids[2] # (the one that was missing: its own id)
+    assert near(s2, -400e3).id == 2 and s2.lost == [] # New: after every id used, never one of theirs
+    s3 = rp.analysis.find_signals(both(), Fs).match(s2)
+    s4 = rp.analysis.find_signals(both() + two_bands(rng, 1 << 17, Fs, 400e3, 600e3, 30e3), Fs).match(s3)
+    assert near(s4, 400e3).id == 3 # (2 was used, by a signal now gone: never given again)
+    s = s4
+    for _ in range(9): # Remembered for `hold` surveys, then forgotten
+        s = rp.analysis.find_signals(one(), Fs).match(s)
+    assert all(p.id != ids[2] for p, _ in s.lost)
+
 def test_signal_channel_isolates_and_decimates(rng):
     Fs = 1e6
     x = two_bands(rng, 1 << 17, Fs, -200e3, 150e3, 60e3)

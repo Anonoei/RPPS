@@ -123,6 +123,8 @@ class Survey(list):
         self.Fs, self.cf, self.nfft, self.K = Fs, cf, nfft, K
         self.bin_hz = Fs/nfft if nfft else 0.0
         self.freq, self.db, self.floor, self.head = freq, db, floor, head
+        self.lost = []       # [(Signal, surveys since seen)]: what `match` remembers of signals that went missing
+        self.next_id = None  # The id `match` gives the next new signal (ids are never reused)
 
     def pick(self, near=None, freq=None, index=None, strongest=False):
         """One signal. near: closest to this offset from the capture's centre [Hz], freq: closest to this absolute
@@ -138,27 +140,35 @@ class Survey(list):
             return min(self, key=lambda s: abs(s.mid - near))
         return max(self, key=lambda s: s.snr if s.snr is not None else s.height)
 
-    def match(self, previous, near=0.5, ratio=(0.75, 4/3)):
-        """Carry signal ids over from an earlier survey of the same band (frame to frame), so a signal keeps its id.
+    def match(self, previous, near=0.5, ratio=(0.75, 4/3), hold=8):
+        """Carry signal ids over from the survey before this one of the same band (frame to frame): ids are a signal's
+        own, stable however others come and go.
 
         A signal is the earlier one whose centre is within `near` of its width and whose width is within `ratio` of its own
-        (the closest such); each earlier signal is matched once. Unmatched signals get new ids, after every id `previous`
-        used. Sets Signal.id in place and returns self"""
-        taken, ids = set(), [s.id for s in previous if s.id is not None]
-        nxt = max(ids) + 1 if ids else 0
+        (the closest such); each earlier signal is matched once. One that went missing (not found for a survey or a few:
+        too weak for a moment) is remembered for `hold` surveys and gets its id back when it returns. A new signal gets an
+        id never used before in the chain of surveys, so a signal appearing never renumbers the others. Sets Signal.id in
+        place (and `lost`, `next_id` for the next match) and returns self"""
+        known = [(p, 0) for p in previous if p.id is not None] + list(getattr(previous, "lost", []))
+        nxt = getattr(previous, "next_id", None)
+        if nxt is None:
+            nxt = max((p.id for p, _ in known), default=-1) + 1
+        taken = set()
         for s in sorted(self, key=lambda s: -s.snr if s.snr is not None else -s.height): # Strongest choose first
             best = None
-            for p in previous:
-                if p.id is None or p.id in taken:
+            for p, age in known:
+                if p.id in taken:
                     continue
                 d = abs(p.freq - s.freq)
-                if d <= near*s.width and ratio[0] <= s.width/p.width <= ratio[1] and (best is None or d < best[0]):
-                    best = (d, p)
+                if d <= near*s.width and ratio[0] <= s.width/p.width <= ratio[1] and (best is None or (age, d) < best[0]):
+                    best = ((age, d), p) # (one seen in the last survey before one remembered)
             if best is None:
                 s.id, nxt = nxt, nxt + 1
             else:
                 s.id = best[1].id
                 taken.add(s.id)
+        self.lost = [(p, age + 1) for p, age in known if p.id not in taken and age + 1 <= hold]
+        self.next_id = nxt
         return self
 
     def plot(self, ax=None, chosen=None):
@@ -360,8 +370,10 @@ def _edge_boxes(pw, nfft, K=31, inner=0.06, T=EDGE_DB, w_frac=0.005, min_w=2.0, 
                 inside[max(lo_, 0):hi_] = False
         seg = y[q+w:max(p-w, q+w+1)]
         lvl = np.median(seg[inside[:len(seg)]] if inside[:len(seg)].any() else seg)
-        left = y[max(0, q - 3*w):max(1, q - w)].mean() if q - w > 0 else -np.inf
-        right = y[min(nfft - 1, p + w):p + 3*w].mean() if not clipped or p < b - 1 else -np.inf
+        # Outside: the bottom of the gap beside each edge. A mean over the same span would reach into a louder neighbour
+        # a gap away and make a quieter signal beside it flicker in and out
+        left = y[max(0, q - 3*w):max(1, q - w)].min() if q - w > 0 else -np.inf
+        right = y[min(nfft - 1, p + w):p + 3*w].min() if not clipped or p < b - 1 else -np.inf
         if clipped and q <= a:
             left = -np.inf
         n4 = max(1, (p - q)//4)
@@ -533,6 +545,8 @@ def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occ
         clipped = box_clipped or e0 < edge*nfft or e1 > (1-edge)*nfft
         if clipped:
             e0, e1 = max(e0, int(np.ceil(edge*nfft))), min(e1, int((1-edge)*nfft))
+            if e1 < e0 or excess[e0 - lo:e1 - lo + 1].sum() < 0.5*excess.sum():
+                continue # Most of it is in the roll-off: the filter's skirt reaching past the cut, not a signal
             if e1 - e0 + 1 < min_bins:
                 continue
         n = max(e1 - e0 + 1, 1)
