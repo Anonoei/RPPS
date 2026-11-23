@@ -400,26 +400,24 @@ def _profile_codes():
     return frozenset(out)
 
 
-def _profiles():
-    """(name, resolved definition, params) of every shipped profile and each variant its choices make (rp.profile.variants)"""
+def _profiles(baud=None):
+    """(name, resolved definition, params) of every shipped profile and each variant its choices make (rp.profile.variants);
+    baud: only those a signal at that symbol rate can be (rp.profile.candidates)"""
     from .. import _config
-    from ..profile.catalogue import variants
-    for fam, modes in _config.ls("profile").items():
-        for mode in modes:
-            name = f"{fam}/{mode}"
-            raw = _config.read(_config.find("profile", name))
-            for params in variants(name):
-                try:
-                    yield name, _config.resolve(raw, params, f"profile/{name}"), params
-                except Exception:
-                    continue
+    from ..profile.catalogue import candidates
+    for name, params in candidates(baud=baud):
+        try:
+            yield name, _config.resolve(_config.read(_config.find("profile", name)), params, f"profile/{name}"), params
+        except Exception:
+            continue
 
 
-def match_profile(steps):
+def match_profile(steps, baud=None):
     """A shipped profile (config/profile), or a variant of one, with the same code and symbol steps as `steps`:
-    (name, its steps, the params of the variant: {} for the defaults) or (None, None, None)"""
+    (name, its steps, the params of the variant: {} for the defaults) or (None, None, None). baud: the symbol rate,
+    when known: a profile whose "requires" sets another isn't named"""
     want = (_fec_steps(steps), _symbol_steps(steps)[:2])
-    for name, obj, params in _profiles():
+    for name, obj, params in _profiles(baud):
         try:
             got = (_fec_steps(obj["steps"]), _symbol_steps(obj["steps"])[:2])
         except Exception: # A profile whose steps a header names (no fixed code) can't match
@@ -519,7 +517,7 @@ def _named(name, params):
     return name + (f" ({', '.join(f'{k}={v}' for k, v in params.items())})" if params else "")
 
 
-def identify(symbols, constellation, names=None, blind=False, differential=True, profiles=True):
+def identify(symbols, constellation, names=None, blind=False, differential=True, profiles=True, baud=None):
     """Which code from config/fec timed, carrier-corrected symbols carry, under which map, and how to decode it
 
     In turn, stopping at the first that stands out: configured convolutional codes (any puncture phase), with a Reed-Solomon
@@ -529,7 +527,8 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
         on the channel bits (rpps.analysis.code.block.linear), then unknown rate 1/n convolutional codes (detect_fec). Inside a
         convolutional code with no configured RS behind it: `solve` (RS, block codes, scramblers). Tens of seconds.
     symbols: the symbols (any gain); constellation: a Constellation or its name (the detected modulation)
-    names: only these convolutional definitions. Returns a CodeDetection
+    names: only these convolutional definitions. baud: the symbol rate, when known: the shipped profile named
+    (profile_name) is one whose "requires" admits it (rp.profile.fits). Returns a CodeDetection
     """
     c = _constellation(constellation)
     y = np.asarray(symbols, dtype=np.complex128)
@@ -595,7 +594,7 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
                     steps += [{"code": "interleave", "name": p["interleaver"]}]
                 steps += [{"code": "block", "name": rs.name}]
         out.steps = steps
-        return _finish(out, c, profiles)
+        return _finish(out, c, profiles, baud)
 
     hyps, trials = scan_hdlc(head)
     hyps = [h for h in hyps if h.params["polarity"] == 0] # Another map gives the other polarity: the profile has none
@@ -606,7 +605,7 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
         out = CodeDetection(found=True, complete=True, mod=c.name, kind="hdlc", name=v.coding[1], stream=v.params["stream"],
                             offset=0, period=None, z=v.z, report=rep, n=len(y))
         out.steps = pre + symbol_steps(out.stream) + [{"code": "uncoded"}, {"link": "frame", "name": out.name}]
-        return _finish(out, c, profiles)
+        return _finish(out, c, profiles, baud)
 
     hyps, trials = [], 0
     blocks = config_blocks()
@@ -633,7 +632,7 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
                 found = blind_block._product(bits, n1, rows["k"], rows["H"], p[0], out.offset + p[1]*n1)
             if found is not None:
                 _attach(out, [found])
-        return _finish(out, c, profiles)
+        return _finish(out, c, profiles, baud)
 
     tried.append(rep)
     out.report = Report([h for r in tried for h in r.hyps], sum(r.trials for r in tried), None)
@@ -757,10 +756,10 @@ def _blind(head, c, y=None):
     return []
 
 
-def _finish(out, c, profiles):
-    """The shipped profile with the same steps, if any, and the correction that turns the symbols to the map it decodes with"""
+def _finish(out, c, profiles, baud=None):
+    """The shipped profile with the same steps (one a signal at `baud` can be), if any, and the correction that turns the symbols to the map it decodes with"""
     own = out.steps
-    name, steps, params = match_profile(own) if profiles else (None, None, None)
+    name, steps, params = match_profile(own, baud) if profiles else (None, None, None)
     for out.profile_name, out.profile_params, out.steps in ((name, params, steps), (None, None, own)):
         if out.steps is None:
             continue

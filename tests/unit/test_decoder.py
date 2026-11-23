@@ -35,6 +35,41 @@ def test_requires_follow_the_params_and_baud():
     with pytest.raises(ConfigError, match="no params"):
         rp.profile.info("ble/adv", nope=1)
 
+def test_requires_takes_only_its_keys(tmp_path, monkeypatch):
+    from rpps import _config
+    from rpps.profile.catalogue import requirements
+    with pytest.raises(ConfigError, match="no \\['min_sample'\\]"): # A misspelt key isn't "says nothing"
+        requirements({"baud": "1e6", "min_sample": "1e3"}, {})
+    with pytest.raises(ConfigError, match="input 'video'"):
+        requirements({"input": "video"}, {})
+    d = tmp_path / "profile" / "demo"
+    d.mkdir(parents=True)
+    (d / "stray.json").write_text(json.dumps({"base": "profile", "params": {"sps": 2},
+                                              "requires": {"baud": "1e6", "from_cf": {"chan": "cf"}}, "steps": []}))
+    monkeypatch.setattr(_config, "_EXTRA", [tmp_path])
+    with pytest.raises(ConfigError, match="from_cf sets \\['chan'\\]"):
+        rp.profile.info("demo/stray")
+
+def test_fits_narrows_by_what_was_measured():
+    assert rp.profile.fits("ble/adv") is None
+    assert "rate is 1e+06" in rp.profile.fits("ble/adv", baud=250e3)
+    assert rp.profile.fits("ble/adv", baud=1.01e6) is None                    # within a measurement's error
+    assert rp.profile.fits("dvbs2/normal", baud=27.5e6, bw=36e6) is None      # an open rate: any, its width follows
+    assert "channel is" in rp.profile.fits("dvbs2/normal", baud=1e6, bw=5e6)
+    assert "takes audio" in rp.profile.fits("ax25/afsk1200", input="baseband")
+    assert "a message takes" in rp.profile.fits("dvbs2/normal", baud=1e6, seconds=0.01)
+    assert "Hz of channel" in rp.profile.fits("ieee80211b/1m", Fs=20e6)
+    assert "channel is" in rp.profile.fits("lte/downlink", bw=9e6, n_rb=25)     # params change what it needs
+    assert rp.profile.fits("lte/downlink", bw=9e6, n_rb=50) is None
+
+def test_candidates_are_the_variants_that_fit():
+    every = rp.profile.candidates()
+    assert {n for n, _ in every} == {f"{f}/{m}" for f, ms in rp.profile.ls().items() for m in ms}
+    sat = {n for n, _ in rp.profile.candidates(baud=27.5e6, input="baseband")}
+    assert "dvbs2/normal" in sat and "dvbs/qpsk" in sat and "ble/adv" not in sat and "adsb/mode_s" not in sat
+    assert {n for n, _ in rp.profile.candidates(baud=11e6)} >= {"ieee80211b/1m", "ieee80211b/long"}
+    assert rp.profile.candidates(["ble/adv"], baud=2e6) == []
+
 # ---- the Decoder
 
 from rpps.signal.sample.fractional import fractional_resample

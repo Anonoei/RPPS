@@ -180,7 +180,8 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
     when the preamble turns the wrong way (`rotation`: a spectrum inverted on the way down, in which the coherent frame
     sync finds nothing): [(name,
     {header id: ([(fields, count)] commonest first, how many)}, headers, inverted, params)] of those whose headers decode,
-    best first; each variant a profile's choices make (rp.profile.variants) is tried, `params` the one that decoded"""
+    best first; each variant a profile's choices make (rp.profile.variants) is tried, `params` the one that decoded, of the
+    profiles whose "requires" admits the symbol rate (rp.profile.candidates)"""
     from .. import profile, symbol
     from ..base import Data
     from ..base.types import Rep
@@ -190,31 +191,31 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
         return out
     z = z*np.exp(-2j*np.pi*det.cfo/det.baud*np.arange(len(z)))
     z = (z/np.sqrt(np.mean(np.abs(z)**2))).astype(np.complex64)
-    names = [f"{fam}/{mode}" for fam, modes in profile.ls().items() for mode in modes]
-    for name in names:
-        for params in profile.variants(name):
-            prof = profile.load(name, **params)
-            header = next((s.get("header") for s in prof.obj["steps"] if s.get("sync") == "frame"), None)
-            if header is None: # No frame sync, or one by a word (no header to read)
-                continue
-            inverted = rotation(z, symbol.load_header(header).preamble)
-            if inverted is None: # The preamble isn't there either way round
-                continue
-            data = Data(np.conj(z) if inverted else z, sps=1, flush=True)
-            try:
-                res = prof.rx(start=Rep.SYMBOLS)(data)
-            except Exception: # A profile that can't run on these symbols isn't this signal
-                continue
-            # A profile ending in branches gives {branch: output}: its trunk publishes in the input's stream, each
-            # branch in its own
-            streams = [data.stream] + [o.stream for o in (res.values() if isinstance(res, dict) else [res])]
-            heads = {}
-            for st in {id(s): s for s in streams}.values():
-                for step, fields, at in (st.control.fields() if st.control is not None else []):
-                    heads.setdefault(step, []).append(json.dumps(fields, sort_keys=True, default=str))
-            if max((len(v) for v in heads.values()), default=0) >= min_headers:
-                summary = {k: ([(json.loads(f), n) for f, n in Counter(v).most_common(4)], len(v)) for k, v in heads.items()}
-                out.append((name, summary, max(len(v) for v in heads.values()), inverted, params))
+    # Only the profiles a signal at this rate can be ("requires"): one whose rate is set elsewhere is never built. Not by
+    # length: min_samples is the longest frame's, and short frames show their headers in less
+    for name, params in profile.candidates(baud=det.baud, input="baseband"):
+        prof = profile.load(name, **params)
+        header = next((s.get("header") for s in prof.obj["steps"] if s.get("sync") == "frame"), None)
+        if header is None: # No frame sync, or one by a word (no header to read)
+            continue
+        inverted = rotation(z, symbol.load_header(header).preamble)
+        if inverted is None: # The preamble isn't there either way round
+            continue
+        data = Data(np.conj(z) if inverted else z, sps=1, flush=True)
+        try:
+            res = prof.rx(start=Rep.SYMBOLS)(data)
+        except Exception: # A profile that can't run on these symbols isn't this signal
+            continue
+        # A profile ending in branches gives {branch: output}: its trunk publishes in the input's stream, each
+        # branch in its own
+        streams = [data.stream] + [o.stream for o in (res.values() if isinstance(res, dict) else [res])]
+        heads = {}
+        for st in {id(s): s for s in streams}.values():
+            for step, fields, at in (st.control.fields() if st.control is not None else []):
+                heads.setdefault(step, []).append(json.dumps(fields, sort_keys=True, default=str))
+        if max((len(v) for v in heads.values()), default=0) >= min_headers:
+            summary = {k: ([(json.loads(f), n) for f, n in Counter(v).most_common(4)], len(v)) for k, v in heads.items()}
+            out.append((name, summary, max(len(v) for v in heads.values()), inverted, params))
     return sorted(out, key=lambda t: -t[2])
 
 def rotation(z, preamble, threshold=0.6, top=8):

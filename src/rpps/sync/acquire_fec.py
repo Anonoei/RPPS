@@ -68,14 +68,14 @@ class AcquireFEC(Stage):
         st.held = [x]
         win = x[self.skip:self.skip + st.length]
         from ..analysis.identify import identify # (blind analysis, loaded when first needed)
-        fec = identify(win, det.mod, self.names, blind=False)
+        fec = identify(win, det.mod, self.names, blind=False, baud=det.baud)
         last = 2*st.length > self.max_wait - self.skip
         if not last and not fec.complete:
             st.length *= 2
             meta.stream.est[self.name] = fec # The answer so far: complete False, more symbols may still change it
             return y[:0]
         if self.blind: # The blind tools take most of the time and don't decide completeness: once, on the final window
-            fec = identify(win, det.mod, self.names, blind=True)
+            fec = identify(win, det.mod, self.names, blind=True, baud=det.baud)
         st.done, st.held, st.fec = True, None, fec
         fec.complete = True # Final: this stage looks no further (even if more symbols could have shown more)
         fec.latency = (self.skip + st.length)/det.baud if det.baud else None # Held until the window was in

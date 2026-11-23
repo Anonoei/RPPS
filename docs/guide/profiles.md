@@ -122,6 +122,16 @@ and `rp.profile.catalogue()` evaluate them, for a program building a menu. `rp.p
 selected signal to the profile: shift and decimation, an FM demodulator for audio, a resampler to `Fs`, a rate measured
 when the standard leaves it open.
 
+They also narrow a blind search. `rp.profile.fits(name, baud=..., bw=..., Fs=..., seconds=..., input=...)` says why a
+signal measured so can't be a profile, and `rp.profile.candidates(...)` lists the variants that may be. A profile whose
+rate is set elsewhere, whose channel is narrower than the signal, or which takes audio, is never built:
+
+```python
+import rpps as rp
+print(rp.profile.fits("ble/adv", baud=250e3))                     # its rate is 1e+06, not 250000
+print(sorted({n for n, _ in rp.profile.candidates(baud=27.5e6)})) # the open-rate profiles: CCSDS, DVB-S, DVB-S2
+```
+
 ## More than one core
 
 A profile marks where its frame-parallel region starts; `p.rx(parallel=rp.parallel.Parallel(kind, workers=n))` runs it

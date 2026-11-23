@@ -25,6 +25,11 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   receive output is now data bits (Rep.DATA), not channel bits.
 
 ### Added
+- **A profile's `requires` narrows a search:** `rp.profile.fits(name, baud=, bw=, Fs=, seconds=, input=)` says why a
+  measured signal can't be that profile (None when it may), and `rp.profile.candidates(...)` lists the variants that may.
+  `rp.analysis.profile`'s framed search tries only profiles whose rate admits the acquired one, and `identify(baud=)`
+  (passed by `AcquireFEC`) names only a profile at that rate. `requires` is checked: an unknown key, an `input` other
+  than baseband or audio, or a `from_cf` that isn't a param is a ConfigError.
 - **Benchmarks keep their results per machine**: `bench_stages`, `effort_bench`, `parallel_bench`, `resample_bench`
   and `tpc_ber` take `--save`, `--update-baseline`, `--check` (exit 1 on a regression) and `--compare FILE`
   (`tools/_bench.py`), writing to the git-ignored `.benchmarks/<bench>/`. `parallel_bench.py` and `resample_bench.py`
