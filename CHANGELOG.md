@@ -103,6 +103,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   and that has fewer than `symbols` symbols keeps reading past `blocks`, up to `max_blocks` (8 x blocks), so a narrow
   signal gets symbols enough for the code scans and the layers inside a code instead of a fixed stretch of the
   capture; a decided one stops costing anything.
+- **The layers inside a convolutional code are looked for on nearly all of the window**: `identify.decode_tail`
+  skips the first half of the window or the first `settle` (16384) bits, whichever is less, where it skipped the half.
+  A DVB-S window of 40k symbols now shows its RS(204,188) behind the Forney interleaver (it took about 64k).
 
 ## 0.6.0 (2026-11-22)
 

@@ -256,14 +256,16 @@ def _rs_zero(code, seg, n, phases, words):
     return (zero & ~flat).sum(axis=1)
 
 
-def decode_tail(bits, code, fraction=0.5, probe=4000):
+def decode_tail(bits, code, fraction=0.5, probe=4000, settle=16384):
     """Viterbi output of the later part of a stream, at the puncture phase that holds there
 
-    Inner layers are looked for in the later part of a window, where the sync before it has settled; a symbol the timing
-    slipped on the way moves the puncture phase, so it is found again at the start of that part."""
+    Inner layers are looked for in the later part of a window, where the sync before it has settled: the last `fraction`
+    of it, or all but the first `settle` bits when that is more (a long window keeps nearly all its bits for the layers
+    inside, which need codewords: an RS behind a deinterleaver loses its delay too). A symbol the timing slipped on the
+    way moves the puncture phase, so it is found again at the start of that part."""
     bits = np.asarray(bits, dtype=np.uint8)
     nb = puncture_period(code)
-    start = int(len(bits)*(1 - fraction))
+    start = min(int(len(bits)*(1 - fraction)), settle)
     seg = bits[start:start + probe//nb*nb + nb]
     best = min(range(nb), key=lambda o: (lambda k, n: k/max(n, 1))(*mismatch(code, seg[o:o + probe//nb*nb])))
     tail = bits[start + best:]
