@@ -212,6 +212,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   configured block scans 5-6x faster); `scan_defined_conv` screens every code, map and alignment on a fifth of its bits
   (hard, and soft where there are LLRs) before the full Viterbi decode (2.5-4x); `puncture.search` skips a stream that
   is another's bits inverted for mother codes whose generators are of odd weight (an inverted codeword is a codeword).
+- **`identify(prior=)`: AcquireFEC's growing window doesn't rescan what it already scanned.** The configured scans look
+  at the first 2^15 symbols only, the same in every window from there: a convolutional code found is only decoded
+  again for what is inside it, and with nothing configured found the blind pass goes straight to the blind tools (a
+  DVB-S stream 4.8 s -> 3.4 s).
 
 ## 0.6.0 (2026-11-22)
 

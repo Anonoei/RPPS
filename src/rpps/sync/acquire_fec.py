@@ -48,7 +48,7 @@ class AcquireFEC(Stage):
 
     def new_state(self, meta):
         return SimpleNamespace(held=[], count=0, length=self.window, done=False, fec=None, c=None, code=None, out=0,
-                               drop=0, buf=[], buffered=0, shift=0)
+                               drop=0, buf=[], buffered=0, shift=0, prior=None)
 
     def step(self, y, st, meta):
         det = meta.det
@@ -72,14 +72,16 @@ class AcquireFEC(Stage):
         st.held = [x]
         win = x[self.skip:] if end else x[self.skip:self.skip + st.length] # (at the end: every symbol past `skip`)
         from ..analysis.identify import identify # (blind analysis, loaded when first needed)
-        fec = identify(win, det.mod, self.names, blind=False, baud=det.baud)
+        prior = st.prior # The previous window's answer: the configured scans saw the same start (identify(prior=))
+        fec = identify(win, det.mod, self.names, blind=False, baud=det.baud, prior=prior)
+        st.prior = fec
         last = end or 2*st.length > self.max_wait - self.skip
         if not last and not fec.complete:
             st.length *= 2
             meta.stream.est[self.name] = fec # The answer so far: complete False, more symbols may still change it
             return y[:0]
         if self.blind: # The blind tools take most of the time and don't decide completeness: once, on the final window
-            fec = identify(win, det.mod, self.names, blind=True, baud=det.baud)
+            fec = identify(win, det.mod, self.names, blind=True, baud=det.baud, prior=fec)
         st.done, st.held, st.fec = True, None, fec
         fec.complete = True # Final: this stage looks no further (even if more symbols could have shown more)
         fec.n = len(win)

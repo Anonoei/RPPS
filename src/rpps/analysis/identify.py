@@ -527,7 +527,7 @@ def _named(name, params):
     return name + (f" ({', '.join(f'{k}={v}' for k, v in params.items())})" if params else "")
 
 
-def identify(symbols, constellation, names=None, blind=False, differential=True, profiles=True, baud=None):
+def identify(symbols, constellation, names=None, blind=False, differential=True, profiles=True, baud=None, prior=None):
     """Which code from config/fec timed, carrier-corrected symbols carry, under which map, and how to decode it
 
     In turn, stopping at the first that stands out: configured convolutional codes (any puncture phase), with a Reed-Solomon
@@ -539,6 +539,9 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
     symbols: the symbols (any gain); constellation: a Constellation or its name (the detected modulation)
     names: only these convolutional definitions. baud: the symbol rate, when known: the shipped profile named
     (profile_name) is one whose "requires" admits it (rp.profile.fits). Returns a CodeDetection
+    prior: what identify gave on the start of these same symbols (AcquireFEC's previous, shorter window). The configured
+    scans look at the first CONV_SYMBOLS only: when prior saw all of them, its answer there stands (a convolutional code
+    found is decoded again on the longer window for what is inside it; nothing found goes straight to the blind tools)
     """
     c = _constellation(constellation)
     y = np.asarray(symbols, dtype=np.complex128)
@@ -558,8 +561,16 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
         return [{"symbol": "constellation", **({"name": c.name} if _config.find("constellation", c.name) else {"shape": c.name})}]
 
     tried = [] # Every tier's hypotheses: the report when nothing stands out
-    hyps, trials = scan_defined_conv(head, names, llrs=_llrs(y[:CONV_SYMBOLS], c, head))
-    rep = Report(hyps, trials, None)
+    same = prior is not None and prior.n is not None and prior.n >= CONV_SYMBOLS and len(y) >= CONV_SYMBOLS \
+        and prior.report is not None # The configured scans would see what prior's saw
+    if same and not prior.found:
+        out.report, out.complete = prior.report, True # Nothing configured there: on to the blind tools, if any
+        return _blind_tiers(out, head, c, y) if blind else out
+    if same and prior.kind == "conv":
+        rep = prior.report # (the convolutional tier's own report: the pick below makes the same choice)
+    else:
+        hyps, trials = scan_defined_conv(head, names, llrs=_llrs(y[:CONV_SYMBOLS], c, head))
+        rep = Report(hyps, trials, None)
     tried.append(rep)
     conv = pick(rep.hyps, rep.z_crit, lambda h: h.params["mismatch"]/h.params["baseline"],
                  lambda b, h: h.params["mismatch"] < 0.5*(b.params["mismatch"] + b.params["baseline"]))
@@ -650,22 +661,27 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
     tried.append(rep)
     out.report = Report([h for r in tried for h in r.hyps], sum(r.trials for r in tried), None)
     out.complete = len(y) >= CONV_SYMBOLS # The scans above look no further: more symbols would not change this
-    if blind:
-        found = _blind(head, c, y[:CONV_SYMBOLS])
-        if found:
-            _attach(out, found)
-            return out
-        sub = {k: v for k, v in head.items() if k[0] == "abs"}
-        brep = detect_fec(sub, max_offsets=32)
-        out.report = brep
-        v = brep.verdict
-        if v is not None:
-            g = None
-            if v.kind.startswith("conv"):
-                g = guess_conv(v)
-            elif v.kind == "linear-block":
-                g = guess_block(sub[v.params["stream"]], hints=[int(round(2*v.params["period_pairs"]))])
-            out.guesses = [g] if g is not None else []
+    return _blind_tiers(out, head, c, y) if blind else out
+
+
+def _blind_tiers(out, head, c, y):
+    """identify's blind tools, when no configured code fits: a mother code's unknown puncture, a block code, an unknown
+    convolutional code (_blind), else detect_fec's guess"""
+    found = _blind(head, c, y[:CONV_SYMBOLS])
+    if found:
+        _attach(out, found)
+        return out
+    sub = {k: v for k, v in head.items() if k[0] == "abs"}
+    brep = detect_fec(sub, max_offsets=32)
+    out.report = brep
+    v = brep.verdict
+    if v is not None:
+        g = None
+        if v.kind.startswith("conv"):
+            g = guess_conv(v)
+        elif v.kind == "linear-block":
+            g = guess_block(sub[v.params["stream"]], hints=[int(round(2*v.params["period_pairs"]))])
+        out.guesses = [g] if g is not None else []
     return out
 
 
