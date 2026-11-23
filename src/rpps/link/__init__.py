@@ -3,6 +3,7 @@ config/crc, config/frame and config/header/link. Decoding refuses channel bits: 
 """
 from .crc import crc
 from .hdlc import hdlc
+from . import check
 from .encap import Encap, CRC, Frame
 from .header import Header
 from .serial import ls, load, root

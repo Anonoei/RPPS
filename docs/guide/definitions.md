@@ -71,13 +71,41 @@ child's own category first, so `"extends": "rs/p25"` in fec/block works). The ch
 - `python -m rpps show <resource>/<ref>` prints a definition with its parents applied.
 
 **Param or child?** A choice made when loading (samples per symbol, a cell id, which punctured rate a DVB-S receiver
-runs) is a param. A variant a standard or a table names (16APSK for rate 3/4, the code of MODCOD 7) is a child, so the
+runs) is a param; one that changes several steps together is a param with choices (below). A variant a standard or a table names (16APSK for rate 3/4, the code of MODCOD 7) is a child, so the
 name keeps working. A child that overrides most of its parent is probably not one.
 
 Families written this way: `constellation/psk` (QPSK, 8PSK as rings; the DVB-S2 labellings and `qpsk_axes` are children),
 `constellation/apsk` (16/32APSK with the radii as params, one child per code rate), `fec/conv/<mother>.json` (the
 generators; every rate in `<mother>/`, the unpunctured 1/n too, is a child adding its `puncture`), `fec/block/ldpc`, `bch`, `rs/p25*`,
 `interleave/block/dvbs2_8psk_210`, `profile/dvbs/qpsk` (the rate a `code` param, a child per rate).
+
+## Variants: choices and "when"
+A param can list its `"choices"`, each a bundle of fields that one choice sets together; a step names a field as
+`{"param": "modulation.shape"}` (or `modulation.shape` in an expression), and a list item with `"when"` is kept only
+where its expression holds:
+```json
+"params": {"modulation": {"default": "qpsk", "choices": {"qpsk": {"shape": "QPSK", "threshold": 0.6},
+                                                         "16qam": {"shape": "16QAM", "threshold": 0.85}}},
+           "fec": {"default": "hamming", "choices": ["hamming", "none"]}},
+"steps": [..., {"symbol": "constellation", "shape": {"param": "modulation.shape"}}, ...,
+          {"code": "block", "name": "hamming/7_4", "when": "fec == 'hamming'"}]
+```
+- A value that is not one of the choices is an error naming them; `"choices": [...]` (a list) only checks the value.
+- A choice matches its key or the key's text (`0.2` is `"0.2"`: JSON keys are strings).
+- Expressions take string literals, so `"when": "modulation == '16qam'"` and `"expr": "... if fec == 'none' else ..."` work.
+- A child's `choices` replace its parent's, so a child can narrow them. A mode a standard names stays a child that pins
+  the default (`dvbs/qpsk_1_2`), so the name keeps working.
+- `rp.profile.info(name, **params)` evaluates `requires` with the chosen bundle (`"bw": "(1 + rolloff)*baud"`) and lists
+  each param's choices.
+
+A check that is not one CRC is a `"composite"` crc definition: CRC parts over transformed views of the message
+(`nibble_swap`, `reverse_bits`, `reverse_bytes`, `invert`, `xor`, `skip`, `take`, and your own through
+`rp.link.check.register`), concatenated or XORed. It goes wherever a CRC does: an HDLC frame's `fcs`, a link header's `crc` or
+`fcs` ([`rpps.link`](../api/link.md)).
+
+```python
+--8<-- "examples/profile_variants.py"
+```
 
 ## Tags
 `"tags": ["dvb-s2"]` says which standards or systems use a definition. The folders say what a thing is; tags say who uses

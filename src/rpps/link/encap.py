@@ -27,11 +27,11 @@ class Encap(Coding):
     def load(name: str, obj: dict):
         """Load from json: the `type` picks CRC or HDLC"""
         t = obj.get("type")
-        if t == "crc":
+        if t in ("crc", "composite"):
             return CRC.load(name, obj)
         if t == "hdlc":
             return Frame.load(name, obj)
-        raise ConfigError(f"Unknown encapsulation type {t!r} in {name}: have crc, hdlc")
+        raise ConfigError(f"Unknown encapsulation type {t!r} in {name}: have crc, composite, hdlc")
 
 
 def _int(obj, key, default=0):
@@ -40,16 +40,31 @@ def _int(obj, key, default=0):
 
 
 class CRC(Encap):
-    """CRC defined by config: width, poly, init, refin, refout, xorout (hex strings or ints), check value"""
+    """CRC defined by config: width, poly, init, refin, refout, xorout (hex strings or ints), check value; or a composite
+    check (type "composite": CRC parts over transformed views of the message, rpps.link.check)"""
 
     @staticmethod
     def load(name, obj):
         log = Logger().Child("Coding", _config.LOG_CODING).Child(name)
-        i_code = _crc_code(log, obj["width"], _int(obj, "poly"), _int(obj, "init"), obj.get("refin", False),
-                          obj.get("refout", False), _int(obj, "xorout"), _int(obj, "check") if "check" in obj else None)
+        if obj.get("type") == "composite":
+            i_code = _composite(log, name, obj)
+        else:
+            i_code = _crc_code(log, obj["width"], _int(obj, "poly"), _int(obj, "init"), obj.get("refin", False),
+                               obj.get("refout", False), _int(obj, "xorout"), _int(obj, "check") if "check" in obj else None)
         impl = type(name, (CRC,), dict())
         impl.name = name
         return impl(i_code, i_code)
+
+
+def _composite(log, name, obj):
+    from . import serial
+    from .check import composite, Part
+    parts = []
+    for i, p in enumerate(obj.get("parts") or []):
+        if not isinstance(p, dict) or "crc" not in p:
+            raise ConfigError(f"crc {name}: part {i} needs a \"crc\" (a config/crc name)")
+        parts.append(Part(serial.load(f"crc/{p['crc']}").encoder, p.get("input", ()), p.get("output", ()), f"crc {name}"))
+    return composite(log, parts, obj.get("combine", "concat"), _int(obj, "check") if "check" in obj else None, f"crc {name}")
 
 
 class Frame(Encap):

@@ -20,6 +20,7 @@ receive and transmit is in `rpps.wave`.
 
 | Feature | Says | Where |
 |---|---|---|
+| Variants | a param's `"choices"` (each a bundle of fields: `{"param": "modulation.shape"}`), a step's `"when"` | `rpps._config.resolve`, guide "Definitions" |
 | Header-driven control | `"controls"`: a header's fields drive other steps' parameters from a position on, without losing lock | `rpps.profile.control`, `rpps.base.control`, `rpps.profile.runner` |
 | Bursts | `{"sync": "burst"}`: the steps after it are built anew for every burst; transmitting places bursts on one stream (`gap_s`, `at=`, `ramp_s`, `freq=`, `hop`) | `rpps.profile.burst`, `rpps.sync.Burst`, `rpps.sync.BurstTx` |
 | Preambles | `{"sync": "preamble"}` after a burst step: by repetition or a waveform the profile makes from a `sequence` word; `"attach": true` sends it on transmit | `rpps.sync.Preamble` |

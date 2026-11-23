@@ -7,6 +7,16 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 ## Unreleased
 
 ### Added
+- **Definition params take `"choices"`**: the values a param takes, each optionally a bundle of fields one choice sets
+  together (`{"param": "modulation.shape"}`, `modulation.bits` in an expression). A value that is not a choice is an error.
+  `rp.profile.info` lists them and evaluates `requires` with the chosen bundle.
+- **`"when"` on a list item** (a profile's step, any definition's list): kept only where its expression holds.
+  Expressions take string literals (`modulation == '16qam'`).
+- **Composite checks**: a `config/crc` definition of `"type": "composite"`, CRC parts over transformed views of the
+  message (`nibble_swap`, `reverse_bits`, `reverse_bytes`, `invert`, `xor`, `skip`, `take`, or one registered with
+  `rp.link.check.register`), concatenated or XORed. It goes wherever a CRC does (an HDLC `fcs`, a link header's `crc`).
+- The `mpower` carrier step takes a generated `"shape"` (`"16QAM"`) as the constellation step does.
+- `examples/profile_variants.py`.
 - **Words of any width**: a `sequence` word (and `word` + `bits` on a step) may be longer than 64 bits; a 100-byte
   unique word is 200 hex digits. `rp.sync.Delimiter` matches a word over 64 bits by FFT correlation.
 - **`{"sync": "frame"}` takes a word** (`sequence`, or `word` + `bits`) instead of a `header`: the profile maps it to

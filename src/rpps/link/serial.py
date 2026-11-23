@@ -4,6 +4,9 @@
             "refin": false, "refout": false,       the reveng catalogue fields (numbers or hex strings)
             "check": "0x29b1"}                      optional: the CRC of b"123456789", verified on load
            width is 1 to 64 bits; encode / decode / syndrome work on bit streams of any length (see `crc`)
+           {"base": "crc", "type": "composite",     a check from CRC parts over transformed views of the message
+            "parts": [{"crc": "crc8_smbus"}, {"crc": "crc8_smbus", "input": ["nibble_swap"]}],
+            "combine": "concat"}                    (or "xor"); goes wherever a crc does (see `rpps.link.check`)
     frame  {"base": "frame", "type": "hdlc", "flag": "0x7E", "stuff": 5, "nrzi": false,
             "fcs": "crc16_x25",                     the name of a crc definition
             "min_bytes": 4}

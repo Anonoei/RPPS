@@ -22,7 +22,7 @@ from .profile import ls
 KEYS = ("baud", "Fs", "bw", "min_samples") # Every profile's requires has these, in this order (each may use those before)
 
 class ProfileInfo:
-    """A profile, described: name, comment, ref, tags, params ({name: {"default", "comment"}}), requires (evaluated:
+    """A profile, described: name, comment, ref, tags, params ({name: {"default", "comment", and "choices" when it has them}}), requires (evaluated:
     baud, Fs, bw, min_samples, None where they wait for a baud not given; input; from_cf as written; comment), kinds (the
     message kinds it gives, sorted: what `Profile.rx(kinds=...)` and the Decoder take; the profile is built, with the params
     given, when first asked)"""
@@ -84,9 +84,10 @@ def info(name, baud=None, **params):
     unknown = set(params) - set(decl)
     if unknown:
         raise ConfigError(f"profile/{name}: no params {sorted(unknown)} (has {sorted(decl)})")
-    values = {**_config.declared(obj), **params}
+    values = _config.chosen(obj, {**_config.declared(obj), **params}, f"profile/{name}")
     ps = {k: {"default": v.get("default") if isinstance(v, dict) else v,
-              "comment": v.get("comment") if isinstance(v, dict) else None} for k, v in decl.items()}
+              "comment": v.get("comment") if isinstance(v, dict) else None,
+              **({"choices": list(v["choices"])} if isinstance(v, dict) and "choices" in v else {})} for k, v in decl.items()}
     return ProfileInfo(name, obj.get("comment", ""), obj.get("ref"), list(obj.get("tags") or []), ps,
                        requirements(obj.get("requires") or {}, values, baud, f"profile/{name}"), params)
 

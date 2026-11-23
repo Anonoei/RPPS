@@ -292,7 +292,9 @@ def _mpower(m, rep, ctx):
     offset = m.get("offset")
     if offset is None:
         from .. import symbol
-        offset = sync.phase.offset_of(symbol.load(m["constellation"]), order) if "constellation" in m else 0.0
+        c = (symbol.load(m["constellation"]) if "constellation" in m else symbol.generate(m["shape"]) if "shape" in m
+             else None) # A definition, or a generated shape, as the constellation step names them
+        offset = sync.phase.offset_of(c, order) if c is not None else 0.0
     return sync.phase.MPower(order, offset, m.get("window", 1e-3), m.get("min_symbols", 1024), m.get("bw", 0.25),
                              m.get("gate", 3.0), m.get("relock", 4), m.get("name", "carrier"))
 

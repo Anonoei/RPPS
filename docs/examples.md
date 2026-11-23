@@ -15,6 +15,7 @@ full.
 | profile_loopback.py | A known signal from one definition: a profile transmits with header fields and receives in any block cut | [Profiles](guide/profiles.md#transmit-and-receive) |
 | parallel_rx.py | A profile's frame-parallel region on threads and processes, the same output as the serial runner | [Profiles](guide/profiles.md#more-than-one-core) |
 | own_definitions.py | A new signal as JSON definitions in your own config directory, one profile extending another | [Definitions](guide/definitions.md#your-own-signal-in-your-own-directory) |
+| profile_variants.py | One profile, several variants (choices and `when`), and an HDLC FCS built from two CRC-8s (a composite check) | [Definitions](guide/definitions.md#variants-choices-and-when) |
 | list_definitions.py | Every shipped definition, as `python -m rpps ls` prints them | [Definitions](guide/definitions.md) |
 | integrating.py | `rp.sync.Lock` found once and followed on later blocks; `rp.profile.Decoder` from a band at another rate and offset to `Message` records | [Building on RPPS](guide/integrating.md#a-lock-and-a-profiles-messages) |
 | unknown_signal.py | `rp.analysis`: survey a capture, then name the profile for each signal or say what is unsolved | [Unknown signals](guide/unknown-signals.md) |

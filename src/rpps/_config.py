@@ -339,9 +339,16 @@ def resolve(obj, params=None, name="definition", strict=True):
         {"param": "channel"}                                     the value given (or its default)
         {"expr": "((ns//2 + 1)*(2*pci + 1) << 9) + pci"}        integer arithmetic over the parameters
         {"each": "(i*181) % 196", "n": 196}                       a list: the expression for i = 0 .. n-1
-    ("each" lists are built even in a definition without parameters.)
-    An expression may use + - * // % ** << >> & | ^ ~, comparisons, `a if c else b`, and/or, list literals and
-    indexing, min / max / abs / len / range-free names only: no calls beyond those, no attributes.
+        {..., "when": "modulation == '16qam'"}                  in a list: the item only where the expression holds
+    ("each" lists and "when" are applied even in a definition without parameters.)
+    An expression may use + - * // % ** << >> & | ^ ~, comparisons, `a if c else b`, and/or, number, string and list
+    literals, indexing, min / max / abs / len: no calls beyond those, no attributes but a choice's fields.
+
+    A parameter may list its "choices": the values it takes, each with a bundle of fields one choice sets together
+        "modulation": {"default": "qpsk", "choices": {"qpsk": {"constellation": "qpsk", "bits": 2},
+                                                      "16qam": {"constellation": "qam/16", "bits": 4}}}
+    then {"param": "modulation.constellation"}, or `modulation.bits` in an expression, is the chosen bundle's field
+    ("choices": [2, 4, 8] only checks the value). A value that is not one of them is an error.
     strict: a parameter the definition does not declare is an error (a typo); a chain passes its parameters on
     with strict=False, so each stage takes the ones it knows.
     """
@@ -356,15 +363,40 @@ def resolve(obj, params=None, name="definition", strict=True):
         raise ConfigError(f"{name}: parameter(s) {missing} needed, e.g. load(..., {missing[0]}=...)")
     if not (decl or _uses_params(obj)):
         return obj
+    values = chosen(obj, values, name)
     out = _subst(obj, values, name)
     if decl: # The filled-in definition says what it was given: `declared` of it gives the values used, not the defaults
         out = dict(out)
         out["params"] = {k: ({**v, "default": values[k]} if isinstance(v, dict) else values[k]) for k, v in obj["params"].items()}
     return out
 
+def _choice(choices, value):
+    """The key of `choices` (a list, or a dict of bundles) that is `value`: equal, or its text (JSON keys are strings)"""
+    for c in choices:
+        if c == value or (isinstance(c, str) and not isinstance(value, str) and c == str(value)):
+            return c
+    raise KeyError(value)
+
+def chosen(obj, values, name="definition"):
+    """The parameter values with each choice checked and its bundle's fields added as "<param>.<field>" """
+    out = dict(values)
+    for k, spec in (obj.get("params") or {}).items():
+        if not isinstance(spec, dict) or "choices" not in spec or values.get(k) is None:
+            continue
+        choices = spec["choices"]
+        try:
+            c = _choice(choices, values[k])
+        except KeyError:
+            raise ConfigError(f"{name}: {k}={values[k]!r} is not one of its choices {list(choices)}") from None
+        if isinstance(choices, dict):
+            for f, v in (choices[c] or {}).items():
+                if f != "comment":
+                    out[f"{k}.{f}"] = v
+    return out
+
 def _uses_params(v):
     if isinstance(v, dict):
-        return "param" in v or "expr" in v or "each" in v or any(_uses_params(x) for k, x in v.items() if k != "params")
+        return "param" in v or "expr" in v or "each" in v or "when" in v or any(_uses_params(x) for k, x in v.items() if k != "params")
     if isinstance(v, list):
         return any(_uses_params(x) for x in v)
     return False
@@ -372,6 +404,8 @@ def _uses_params(v):
 def _subst(v, values, name):
     if isinstance(v, dict):
         if set(v) == {"param"}:
+            if v["param"] not in values:
+                raise ConfigError(f"{name}: {v['param']!r} is not a parameter or a choice's field ({sorted(values)})")
             return values[v["param"]]
         if set(v) <= {"expr", "comment"} and "expr" in v:
             return evaluate(v["expr"], values, name)
@@ -380,7 +414,14 @@ def _subst(v, values, name):
             return [evaluate(v["each"], {**values, "i": i}, name) for i in range(int(n))]
         return {k: (x if k == "params" else _subst(x, values, name)) for k, x in v.items()}
     if isinstance(v, list):
-        return [_subst(x, values, name) for x in v]
+        out = []
+        for x in v:
+            if isinstance(x, dict) and "when" in x:
+                if not evaluate(x["when"], values, name):
+                    continue # Not in this variant
+                x = {k: y for k, y in x.items() if k != "when"}
+            out.append(_subst(x, values, name))
+        return out
     return v
 
 _FUNCS = {"min": min, "max": max, "abs": abs, "len": len}
@@ -395,8 +436,13 @@ def evaluate(expr, values, name="expression"):
     def ev(n):
         if isinstance(n, ast.Expression):
             return ev(n.body)
-        if isinstance(n, ast.Constant) and isinstance(n.value, (int, float, bool)):
+        if isinstance(n, ast.Constant) and isinstance(n.value, (int, float, bool, str)):
             return n.value
+        if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name): # A choice's field
+            k = f"{n.value.id}.{n.attr}"
+            if k in values:
+                return values[k]
+            raise ConfigError(f"{name}: {expr!r} uses {k!r}, which is not a choice's field ({sorted(values)})")
         if isinstance(n, ast.Name):
             if n.id in values:
                 return values[n.id]

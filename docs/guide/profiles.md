@@ -47,6 +47,8 @@ I into Q while Q is half a symbol late.
 - Sync steps name **what** is estimated (`carrier`, `timing`, `equalize`, `frame`) and get the first-class method; a
   loop is chosen in `defaults`: `{"timing": {"method": "gardner", "alpha": 0.3}}`.
 - Any `Stage` can be a step by module path: `{"signal": "stage", "class": "mypkg.Gain", "args": {...}}`.
+- Variants of one signal (QPSK or 16QAM, RRC 0.2 or 0.35, a step only some modes have) are params with `"choices"` and
+  steps with `"when"`: [Definitions](definitions.md#variants-choices-and-when).
 - `"controls"` lets a header's fields drive other steps (DVB-S2's MODCOD, 802.11b's rate): see
   [`rpps.profile.control`](../api/profile.md).
 - Bursts, preambles, branches, resource grids and the parallel region are each a step or a key:

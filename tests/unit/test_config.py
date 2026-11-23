@@ -78,3 +78,38 @@ def test_user_layer(tmp_path):
         assert "rs/204_188" in rp.code.names("block")
     finally:
         _config._EXTRA.remove(tmp_path)
+
+# ---- Choices and "when"
+VARIANT = {"params": {"modulation": {"default": "qpsk", "choices": {"qpsk": {"shape": "QPSK", "bits": 2},
+                                                                    "16qam": {"shape": "16QAM", "bits": 4}}},
+                      "rolloff": {"default": 0.35, "choices": {"0.2": {"pulse": "rrc/0p20"}, "0.35": {"pulse": "rrc/0p35"}}},
+                      "m": {"default": 2, "choices": [2, 4]}},
+           "steps": [{"pulse": {"param": "rolloff.pulse"}},
+                     {"agc": True, "when": "modulation == '16qam'"},
+                     {"shape": {"param": "modulation.shape"}, "n": {"expr": "modulation.bits*m"}}],
+           "bw": {"expr": "(1 + rolloff)*10"}}
+
+def test_choice_bundles_fill_their_fields():
+    out = _config.resolve(VARIANT)
+    assert out["steps"] == [{"pulse": "rrc/0p35"}, {"shape": "QPSK", "n": 4}] and out["bw"] == pytest.approx(13.5)
+    out = _config.resolve(VARIANT, {"modulation": "16qam", "rolloff": 0.2, "m": 4})
+    assert out["steps"] == [{"pulse": "rrc/0p20"}, {"agc": True}, {"shape": "16QAM", "n": 16}]
+    assert _config.declared(out) == {"modulation": "16qam", "rolloff": 0.2, "m": 4}
+
+def test_a_value_not_a_choice_is_an_error():
+    for bad in ({"modulation": "8psk"}, {"rolloff": 0.5}, {"m": 3}):
+        with pytest.raises(ConfigError, match="not one of its choices"):
+            _config.resolve(VARIANT, bad)
+    with pytest.raises(ConfigError, match="not a choice's field"):
+        _config.resolve({**VARIANT, "x": {"expr": "modulation.nope"}})
+    with pytest.raises(ConfigError, match="not a parameter or a choice's field"):
+        _config.resolve({**VARIANT, "x": {"param": "modulation.nope"}})
+
+def test_when_without_params():
+    obj = {"steps": [{"a": 1, "when": "1 > 2"}, {"b": 2, "when": "'x' == 'x'"}]}
+    assert _config.resolve(obj)["steps"] == [{"b": 2}]
+
+def test_a_child_narrows_the_choices():
+    child = _config.merge(VARIANT, {"params": {"modulation": {"choices": {"qpsk": {"shape": "QPSK", "bits": 2}}}}})
+    with pytest.raises(ConfigError, match="not one of its choices"):
+        _config.resolve(child, {"modulation": "16qam"})
