@@ -87,6 +87,7 @@ bits; strong codes at low SNR are beyond them on channel bits.
 | PM telemetry end to end | `framing.telemetry.analyze` | BPSK per subcarrier, line code, frame period, counters |
 | framing in decoded bits | `framing.payload.signatures` | E1/T1, ATM, GFP, HDLC, IPv4, CCSDS ASM, MPEG-TS, fixed bits, each against chance |
 | structured, scrambled or random | `framing.payload.verdict` | signatures, bias, linear complexity, compressibility |
+| encrypted, or only compressed | `framing.randomness.test` | NIST SP 800-22 frequency, block, runs, serial, approximate entropy, cusum; byte chi-square and entropy |
 """
 from . import spectrum, modulation, sequence, code, framing
 from . import result, identify

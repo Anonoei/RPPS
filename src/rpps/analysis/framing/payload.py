@@ -328,7 +328,7 @@ class Verdict:
     """Result of `verdict`: kind ("structured", "scrambled", "random-looking"), why, signatures, bias (|mean - 1/2|*2),
     byte_chi (z of the byte distribution, the worst of 8 offsets), lc (linear complexity over windows / their length),
     compress (zlib size / size)"""
-    __slots__ = ("kind", "why", "signatures", "bias", "byte_chi", "lc", "compress", "repeats")
+    __slots__ = ("kind", "why", "signatures", "bias", "byte_chi", "lc", "compress", "repeats", "randomness")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
@@ -376,4 +376,15 @@ def verdict(bits, window=512, z_min=8.0, frame=None, max_bits=2_000_000):
     else:
         kind, why = "random-looking", "no framing, even bits and bytes, full linear complexity, incompressible: " \
                                       "encrypted, compressed, or under a layer not found"
-    return Verdict(kind=kind, why=why, signatures=sig, bias=bias, byte_chi=chi, lc=lc, compress=comp, repeats=repeats)
+    rnd = None
+    if kind == "random-looking": # The NIST SP 800-22 tests tell a cipher's output from most compressors' (randomness)
+        from .randomness import test as _randomness
+        rnd = _randomness(b)
+        if rnd is not None and rnd.passed:
+            why = (f"no framing, full linear complexity, and it passes the NIST SP 800-22 tests ({rnd.entropy:.2f} bits a "
+                   "byte): as random as a cipher's output: encrypted or keyed (or a strong compressor's output)")
+        elif rnd is not None:
+            why = (f"no framing, full linear complexity, {rnd.entropy:.2f} bits a byte, but it fails "
+                   f"{', '.join(rnd.failed)}: compressed, or a weak cipher or scrambler")
+    return Verdict(kind=kind, why=why, signatures=sig, bias=bias, byte_chi=chi, lc=lc, compress=comp, repeats=repeats,
+                   randomness=rnd)

@@ -131,6 +131,13 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **`payload.signatures` no longer finds a periodic word in random bits**: a word at a fixed offset (MPEG-TS's 0x47) is
   scored by the binomial deviance and past what the best of the period's columns reaches by chance; 2 hits in 15
   frames where 0.06 were expected read as z 8 (MPEG-TS) and made random payloads "structured".
+- **`rp.analysis.framing.randomness`: is a bit stream as random as a cipher's output?** The NIST SP 800-22 rev. 1a
+  frequency, block frequency, runs, serial, approximate entropy and cumulative sums tests (each checked against the
+  standard's worked examples), a byte chi-square and the bytes' entropy: "random" (encrypted or keyed, or a strong
+  compressor's output), "high entropy" (near-uniform bytes that fail some test: compressed, a weak cipher) or "low
+  entropy". Entropy alone cannot tell encrypted from compressed data; these tests can for most compressors.
+  `payload.verdict` runs them on a random-looking payload (`.randomness`) and says which it is. `rp.math.prob.igamc`,
+  the chi-square tail, comes with it.
 
 ## 0.6.0 (2026-11-22)
 
