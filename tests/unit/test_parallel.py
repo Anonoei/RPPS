@@ -230,13 +230,19 @@ def test_frame_cut_short_is_reported_and_the_next_frames_decode(s2):
     assert np.array_equal(got, want) and np.array_equal(got, data[dfl[0]:])
     assert any(r["what"] == "cut short" for r in st.control.reports)
 
-def test_on_a_device_the_output_is_the_serial_runners(s2):
-    """The region on a pretend device (tests/unit/fakedevice.py, which refuses implicit host/device moves as CuPy does):
-    noisy frames, some failing, come out as the serial runner gives them"""
+def _devices():
     import fakedevice
+    from rpps import _accel
+    xp, backend = _accel.device()
+    return [fakedevice] + ([xp] if backend else [])
+
+@pytest.mark.parametrize("xp", _devices(), ids=lambda m: m.__name__)
+def test_on_a_device_the_output_is_the_serial_runners(s2, xp):
+    """The region on a device: the pretend one (tests/unit/fakedevice.py, which refuses implicit host/device moves as CuPy
+    does), and a real GPU when there is one. Noisy frames, some failing, come out as the serial runner gives them"""
     p, x, o, data, dfl = s2
     want, _ = receive(p.rx(), x, o, noise=0.5)
-    rx = p.rx(parallel=rp.parallel.Parallel("thread", workers=2, xp=fakedevice))
+    rx = p.rx(parallel=rp.parallel.Parallel("thread", workers=2, xp=xp))
     got, _ = receive(rx, x, o, noise=0.5)
     rx.close()
     assert np.array_equal(got, want)
