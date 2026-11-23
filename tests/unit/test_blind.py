@@ -368,3 +368,21 @@ def test_a_code_laid_out_from_each_frames_start():
     n, d = BK.frame_units([r ^ (rng.random(len(r)) < 1e-3) for r in rows]) # bit errors: n + 48 words at a time
     assert n == 63 and 0 < d <= 12
     assert BK.frame_units([rng.integers(0, 2, 1000).astype(np.uint8) for _ in range(40)]) == (None, 0)
+
+@pytest.mark.kernels
+def test_soft_scoring_finds_a_configured_code_hard_bits_cannot():
+    # K=7 rate 1/2 on QPSK at Es/N0 3 dB: the hard decisions are ~8% wrong, near what a wrong code gets on random bits,
+    # so the hard re-encoding test can't take it; weighted by |LLR| the right code's disagreements fall on weak bits
+    from rpps.analysis.code.conv import mother as M
+    rng = np.random.default_rng(13)
+    g = [[1, 0, 1, 1, 0, 1, 1], [1, 1, 1, 1, 0, 0, 1]]
+    b = conv(Logger().Child("t", 0), 1, 2, g, 7, [[1], [1]]).encode(rng.integers(0, 2, 40000).astype(bool))[1:]
+    q = rp.symbol.load("qpsk")
+    s = q.modulate(np.asarray(b[:len(b)//2*2], np.uint8))*1j
+    sigma = np.sqrt(0.5*10**(-3/10))
+    s = (s + sigma*(rng.standard_normal(len(s)) + 1j*rng.standard_normal(len(s)))).astype(np.complex64)
+    f = F.identify(s[:2**15], "qpsk")
+    assert f.found and f.kind == "conv" and f.name.endswith("/1_2")
+    head = F.bit_streams(s[:2**15], q, True)
+    hard, _ = M.scan_defined_conv(head)
+    assert not any(h.coding[1].endswith("/1_2") and h.z > 5.6 for h in hard) # (hard alone: nothing the pick would take)

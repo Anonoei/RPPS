@@ -187,6 +187,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   (the chain could not lock to it), the box's own channel samples are surveyed again and each carrier in it profiled on
   its own ("signal 16.1", "signal 16.2"...), its rate acquired alone in its channel; the one that gets furthest stands
   for the box.
+- **Soft decisions in the configured convolutional scan**: `identify` passes the LLRs of each bit map, and a code the
+  hard re-encoding test leaves short is scored by the share of |LLR| it disagrees on (`mother.soft_mismatch_batch`,
+  decoded from the LLRs), against what random signs on the same reliabilities give. K=7 rate 1/2 on QPSK is identified
+  down to Es/N0 2 dB (it was 6).
 
 ## 0.6.0 (2026-11-22)
 

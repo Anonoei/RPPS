@@ -550,7 +550,7 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
         return [{"symbol": "constellation", **({"name": c.name} if _config.find("constellation", c.name) else {"shape": c.name})}]
 
     tried = [] # Every tier's hypotheses: the report when nothing stands out
-    hyps, trials = scan_defined_conv(head, names)
+    hyps, trials = scan_defined_conv(head, names, llrs=_llrs(y[:CONV_SYMBOLS], c, head))
     rep = Report(hyps, trials, None)
     tried.append(rep)
     conv = pick(rep.hyps, rep.z_crit, lambda h: h.params["mismatch"]/h.params["baseline"],
@@ -726,6 +726,19 @@ def solve(bits, rs_lengths=None, max_taps=2, exhaustive=False, block=True):
         out.append((hd, None))
     return out
 
+
+def _llrs(y, c, head):
+    """LLRs of y under each coherent map of head (the soft side of bit_streams: what the configured scans score softly)"""
+    from .. import symbol
+    out = {}
+    for key, bits in head.items():
+        if key[0] != "abs":
+            continue
+        try:
+            out[key] = symbol.load_or_generate(c.name, mapping=key[1]).llr(y)[:len(bits)]
+        except Exception: # A map the constellation can't take by index: that stream is scored hard only
+            continue
+    return out
 
 def _distinct(head, c):
     """The coherent bit streams that differ by more than inverted bits: maps whose turn is below 180 degrees"""

@@ -90,7 +90,21 @@ def scan_conv(bits, ks=range(3, 8), rates=(2, 3), periods=(), tag=None):
                                      "stream": tag}))
     return hyps, trials
 
-def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 0.45, 0.8), decisive=20.0):
+def soft_mismatch_batch(code, llr):
+    """The soft re-encoding mismatch of each row of LLRs (W, L): decoded from the LLRs, re-encoded, the share of |LLR| on
+    the bits the code disagrees with (a right code's disagreements fall on unreliable bits, a wrong one's anywhere), and
+    the effective number of bits ((sum |L|)^2 / sum L^2) that share is over. Returns (shares (W,), n_eff (W,), bits)"""
+    llr = np.asarray(llr, dtype=np.float64)
+    dec, enc = code.decoder, code.encoder
+    u = dec.decode_batch(llr, soft=True) if hasattr(dec, "decode_batch") else np.array([dec.decode(r, True) for r in llr])
+    e = enc.encode_batch(u) if hasattr(enc, "encode_batch") else np.array([enc.encode(np.asarray(x).astype(bool)) for x in u])
+    n = min(e.shape[1], llr.shape[1])
+    w = np.abs(llr[:, :n])
+    off = e[:, :n].astype(bool) != (llr[:, :n] < 0)
+    tot = np.maximum(w.sum(axis=1), 1e-300)
+    return (w*off).sum(axis=1)/tot, tot**2/np.maximum((w*w).sum(axis=1), 1e-300), n
+
+def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 0.45, 0.8), decisive=20.0, llrs=None):
     """Try every convolutional definition in config/fec/conv on every bit mapping and puncture alignment
 
     A correct hypothesis lets the decoder reproduce the received bits (the channel error rate, well below
@@ -98,7 +112,10 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
     moves the puncture phase, so a segment across it fits two phases half well, and the others still fit one. A
     hypothesis says which segment (its offset holds there). Once one fits overwhelmingly (z > `decisive`, a tenth of a
     wrong code's mismatch), only definitions of the same rate are tried further (an equivalent code, the generators in
-    the other order, also fits and the pick needs to see it; a code of another rate cannot). Returns (hypotheses, trials).
+    the other order, also fits and the pick needs to see it; a code of another rate cannot). llrs: {tag: LLRs} of the
+    streams that have them: a hypothesis the hard re-encoding leaves short is also scored softly (soft_mismatch_batch,
+    against what random signs on the same reliabilities give), which holds a few dB further down. Returns (hypotheses,
+    trials).
     """
     from .... import code as coding
     names = names or coding.names("conv")
@@ -133,13 +150,30 @@ def scan_defined_conv(streams, names=None, steps=2500, skip=0.1, segments=(0.1, 
                 continue
             ks, n = mismatch_batch(code, np.array([np.asarray(bits[start+off:start+off+per*nb], dtype=np.uint8) for _, start, off in jobs]))
             trials += len(jobs)
-            for (si, start, off), k in zip(jobs, ks):
+            soft = None
+            L_ = (llrs or {}).get(tag)
+            if L_ is not None and len(L_) >= len(bits):
+                rows = np.array([np.asarray(L_[start+off:start+off+per*nb], dtype=np.float64) for _, start, off in jobs])
+                sh, ne, _ = soft_mismatch_batch(code, rows)
+                key = (shape, "soft", tag)
+                if key not in baselines: # Random signs on these reliabilities: what a wrong code's soft share is
+                    rr = np.random.default_rng(L*1000 + nb + 1)
+                    r = np.abs(rows[:1])*np.where(rr.random(rows[:1].shape) < 0.5, -1.0, 1.0)
+                    baselines[key] = max(float(soft_mismatch_batch(code, r)[0][0]), 1e-4)
+                soft = (sh, ne, baselines[key])
+            for j, ((si, start, off), k) in enumerate(zip(jobs, ks)):
                 k = int(k)
                 z = float(-deviance_z(k, n, base)) # Fewer mismatches than a wrong code gives
-                if z > 3.0 and k/n < 0.5*base: # And clearly fewer, not a marginal difference on a short code
-                    hyps.append(Hypothesis("conv-config", name, z, # offset: from the start of the stream, not of the segment
-                        {"offset": (start + off) % nb, "mismatch": k/n, "baseline": base, "stream": tag, "segment": si},
-                        ("conv", name)))
+                ok = z > 3.0 and k/n < 0.5*base # And clearly fewer, not a marginal difference on a short code
+                params = {"offset": (start + off) % nb, "mismatch": k/n, "baseline": base, "stream": tag, "segment": si}
+                if not ok and soft is not None: # Soft: the share of |LLR| it disagrees on, against random signs'
+                    sh, ne, bs = soft
+                    zs = float(-deviance_z(sh[j]*ne[j], ne[j], bs))
+                    if zs > 3.0 and sh[j] < 0.5*bs:
+                        ok, z = True, zs
+                        params.update({"soft_mismatch": float(sh[j]), "soft_baseline": bs})
+                if ok:
+                    hyps.append(Hypothesis("conv-config", name, z, params, ("conv", name))) # offset: from the stream's start
                     if z > decisive and k/n < 0.1*base:
                         decided = rate
     return hyps, trials
