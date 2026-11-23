@@ -32,6 +32,7 @@ CATEGORIES = {
     "header": ('Headers  (rp.symbol.load_header("<name>"), rp.link.load("header/<name>"))', lambda rp: rp._config.ls("header")),
     "table": ('Tables  (rp.profile.table("<family>/<name>"))', lambda rp: rp._config.ls("table")),
     "profile": ('Profiles  (rp.profile.load("<family>/<mode>"))', lambda rp: rp.profile.ls()),
+    "system": ('Systems  (rp.analysis.catalogue.systems(): what catalogue.match scores against)', lambda rp: rp._config.ls("system")),
     "windows": ("Built-in Windows  (rp.signal.filters.Window.get(<name>))", lambda rp: {"windows": rp.signal.filters.Window.s()}),
 }
 

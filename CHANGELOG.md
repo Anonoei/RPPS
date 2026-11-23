@@ -7,6 +7,11 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 ## Unreleased
 
 ### Breaking
+- **`rp.analysis.catalogue.SYSTEMS` is gone: the systems are `config/system` definitions**, one file each
+  (`extends`, `abstract`, tags and user config layers work as for any definition); `catalogue.systems()` loads them.
+  `match` now reports systems the features can't tell apart as `tied` (ambiguous) instead of ordering them by name,
+  and gives no positive score on weak evidence (a frequency alone, a modulation alone): two agreeing features, or one
+  strong one (baud, chip_rate, scs, code_length, profile, subcarrier, or an unmodulated carrier).
 - **`{"signal": "stage"}` is `{"signal": "class"}`**, and every category takes a `class` step: your own operator by
   module path (`"class"`, `"args"`), a Stage for signal, sync and wave (`"tx_class"` for the transmit side), a Pipe for
   symbol, code and link (decoding on receive, encoding on transmit). A class whose CATEGORY is another category's is
@@ -24,6 +29,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   and `tpc_ber` take `--save`, `--update-baseline`, `--check` (exit 1 on a regression) and `--compare FILE`
   (`tools/_bench.py`), writing to the git-ignored `.benchmarks/<bench>/`. `parallel_bench.py` and `resample_bench.py`
   take their positional arguments through argparse now.
+- **Catalogue systems and features**: SCPC (IESS-308/309), DVB-RCS/RCS2 return bursts, DVB-S2X (small roll-offs),
+  an unmodulated carrier / beacon (`modulation="cw"`), PM TT&C in the C and Ku bands; features `burst` (bursty or
+  continuous), `profile` (the profile that decoded it), `sync` (LTE PSS/SSS, NR SSB), `ssb_period`, `subcarrier` and
+  `subcarrier_baud`. `python -m rpps ls system` lists them.
 - **Definition params take `"choices"`**: the values a param takes, each optionally a bundle of fields one choice sets
   together (`{"param": "modulation.shape"}`, `modulation.bits` in an expression). A value that is not a choice is an error.
   `rp.profile.info` lists them and evaluates `requires` with the chosen bundle.

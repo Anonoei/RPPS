@@ -1,6 +1,6 @@
 # Definitions
 
-Codes, scramblers, constellations, pulses, filters, sequences, headers, tables and profiles are JSON, not code: a new
+Codes, scramblers, constellations, pulses, filters, sequences, headers, tables, profiles and systems are JSON, not code: a new
 instance is a new file, a new kind is a new loader. Definitions are organized by **resource** (what they define, not
 which package loads them), one folder each: `config/<resource>/[<group>/]<name>.json`. A file's `base` picks the loader
 within the resource and its `type` the implementation; the keys each accepts are in the docstring of the module linked.
@@ -39,6 +39,7 @@ python -m rpps ls sequence scramble   # some resources
 | `header` | `physical` (known symbols, a short code carrying fields) and `link` (fields, CRC, payload length) | `physical/dvbs2_pl` | `rp.symbol.load_header("dvbs2_pl")`, `rp.link.load("header/ieee80211b_plcp")` | [symbol/frame.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/symbol/frame.py), [link/header.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/link/header.py) |
 | `table` | rows of parameters looked up by header fields | `dvbs2/modcod` | `rp.profile.table("dvbs2/modcod")` | [profile/control.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/profile/control.py) |
 | `profile` | whole signals | `dvbs2/normal` | `rp.profile.load("dvbs2/normal")` | [profile/steps.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/profile/steps.py), `controls`: [profile/control.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/profile/control.py) |
+| `system` | named radio systems by what blind tools measure (`"features"`: modulation, baud, roll-off, frame, bands...; the `"profile"` that decodes one), what `rp.analysis.catalogue.match` scores against | `satellite/dvbs2` | `rp.analysis.catalogue.systems()` | [analysis/catalogue.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/analysis/catalogue.py) |
 
 `python -m rpps ls` lists what is available (`python -m rpps ls sequence scramble` for some).
 

@@ -1,0 +1,12 @@
+{
+  "base": "system",
+  "extends": "dvbs2",
+  "comment": "DVB-S2's extensions: smaller roll-offs and higher APSK orders",
+  "ref": "ETSI EN 302 307-2",
+  "title": "DVB-S2X",
+  "profile": null,
+  "features": {
+    "modulation": ["qpsk", "8psk", "16apsk", "32apsk", "64apsk", "128apsk", "256apsk"],
+    "beta": [0.35, 0.25, 0.2, 0.15, 0.1, 0.05]
+  }
+}

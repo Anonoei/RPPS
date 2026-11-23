@@ -1,0 +1,17 @@
+{
+  "base": "system",
+  "ref": "ITU-R M.1371",
+  "title": "AIS",
+  "features": {
+    "modulation": ["2fsk", "gmsk", "msk"],
+    "baud": 9600,
+    "bt": 0.4,
+    "h": 0.5,
+    "frame": 60.0,
+    "slots": 2250,
+    "bandwidth": 25000.0,
+    "frequency": [
+      [161900000.0, 162100000.0]
+    ]
+  }
+}

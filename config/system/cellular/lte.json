@@ -1,0 +1,16 @@
+{
+  "base": "system",
+  "ref": "3GPP TS 36.211",
+  "tags": ["lte"],
+  "title": "LTE",
+  "profile": "lte/downlink",
+  "features": {
+    "modulation": ["ofdm"],
+    "scs": 15000.0,
+    "cp": [4.6875e-06, 5.208333333333333e-06, 1.6666666666666667e-05],
+    "pilot_spacing": [6, 3],
+    "pilot_period": [140, 7],
+    "frame": [0.01, 0.005],
+    "sync": ["pss_sss"]
+  }
+}

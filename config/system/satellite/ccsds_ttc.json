@@ -1,0 +1,20 @@
+{
+  "base": "system",
+  "comment": "subcarrier ranges are wide on purpose: a PM subcarrier at all is the evidence (rp.analysis.framing.telemetry measures it)",
+  "ref": "CCSDS 401.0-B",
+  "tags": ["ccsds"],
+  "title": "CCSDS TT&C (PM, subcarrier)",
+  "features": {
+    "modulation": ["pm"],
+    "frequency": [
+      [2025000000.0, 2300000000.0],
+      [7145000000.0, 8500000000.0]
+    ],
+    "subcarrier": {
+      "range": [1000.0, 1000000.0]
+    },
+    "subcarrier_baud": {
+      "range": [8.0, 250000.0]
+    }
+  }
+}

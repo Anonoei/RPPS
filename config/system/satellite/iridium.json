@@ -1,0 +1,15 @@
+{
+  "base": "system",
+  "ref": "Iridium (ITU filings)",
+  "title": "Iridium",
+  "features": {
+    "modulation": ["bpsk", "dqpsk", "qpsk"],
+    "baud": 25000.0,
+    "beta": 0.4,
+    "frame": 0.09,
+    "bandwidth": 41667.0,
+    "frequency": [
+      [1616000000.0, 1626500000.0]
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "base": "system",
+  "ref": "Galileo OS SIS ICD",
+  "title": "Galileo E1 OS",
+  "features": {
+    "modulation": ["boc", "bpsk"],
+    "chip_rate": 1022999.9999999999,
+    "code_length": 4092,
+    "frequency": [
+      [1575000000.0, 1576000000.0]
+    ]
+  }
+}

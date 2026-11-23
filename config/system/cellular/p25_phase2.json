@@ -1,0 +1,12 @@
+{
+  "base": "system",
+  "ref": "TIA-102.BBAB",
+  "tags": ["p25-phase2"],
+  "title": "APCO P25 phase 2",
+  "features": {
+    "modulation": ["4fsk", "8psk", "hcpm", "hdqpsk", "pi4dqpsk"],
+    "baud": 6000,
+    "slots": 2,
+    "bandwidth": 12500.0
+  }
+}

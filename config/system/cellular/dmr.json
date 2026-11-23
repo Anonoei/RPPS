@@ -1,0 +1,13 @@
+{
+  "base": "system",
+  "ref": "ETSI TS 102 361-1",
+  "tags": ["dmr"],
+  "title": "DMR",
+  "features": {
+    "modulation": ["4fsk", "c4fm"],
+    "baud": 4800,
+    "frame": 0.06,
+    "slots": 2,
+    "bandwidth": 12500.0
+  }
+}

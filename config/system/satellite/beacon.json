@@ -1,0 +1,14 @@
+{
+  "base": "system",
+  "comment": "a carrier alone: a satellite beacon, a test carrier, a CW signal (rp.analysis.spectrum.waveform names its tones)",
+  "title": "Unmodulated carrier / beacon",
+  "features": {
+    "modulation": ["cw"],
+    "burst": false,
+    "frequency": [
+      [3400000000.0, 4200000000.0],
+      [10700000000.0, 12750000000.0],
+      [17700000000.0, 21200000000.0]
+    ]
+  }
+}

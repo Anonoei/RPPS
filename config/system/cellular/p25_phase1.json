@@ -1,0 +1,11 @@
+{
+  "base": "system",
+  "ref": "TIA-102.BAAA",
+  "tags": ["p25"],
+  "title": "APCO P25 phase 1",
+  "features": {
+    "modulation": ["4fsk", "c4fm"],
+    "baud": 4800,
+    "bandwidth": 12500.0
+  }
+}

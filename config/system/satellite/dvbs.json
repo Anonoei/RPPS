@@ -1,0 +1,16 @@
+{
+  "base": "system",
+  "ref": "ETSI EN 300 421",
+  "tags": ["dvb-s"],
+  "title": "DVB-S",
+  "profile": "dvbs/qpsk",
+  "features": {
+    "modulation": ["qpsk"],
+    "beta": 0.35,
+    "frequency": [
+      [10700000000.0, 12750000000.0],
+      [3400000000.0, 4200000000.0]
+    ],
+    "burst": false
+  }
+}

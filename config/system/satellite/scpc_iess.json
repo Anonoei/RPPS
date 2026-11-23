@@ -1,0 +1,18 @@
+{
+  "base": "system",
+  "comment": "single channel per carrier: QPSK, K=7 convolutional code 1/2 or 3/4; rates for 64 kbit/s .. 2.048 Mbit/s (the range spans both code rates)",
+  "ref": "INTELSAT IESS-308, IESS-309",
+  "tags": ["iess-308"],
+  "title": "SCPC (IESS-308/309 IDR/IBS)",
+  "features": {
+    "modulation": ["qpsk", "bpsk"],
+    "baud": {
+      "range": [42000.0, 2100000.0]
+    },
+    "burst": false,
+    "frequency": [
+      [3400000000.0, 4200000000.0],
+      [10700000000.0, 12750000000.0]
+    ]
+  }
+}

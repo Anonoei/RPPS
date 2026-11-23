@@ -1,0 +1,13 @@
+{
+  "base": "system",
+  "ref": "ICAO Annex 10 vol III",
+  "title": "VDL mode 2",
+  "features": {
+    "modulation": ["8psk", "d8psk"],
+    "baud": 10500.0,
+    "bandwidth": 25000.0,
+    "frequency": [
+      [118000000.0, 137000000.0]
+    ]
+  }
+}

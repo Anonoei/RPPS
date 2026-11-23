@@ -1,0 +1,19 @@
+{
+  "base": "system",
+  "ref": "Bluetooth Core 5.4 vol 6 A",
+  "tags": ["ble"],
+  "title": "Bluetooth LE 1M",
+  "profile": "ble/adv",
+  "features": {
+    "modulation": ["2fsk", "gfsk", "gmsk"],
+    "baud": 1000000.0,
+    "bt": 0.5,
+    "h": {
+      "range": [0.45, 0.55]
+    },
+    "bandwidth": 2000000.0,
+    "frequency": [
+      [2400000000.0, 2483500000.0]
+    ]
+  }
+}

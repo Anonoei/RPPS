@@ -1,0 +1,21 @@
+{
+  "base": "system",
+  "comment": "subcarrier ranges are wide on purpose: a PM subcarrier at all is the evidence",
+  "ref": "CCSDS 401.0-B 2.2 (residual-carrier PM with subcarriers), as commercial TT&C uses it",
+  "title": "PM TT&C (commercial satellites, C and Ku)",
+  "features": {
+    "modulation": ["pm"],
+    "subcarrier": {
+      "range": [1000.0, 1000000.0]
+    },
+    "subcarrier_baud": {
+      "range": [8.0, 250000.0]
+    },
+    "frequency": [
+      [3400000000.0, 4200000000.0],
+      [10700000000.0, 12750000000.0],
+      [5850000000.0, 6725000000.0],
+      [13750000000.0, 14500000000.0]
+    ]
+  }
+}

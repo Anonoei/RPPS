@@ -1,0 +1,9 @@
+{
+  "base": "system",
+  "ref": "Motorola FLEX",
+  "title": "FLEX",
+  "features": {
+    "modulation": ["2fsk", "4fsk"],
+    "baud": [1600, 3200]
+  }
+}
