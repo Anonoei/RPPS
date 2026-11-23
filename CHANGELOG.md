@@ -209,7 +209,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **A block code laid out in each frame is found from few frames**: where the profile finds frames (a unique word) and no
   code fits, the payloads were tried only as one codeword a frame, which needs more frames than the payload has bits.
   Now words laid end to end from each payload's start are looked for too (`linear.frame_units`), and the code is then
-  solved on them, a product code's columns included: the fec step is that guess. `linear.product` takes several
+  solved on them, a product code's columns included: the fec step is that guess. The payload's start (up to 3 symbols
+  back into the unique word, where a payload's first symbols are the same in every frame) and the bit map (the frames'
+  common rotation is unknown, and a wrong one makes the code affine, a check short) are the ones where the words are
+  shortest of rank. `linear.product` takes several
   columns from each block when there are fewer blocks than the rank needs (`per_block`), and `solve_block` looks for
   columns as long as the bits allow instead of skipping the product test below 128.
 - **A survey box that holds carriers side by side is split**: when the cyclic spectrum's rate needs well under the box

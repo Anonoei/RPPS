@@ -244,10 +244,12 @@ def test_a_box_wider_than_its_one_carrier_is_narrowed_to_it():
     assert round(ps[0].signal.mid/1e5) == 6
 
 @pytest.mark.kernels
-def test_a_product_code_laid_out_in_each_frame_is_found_from_few_frames():
+@pytest.mark.parametrize("fixed_start", [False, True])
+def test_a_product_code_laid_out_in_each_frame_is_found_from_few_frames(fixed_start):
     """Continuous QPSK frames (a 16-symbol unique word, then a (64,57) x (16,11) product codeword no definition names):
     far fewer frames than a frame-long codeword's rank test needs, but the rows laid end to end from each payload start
-    show the row code, and their columns (a few a frame) the column code"""
+    show the row code, and their columns (a few a frame) the column code. fixed_start: every codeword's first symbol the
+    same, which the frame finder takes for part of the unique word: the payload's start is looked for back into it"""
     rng = np.random.default_rng(3)
     q = rp.symbol.load("qpsk")
     rows, cols = rp.code.load("block/hamming/ext_64_57"), rp.code.load("block/hamming/dmr_16_11")
@@ -255,7 +257,12 @@ def test_a_product_code_laid_out_in_each_frame_is_found_from_few_frames():
         r = np.array([np.asarray(rows.encoder.encode(m), np.uint8) for m in rng.integers(0, 2, (11, 57)).astype(bool)])
         return np.array([np.asarray(cols.encoder.encode(c.astype(bool)), np.uint8) for c in r.T]).T.ravel()
     uw = np.asarray(q.points)[rng.integers(0, 4, 16)]
-    frames = [np.concatenate([uw, q.modulate(word())]) for _ in range(150)]
+    def framed():
+        w = word()
+        while fixed_start and w[:2].any(): # (a quarter of the words start 00)
+            w = word()
+        return np.concatenate([uw, q.modulate(w)])
+    frames = [framed() for _ in range(150)]
     sps, Fs = 8, 8e5
     x = np.asarray((rp.Data(np.concatenate(frames).astype(np.complex64), Fs=Fs/sps, sps=1)
                     + rp.wave.Shape(sps, rp.signal.filters.load("pulse/rrc/0p35"))).data)
@@ -264,3 +271,4 @@ def test_a_product_code_laid_out_in_each_frame_is_found_from_few_frames():
     p = min(rp.analysis.profile(rp.source.Memory(y, Fs=Fs), blind=False), key=lambda p: abs(p.signal.mid - 100e3))
     fec = next(s for s in p.steps if s.kind == "fec")
     assert p.solved and "product (64,57) x (16,11)" in fec.what, p
+    assert ("into the unique word" in fec.note) == fixed_start and (f"{16 + fixed_start}-symbol unique word" in str(p))

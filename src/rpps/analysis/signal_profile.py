@@ -631,11 +631,30 @@ class _Chain:
         if whole:
             found, where = solve_block(bits.ravel(), n=n, offset=0), "the frame-aligned payload"
         else:
-            u, _ = frame_units(list(bits), max_len=min(n, 1024))
+            # The length from the payload after the unique word, on the map payload_bits uses. Then the start and the map
+            # (one rotation and IQ sense is common to all frames and unknown: the wrong one makes the code affine, a check
+            # short) where words of that length are shortest of rank: the payload's start can be up to 3 symbols into
+            # the word (a payload's first symbols the same in every frame, fixed bits or a code's offset, read as part
+            # of it), and words off their start by a few bits are still short of rank, by less
+            from .identify import bit_streams, _distinct
+            u, d = frame_units(list(bits), max_len=min(n, 1024))
             if u is None:
                 return
-            units = np.concatenate([r[o:o + u] for r in bits for o in range(0, n - u + 1, u)])
-            found, where = solve_block(units, n=u, offset=0), f"words of {u} bits laid end to end from each frame's payload start"
+            c = symbol.load_or_generate(det.mod)
+            best = (d, 0, None, bits)
+            for back in range(min(4, fr.uw_length)):
+                pay = cut[:, fr.uw_length - back:]
+                maps = _distinct(bit_streams(pay.ravel(), c, differential=False), c)
+                for key, b in maps.items():
+                    r_ = np.asarray(b, np.uint8).reshape(len(pay), -1)
+                    _, d_ = frame_units(list(r_), min_len=u, max_len=u)
+                    if d_ > best[0]:
+                        best = (d_, back, key, r_)
+            _, back, key, rows = best
+            m = rows.shape[1]
+            units = np.concatenate([r[o:o + u] for r in rows for o in range(0, m - u + 1, u)])
+            into = (f", {back} symbol{'s'*(back > 1)} into the unique word" if back else "") + (f", bit map {key}" if key else "")
+            found, where = solve_block(units, n=u, offset=0), f"words of {u} bits laid end to end from each frame's payload start{into}"
         for h, g in found:
             p.add("fec", h.name, GUESS, detail={"z": h.z, **{k: str(v) for k, v in h.params.items()}},
                   note=f"blind, on {where}: {g!r}" if g is not None else f"blind, on {where}")
