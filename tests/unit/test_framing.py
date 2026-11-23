@@ -48,6 +48,24 @@ def test_random_symbols_have_no_frame():
     q = rp.symbol.load("qpsk").points
     assert FR.find(q[rng.integers(0, 4, 60000)], "qpsk") is None
 
+def test_noisy_random_symbols_have_no_frame():
+    """A coherent position or a few by chance (or one loud sample) is not a unique word: 65536 noisy QPSK symbols with no
+    framing gave a different "period" in two searches of three (a pyspecan report)"""
+    q = rp.symbol.load("qpsk").points
+    for seed in range(8):
+        rng = np.random.default_rng(seed)
+        y = q[rng.integers(0, 4, 65536)] + np.sqrt(0.05)*(rng.standard_normal(65536) + 1j*rng.standard_normal(65536))
+        assert FR.find(y, "qpsk") is None, seed
+
+def test_few_frames_or_a_weak_signal_still_found():
+    """A long word in only 13 frames (10 dB), and a 0 dB signal over many frames, stand out against chance"""
+    y, uw, at = framed(period=1000, uw_len=26, frames=13, snr_db=10, slips=False, seed=3)
+    fr = FR.find(y, "qpsk")
+    assert fr is not None and fr.period == 1000 and fr.uw_start == at
+    y, uw, at = framed(period=1000, uw_len=26, frames=65, snr_db=0, slips=False, seed=4)
+    fr = FR.find(y, "qpsk")
+    assert fr is not None and fr.period == 1000 and abs(fr.uw_start - at) <= 2
+
 def test_bursts_are_acquired_one_by_one_and_their_preamble_found():
     # Six QPSK bursts from different transmitters (each its own phase and carrier offset), a 48-symbol preamble then data
     rng = np.random.default_rng(3)

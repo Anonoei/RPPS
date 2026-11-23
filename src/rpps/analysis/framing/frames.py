@@ -53,30 +53,53 @@ def periods(y, max_lag=20000, min_lag=16, top=8):
     return out
 
 def coherence(y, period):
-    """Per position in the period: |mean over frames of y[n] conj(y[n+period])|, 1 where every frame has the same symbol"""
+    """Per position in the period: |mean over frames of y[n] conj(y[n+period])| over their rms, 1 where every frame has the
+    same symbol. A product over 3 times the rms is clipped there, so one loud sample can't stand for a word; by chance (m
+    frames) a position reaches c with probability about exp(-m c^2)"""
     y = _normalized(y)
     c = y[:-period]*np.conj(y[period:])
     m = len(c)//period
-    return np.abs(c[:m*period].reshape(m, period).mean(axis=0))
+    c = c[:m*period]
+    mag = np.abs(c)
+    lim = 3*np.sqrt(np.mean(mag**2))
+    c = c*np.minimum(1.0, lim/np.maximum(mag, 1e-30))
+    return np.abs(c.reshape(m, period).mean(axis=0))/np.sqrt(np.mean(np.abs(c)**2))
 
-def find(y, mod=None, max_lag=20000, min_frames=8, threshold=0.5):
+def _chance(m, word):
+    """How likely chance makes `word`'s coherences over m frames: each position reaches c with p about exp(-m c^2), and the
+    product x of k such p is itself under x sum_{j<k} ln(1/x)^j / j! (Fisher), so a long run of middling values counts
+    as what it is"""
+    t = m*float(np.sum(np.asarray(word, float)**2)) # ln(1/x)
+    term, total = 1.0, 1.0
+    for j in range(1, len(word)):
+        term *= t/j
+        total += term
+    return float(np.exp(-t)*total)
+
+def find(y, mod=None, max_lag=20000, min_frames=8, threshold=0.5, false_alarm=1e-3):
     """The frame structure of locked symbols y: a Frame, or None (no lag with a unique word standing out)
 
     The candidate periods are the lags the symbols correlate at (`periods`), shortest first among those near the
     strongest (a multiple of the frame is a superframe, kept for `repeats`); at a period, the unique word is the longest
-    run of positions whose coherence passes `threshold` while the median position stays near chance. Data that itself
-    repeats every few frames doesn't average out, which hides the unique word: then frame by hand and use `repeats`."""
+    run of positions whose coherence passes `threshold` (with many frames less: sqrt(4/m)), taken only when chance could
+    not have made it (`_chance`, times every position and candidate period looked at, under `false_alarm`): one
+    coherent symbol is not a word. Data that itself repeats every few frames doesn't average
+    out, which hides the unique word (most positions coherent): then frame by hand and use `repeats`."""
     y = _normalized(y)
     cands = {L for L, _ in periods(y, max_lag)}
     # Frames that repeat (fill, a superframe) correlate most at the repeat: the frame is a divisor of it
     cands |= {L//k for L in list(cands) for k in range(2, 17) if L % k == 0 and L//k >= 16}
     best = None
     for L in sorted(cands):
-        if len(y)//L < min_frames:
+        m = len(y)//L - 1 # (frame pairs the coherence averages)
+        if m + 1 < min_frames:
             continue
         prof = coherence(y, L)
         floor = float(np.median(prof))
-        hot = prof > max(threshold, 4*floor)
+        if floor > threshold: # Most positions coherent: data repeating, no word to single out
+            continue
+        hot = prof > min(threshold, np.sqrt(4/m)) # (with many frames, lower: a weak signal's word is lower too, and the
+        # run's own test below keeps chance out)
         if not hot.any():
             continue
         # The longest run of coherent positions (circular: the word may straddle the fold)
@@ -93,7 +116,10 @@ def find(y, mod=None, max_lag=20000, min_frames=8, threshold=0.5):
         s0, ln = max(runs, key=lambda t: t[1])
         ln = min(ln, L)
         s0 %= L
-        coh = float(np.mean(prof[(s0 + np.arange(ln)) % L]))
+        word = prof[(s0 + np.arange(ln)) % L]
+        if L*len(cands)*_chance(m, word) > false_alarm: # Chance could have made it
+            continue
+        coh = float(np.mean(word))
         f = Frame(period=L, uw_start=int(s0), uw_length=int(ln), coherence=coh, floor=floor,
                   uw=y[s0:s0 + ln].copy(), frames=len(y)//L)
         if best is None or ln*coh > best.uw_length*best.coherence*1.5: # A shorter period wins unless much weaker
