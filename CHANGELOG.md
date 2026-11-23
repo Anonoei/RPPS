@@ -209,7 +209,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **A survey box that holds carriers side by side is split**: when the cyclic spectrum's rate needs well under the box
   (the chain could not lock to it), the box's own channel samples are surveyed again and each carrier in it profiled on
   its own ("signal 16.1", "signal 16.2"...), its rate acquired alone in its channel; the one that gets furthest stands
-  for the box.
+  for the box, and the others are listed when they solved or got further than the box did. A piece of the finer survey
+  is a carrier only if it is wide enough for the rate and not a lump inside a wider one (or the box itself, found
+  again), and a box with more pieces than carriers at the rate could fit is left whole. A box well wider than the rate
+  its chain locked to is narrowed to the one carrier in it the same way.
 - **Soft decisions in the configured convolutional scan**: `identify` passes the LLRs of each bit map, and a code the
   hard re-encoding test leaves short is scored by the share of |LLR| it disagrees on (`mother.soft_mismatch_batch`,
   decoded from the LLRs), against what random signs on the same reliabilities give. K=7 rate 1/2 on QPSK is identified

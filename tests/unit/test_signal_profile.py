@@ -222,3 +222,23 @@ def test_a_box_holding_two_carriers_is_split_at_the_cyclic_rate():
     solved = [p for p in ps if p.solved and p.profile_name == "dvbs/qpsk_3_4"]
     assert len(solved) == 2 and all("." in p.name.split(":")[0] for p in solved)
     assert sorted(round(p.signal.mid/1e5) for p in solved) == [-8, 8] or sorted(round(p.signal.mid/1e5) for p in solved) == [-7, 7]
+
+@pytest.mark.kernels
+def test_a_box_wider_than_its_one_carrier_is_narrowed_to_it():
+    """One DVB-S carrier off centre in a survey box twice its width: profiled on the carrier, not the box"""
+    import copy
+    rng = np.random.default_rng(5)
+    ts = rng.integers(0, 256, (400, 188)).astype(np.uint8)
+    ts[:, 0] = 0x47
+    w = rp.profile.load("dvbs/qpsk_3_4", sps=8).tx()(rp.Data(np.unpackbits(ts.reshape(-1)).astype(bool), Fs=1e6, sps=1, flush=True))
+    x = np.asarray(w.data)
+    x = x*np.exp(2j*np.pi*0.6e6/8e6*np.arange(len(x)))
+    y = (x + 0.03*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))).astype(np.complex64)
+    src = rp.source.Memory(y, Fs=8e6)
+    sv = list(rp.analysis.survey(src))
+    box = copy.copy(sv[0])
+    box.mid, box.width = 0.0, 2.9e6
+    box.lo, box.hi = -1.45e6, 1.45e6
+    ps = rp.analysis.profile(src, signals=[box], survey=sv + [box], blind=False)
+    assert len(ps) == 1 and ps[0].solved and ps[0].profile_name == "dvbs/qpsk_3_4", ps
+    assert round(ps[0].signal.mid/1e5) == 6

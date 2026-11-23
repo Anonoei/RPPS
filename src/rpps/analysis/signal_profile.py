@@ -319,8 +319,9 @@ class _Chain:
 
     def split(self, baud, beta=0.35, fill=0.6):
         """When the cyclic spectrum's rate needs well under the box (its (1 + beta) x baud under `fill` of the width: carriers
-        side by side the survey took for one): the carriers in it, from a survey of this chain's own channel samples, as
-        Signals of the capture (each at most (1 + beta) x baud wide); [] otherwise"""
+        side by side the survey took for one, or one carrier in a box wider than it): the carriers in it, from a survey of
+        this chain's own channel samples, as Signals of the capture (each at most (1 + beta) x baud wide); [] otherwise,
+        and when more pieces than carriers at this rate fit in the box are found"""
         import copy
         if not self.near or (1 + beta)*baud >= fill*self.sig.width:
             return []
@@ -330,12 +331,23 @@ class _Chain:
             subs = survey(Memory(np.concatenate(self.near), Fs=self.ch.Fs), baud=False)
         except Exception:
             return []
-        out = []
-        for g in subs:
-            if g.width < 0.4*baud or abs(g.mid) > self.sig.width: # Too narrow to carry this rate, or outside the box
+        # Each piece of the finer survey wide enough to carry this rate is a carrier candidate, but one wider than the box
+        # (the box itself, found again), and one centred inside a wider piece kept already (a lump of that carrier's
+        # spectrum; a piece spanning most of the box hides nothing, it can be the box around carriers side by side)
+        keep = []
+        for g in sorted(subs, key=lambda g: -g.width):
+            lo, hi = g.mid - g.width/2, g.mid + g.width/2
+            if abs(g.mid) > self.sig.width/2 or g.width < 0.6*baud or g.width > self.sig.width:
                 continue
+            if any(abs(g.mid - 0.5*(a + b)) < (b - a)/4 for a, b in keep if b - a < 0.8*self.sig.width):
+                continue
+            keep.append((lo, hi))
+        if len(keep) > max(1, int(self.sig.width/((1 + beta)*baud*0.8))):
+            return [] # More pieces than carriers at this rate fit in the box: not carriers side by side
+        out = []
+        for lo, hi in keep:
             s = copy.copy(self.sig)
-            s.mid, s.width = self.sig.mid + g.mid, min(g.width, (1 + beta)*baud)
+            s.mid, s.width = self.sig.mid + 0.5*(lo + hi), min(hi - lo, (1 + beta)*baud)
             s.lo, s.hi = s.mid - s.width/2, s.mid + s.width/2
             out.append(s)
         return out
@@ -384,8 +396,10 @@ class _Chain:
         if self.baud or not self.near or p.solved or p.profile_name:
             return None
         acq = next((st for st in p.steps if st.kind == "acquire"), None)
+        det = self.stream.det
+        wide = det is not None and 1.35*det.baud < 0.6*self.sig.width # (a rate in a box well wider than it needs)
         if acq is None or not (acq.status == UNSOLVED or "rate doubtful" in (acq.note or "") or
-                               "fit doubtful" in (acq.note or "")):
+                               "fit doubtful" in (acq.note or "") or wide):
             return None
         from .spectrum import cyclic
         try:
@@ -394,8 +408,9 @@ class _Chain:
             return None
         if not f.linear:
             return None
-        det = self.stream.det
-        if det is not None and abs(f.baud - det.baud) < 0.01*det.baud:
+        if det is not None and abs(f.baud - det.baud) < 0.01*det.baud and 1.35*f.baud >= 0.6*self.sig.width:
+            return None # (the rate the chain had, in a box it fills: nothing new; in a wider box, the carrier is narrower)
+        if f.baud > 1.2*self.sig.width: # (not a symbol rate: wider than the band the signal takes up)
             return None
         return f.baud
 
@@ -896,9 +911,9 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
         baud = ch.cyclic_rate(p) if not p.solved else None
         if baud:
             subs = ch.split(baud) # A box holding carriers side by side: each of them on its own (its rate acquired
-            if len(subs) > 1:     # alone in its channel: the box's line can be a beat between them)
-                parts[k] = [(s, None) for s in subs]
-            else:
+            if len(subs) > 1 or (subs and subs[0].width < 0.7*ch.sig.width): # alone in its channel: the box's line
+                parts[k] = [(s, None) for s in subs] # can be a beat between them), or the one carrier a too-wide box holds
+            elif not (ch.stream.det is not None and abs(baud - ch.stream.det.baud) < 0.01*baud): # (not the same again)
                 again[k] = (ch.sig, baud)
     todo = list(again.values()) + [sb for v in parts.values() for sb in v]
     if todo:
@@ -911,16 +926,20 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
             mine = split_chains[i:i + len(subs)]
             i += len(subs)
             built = [build(c) for c in mine]
+            what = (f"one of {len(subs)} carriers the survey's box held side by side" if len(subs) > 1 else
+                    "the one carrier in a survey box wider than it")
             for q, c in zip(built, mine):
-                q.steps.insert(1, Step("split", f"one of {len(subs)} carriers the survey's box held side by side (its cyclic "
-                                                "spectrum's rate needs well under the box)", GUESS))
+                q.steps.insert(1, Step("split", f"{what} (its cyclic spectrum's rate needs well under the box)", GUESS))
             box = out[k].name.split(":")[0] # "signal 16": each carrier in it is "signal 16.1", "signal 16.2"...
             for j, q in enumerate(built):
                 q.name = f"{box}.{j + 1}: {q.signal.mid/1e6:+.3f} MHz, {q.signal.width/1e3:.0f} kHz wide"
             best = max(range(len(built)), key=lambda j: _reach(built[j]))
-            if _further(built[best], out[k]):
+            first = out[k]
+            if _further(built[best], first):
                 out[k] = built[best]
-            extra += [q for j, q in enumerate(built) if j != best or out[k] is not q]
+            # The rest, where they solved or went further than the box did (a piece that got nowhere is a lump of a
+            # carrier's spectrum, or one the box's own profile already said as much of)
+            extra += [q for j, q in enumerate(built) if out[k] is not q and (q.solved or _further(q, first))]
         for j, (k, ch) in enumerate(again.items()):
             q = build(ch)
             tell("build again", j + 1, len(again), len(again) - j - 1)
