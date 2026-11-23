@@ -212,3 +212,10 @@ def test_domain_loader_keeps_the_given_parameters():
     assert _config.load("profile", "ieee802154/2450", params={"sps": 8}).params == {"sps": 8}
     assert rp.profile.load("ieee802154/2450", sps=8).params == {"sps": 8}
     assert rp.profile.load("ieee802154/2450").params == {"sps": 4}
+
+def test_mm_timing_step_takes_biphase():
+    """{"sync": "timing", "method": "mm", "biphase": true}: M&M on Manchester symbols (RDS: examples/e2e_profile.py)"""
+    p = rp.profile.Profile("x", {"steps": [{"sync": "timing", "method": "mm", "alpha": 0.05, "biphase": True},
+                                           {"symbol": "constellation", "name": "psk/bpsk"}]})
+    mm = p.rx().ops[0][1]
+    assert isinstance(mm, rp.sync.time.MM) and mm.biphase and mm.ted == "mm"

@@ -25,6 +25,7 @@ These need more than the package:
 | --- | --- | --- |
 | [e2e.py](https://github.com/Anonoei/RPPS/blob/main/examples/e2e.py) | FM RDS with per-sample loops (M&M, Costas), live plots | the [PySDR RDS recording](https://pysdr.org/content/rds.html) at `data/fm_rds_250k_1Msamples.iq`, matplotlib |
 | [e2e_mat.py](https://github.com/Anonoei/RPPS/blob/main/examples/e2e_mat.py) | The same RDS receiver with block estimators and no loops | the same recording, matplotlib |
+| [e2e_profile.py](https://github.com/Anonoei/RPPS/blob/main/examples/e2e_profile.py) | The same RDS receiver as a profile built in code and run; RDS blocks found by their checkwords, the station's name read | the same recording |
 | [live_profile.py](https://github.com/Anonoei/RPPS/blob/main/examples/live_profile.py) | Survey and profile the signals of a live radio | a radio or I/Q server (pysdrlib) |
 | [window.py](https://github.com/Anonoei/RPPS/blob/main/examples/window.py) | The window functions and their spectra | matplotlib |
 

@@ -23,7 +23,7 @@ def main():
 
 def all(f, s):
     N = len(s)
-    fig, ax = plt.subplots(1,2)
+    fig, ax = rp.viz.subplots(1, 2)
     fig.tight_layout()
     ax[0].grid(True)
     ax[1].grid(True)
@@ -73,7 +73,7 @@ def ind(f, s):
     psd = np.fft.fftshift(np.fft.fft(s))
     psd = 10*np.log10(np.abs(psd)**2)
 
-    fig, ax = plt.subplots(1,2)
+    fig, ax = rp.viz.subplots(1, 2)
     fig.tight_layout()
     ax[0].grid(True)
     ax[1].grid(True)
@@ -89,4 +89,5 @@ def ind(f, s):
     plt.show()
 
 if __name__ == "__main__":
-    main()
+    with rp.viz.styled(): # rpps' dark style for all the program draws, cleared axes and titles too
+        main()

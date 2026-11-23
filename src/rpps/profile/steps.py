@@ -252,8 +252,10 @@ def _om(m, rep, ctx):
 
 @register_sync_method("timing", "mm")
 def _mm(m, rep, ctx):
+    """Mueller & Muller: "alpha" (loop gain), "interp" (interpolation factor), "biphase" (Manchester symbols, timed on
+    their mid-symbol transition: RDS)"""
     from .. import sync
-    return sync.time.MM(m.get("alpha", 0.3), ted="mm")
+    return sync.time.MM(m.get("alpha", 0.3), interp=m.get("interp", 32), biphase=m.get("biphase", False), ted="mm")
 
 @register_sync_method("timing", "gardner")
 def _gardner(m, rep, ctx):
