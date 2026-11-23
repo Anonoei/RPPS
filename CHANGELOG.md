@@ -111,6 +111,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   continuous across hops), zero phase, the same output however the input is cut. `rp.analysis.profile` brings every
   signal to baseband with one bank where each signal's chain shifted and decimated the whole capture itself, and hands
   each chain its samples 2^16 at a time.
+- **`tools/blind_bench.py`: what the blind coding tools break, from how many symbols**: synthetic QPSK streams
+  (configured and unconfigured convolutional codes, puncturing, RS behind a Viterbi, scramblers in cascade and with
+  three taps, BCH) at several Es/N0, the fewest symbols `identify(blind=True)` names each at, and the seconds it
+  takes; `--save`/`--check` like the other benchmarks.
 
 ## 0.6.0 (2026-11-22)
 
