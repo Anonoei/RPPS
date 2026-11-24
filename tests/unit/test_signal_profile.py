@@ -120,6 +120,19 @@ def test_the_carrier_offset_left_comes_from_the_preamble_steps():
         y = z*np.exp(1j*w*np.arange(len(z)) + 0.7j) + 0.2*(rng.standard_normal(len(z)) + 1j*rng.standard_normal(len(z)))
         assert abs(SP.preamble_offset(y, pre) - w) < 0.02
 
+def test_no_carrier_offset_is_given_under_the_preambles_own_noise():
+    """Seven preambles at about 7 dB Es/N0 and no offset left: what they measure is noise (a few thousandths of a
+    radian a symbol, over a 32k-symbol frame radians of drift), so none is given; a real one still is"""
+    rng = np.random.default_rng(5)
+    pre = rp.symbol.load_header("dvbs2_pl").preamble
+    parts = []
+    for _ in range(7):
+        parts += [np.exp(1j*np.pi/4*(2*rng.integers(0, 4, 2000) + 1)), pre]
+    z = np.concatenate(parts)
+    noise = lambda: 0.32*(rng.standard_normal(len(z)) + 1j*rng.standard_normal(len(z)))
+    assert SP.preamble_offset(z*np.exp(0.7j) + noise(), pre) == 0.0
+    assert abs(SP.preamble_offset(z*np.exp(0.4j*np.arange(len(z))) + noise(), pre) - 0.4) < 0.05
+
 def test_framed_takes_the_carrier_offset_from_the_preamble():
     """The chain's offset (an M-th power's) can be off by a good part of the rate on APSK: the headers still decode"""
     from types import SimpleNamespace

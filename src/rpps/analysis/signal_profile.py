@@ -231,10 +231,12 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
     # A profile whose payload decoded before one whose headers only read (DVB-S2 normal and mis share the PL header)
     return sorted(out, key=lambda t: (not (t[5] and any(h in t[1] for h in t[5][-1])), -t[2]))
 
-def preamble_offset(z, preamble, threshold=0.6, top=16):
+def preamble_offset(z, preamble, threshold=0.6, top=16, sigmas=3.0):
     """The carrier offset left on symbols z, in radians a symbol (within +-pi), from where a known preamble is: the phase
     steps symbol to symbol, the preamble's own taken off, are the offset's (differential: the carrier phase doesn't
-    matter). For symbols the preamble was found in (`rotation`); 0.0 when nothing correlates past `threshold`"""
+    matter). For symbols the preamble was found in (`rotation`); 0.0 when nothing correlates past `threshold`, and when
+    the offset is under `sigmas` standard errors of the preambles' own estimates (no offset to see: a noise estimate,
+    applied, drifts a long frame's phase by radians)"""
     pre = np.asarray(preamble, dtype=complex)
     ref = pre[1:]*np.conj(pre[:-1])
     d = np.asarray(z[1:])*np.conj(np.asarray(z[:-1]))
@@ -246,7 +248,12 @@ def preamble_offset(z, preamble, threshold=0.6, top=16):
     # (the preambles: near the strongest; data matches the preamble's steps by chance less well, and at any angle)
     peaks = np.nonzero(size > max(threshold, 0.75*size.max()))[0]
     best = peaks[np.argsort(-size[peaks])[:top]]
-    return float(np.angle(np.sum(up[best])))
+    w = float(np.angle(np.sum(up[best])))
+    if len(best) > 1:
+        spread = np.angle(up[best]*np.exp(-1j*w))
+        if abs(w) < sigmas*np.sqrt(np.sum(spread**2)/(len(best) - 1)/len(best)):
+            return 0.0
+    return w
 
 def _header_ids(steps):
     """A profile's header step ids (symbol or link headers) in order: [[id], ...], the headers of a branch point's
