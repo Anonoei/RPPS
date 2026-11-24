@@ -74,6 +74,13 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   `pulse/rc/0p20_frequency`, `sequence/word/p25_fs` and the eight `dmr_*` sync patterns, link headers `p25_nid`,
   `p25_tsbk`, `dmr_slot_type`, `dmr_bptc`). A framed link header takes a default `length`.
 - `examples/zc_modes.py`: a Zadoff-Chu preamble whose root picks each frame's modulation and code.
+- **Bursts from real captures** (`rp.analysis.spectrum.burst`, `framing.frames`): the gate takes its levels over 64
+  symbols and averages longer as the contrast falls, so it no longer fires on noise (default `contrast` 2.5 on those
+  levels); `split` scales its windows and guard times with the occupied bandwidth and looks for guards only 10 dB
+  over the floor; each burst's rate is searched within 0.7 to 1.4 times its occupied bandwidth (a long 1100 preamble
+  locked it at 2x or 4x); a shared run tolerates single decision errors; long bursts of frames are acquired on the
+  unique word they repeat at their own phase (`periodic_word`, `Bursts.period`); slots join within `slot_tol` (now
+  8 symbols) by single linkage. The profile's header step tries every bit map.
 - **Block codes from soft values** (`rp.analysis.code.block.linear.soft_dual`, `soft_find_length`, `soft_score`):
   parity checks from words too noisy for the rank, drawing subsets from the likeliest clean words and keeping checks
   on the tanh-product syndrome. `solve_block(llr=)` uses it when the hard dual comes out short, and finds the length

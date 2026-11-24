@@ -677,7 +677,8 @@ class _Chain:
             if best is None: # no code laid out: the first map's bits
                 key = next(iter(_distinct(bit_streams(pays[0], c, differential=False), c)))
                 rows = [bit_streams(y, c, differential=False, keys=[key])[key] for y in pays]
-            self._header(q, label, best[3] if best is not None else rows)
+            self._header(q, label, [[bit_streams(y, c, differential=False, keys=[k])[k] for y in pays]
+                                    for k in _distinct(bit_streams(pays[0], c, differential=False), c)])
             if best is None:
                 bits = np.concatenate(rows)
                 v = verdict(bits)
@@ -694,17 +695,28 @@ class _Chain:
                 q.add("fec", f"a length-{n} code in the payload of {label}", GUESS, detail={"n": n, "deficiency": d, "map": str(key)},
                       note=f"{d} checks a word on the bursts' payload words; not identified further")
 
-    def _header(self, q, label, rows, bits=256, min_frames=8):
+    def _header(self, q, label, maps, bits=256, min_frames=8):
         """What the first `bits` of the bursts' payloads hold (rpps.analysis.framing.fields: constants, counters, enums,
-        lengths), noted when something besides random bits is there"""
+        lengths), noted when something besides random bits is there. maps: the payloads' bit rows under each of the
+        constellation's distinct bit maps (the bursts share one rotation, but which is unknown: a counter's bits read
+        swapped and inverted under another): the map whose fields explain the most bits"""
         from .framing import fields
-        rows = [np.asarray(r, dtype=np.uint8) for r in rows if len(r) >= 16]
-        if len(rows) < min_frames:
+        m = None
+        for rows in maps:
+            rows = [np.asarray(r, dtype=np.uint8) for r in rows if len(r) >= 16]
+            if len(rows) < min_frames:
+                continue
+            try:
+                mm = fields.map(rows, length=min(bits, min(len(r) for r in rows)))
+            except ValueError:
+                continue
+            explained = sum(f.width*(2 if f.kind in ("counter", "length", "id") else 1) for f in mm.fields
+                            if f.kind not in ("random", "varying"))
+            if m is None or explained > m[0]:
+                m = (explained, mm)
+        if m is None:
             return
-        try:
-            m = fields.map(rows, length=min(bits, min(len(r) for r in rows)))
-        except ValueError:
-            return
+        m = m[1]
         found = [f for f in m.fields if f.kind not in ("random", "varying")]
         if not found or (len(found) == 1 and found[0].kind == "constant" and found[0].width < 8):
             return

@@ -64,8 +64,10 @@ class BurstResult:
 class Bursts:
     """`demodulate`: bursts [BurstResult], mod, baud, beta, preamble (symbols: the most common kind's), preambles (every
     kind's), offsets (each kind's known symbols from the bursts' start; negative: from their end), frame (s, None), slots
-    (offsets within the frame, s), blind (no known symbols: each burst's phase only to the constellation's symmetry)"""
-    __slots__ = ("bursts", "mod", "baud", "beta", "preamble", "preambles", "offsets", "frame", "slots", "blind")
+    (offsets within the frame, s), blind (no known symbols: each burst's phase only to the constellation's symmetry),
+    period (symbols: a unique word repeating that often within each burst, at its own phase (offsets [None]); a burst's
+    `known` is its first)"""
+    __slots__ = ("bursts", "mod", "baud", "beta", "preamble", "preambles", "offsets", "frame", "slots", "blind", "period")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
@@ -74,7 +76,9 @@ class Bursts:
         ok = [b for b in self.bursts if b.ok]
         kinds = [k for k in (self.preambles or [self.preamble]) if k is not None and len(k)]
         where = ""
-        if self.offsets and len(kinds) == 1 and self.offsets[0]:
+        if self.offsets and len(kinds) == 1 and self.offsets[0] is None:
+            where = f" every {self.period} symbols, at each burst's own phase"
+        elif self.offsets and len(kinds) == 1 and self.offsets[0]:
             o = self.offsets[0]
             where = f" {o} symbols in" if o > 0 else f" {-o} symbols before the end"
         s = (f"{len(self.bursts)} bursts ({len(ok)} demodulated), {self.mod} at {self.baud/1e3:.3f} kBd, "
@@ -171,7 +175,8 @@ def shared_segments(burst_list, search=8, min_len=12, agree=0.8, refs=6):
     within `search` symbols: the one with the best window of `min_len` steps (a known run of that length adds up to its
     length, random steps to its square root), once from the start and once from the end (bursts of several lengths
     sharing a postamble); the reference is the burst the others agree with most (of the first `refs`). A run is where
-    the mean step over the bursts has magnitude above `agree`, `min_len` steps long at least"""
+    `agree` of the bursts' steps lie within 45 degrees of their mean (one burst's decision error at a few dB costs a
+    share, not the whole mean), `min_len` steps long at least"""
     S = [b.symbols for b in burst_list if b.symbols is not None and len(b.symbols) > 2*search + min_len + 2]
     if len(S) < 3:
         return []
@@ -196,13 +201,14 @@ def shared_segments(burst_list, search=8, min_len=12, agree=0.8, refs=6):
                 continue
             rows = np.array([d[l + lo:l + lo + L] for d, l in zip(D, lags)])
             mean = rows.mean(axis=0)
-            m = np.abs(mean)
-            if best is None or np.sum(m > agree) > best[0]:
-                best = (int(np.sum(m > agree)), m, mean, lo)
+            m = np.mean(np.abs(np.angle(rows*np.conj(mean)[None, :])) < np.pi/4, axis=0) # share near the mean step
+            m[np.abs(mean) < 0.3] = 0 # (no direction to be near)
+            if best is None or np.sum(m >= agree) > best[0]:
+                best = (int(np.sum(m >= agree)), m, mean, lo)
         if best is None:
             continue
         _, m, mean, lo = best
-        on = np.concatenate(([0], (m > agree).astype(np.int8), [0]))
+        on = np.concatenate(([0], (m >= agree).astype(np.int8), [0]))
         d = np.diff(on)
         for a, b in zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1)):
             if b - a < min_len:
@@ -214,12 +220,65 @@ def shared_segments(burst_list, search=8, min_len=12, agree=0.8, refs=6):
             else:
                 offset = a + lo
             out.append(Segment(steps, int(offset), float(np.mean(m[a:b]))))
-    # The same run seen from both ends (bursts of one length): keep the start-anchored one
-    keep = []
-    for sg in sorted(out, key=lambda g: (-len(g.steps), g.offset < 0)):
-        if all(not (sg.offset < 0 <= k.offset and abs(len(sg.steps) - len(k.steps)) <= 2) for k in keep):
-            keep.append(sg)
-    return keep
+    # The same run seen from both ends (bursts of one length): the start-anchored one
+    starts = [g for g in out if g.offset >= 0]
+    keep = starts + [g for g in out if g.offset < 0 and all(abs(len(g.steps) - len(k.steps)) > 8 for k in starts)]
+    return sorted(keep, key=lambda g: -len(g.steps))
+
+def _run(c, thr):
+    """(start, length) of the longest circular run of c above thr"""
+    on = c > thr
+    if on.all():
+        return 0, len(c)
+    k = int(np.argmin(on)) # start the scan at an off position, so a run across the wrap is whole
+    r = np.roll(on, -k)
+    best, cur = (0, 0), 0
+    for i, v in enumerate(r):
+        cur = cur + 1 if v else 0
+        if cur > best[1]:
+            best = ((i - cur + 1 + k) % len(c), cur)
+    return best
+
+def _fold_coherence(y, lag):
+    """frames.coherence by one fold: |sum over frames of y[n] conj(y[n+lag])| over the sum of magnitudes, at each
+    position n mod lag"""
+    pr = y[:-lag]*np.conj(y[lag:])
+    k = np.arange(len(pr)) % lag
+    num = np.abs(np.bincount(k, pr.real, lag) + 1j*np.bincount(k, pr.imag, lag))
+    return num/(np.bincount(k, np.abs(pr), lag) + 1e-30)
+
+def periodic_word(burst_list, mod, points, tries=4, min_frames=6, max_lag=20000, thr=0.8, min_len=4):
+    """(unique word on the constellation, period in symbols) when long bursts hold frames with one unique word, each at
+    its own phase; else None. Every lag from 16 to a `min_frames`-th of the shortest of the `tries` longest bursts is
+    folded (`_fold_coherence`: O(n) a lag); at a lag, each burst's longest circular run of positions coherent from
+    frame to frame above `thr` (over 8 frames a position passes 0.8 by chance one time in 170, so a run of `min_len`
+    over every position and lag is rare, where a unique word's sit near 1). The first lag where two bursts hold such a
+    run, of the same length and phase steps, is the period (its multiples pass too); the word is that run's symbols
+    averaged over one burst's frames. A word of U symbols every P adds only U/P to an autocorrelation, which a comb
+    over it finds about half the time on bursts of 8 frames; the fold finds it every time"""
+    L = sorted((b for b in burst_list if b.symbols is not None), key=lambda b: -len(b.symbols))[:tries]
+    if len(L) < 2:
+        return None
+    from ..framing.frames import _normalized
+    n = len(L[-1].symbols)
+    Y = [_normalized(b.symbols[:n]) for b in L]
+    pts = np.asarray(points, dtype=np.complex128)
+    for lag in range(16, min(max_lag, n//min_frames) + 1):
+        runs = []
+        for y in Y:
+            st, ln = _run(_fold_coherence(y, lag), thr)
+            if ln >= min_len:
+                F = len(y)//lag
+                fr = np.array([np.roll(y[f*lag:(f + 1)*lag], -st)[:ln] for f in range(F)])
+                rot = np.exp(-1j*np.angle(np.sum(fr*np.conj(fr[0])[None, :], axis=1)))
+                runs.append(np.mean(fr*rot[:, None], axis=0))
+        for w in runs:
+            same = [v for v in runs if abs(len(v) - len(w)) <= 2 and
+                    abs(np.mean(_unit_steps(v[:min(len(v), len(w))])*np.conj(_unit_steps(w[:min(len(v), len(w))])))) > 0.8]
+            if len(same) >= 2:
+                uw = w/np.sqrt(np.mean(np.abs(w)**2))*np.sqrt(np.mean(np.abs(pts)**2))
+                return pts[np.argmin(np.abs(uw[:, None] - pts[None, :]), axis=1)], int(lag)
+    return None
 
 def _bits(idx, con):
     """Bits of point indices under the constellation's map (label of point i: its map's entry i, first bit most
@@ -415,7 +474,7 @@ def burst_kinds(B, sps, pts, min_shared=16, min_group=3):
         return [], [None]*len(B)
     return kinds, member
 
-def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, frame=None, slot_tol=4, min_score=0.5,
+def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, frame=None, slot_tol=8, min_score=0.5,
                min_shared=16, **kw):
     """Every burst of x, demodulated on its own from its preamble (see the module). Bursts of several kinds, each with a
     preamble of its own (burst_kinds: by length, when they share fewer than `min_shared` symbols), are each acquired on
@@ -441,7 +500,7 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, f
     con = rsym.load(mod)
     pts = np.asarray(con.points, dtype=np.complex128)
     sps = Fs/baud
-    offsets = None
+    offsets, period = None, None
     if preamble is None:
         kinds, member = burst_kinds(B, sps, pts, min_shared)
         if len(kinds) <= 1: # one kind, or none: where the known symbols sit (a "preamble" may be a mid-amble)
@@ -451,6 +510,10 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, f
                                     or (len(top.steps) + 1 >= len(kinds[0]) - 2 and not 0 <= top.offset <= 8)):
                 o = 0 if 0 <= top.offset <= 8 else top.offset # (within the gate's slack of the start: a preamble)
                 kinds, member, offsets = [preamble_symbols(top.steps, pts)], [0]*len(B), [o]
+        if not kinds or len(kinds[0]) < 8: # long bursts of frames: the unique word each repeats, at its own phase
+            pw = periodic_word(B, mod, pts)
+            if pw is not None:
+                kinds, member, offsets, period = [pw[0]], [0]*len(B), [None], pw[1]
         if not kinds or len(kinds[0]) < 8: # a symbol or two in common is chance: each burst blind
             return _blind(B, mod, baud, beta, con, pts, frame, slot_tol, x, Fs)
     else:
@@ -471,6 +534,8 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, f
             seg = x[a2:b2]*np.exp(-2j*np.pi*f0/Fs*np.arange(b2 - a2)) if f0 else x[a2:b2]
             if o == 0:
                 search = (0, b.start - a2 + 4*len(p)*sps)
+            elif o is None: # a word every `period`: its first, within a period of the gate's opening
+                search = (max(0, b.start - a2 - 8*sps), b.start - a2 + (period + len(p))*sps)
             else: # where the known run should be, from the gate's start (or its end: a postamble)
                 e = (b.start - a2 if o > 0 else b.stop - a2) + o*sps
                 margin = max(16, len(p))*sps
@@ -488,7 +553,7 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, f
             out.append(BurstResult(start=a2 + t0, score=score, kind=kind, ok=False))
             continue
         # The burst's first symbol: `o` before the known run, or (a postamble) wherever the gate opened
-        oe = o if o >= 0 else max(0, int(round((t0 - (b.start - a2))/sps)))
+        oe = o if o is not None and o >= 0 else max(0, int(round((t0 - (b.start - a2))/sps)))
         oe = min(oe, int((t0 - 8*sps - 5)//sps)) # (the matched filter's span before it)
         from ...sync.time.mat import centres_in
         c = centres_in(len(seg), t0 - oe*sps, sps, 8)
@@ -509,10 +574,11 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, f
                                clock=clock, phase=phase, gain=gain, score=score, evm=evm, kind=kind, known=(oe, n), ok=True))
     frame, slots = _structure(out, x, Fs, baud, frame, slot_tol)
     return Bursts(bursts=out, mod=mod, baud=baud, beta=beta, preamble=kinds[0], preambles=kinds, offsets=offsets, frame=frame,
-                  slots=slots, blind=False)
+                  slots=slots, blind=False, period=period)
 
 def _structure(out, x, Fs, baud, frame, slot_tol):
-    """The TDMA frame (given, or the period of the bursts' starts) and its slots; each burst's frame and slot set"""
+    """The TDMA frame (given, or the period of the bursts' on/off pattern: rpps.analysis.spectrum.waveform.on_off, which
+    a network of many slots can take a wrong period from) and its slots; each burst's frame and slot set"""
     slots = []
     ok = [b for b in out if b.ok]
     if frame is None and len(ok) >= 3:
@@ -524,10 +590,15 @@ def _structure(out, x, Fs, baud, frame, slot_tol):
         starts = np.array([b.start/Fs for b in ok])
         t0 = starts.min()
         ph = (starts - t0) % frame
-        for p in np.sort(ph):
-            if not slots or min(abs(p - s) % frame for s in slots) > tol and min(frame - abs(p - s) % frame for s in slots) > tol:
-                slots.append(float(p))
-        slots = sorted(slots)
+        # slots: the phases split where they lie more than `slot_tol` symbols apart (single linkage: starts a few
+        # symbols apart, the gate's and the preamble's jitter, stay one slot), around the frame's wrap too
+        srt = np.sort(ph)
+        gaps = np.flatnonzero(np.diff(srt) > tol)
+        groups = np.split(srt, gaps + 1)
+        if len(groups) > 1 and srt[0] + frame - srt[-1] <= tol: # (the last joins the first across the wrap)
+            groups[0] = np.concatenate((groups[-1] - frame, groups[0]))
+            groups = groups[:-1]
+        slots = sorted(float(np.mean(g)) for g in groups) # (a slot across the wrap: just under 0, still first)
         for b, s, p in zip(ok, starts, ph):
             b.frame = int((s - t0 + tol)//frame)
             dist = [min(abs(p - q), frame - abs(p - q)) for q in slots]
@@ -552,7 +623,7 @@ def _blind(B, mod, baud, beta, con, pts, frame, slot_tol, x, Fs):
     for b in out:
         b.kind = 0 if b.ok else None
     return Bursts(bursts=out, mod=mod, baud=baud, beta=beta, preamble=none, preambles=[none], offsets=[0], frame=frame,
-                  slots=slots, blind=True)
+                  slots=slots, blind=True, period=None)
 
 # ---- a burst time plan learned from bursts
 

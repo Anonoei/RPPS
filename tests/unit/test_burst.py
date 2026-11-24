@@ -207,3 +207,49 @@ def test_slow_bursts_are_not_cut_by_their_own_envelope():
     bandwidth instead. Measured: 0 of 20 bursts cut"""
     x, fs, baud, pre, starts = touching(np.random.default_rng(3), n=1, nsym=800, fs=200e3, baud=25e3)
     assert len(FR.gate(x, fs)) == 1
+
+def test_long_bursts_of_frames_acquired_on_their_repeating_word():
+    """Long QPSK bursts (12000 symbols, 4.6 samples a symbol) of 1482-symbol frames with a 10-symbol unique word, each
+    burst at its own frame phase: not cut by their own envelope (the split scales with the bandwidth), and acquired
+    on the word they repeat; the word decodes in every frame of every burst. (A real capture of this kind went blind)"""
+    rng = np.random.default_rng(0)
+    q = rp.symbol.load("qpsk").points
+    Fs, baud, P = 781.25e3, 170.67e3, 1482
+    uw = q[rng.integers(0, 4, 10)]
+    xs = [np.zeros(8000, complex)]
+    for _ in range(3):
+        syms = q[rng.integers(0, 4, 12000)]
+        for o in range(int(rng.integers(0, P)), 12000 - 10, P):
+            syms[o:o + 10] = uw
+        w = FR.word_waveform(syms, Fs/baud)
+        xs += [w*np.exp(1j*rng.uniform(0, 2*np.pi) + 2j*np.pi*rng.uniform(-500, 500)/Fs*np.arange(len(w))), np.zeros(14000, complex)]
+    x = np.concatenate(xs)
+    x += 0.05*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    assert len(FR.gate(x, Fs)) == 3
+    r = burst.demodulate(x, Fs, mod="qpsk", baud=baud)
+    assert r.period == P and r.offsets == [None] and min(np.mean(np.abs(r.preamble*1j**k - uw) > 1e-6) for k in range(4)) == 0
+    for b in r.bursts:
+        a, n = b.known
+        dec = q[np.argmin(np.abs(b.symbols[:, None] - q[None, :]), axis=1)]
+        assert all(np.array_equal(dec[o:o + n], r.preamble) for o in range(a, len(dec) - n, P))
+
+def test_weak_sparse_bursts_with_a_long_preamble():
+    """BPSK bursts at 4 dB over the floor, sparse, a 652-symbol 1100 preamble: the gate does not fire on noise (levels
+    over 64 symbols), the rate is the line near the occupied bandwidth (the preamble's own lines at a half and 2x lie
+    outside it), and the preamble is found though decision errors break single steps"""
+    rng = np.random.default_rng(0)
+    Fs, baud = 390.625e3, 19.2e3
+    pre = np.tile([1, 1, -1, -1], 163).astype(complex)
+    xs = [np.zeros(int(0.2*Fs), complex)]
+    for _ in range(5):
+        syms = np.concatenate((pre, np.array([1, -1], complex)[rng.integers(0, 2, 1710)]))
+        w = FR.word_waveform(syms, Fs/baud)
+        xs += [w*np.exp(1j*rng.uniform(0, 2*np.pi) + 2j*np.pi*rng.uniform(-100, 100)/Fs*np.arange(len(w))), np.zeros(int(0.5*Fs), complex)]
+    x = np.concatenate(xs)
+    p = np.mean(np.abs(x[np.abs(x) > 1e-9])**2)
+    x += np.sqrt(p/10**0.4/2)*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    assert len(FR.gate(x, Fs)) == 5
+    assert FR.gate(np.sqrt(p/2)*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x))), Fs) == [] # noise alone
+    r = burst.demodulate(x, Fs)
+    assert r.mod == "bpsk" and abs(r.baud - baud) < 100 and not r.blind and len(r.preamble) >= 600
+    assert len(r.bursts) == 5 and all(b.ok for b in r.bursts)

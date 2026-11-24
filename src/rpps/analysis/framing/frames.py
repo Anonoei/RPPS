@@ -336,15 +336,19 @@ def _guards(p, level, min_gap, ratio=2.0, q=95):
     typical = np.percentile([b - a for a, b in runs], q)
     return [(int(a), int(b)) for a, b in runs if b - a >= max(min_gap, ratio*typical)]
 
-def split(x, Fs, a, b, win=4e-6, min_len=64e-6, min_gap=2e-6, thr=None):
+def split(x, Fs, a, b, win=4e-6, min_len=64e-6, min_gap=2e-6, thr=None, bw=None, guards=True):
     """Where bursts that touch (no gap the gate sees, or one shorter than its `hang`) meet in x[a:b]: [(start, stop)].
-      - guard times: dips of the power (smoothed over a sixteenth of a window) 10 dB under the span's level, `min_gap`
+      - guard times: dips of the power (smoothed over a quarter of a symbol) 10 dB under the span's level, `min_gap`
         long at least and much longer than the bursts' own envelope dips (`_guards`)
       - power steps between transmitters' levels: binary segmentation of the power (dB) in windows of `win` (32 samples
         at least), the gain over its noise above `thr` (default 30 + 6 ln(windows): above chance over every position)
-    Parts `min_len` long at least. Not cut: bursts at one level with no guard between them, told apart only by their
+    bw: the occupied bandwidth (Hz), when known: windows of 8 symbols and guards of three quarters of a symbol at least (a slow
+    signal's envelope dips within a symbol). guards: look for guard times (not when the bursts stand under 10 dB over
+    the floor, where noise dips as deep). Parts `min_len` long at least. Not cut: bursts at one level with no guard between them, told apart only by their
     carriers (the line of x^M in a few symbols is mostly the data's own noise; tried and dropped)"""
     x = np.asarray(x[a:b], dtype=np.complex128)
+    if bw:
+        win, min_gap = max(win, 8/bw), max(min_gap, 0.75/bw)
     w = max(32, int(Fs*win))
     n = len(x)//w
     min_seg = max(2, int(np.ceil(min_len*Fs/w)))
@@ -353,7 +357,7 @@ def split(x, Fs, a, b, win=4e-6, min_len=64e-6, min_gap=2e-6, thr=None):
     pw = np.abs(x)**2
     P = 10*np.log10(np.mean(pw[:n*w].reshape(n, w), axis=1) + 1e-30)
     top = np.percentile(P, 90)
-    f = max(2, w//16)
+    f = max(2, int(Fs/bw/4) if bw else w//16) # a quarter of a symbol
     fine = np.convolve(pw, np.ones(f)/f, mode="same")
     # The level around each sample (the louder of the windows within min_len either side: a quiet burst beside a loud
     # one is judged against its own level), 10 dB under it a guard time
@@ -362,7 +366,7 @@ def split(x, Fs, a, b, win=4e-6, min_len=64e-6, min_gap=2e-6, thr=None):
     Pl = np.max(sliding_window_view(np.pad(Pm, 1, mode="edge"), 3), axis=1)
     local = np.repeat(Pl, w)
     local = np.concatenate((local, np.full(len(x) - len(local), local[-1])))
-    gaps = _guards(fine, 10**((local - 10)/10), int(min_gap*Fs))
+    gaps = _guards(fine, 10**((local - 10)/10), int(min_gap*Fs)) if guards else []
     cuts = []
     lp = 10*np.log10(fine + 1e-30)
     for k in _segments((P/_noise(P))[:, None], min_seg, 30 + 6*np.log(n) if thr is None else thr):
@@ -403,24 +407,30 @@ def occupied(x, Fs, nfft=1024, share=0.9):
     lo, hi = np.searchsorted(c, (1 - share)/2), np.searchsorted(c, (1 + share)/2)
     return max(hi - lo + 1, 1)*Fs/n
 
-def gate(x, Fs, smooth=4e-6, contrast=10.0, min_len=64e-6, hang=8e-6, touching=True):
+def gate(x, Fs, smooth=4e-6, contrast=2.5, min_len=64e-6, hang=8e-6, touching=True):
     """[(start, stop)] where the power is on: above the geometric mean of its low and high levels (`contrast` apart at
     least), bursts closer than `hang` merged, those shorter than `min_len` dropped; each span then cut where bursts
-    touch (`split`: a power step or a guard time), unless `touching` is False. The smoothing and hang are at least 2 and
-    6 symbols of a rate the occupied bandwidth gives (`occupied`): a slow signal's own envelope dips last longer than the
-    defaults, and would open the gate inside its bursts"""
+    touch (`split`: a power step or a guard time), unless `touching` is False. Times scale with a symbol, 1/bw (the
+    occupied bandwidth, `occupied`):
+      - the levels from the power averaged over 64 symbols (noise alone then spans under 2 between its 5th and 99th
+        percentiles, so `contrast` tells bursts from noise; averaged over a sample or two, noise alone would pass it)
+      - on and off from the power averaged over enough symbols that noise stays 4 standard deviations from the threshold
+        ((4/(sqrt(hi/lo) - 1))^2 symbols, 2 to 64, and `smooth` at least: a weak signal is averaged longer)
+      - `hang` at least 6 symbols and twice that average (a slow or weak signal's own dips do not open the gate)"""
     p = np.abs(np.asarray(x))**2
-    w = max(2, int(Fs*smooth))
-    e = np.convolve(p, np.ones(w)/w, mode="same")
-    lo, hi = np.percentile(e, 5), np.percentile(e, 99) # the levels, at `smooth`
+    bw = occupied(x, Fs)
+    sym = Fs/bw # samples a symbol, about
+    def avg(w):
+        w = max(2, int(w))
+        return np.convolve(p, np.ones(w)/w, mode="same")
+    e = avg(max(Fs*smooth, 64*sym))
+    lo, hi = np.percentile(e, 5), np.percentile(e, 99)
     if hi < contrast*lo:
         return []
-    bw = occupied(x, Fs)
-    if 2/bw > smooth: # on and off over a few symbols
-        w = max(2, int(Fs*2/bw))
-        e = np.convolve(p, np.ones(w)/w, mode="same")
-    hang = max(hang, 6/bw)
-    on = (e > np.sqrt(lo*hi)).astype(np.int8)
+    n_sym = float(np.clip((4/(np.sqrt(hi/lo) - 1))**2, 2, 64))
+    w = max(Fs*smooth, n_sym*sym)
+    on = (avg(w) > np.sqrt(lo*hi)).astype(np.int8)
+    hang = max(hang, 6/bw, 2*w/Fs)
     d = np.diff(np.concatenate(([0], on, [0])))
     spans = list(zip(np.nonzero(d == 1)[0], np.nonzero(d == -1)[0]))
     merged = []
@@ -431,15 +441,18 @@ def gate(x, Fs, smooth=4e-6, contrast=10.0, min_len=64e-6, hang=8e-6, touching=T
             merged.append([a, b])
     spans = [(int(a), int(b)) for a, b in merged if b - a >= min_len*Fs]
     if touching:
-        spans = [p for a, b in spans for p in (split(x, Fs, a, b, min_len=min_len) if b - a >= 2*min_len*Fs else [(a, b)])]
+        spans = [p for a, b in spans for p in (split(x, Fs, a, b, min_len=min_len, bw=bw, guards=hi/lo > 10)
+                                               if b - a >= 2*min_len*Fs else [(a, b)])]
     return spans
 
 def bursts(x, Fs, names=None, baud=None, min_symbols=128, betas=(0.2, 0.25, 0.35), **kw):
     """The bursts of x (`gate`), each acquired on its own: rate (or `baud` for all), modulation, offset, timing (as a
-    TDMA receiver must: every burst comes from another transmitter, with its own clock and carrier). What is known
+    TDMA receiver must: every burst comes from another transmitter, with its own clock and carrier). The rate is the
+    |x|^2 line within 0.7 to 1.4 times the burst's occupied bandwidth (`occupied`). What is known
     narrows each burst's search: `baud` (no rate search), `names` (the modulations to try), `betas` (the roll-offs).
     [Burst]"""
     from ...sync.acquire import detect, correct, candidates, symmetry
+    from ...sync.rate import find_baud
     from ...sync.time.mat import matrix_mf, centres_in
     x = np.asarray(x, dtype=np.complex128)
     out = []
@@ -447,7 +460,12 @@ def bursts(x, Fs, names=None, baud=None, min_symbols=128, betas=(0.2, 0.25, 0.35
         seg = x[a:b]
         bu = Burst(a, b)
         try:
-            det = detect(seg, Fs, names, betas=betas, baud=baud)
+            b0 = baud
+            if b0 is None: # the rate's line near the burst's occupied bandwidth only (a preamble's own lines lie
+                bwb = occupied(seg, Fs) #  at fractions and multiples of it; the default search starts at Fs/16)
+                b0, _ = find_baud(seg, Fs, lo=0.7*bwb, hi=min(1.4*bwb, Fs/2.5))
+                b0 = b0 or None
+            det = detect(seg, Fs, names, betas=betas, baud=b0)
             sps = Fs/baud if baud is not None else det.sps
             if len(seg)/sps >= min_symbols:
                 # The matched filter needs the pulse's span either side: widen the segment by it, so the burst's first
