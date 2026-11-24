@@ -269,6 +269,75 @@ def acquire(x, Fs, pre, baud, beta=0.35, search=None, steps=16):
     score = float(np.abs(c)/np.sqrt(np.sum(np.abs(y)**2)*np.sum(np.abs(pre)**2)))
     return t0, score, w, phase, gain
 
+class Units:
+    """`units`: unit (symbols), err (its standard error: the lengths are known to a few symbols, so a unit is often
+    only known to one either way), overhead (symbols besides the units: preamble, header, tail), counts ({units a burst:
+    bursts}), fit (share of bursts within `tol` of overhead + n*unit)"""
+    __slots__ = ("unit", "err", "overhead", "counts", "fit")
+    def __init__(self, **kw):
+        for k in self.__slots__:
+            setattr(self, k, kw.get(k))
+
+    def __repr__(self):
+        return (f"<{self.unit}-symbol units (+-{self.err:.1f}), {self.overhead} symbols besides; bursts of "
+                f"{', '.join(f'{n} ({c})' for n, c in sorted(self.counts.items()))} units; fit {self.fit:.2f}>")
+
+def units(lengths, tol=3, min_unit=16, hold=0.9):
+    """The block a burst's length is made of: lengths (symbols a burst, e.g. len(b.symbols) of a kind's bursts) as
+    overhead + n*unit, n the units in that burst (1, 2, 3...: MF-TDMA slots of one, two, three code blocks), or None.
+    Lengths are known to within the gate's slack (`tol` symbols), so the unit is the largest one their differences are
+    all near multiples of (in `hold` of the pairs), with at least two different multiples among them (a unit longer
+    than every difference fits trivially), then unit and overhead refitted by least squares. What lengths cannot tell:
+    the overhead is the least that fits (100 symbols and 84-symbol units read as 16 and one unit more), and a unit
+    whose bursts all hold an even number of it reads as twice the size"""
+    Ls = np.sort(np.asarray(lengths, dtype=np.float64))
+    if len(Ls) < 3:
+        return None
+    d = np.abs(Ls[:, None] - Ls[None, :])[np.triu_indices(len(Ls), 1)]
+    big = d[d > 2*tol]
+    if len(big) < 2:
+        return None
+    for u in range(int(big.max()), min_unit - 1, -1):
+        m = np.round(d/u)
+        near = np.abs(d - m*u) <= 2*tol
+        if np.mean(near) < hold or not np.any(m >= 1):
+            continue
+        n0 = np.floor((Ls - Ls[0])/u + 0.5) # units beyond the shortest burst's
+        if len(np.unique(n0)) < 2:
+            continue
+        # the shortest burst's own units: as many as fit beside a non-negative overhead
+        base = int(np.floor((Ls[0] + tol)/u))
+        best = None
+        for b0 in range(base, 0, -1):
+            n = n0 + b0
+            over = np.median(Ls - n*u)
+            fit = float(np.mean(np.abs(Ls - n*u - over) <= tol))
+            if over >= -tol and (best is None or fit > best[2]):
+                best = (n, over, fit)
+                break
+        if best is None:
+            continue
+        n, over, fit = best
+        if fit < hold:
+            continue
+        # unit and overhead refitted by least squares on the bursts that fit (the search steps a symbol at a time, and
+        # the largest unit within tolerance runs high)
+        uf, of = float(u), float(over)
+        for _ in range(4):
+            ok = np.abs(Ls - n*uf - of) <= tol
+            if ok.sum() < 3:
+                break
+            (uf, of), *_ = np.linalg.lstsq(np.vstack((n[ok], np.ones(ok.sum()))).T, Ls[ok], rcond=None)
+        ok = np.abs(Ls - n*uf - of) <= tol
+        r = Ls[ok] - n[ok]*uf - of
+        sn = np.sum((n[ok] - n[ok].mean())**2)
+        err = float(np.sqrt(np.sum(r**2)/max(ok.sum() - 2, 1)/sn)) if sn > 0 else float("inf")
+        u, over = int(round(uf)), int(round(of))
+        fit = float(np.mean(np.abs(Ls - n*u - over) <= tol))
+        vals, cnt = np.unique(n.astype(int), return_counts=True)
+        return Units(unit=u, err=err, overhead=over, counts={int(v): int(c) for v, c in zip(vals, cnt)}, fit=fit)
+    return None
+
 def retime(x, c, sps, beta, anchor=0, window=256):
     """Symbol centres c (samples of x, one a symbol) with the symbol clock's offset taken out, and that offset (the
     symbol rate's, a fraction: positive when the symbols come faster than sps): the matched filter's energy peak (best_tau) in each window of `window` symbols, unwrapped, a line

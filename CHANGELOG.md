@@ -55,6 +55,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   `pulse/rc/0p20_frequency`, `sequence/word/p25_fs` and the eight `dmr_*` sync patterns, link headers `p25_nid`,
   `p25_tsbk`, `dmr_slot_type`, `dmr_bptc`). A framed link header takes a default `length`.
 - `examples/zc_modes.py`: a Zadoff-Chu preamble whose root picks each frame's modulation and code.
+- **What each header bit is** (`rp.analysis.framing.fields.map(frames, groups=, lengths=)`): constants, counters (any
+  step, either bit order, counted per terminal), terminal ids, length fields, enums and random runs, saved as a link
+  header definition (`m.guess.save(name)`: config/header/link/guess). **`rp.analysis.spectrum.burst.units(lengths)`**:
+  burst lengths as overhead + n code-block units (MF-TDMA slots of one, two, three blocks), the unit with its error.
 - **Bursts with known symbols anywhere, or none** (`rp.analysis.spectrum.burst`): a mid-amble or postamble the bursts
   share (`shared_segments`) is found and each burst acquired on it at its offset (`Bursts.offsets`,
   `BurstResult.known`, `.payload`); bursts that share nothing come back each acquired blind (`Bursts.blind`) instead of

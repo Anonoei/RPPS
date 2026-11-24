@@ -47,7 +47,8 @@ class Guess:
     it (rp.code.load("block/guess/<name>"), rp.code.scram.load("feedthrough/guess/<name>"), rp.link.load("crc/guess/<name>"))"""
     __slots__ = ("kind", "definition", "evidence")
     FOLDER = {"block": ("fec", "block"), "rs": ("fec", "block"), "conv": ("fec", "conv"),
-              "scramble": ("scramble", "feedthrough"), "crc": ("crc", "")} # kind: (config domain, folder in it)
+              "scramble": ("scramble", "feedthrough"), "crc": ("crc", ""),
+              "header": ("header", "link")} # kind: (config domain, folder in it)
 
     def __init__(self, kind, definition, evidence=None):
         self.kind = kind
@@ -65,6 +66,8 @@ class Guess:
             return f"<Guess {d['type']} ({d['n']},{d['k']}) {extra} {self.evidence}>"
         if self.kind == "rs":
             return f"<Guess RS({d['n']},{d['k']}) poly {d['poly']:#x} fcr {d['fcr']} prim {d['prim']} {self.evidence}>"
+        if self.kind == "header":
+            return f"<Guess header {[(f['name'], f['bits']) for f in d['fields']]} {self.evidence}>"
         if self.kind == "crc":
             return f"<Guess CRC-{d['width']} poly {d['poly']} init {d['init']} xorout {d['xorout']} {self.evidence}>"
         if self.kind == "scramble":
