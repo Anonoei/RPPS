@@ -8,7 +8,7 @@ packets, each the time of an earlier PL frame's start). The terminals' bursts (p
 symbol rates, three burst types each with its unique word, LDPC units, CRC) go where the plan says.
 
 The receiver reads the forward link (profile/dvbrcs2/forward), builds the plan and the clock from its messages
-(rp.plan.builder("dvb-rcs2")), and gives both to the return link's burst step: every burst is cut on its carrier, decoded,
+(rp.plan.builder("dvbrcs2/forward"), a definition), and gives both to the return link's burst step: every burst is cut on its carrier, decoded,
 and named by its superframe, frame, timeslot, burst type and terminal. The return path's delay is not told: the bursts'
 own unique words pull the clock onto it. Without the forward link, a plan learned from the bursts themselves
 (rp.analysis.spectrum.burst.learn_plan) places them as well, under its own names, and check_plan says how well it
@@ -18,7 +18,6 @@ import numpy as np
 
 import rpps as rp
 from rpps.link import gse
-from rpps.plan import rcs2
 
 N0, DELAY = 10**9, 1e-4 # The NCR when both captures start; the return path's delay, unknown to the receiver [s]
 
@@ -41,13 +40,13 @@ def network(rng, superframes=3, per=5, frames=6):
             plan.assign(0, ws[0].superframe, fr, [(sl.get(j, 0), 0) for j in range(lo, hi + 1)], offset=lo)
     # The forward link: the tables in every frame, frame k's NCR packet the NCR of frame k-2's start
     dfl = rp.profile.table("dvbs2/modcod").row({"modcod": 4, "short": 0, "pilots": 1})["kbch"] - 80
-    tables = rcs2.tables(plan, network_id=7, superframes=[(0, s.count + k) for k in range(superframes)])
+    hub = rp.plan.builder("dvbrcs2/forward") # (its definition both ways: the tables and NCR packets sent)
+    tables = hub.tables(plan, network_id=7, superframes=[(0, s.count + k) for k in range(superframes)])
     fwd = rp.profile.load("dvbs2/normal")
     def send(sof):
         fields = []
         for k in range(frames):
-            pdus = ([(rcs2.PROTO_NCR, rcs2.ncr_packet(N0 + 27e6*sof[k - 2]/4e6))] if k >= 2 else []) + \
-                   [(rcs2.PROTO_L2S, t) for t in tables]
+            pdus = ([hub.reference(N0 + 27e6*sof[k - 2]/4e6)] if k >= 2 else []) + tables
             fields.append(np.unpackbits(np.frombuffer(gse.pack(pdus, dfl//8)[0], np.uint8)).astype(bool))
         return fwd.tx()(rp.Data(np.concatenate(fields), Fs=1e6, sps=1, flush=True), fields=[{"modcod": 4, "pilots": 1}]*frames)
     o = send([0]*frames)
@@ -79,7 +78,7 @@ def main():
     rng = np.random.default_rng(1)
     xf, xr, sent = network(rng)
 
-    fwd, b = rp.profile.load("dvbrcs2/forward").rx(), rp.plan.builder("dvb-rcs2")
+    fwd, b = rp.profile.load("dvbrcs2/forward").rx(), rp.plan.builder("dvbrcs2/forward")
     for blk in rp.source.Memory(xf, Fs=4e6, sps=4)(1 << 16):
         blk + fwd
         for m in fwd.take_messages():

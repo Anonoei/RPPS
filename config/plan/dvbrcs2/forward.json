@@ -1,0 +1,193 @@
+{
+  "base": "builder",
+  "comment": "DVB-RCS2's burst time plan and NCR clock from its forward link (profile/dvbrcs2/forward): the SCT, FCT2 and BCT make the plan (a tx type's burst format the linear modulation data block, its unique word sent as QPSK symbols; the turbo code's parameters written as zeros, the profile receiving the bursts says the code), each TBTP2 a superframe's assignments (format 11 on transmit); each NCR packet (GSE protocol 0x0081) is the NCR of the SOF of the DVB-S2 PL frame two before the one carrying it, paired with the PL headers' positions and fitted. Times in NCR ticks (27 MHz)",
+  "ref": "ETSI EN 301 545-2 V1.2.1 6.2.1.1, 6.4, 7.5",
+  "tags": ["dvb-rcs2"],
+  "clock": 27000000.0,
+  "tables": {
+    "header": "rcs2_table",
+    "kind": "table",
+    "id": "table_id",
+    "ids": {
+      "sct": 160,
+      "fct2": 171,
+      "bct": 172,
+      "tbtp2": 173
+    },
+    "protocol": 130,
+    "tx": {
+      "interactive_network_id": "network_id",
+      "version_number": "version % 32",
+      "current_next_indicator": 1
+    }
+  },
+  "sections": {
+    "tx_types": {
+      "table": "bct",
+      "each": "tx_types",
+      "if": "tx_format_class == 1 and tx_type > 127",
+      "rx": {
+        "id": "tx_type",
+        "btus": "tx_block_size",
+        "offset": "tx_start_offset_2",
+        "fields": {
+          "bits": "payload_size*8",
+          "constellation": "modulation_scheme.name",
+          "threshold": "threshold_es_n0",
+          "uw": "uw"
+        }
+      },
+      "tx": {
+        "tx_type": "id",
+        "tx_content_type": 1,
+        "tx_format_class": 1,
+        "tx_format.tx_block_size": "btus",
+        "tx_format.threshold_es_n0": "threshold",
+        "tx_format.tx_start_offset_2": "offset",
+        "tx_format.lm.payload_size": "bits//8",
+        "tx_format.lm.modulation_scheme.name": "constellation",
+        "tx_format.lm.uw": "word"
+      },
+      "defaults": {
+        "threshold": 0,
+        "bits": 0,
+        "constellation": "psk/qpsk"
+      }
+    },
+    "frame_types": {
+      "table": "fct2",
+      "each": "frame_types",
+      "rx": {
+        "id": "frame_type",
+        "duration": "frame_duration",
+        "btu": {
+          "duration": "btu_duration",
+          "bw": "btu_carrier_bw",
+          "symbol_rate": "btu_symbol_rate"
+        },
+        "time_units": "time_unit_count",
+        "grid": {
+          "each": "grid_frequency_offsets",
+          "rx": "grid_frequency_offset"
+        },
+        "sections": {
+          "each": "sections",
+          "rx": ["default_tx_type", "repeat_count"]
+        }
+      },
+      "tx": {
+        "frame_type": "id",
+        "frame_duration": "duration",
+        "tx_format_class": 1,
+        "btu_duration": "btu.duration",
+        "btu_carrier_bw": "btu.bw",
+        "btu_symbol_rate": "btu.symbol_rate",
+        "time_unit_count": "time_units",
+        "grid_frequency_offsets": {
+          "each": "grid",
+          "tx": {
+            "grid_frequency_offset": "it"
+          }
+        },
+        "sections": {
+          "each": "sections",
+          "tx": {
+            "default_tx_type": "it[0]",
+            "fixed_access_method": 0,
+            "repeat_count": "it[1]"
+          }
+        }
+      }
+    },
+    "sequences": {
+      "table": "sct",
+      "each": "superframes",
+      "rx": {
+        "id": "superframe_sequence",
+        "start": "superframe_start_time_base*300 + superframe_start_time_ext",
+        "duration": "superframe_duration",
+        "centre": "superframe_centre_frequency",
+        "count": "superframe_count",
+        "frames": {
+          "each": "frames",
+          "rx": {
+            "type": "frame_type",
+            "start": "frame_start_time",
+            "offset": "frame_centre_frequency_offset"
+          }
+        }
+      },
+      "tx": {
+        "superframe_sequence": "id",
+        "superframe_start_time_base": "(start//300) % (1 << 33)",
+        "superframe_start_time_ext": "start % 300",
+        "superframe_duration": "duration",
+        "superframe_centre_frequency": "centre",
+        "superframe_count": "count",
+        "frames": {
+          "each": "frames",
+          "tx": {
+            "frame_type": "type",
+            "frame_start_time": "start",
+            "frame_centre_frequency_offset": "offset"
+          }
+        }
+      }
+    },
+    "assignments": {
+      "table": "tbtp2",
+      "count_bits": 8,
+      "rx": {
+        "each": "frames",
+        "rx": {
+          "sequence": "superframe_sequence",
+          "superframe": "superframe_count",
+          "frame": "frame_number",
+          "offset": "assignment_offset",
+          "slots": {
+            "each": "assignments",
+            "rx": ["assignment_id", "dynamic_tx_type"]
+          }
+        }
+      },
+      "tx": {
+        "group_id": 0,
+        "superframe_sequence": "sequence",
+        "assignment_context": 0,
+        "superframe_count": "superframe",
+        "assignment_format": 11,
+        "frames": {
+          "each": "frames",
+          "tx": {
+            "frame_number": "frame",
+            "assignment_offset": "offset",
+            "assignments": {
+              "each": "slots",
+              "tx": {
+                "dynamic_tx_type": "it[1]",
+                "assignment_id": "it[0]"
+              }
+            }
+          }
+        }
+      },
+      "defaults": {
+        "dynamic_tx_type": 0
+      }
+    }
+  },
+  "reference": {
+    "kind": "gse",
+    "if": "protocol == 129",
+    "protocol": 129,
+    "header": "rcs2_ncr",
+    "rx": "base*300 + ext",
+    "tx": {
+      "base": "(value//300) % (1 << 33)",
+      "ext": "value % 300"
+    },
+    "wrap": "(1 << 33)*300",
+    "events": "pls",
+    "lag": 2
+  }
+}

@@ -19,8 +19,9 @@ clause 6.2.2; DVB-RCS's SCT/FCT/TCT/TBTP, EN 301 790): RPPS holds it in that mod
 `Plan.windows(t0, t1)` lists the bursts' places in a span of clock time; `clock` is ticks a second (27e6: the NCR; 1:
 seconds). Where a plan comes from:
 
-  - over the air, from the tables a forward link carries: `rp.plan.builder("dvb-rcs2")` takes their decoded messages
-    and gives a Plan, updated as new versions and each superframe's assignments come
+  - over the air, from the tables a forward link carries: `rp.plan.builder("dvbrcs2/forward")` takes their decoded
+    messages and gives a Plan, updated as new versions and each superframe's assignments come, and the network clock
+    (rpps.plan.air: a builder is a definition too, mapping the tables onto this model)
   - a definition, `config/plan/<family>/<name>.json`, of the same model (a standard's fixed structure, a test, a plan
     `rp.analysis.spectrum.burst` learned from detected bursts): `rp.plan.load("demo/mftdma")`
 
@@ -333,33 +334,29 @@ class Plan:
                               for s in self.sequences.values()}}
 
 
-DOMAIN = _config.register_domain("plan", {"plan": Plan.load})
+from .air import Builder # (after Plan: a builder makes one)
+
+DOMAIN = _config.register_domain("plan", {"plan": Plan.load, "builder": Builder.load})
 
 def load(name, **params):
     """A plan definition by name: `rp.plan.load("demo/mftdma")`"""
-    return _config.load("plan", name, params=params)
+    p = _config.load("plan", name, params=params)
+    if not isinstance(p, Plan):
+        raise ConfigError(f"plan {name} is a plan builder: rp.plan.builder({name!r})")
+    return p
 
 def init(name, obj):
     """A plan from a definition object"""
     return _config.load_obj("plan", name, obj)
 
 def ls():
-    """The plans there are: {family: [names]}"""
+    """The plans there are, and the builders: {family: [names]}"""
     return _config.ls("plan")
 
-# ---- plans from what a forward link says
-
-BUILDERS = {}
-
-def register(name):
-    """Register a builder of plans from decoded tables: a class taking messages (`feed(message)`) and giving `plan`"""
-    def deco(cls):
-        BUILDERS[name] = cls
-        return cls
-    return deco
-
-def builder(name, **kw):
-    """A new builder of plans from a forward link's tables: `rp.plan.builder("dvb-rcs2")`"""
-    if name not in BUILDERS:
-        raise ConfigError(f"no plan builder {name!r} (have {sorted(BUILDERS)})")
-    return BUILDERS[name](**kw)
+def builder(name, **params):
+    """A new builder of plans from a forward link's tables and clock references (rpps.plan.air):
+    `rp.plan.builder("dvbrcs2/forward")`"""
+    b = _config.load("plan", name, params=params)
+    if not isinstance(b, Builder):
+        raise ConfigError(f"plan {name} is a plan, not a builder: rp.plan.load({name!r})")
+    return b

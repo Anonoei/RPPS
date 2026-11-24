@@ -1,8 +1,8 @@
 {
   "base": "header",
   "type": "link",
-  "comment": "DVB-RCS2 lower layer signalling tables as carried in GSE (protocol type 0x0082, no label): table_id, interactive_network_id, version_number, current_next_indicator, then the table's content: the Superframe Composition Table (0xA0), Frame Composition Table 2 (0xAB), Broadcast Configuration Table (0xAC; each tx type's format data kept as bytes) and Terminal Burst Time Plan 2 (0xAD; assignment formats 0-3 and 10-12). Framed by the GSE step: each PDU one table (its length the PDU's). rpps.plan's dvb-rcs2 builder makes a burst time plan of them",
-  "ref": "ETSI EN 301 545-2 V1.2.1 6.4.3.1.1 (Table 6-4), 6.4.4 (Table 6-12), 6.4.5 (Table 6-14), 6.4.6 (Table 6-16), 6.4.9 (Table 6-31)",
+  "comment": "DVB-RCS2 lower layer signalling tables as carried in GSE (protocol type 0x0082, no label): table_id, interactive_network_id, version_number, current_next_indicator, then the table's content: the Superframe Composition Table (0xA0), Frame Composition Table 2 (0xAB), Broadcast Configuration Table (0xAC; a tx type's format data read as the linear modulation burst format of Table 6-18 when its format class is 1, else kept as bytes) and Terminal Burst Time Plan 2 (0xAD; assignment formats 0-3 and 10-12). Frequencies in Hz, symbol rates in Bd; loop counts follow the lists on build. Framed by the GSE step: each PDU one table (its length the PDU's). plan/dvbrcs2/forward makes a burst time plan of them",
+  "ref": "ETSI EN 301 545-2 V1.2.1 6.4.3.1.1 (Table 6-4), 6.4.4 (Table 6-12), 6.4.5 (Table 6-14), 6.4.6 (Table 6-16), 6.4.9 (Table 6-31), 6.4.5.1 (Table 6-18)",
   "tags": ["dvb-rcs2"],
   "order": "msb",
   "fields": [
@@ -40,7 +40,8 @@
       "fields": [
         {
           "name": "superframe_loop_count",
-          "bits": 8
+          "bits": 8,
+          "tx": "len(superframes) - 1"
         },
         {
           "name": "superframes",
@@ -80,7 +81,9 @@
             },
             {
               "name": "superframe_centre_frequency",
-              "bits": 32
+              "bits": 32,
+              "scale": 100,
+              "comment": "Hz (100 Hz units)"
             },
             {
               "name": "superframe_count",
@@ -92,7 +95,8 @@
             },
             {
               "name": "frame_loop_count",
-              "bits": 5
+              "bits": 5,
+              "tx": "len(frames) - 1"
             },
             {
               "name": "frames",
@@ -100,7 +104,7 @@
               "fields": [
                 {"name": "frame_type", "bits": 8},
                 {"name": "frame_start_time", "bits": 32},
-                {"name": "frame_centre_frequency_offset", "bits": 24, "signed": true}
+                {"name": "frame_centre_frequency_offset", "bits": 24, "signed": true, "scale": 100, "comment": "Hz (100 Hz units)"}
               ]
             }
           ]
@@ -113,7 +117,8 @@
       "fields": [
         {
           "name": "frame_type_loop_count",
-          "bits": 8
+          "bits": 8,
+          "tx": "len(frame_types) - 1"
         },
         {
           "name": "frame_types",
@@ -137,11 +142,15 @@
             },
             {
               "name": "btu_carrier_bw",
-              "bits": 24
+              "bits": 24,
+              "scale": 10,
+              "comment": "Hz (10 Hz units)"
             },
             {
               "name": "btu_symbol_rate",
-              "bits": 24
+              "bits": 24,
+              "scale": 10,
+              "comment": "Bd (10 Bd units)"
             },
             {
               "name": "time_unit_count",
@@ -149,18 +158,20 @@
             },
             {
               "name": "grid_repeat_count",
-              "bits": 8
+              "bits": 8,
+              "tx": "len(grid_frequency_offsets)"
             },
             {
               "name": "grid_frequency_offsets",
               "repeat": "grid_repeat_count",
               "fields": [
-                {"name": "grid_frequency_offset", "bits": 24, "signed": true}
+                {"name": "grid_frequency_offset", "bits": 24, "signed": true, "scale": 100, "comment": "Hz (100 Hz units)"}
               ]
             },
             {
               "name": "section_loop_count",
-              "bits": 8
+              "bits": 8,
+              "tx": "len(sections) - 1"
             },
             {
               "name": "sections",
@@ -182,17 +193,163 @@
       "fields": [
         {
           "name": "tx_type_loop_count",
-          "bits": 8
+          "bits": 8,
+          "tx": "len(tx_types)"
         },
         {
           "name": "tx_types",
           "repeat": "tx_type_loop_count",
           "fields": [
-            {"name": "tx_type", "bits": 8},
-            {"name": "tx_content_type", "bits": 8},
-            {"name": "tx_format_class", "bits": 8},
-            {"name": "tx_format_data_length", "bits": 8},
-            {"name": "tx_format_data", "type": "bytes", "bytes": "tx_format_data_length"}
+            {
+              "name": "tx_type",
+              "bits": 8
+            },
+            {
+              "name": "tx_content_type",
+              "bits": 8
+            },
+            {
+              "name": "tx_format_class",
+              "bits": 8
+            },
+            {
+              "name": "tx_format_data_length",
+              "bits": 8,
+              "tx": "len(tx_format_data) if tx_format_class != 1 else len(tx_format)"
+            },
+            {
+              "name": "tx_format",
+              "if": "tx_format_class == 1",
+              "bytes": "tx_format_data_length",
+              "comment": "linear modulation burst (TC-LM, Table 6-18)",
+              "fields": [
+                {
+                  "name": "tx_block_size",
+                  "bits": 8,
+                  "comment": "BTUs"
+                },
+                {
+                  "name": "threshold_es_n0",
+                  "bits": 8
+                },
+                {
+                  "name": "tx_start_offset_1",
+                  "bits": 8,
+                  "default": 255,
+                  "comment": "quarter symbols; 255: none"
+                },
+                {
+                  "name": "reserved",
+                  "bits": 4
+                },
+                {
+                  "name": "tx_start_offset_2",
+                  "bits": 20,
+                  "comment": "NCR ticks"
+                },
+                {
+                  "name": "waveform_id",
+                  "bits": 8,
+                  "if": "tx_type <= 127"
+                },
+                {
+                  "name": "lm",
+                  "if": "tx_type > 127",
+                  "fields": [
+                    {
+                      "name": "payload_size",
+                      "bits": 16,
+                      "comment": "bytes"
+                    },
+                    {
+                      "name": "modulation_scheme",
+                      "bits": 8,
+                      "enum": {
+                        "0": "psk/bpsk",
+                        "1": "psk/qpsk",
+                        "2": "psk/8psk",
+                        "3": "16QAM",
+                        "5": "pi/2-bpsk"
+                      }
+                    },
+                    {
+                      "name": "p",
+                      "bits": 8
+                    },
+                    {
+                      "name": "q",
+                      "bits": 32,
+                      "comment": "Q0..Q3, each after 4 reserved bits"
+                    },
+                    {
+                      "name": "reserved_1",
+                      "bits": 3
+                    },
+                    {
+                      "name": "y_period",
+                      "bits": 5
+                    },
+                    {
+                      "name": "reserved_2",
+                      "bits": 3
+                    },
+                    {
+                      "name": "w_period",
+                      "bits": 5
+                    },
+                    {
+                      "name": "y_pattern",
+                      "bits": "y_period"
+                    },
+                    {
+                      "name": "w_pattern",
+                      "bits": "w_period"
+                    },
+                    {
+                      "name": "stuffing",
+                      "align": 8
+                    },
+                    {
+                      "name": "preamble_len",
+                      "bits": 8,
+                      "tx": "len(uw)//2",
+                      "comment": "symbols"
+                    },
+                    {
+                      "name": "postamble_len",
+                      "bits": 8
+                    },
+                    {
+                      "name": "reserved_3",
+                      "bits": 4
+                    },
+                    {
+                      "name": "pilot_period",
+                      "bits": 12
+                    },
+                    {
+                      "name": "pilot_block_len",
+                      "bits": 8
+                    },
+                    {
+                      "name": "pilot_sum",
+                      "bits": 8
+                    },
+                    {
+                      "name": "uw",
+                      "bits": "2*(preamble_len + postamble_len + (pilot_block_len if pilot_period else 0))",
+                      "comment": "the unique word's symbols, 2 bits each (QPSK)"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "tx_format_data",
+              "if": "tx_format_class != 1",
+              "type": "bytes",
+              "bytes": "tx_format_data_length"
+            }
           ]
         }
       ]
@@ -223,7 +380,8 @@
         },
         {
           "name": "frame_loop_count",
-          "bits": 8
+          "bits": 8,
+          "tx": "len(frames) - 1"
         },
         {
           "name": "frames",
@@ -239,64 +397,15 @@
             },
             {
               "name": "assignment_loop_count",
-              "bits": 16
+              "bits": 16,
+              "tx": "len(assignments) - 1"
             },
             {
               "name": "assignments",
               "repeat": "assignment_loop_count + 1",
               "fields": [
-                {
-                  "name": "assignment_af0",
-                  "if": "assignment_format == 0",
-                  "fields": [
-                    {"name": "assignment_id", "bits": 48}
-                  ]
-                },
-                {
-                  "name": "assignment_af1",
-                  "if": "assignment_format == 1",
-                  "fields": [
-                    {"name": "assignment_id", "bits": 8}
-                  ]
-                },
-                {
-                  "name": "assignment_af2",
-                  "if": "assignment_format == 2",
-                  "fields": [
-                    {"name": "assignment_id", "bits": 16}
-                  ]
-                },
-                {
-                  "name": "assignment_af3",
-                  "if": "assignment_format == 3",
-                  "fields": [
-                    {"name": "assignment_id", "bits": 24}
-                  ]
-                },
-                {
-                  "name": "assignment_af10",
-                  "if": "assignment_format == 10",
-                  "fields": [
-                    {"name": "dynamic_tx_type", "bits": 8},
-                    {"name": "assignment_id", "bits": 8}
-                  ]
-                },
-                {
-                  "name": "assignment_af11",
-                  "if": "assignment_format == 11",
-                  "fields": [
-                    {"name": "dynamic_tx_type", "bits": 8},
-                    {"name": "assignment_id", "bits": 16}
-                  ]
-                },
-                {
-                  "name": "assignment_af12",
-                  "if": "assignment_format == 12",
-                  "fields": [
-                    {"name": "dynamic_tx_type", "bits": 8},
-                    {"name": "assignment_id", "bits": 24}
-                  ]
-                }
+                {"name": "dynamic_tx_type", "bits": 8, "if": "10 <= assignment_format <= 12"},
+                {"name": "assignment_id", "if": "assignment_format <= 3 or 10 <= assignment_format <= 12", "bits": "[48, 8, 16, 24][assignment_format] if assignment_format <= 3 else [8, 16, 24][assignment_format - 10]"}
               ]
             }
           ]

@@ -119,3 +119,25 @@ def test_ts_adaptation_field_from_the_profile():
     v = s.parse(np.concatenate((hdr, ad, np.zeros(8*(188 - 12), bool))))[0]
     assert v["pid"] == 0x100 and v["pusi"] == 1 and v["afc"] == 3 and v["cc"] == 5
     assert v["adaptation"] == {"length": 7, "flags": 0x10, "pcr_base": pcr, "pcr_reserved": 0x3F, "pcr_ext": 17}
+
+def test_sized_group_align_tx_counts_enum_names_and_bit_values():
+    s = Schema([{"name": "n", "bits": 8, "tx": "len(items) - 1"},
+                {"name": "items", "repeat": "n + 1", "fields": [{"name": "v", "bits": 4}]},
+                {"name": "len", "bits": 8, "tx": "len(fmt)"},
+                {"name": "fmt", "bytes": "len", "fields": [
+                    {"name": "m", "bits": 3, "enum": {"5": "five"}}, {"name": "pad", "align": 8},
+                    {"name": "wl", "bits": 4, "tx": "len(w)"}, {"name": "w", "bits": "wl"}]},
+                {"name": "end", "bits": 8}])
+    bits = s.build({"items": [{"v": 1}, {"v": 2}], "fmt": {"m.name": "five", "w": [1, 0, 1]}, "end": 0xAB})
+    # n=1, items 1 and 2, len 2, fmt: m=5 then 5 stuffing bits, wl=3, w=101, padded to its 2 bytes, then end
+    assert np.array_equal(bits, bits_of((1, 8), (1, 4), (2, 4), (2, 8), (0b10100000, 8), (0b00111010, 8), (0xAB, 8)))
+    v, used = s.parse(bits)
+    assert used == len(bits) and v["end"] == 0xAB and v["items"] == [{"v": 1}, {"v": 2}]
+    assert v["fmt"] == {"m": 5, "m.name": "five", "wl": 3, "w": 0b101}
+    assert np.array_equal(s.build(v), bits) # (counts given now: the same)
+    with pytest.raises(Short):
+        s.parse(bits[:30]) # (the sized group's bytes not all there)
+    with pytest.raises(ConfigError, match="no value named"):
+        s.build({"fmt": {"m.name": "six"}})
+    with pytest.raises(ConfigError, match="align"):
+        Schema([{"name": "pad", "align": 8, "bits": 3}])

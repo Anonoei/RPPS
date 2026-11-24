@@ -31,9 +31,15 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **Burst time plans** (`rpps.plan`, a new `plan` resource): TDMA / MF-TDMA plans in DVB-RCS2's model (superframe
   sequences, frames, a BTU grid of carriers and timeslots, burst types, assignments), with frequency hopping (`hop`: an
   expression of the superframe and frame, or an algorithm: `ble_csa1`) and trains (`repeat`, `every`). From a definition,
-  from a forward link (`rp.plan.builder("dvb-rcs2")`: SCT, FCT2, BCT, TBTP2 and the NCR clock, read by the new
-  `profile/dvbrcs2/forward`; `rp.plan.rcs2.tables` writes them), or learned from detected bursts
-  (`rp.analysis.spectrum.burst.learn_plan`, saved as a definition).
+  from a forward link (`rp.plan.builder("dvbrcs2/forward")`: SCT, FCT2, BCT, TBTP2 and the NCR clock, read by the new
+  `profile/dvbrcs2/forward`; `b.tables(plan)` and `b.reference(ncr)` write them), or learned from detected bursts
+  (`rp.analysis.spectrum.burst.learn_plan`, saved as a definition). A builder is a definition too (`"base": "builder"`,
+  `rpps.plan.air`): the tables' fields mapped onto the plan model both ways, and the clock reference packets paired with
+  the frame starts they refer to.
+- **Field schemas** (`rpps.link.fields`): a sized group (`"bytes"` on a group: exactly that many bytes), `"align"`
+  stuffing, a field's `"tx"` on build (a loop count from `len(list)`), an enum field given by name on build, and a uint
+  given as its bits. `header/link/rcs2_table` uses them: Hz and Bd, the BCT's linear modulation burst format read whole,
+  loop counts written for you.
 - **Whether a burst time plan explains the bursts** (`rp.analysis.spectrum.burst.check_plan`): each detected burst
   put in the slot of its carrier nearest its start and judged (in a slot of its kind, another kind's, overrunning it,
   in none; its own kind's slot before an untyped one), the plan's origin voted for and its clock fitted to the

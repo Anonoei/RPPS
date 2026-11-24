@@ -1,7 +1,7 @@
 {
   "base": "profile",
   "extends": "dvbs2/normal",
-  "comment": "DVB-RCS2 forward link signalling: a DVB-S2 generic continuous stream whose BBFRAME data fields carry GSE packets; the lower layer signalling tables (protocol type 0x0082: SCT, FCT2, BCT, TBTP2, header/link/rcs2_table) come out as `table` messages, every GSE PDU (the NCR, 0x0081, among them) as a `gse` message, every PL header as a `pls` one. rpps.plan's dvb-rcs2 builder makes the return link's burst time plan of them, and its NCR clock. Serial (no parallel region: the BBHEADER drives the GSE step after it)",
+  "comment": "DVB-RCS2 forward link signalling: a DVB-S2 generic continuous stream whose BBFRAME data fields carry GSE packets; the lower layer signalling tables (protocol type 0x0082: SCT, FCT2, BCT, TBTP2, header/link/rcs2_table) come out as `table` messages, every GSE PDU (the NCR, 0x0081, among them) as a `gse` message, every PL header as a `pls` one. plan/dvbrcs2/forward (rp.plan.builder) makes the return link's burst time plan of them, and its NCR clock (header/link/rcs2_ncr). Serial (no parallel region: the BBHEADER drives the GSE step after it)",
   "ref": "ETSI EN 301 545-2 V1.2.1 6.2, 6.4",
   "tags": ["dvb-rcs2"],
   "steps": {

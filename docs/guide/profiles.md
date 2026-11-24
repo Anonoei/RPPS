@@ -158,8 +158,9 @@ carriers cuts each burst on its own carrier, and with a plan names its place:
 A plan (`rpps.plan`) comes from where the network keeps it:
 
 - **Over the air.** DVB-RCS2's hub broadcasts it in its forward link: SCT, FCT2, BCT and TBTP2 tables in GSE packets,
-  and the network clock (NCR). `profile/dvbrcs2/forward` reads them and `rp.plan.builder("dvb-rcs2")` makes the plan
-  and the clock of its messages.
+  and the network clock (NCR). `profile/dvbrcs2/forward` reads them and `rp.plan.builder("dvbrcs2/forward")` makes the
+  plan and the clock of its messages. The builder is a definition too (`config/plan/dvbrcs2/forward.json`): which
+  tables, how their fields map onto the plan model both ways, and how the clock references pair with frame starts.
 - **A definition**, `config/plan/<family>/<name>.json`, in the same model: a standard's fixed structure, a test. A
   sequence's `hop` moves its frames from channel to channel (an expression, or an algorithm by name: `ble_csa1`); a
   frame's `repeat` and `every` make a train of bursts.
