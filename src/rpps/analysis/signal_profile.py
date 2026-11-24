@@ -407,13 +407,16 @@ class _Chain:
             if min(v[l:i + 1].max(), v[i:r + 1].max()) - v[i] >= need:
                 cuts.append(i)
         bounds = [0] + cuts + [len(v) - 1]
+        least, df = max(3, int(len(p)*min_frac)), fb[1] - fb[0]
         out = []
         for a, b in zip(bounds[:-1], bounds[1:]):
-            if b - a < max(3, int(len(p)*min_frac)):
+            if b - a < least:
                 continue
             t = 0.5*(v[a:b + 1].max() + max(v[a], v[b]))
             on = a + np.flatnonzero(v[a:b + 1] >= t)
-            lo, hi = fb[i0 + on[0]], fb[i0 + on[-1]]
+            if on[-1] - on[0] + 1 < least: # (a spike: a tone or a spur on the slope, not a carrier)
+                continue
+            lo, hi = fb[i0 + on[0]] - df/2, fb[i0 + on[-1]] + df/2
             s = copy.copy(self.sig)
             s.mid, s.width = self.sig.mid + 0.5*(lo + hi), hi - lo
             s.lo, s.hi = s.mid - s.width/2, s.mid + s.width/2

@@ -357,6 +357,18 @@ def test_carriers_at_different_levels_are_cut_only_at_their_notches():
     mids = sorted(round(p.signal.mid/1e4) for p in ps)
     assert len(ps) == 3 and mids == [-60, 0, 60], [(p.name, p.signal.mid, p.signal.width) for p in ps]
 
+def test_a_neighbours_slope_at_the_box_edge_is_no_carrier():
+    """Five carriers 520 kHz apart, the box over the middle three with its edges on the outer two's rising slopes: the
+    slopes, cut off by valleys, are no carriers (a piece whose top is its edge bin was once a channel of no width)"""
+    import copy
+    src = _carriers([1.0]*5, 520e3, 25)
+    sv = list(rp.analysis.survey(src))
+    box = copy.copy(sv[0])
+    box.mid, box.width = 0.0, 1.7e6
+    box.lo, box.hi = -0.85e6, 0.85e6
+    ps = rp.analysis.profile(src, signals=[box], survey=sv + [box], blind=False)
+    assert sorted(round(p.signal.mid/1e4) for p in ps) == [-52, 0, 52], [(p.name, p.signal.width) for p in ps]
+
 def test_a_weak_carrier_between_neighbours_is_fitted_above_the_floor():
     """A carrier 7 dB over the noise between two like it 520 kHz away, its box narrow and off to one side: the fit
     stops halfway down to the floor, where the neighbours' gaps are, instead of walking through the noise into them"""
