@@ -43,7 +43,7 @@ bits; strong codes at low SNR are beyond them on channel bits.
 | FSK / MSK / GMSK, CPM index | `modulation.fsk.analyze`, `cpm_index` | instantaneous frequency; h from the phase lattice |
 | GMSK / SOQPSK bits, which pulse | `modulation.cpm.demodulate`, `identify` | per-survivor Viterbi, each survivor its own carrier loop |
 | OFDM pilot pattern | `spectrum.ofdm_pilots.discover`, `grid` | grid from CP peaks; period from coherent repetition; pilot lattice, boost, empty cells |
-| TDMA bursts, frame and slots | `spectrum.burst.demodulate` | each burst on its shared preamble, data-aided carrier and phase |
+| TDMA bursts, frame and slots | `spectrum.burst.demodulate` | each burst on its shared preamble, data-aided carrier and phase; its symbol clock followed; LLRs (`Bursts.llrs`) |
 | two co-channel signals of equal power | `spectrum.separate.estimate`, `separate` | each one's carrier, timing and phase; joint sequence estimate |
 | which named system | `catalogue.match`, `features` | measured features against systems from their standards, weighted |
 | PM, residual carrier, subcarriers | `modulation.pm.analyze`, `subcarrier`, `nrz` | carrier tracked, phase around it |

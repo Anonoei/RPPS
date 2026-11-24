@@ -19,23 +19,27 @@ timing, and is too short to train loops on: so each is acquired on its own, data
      carrier offset costs little), then the fractional timing that best matches the preamble's phase steps (blind to
      the carrier), then from z_k = y_k conj(p_k) over the preamble: the carrier offset (the mean turn of z_k z*_{k-1})
      and the phase and gain (sum z_k with the turn taken out).
-  4. The burst's symbols, from the preamble to the end of the gate, are taken at that timing and corrected; a second-
-     order decision-directed loop follows what is left of the carrier through the data; decisions give bits, and the
-     error vector magnitude against them.
+  4. The burst's symbols, from the preamble to the end of the gate, are taken at that timing and corrected. A burst of
+     several `window`s has its symbol clock followed (`retime`): the matched filter's energy peak in each window
+     (rpps.sync.time.mat.best_tau), a line through them anchored on the preamble (the clock offset, `clock`). A second-
+     order decision-directed loop follows what is left of the carrier through the data; decisions give bits, the
+     soft demapper LLRs (`llr`, noise from the burst's own symbols), and the error vector magnitude.
   5. The TDMA structure: the period of the bursts' starts (rpps.analysis.spectrum.waveform.on_off, else `frame`) and the slots,
      clusters of the starts within a frame (to within `slot_tol` symbols): each burst's frame and slot.
-Limits: timing is held over the burst (a burst over a few thousand symbols with a clock off by many ppm drifts); a
-burst whose preamble is weaker than the data's noise floor allows is reported with `ok` False and no bits.
+Limits: the clock is followed as a straight line (a constant offset over the burst), from windows of a few hundred
+symbols; a burst whose preamble is weaker than the data's noise floor allows is reported with `ok` False and no bits.
 """
 import numpy as np
 
 from ..framing import frames
 
 class BurstResult:
-    """One burst: start (sample of its preamble's first symbol, fractional), symbols, bits, cfo (Hz), phase (rad), gain,
-    score (the preamble's correlation 0..1), evm (rms, of the data after the preamble), frame, slot, kind (which of the
-    preambles it was acquired on), ok"""
-    __slots__ = ("start", "symbols", "bits", "cfo", "phase", "gain", "score", "evm", "frame", "slot", "kind", "ok")
+    """One burst: start (sample of its preamble's first symbol, fractional), symbols, bits, llr (per bit, log(P0/P1), the
+    preamble's included, as bits), cfo (Hz), clock (its symbol clock's offset, a fraction: +1e-4 is 100 ppm fast), phase
+    (rad), gain, score (the preamble's correlation 0..1), evm (rms, of the data after the preamble), frame, slot, kind
+    (which of the preambles it was acquired on), ok"""
+    __slots__ = ("start", "symbols", "bits", "llr", "cfo", "clock", "phase", "gain", "score", "evm", "frame", "slot",
+                 "kind", "ok")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
@@ -44,7 +48,8 @@ class BurstResult:
         if not self.ok:
             return f"<burst at {self.start:.0f}: not acquired (preamble score {self.score:.2f})>"
         sl = f", frame {self.frame} slot {self.slot}" if self.slot is not None else ""
-        return (f"<burst at {self.start:.1f}: {len(self.symbols)} symbols, cfo {self.cfo:+.1f} Hz, EVM "
+        ck = f", clock {1e6*self.clock:+.0f} ppm" if self.clock else ""
+        return (f"<burst at {self.start:.1f}: {len(self.symbols)} symbols, cfo {self.cfo:+.1f} Hz{ck}, EVM "
                 f"{100*self.evm:.1f}%{sl}>")
 
 class Bursts:
@@ -68,6 +73,16 @@ class Bursts:
         return s
 
     __repr__ = __str__
+
+    def llrs(self, kind=None, preamble=False):
+        """Each demodulated burst's LLRs (of `kind` only, when given), without its preamble's unless `preamble`: a list, the
+        bursts' lengths differing"""
+        out = []
+        for b in self.bursts:
+            if b.ok and b.llr is not None and (kind is None or b.kind == kind):
+                skip = 0 if preamble else len(self.preambles[b.kind] if self.preambles else self.preamble)*(len(b.llr)//len(b.symbols))
+                out.append(b.llr[skip:])
+        return out
 
 def shared_preamble(burst_list, search=8, win=12, agree=0.8, max_len=512):
     """The leading run of symbols the bursts share, as phase steps: (length in steps, steps, where it starts in each
@@ -167,6 +182,30 @@ def acquire(x, Fs, pre, baud, beta=0.35, search=None, steps=16):
     gain = float(np.abs(c)/np.sum(np.abs(pre)**2))
     score = float(np.abs(c)/np.sqrt(np.sum(np.abs(y)**2)*np.sum(np.abs(pre)**2)))
     return t0, score, w, phase, gain
+
+def retime(x, c, sps, beta, anchor=0, window=256):
+    """Symbol centres c (samples of x, one a symbol) with the symbol clock's offset taken out, and that offset (the
+    symbol rate's, a fraction: positive when the symbols come faster than sps): the matched filter's energy peak (best_tau) in each window of `window` symbols, unwrapped, a line
+    fitted through them by least squares and turned about symbol `anchor` (where the preamble set the timing). c and 0
+    when it holds fewer than three windows"""
+    from ...sync.time.mat import best_tau
+    nw = len(c)//window
+    if nw < 3:
+        return c, 0.0
+    mids, offs = [], []
+    for i in range(nw):
+        a, b = i*window, (i + 1)*window - 1
+        lo, hi = max(0, int(c[a] - sps)), min(len(x), int(np.ceil(c[b] + sps)) + 1)
+        tau, _ = best_tau(x, sps, beta, lo=lo, hi=hi)
+        m = (a + b)/2
+        cm = c[0] + m*sps
+        offs.append(2*np.pi*((tau - cm) % sps)/sps)
+        mids.append(m)
+    d = np.unwrap(np.array(offs))*sps/(2*np.pi)
+    d = d - np.round(np.median(d)/sps)*sps # the lattice is periodic in sps: the nearest copy
+    slope, _ = np.polyfit(np.array(mids), d, 1)
+    k = np.arange(len(c))
+    return c + slope*(k - anchor), float(-slope/sps) # sps (1 + e) samples a symbol: a rate 1/(1 + e), about 1 - e
 
 def track(y, points, k1=0.05, k2=0.002):
     """A second-order decision-directed phase loop over corrected symbols y (one a symbol): the symbols with what was
@@ -276,6 +315,7 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None,
         from ...sync.time.mat import centres_in
         c = centres_in(len(seg), t0, sps, 8)
         c = c[c <= b.stop - a2 + sps] # to the end of the gate
+        c, clock = retime(seg, c, sps, beta, anchor=len(pre)/2)
         y = _mf(seg, c, sps, beta)
         k = np.arange(len(y))
         y = y*np.exp(-1j*(w*k + phase))/max(gain, 1e-12)
@@ -284,8 +324,8 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None,
         dec = pts[idx]
         data = slice(len(pre), None)
         evm = float(np.sqrt(np.mean(np.abs(y[data] - dec[data])**2)/np.mean(np.abs(pts)**2))) if len(y) > len(pre) else 0.0
-        out.append(BurstResult(start=a2 + t0, symbols=y, bits=_bits(idx, con), cfo=f0 + w*baud/(2*np.pi), phase=phase, gain=gain,
-                               score=score, evm=evm, kind=kind, ok=True))
+        out.append(BurstResult(start=a2 + t0, symbols=y, bits=_bits(idx, con), llr=con.llr(y), cfo=f0 + w*baud/(2*np.pi),
+                               clock=clock, phase=phase, gain=gain, score=score, evm=evm, kind=kind, ok=True))
     # TDMA structure
     slots = []
     ok = [b for b in out if b.ok]

@@ -99,3 +99,28 @@ def test_bursts_far_off_carrier():
     r = burst.demodulate(x, fs, mod="qpsk", baud=baud, preamble=pre)
     assert len(r.bursts) == 8 and all(b.ok for b in r.bursts)
     assert all(abs(b.cfo - f) < 300 for b, f in zip(r.bursts, offs)) and np.median([b.evm for b in r.bursts]) < 0.2
+
+def test_long_bursts_follow_their_symbol_clock():
+    """3000-symbol bursts 200 ppm fast or slow (0.6 symbol over the burst, which a timing held from the preamble loses):
+    each burst's clock is followed and measured, and its LLRs agree with its bits. Measured over 30 seeds: EVM <= 4.9 %,
+    clock within 3.6 ppm"""
+    rng = np.random.default_rng(51)
+    q = rp.symbol.load("qpsk").points
+    fs, baud = 1e6, 250e3
+    pre = q[rng.integers(0, 4, 48)]
+    x = np.zeros(int(4*(3000*fs/baud + 900) + 4000), complex)
+    at, ppms = 2000, (200, -200, 200, -200)
+    for ppm in ppms:
+        syms = np.concatenate((pre, q[rng.integers(0, 4, 3000)]))
+        w = FR.word_waveform(syms, fs/(baud*(1 + ppm*1e-6)))
+        w = w*np.exp(1j*rng.uniform(0, 2*np.pi) + 2j*np.pi*rng.uniform(-2e3, 2e3)/fs*np.arange(len(w)))
+        x[at:at + len(w)] += w
+        at += len(w) + 900
+    x += 0.05*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    r = burst.demodulate(x, fs, mod="qpsk", baud=baud, preamble=pre)
+    assert len(r.bursts) == 4 and all(b.ok for b in r.bursts)
+    for b, ppm in zip(r.bursts, ppms):
+        assert b.evm < 0.1 and abs(1e6*b.clock - ppm) < 15
+        assert np.array_equal(b.llr < 0, b.bits.astype(bool))
+    L = r.llrs()
+    assert len(L) == 4 and all(len(l) == 2*(len(b.symbols) - len(pre)) for l, b in zip(L, r.bursts))

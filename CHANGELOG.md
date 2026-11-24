@@ -25,6 +25,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   receive output is now data bits (Rep.DATA), not channel bits.
 
 ### Added
+- **TDMA bursts follow their symbol clock and give LLRs** (`rp.analysis.spectrum.burst.demodulate`): a burst of a few
+  hundred symbols or more has its clock offset measured (`clock`) and taken out (`burst.retime`), so long bursts no
+  longer drift off their timing; each burst's `llr`, and `Bursts.llrs()` for the soft code searches.
 - **Blind CRC search** (`rp.analysis.framing.crc.search(frames)`): the generator, init, xorout and where the CRC
   sits (bits it covers, fill after it) from error-free frames as sent, by GCDs of frame differences (RevEng's method on
   bit streams; an uncovered header that varies is cancelled first). Two frame lengths separate init from xorout;
