@@ -55,6 +55,12 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   `pulse/rc/0p20_frequency`, `sequence/word/p25_fs` and the eight `dmr_*` sync patterns, link headers `p25_nid`,
   `p25_tsbk`, `dmr_slot_type`, `dmr_bptc`). A framed link header takes a default `length`.
 - `examples/zc_modes.py`: a Zadoff-Chu preamble whose root picks each frame's modulation and code.
+- **Block codes from soft values** (`rp.analysis.code.block.linear.soft_dual`, `soft_find_length`, `soft_score`):
+  parity checks from words too noisy for the rank, drawing subsets from the likeliest clean words and keeping checks
+  on the tanh-product syndrome. `solve_block(llr=)` uses it when the hard dual comes out short, and finds the length
+  from soft values with `soft_length=True`; BCH(63,51) is named blind to 5 dB Eb/N0 (hard bits: above 6 dB).
+- **The profile of TDMA bursts notes their units and header** (`rp.analysis.profile`): the code-block unit from the
+  bursts' lengths (`burst.units`) and the fields at the start of their payloads (`fields.map`).
 - **What each header bit is** (`rp.analysis.framing.fields.map(frames, groups=, lengths=)`): constants, counters (any
   step, either bit order, counted per terminal), terminal ids, length fields, enums and random runs, saved as a link
   header definition (`m.guess.save(name)`: config/header/link/guess). **`rp.analysis.spectrum.burst.units(lengths)`**:

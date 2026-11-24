@@ -661,16 +661,25 @@ class _Chain:
             if len(group) < 4:
                 continue
             pays = [np.asarray(b.payload, dtype=np.complex64) for b in group] # (blind bursts: each its own rotation)
+            label = f"kind {kind} ({len(pre)}-symbol preamble, {len(group)} bursts)" if len(kinds) > 1 else f"{len(group)} bursts"
+            u = burst.units([len(y) for y in pays]) # code blocks a burst holds, from the bursts' lengths
+            if u is not None:
+                q.add("frame", f"{label}: {u.unit} (+-{u.err:.1f}) symbol units, {u.overhead} symbols besides; "
+                      f"{', '.join(f'{c} of {n}' for n, c in sorted(u.counts.items()))} units", GUESS,
+                      detail={"unit": u.unit, "err": u.err, "overhead": u.overhead, "counts": u.counts, "fit": u.fit},
+                      note="rpps.analysis.spectrum.burst.units: payload lengths as overhead + n units")
             best = None
             for key in _distinct(bit_streams(pays[0], c, differential=False), c):
                 rows = [bit_streams(y, c, differential=False, keys=[key])[key] for y in pays]
                 n, d = frame_units(rows)
                 if n is not None and (best is None or (n, -d) < (best[0], -best[1])):
                     best = (n, d, key, rows)
-            label = f"kind {kind} ({len(pre)}-symbol preamble, {len(group)} bursts)" if len(kinds) > 1 else f"{len(group)} bursts"
-            if best is None:
+            if best is None: # no code laid out: the first map's bits
                 key = next(iter(_distinct(bit_streams(pays[0], c, differential=False), c)))
-                bits = np.concatenate([bit_streams(y, c, differential=False, keys=[key])[key] for y in pays])
+                rows = [bit_streams(y, c, differential=False, keys=[key])[key] for y in pays]
+            self._header(q, label, best[3] if best is not None else rows)
+            if best is None:
+                bits = np.concatenate(rows)
                 v = verdict(bits)
                 q.add("fec", f"the payload of {label}", UNSOLVED, note=f"no block code laid out from its start; the bits are {v.kind}: {v.why}")
                 continue
@@ -684,6 +693,25 @@ class _Chain:
             else:
                 q.add("fec", f"a length-{n} code in the payload of {label}", GUESS, detail={"n": n, "deficiency": d, "map": str(key)},
                       note=f"{d} checks a word on the bursts' payload words; not identified further")
+
+    def _header(self, q, label, rows, bits=256, min_frames=8):
+        """What the first `bits` of the bursts' payloads hold (rpps.analysis.framing.fields: constants, counters, enums,
+        lengths), noted when something besides random bits is there"""
+        from .framing import fields
+        rows = [np.asarray(r, dtype=np.uint8) for r in rows if len(r) >= 16]
+        if len(rows) < min_frames:
+            return
+        try:
+            m = fields.map(rows, length=min(bits, min(len(r) for r in rows)))
+        except ValueError:
+            return
+        found = [f for f in m.fields if f.kind not in ("random", "varying")]
+        if not found or (len(found) == 1 and found[0].kind == "constant" and found[0].width < 8):
+            return
+        q.add("header", f"the start of {label}'s payloads: " + "; ".join(repr(f) for f in found[:6])
+              + (f"; {len(found) - 6} more" if len(found) > 6 else ""), GUESS,
+              detail={"fields": [{"start": f.start, "width": f.width, "kind": f.kind} for f in m.fields]},
+              note="rpps.analysis.framing.fields.map on the bursts' first payload bits (one map, one rotation for all)")
 
     def _fsk(self, q, x):
         """A constant envelope: FSK / MSK / GMSK by the instantaneous frequency (rpps.analysis.modulation.fsk), else unsolved"""

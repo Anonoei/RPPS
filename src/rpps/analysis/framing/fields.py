@@ -18,7 +18,8 @@ what chance gives over that many frames:
     constant). With `groups` (a terminal per frame, e.g. from rpps.analysis.spectrum.burst), steps within each group:
     frames in record order, each group its own count
   - length: with `lengths` (each frame's own, in bits or symbols), a run whose value is a*length + b for one a, b
-  - enum: a run taking at most `max_values` values over the frames (a type, a flag set), grown while it stays few
+  - enum: a run taking at most `max_values` values over the frames (a type, a flag set), grown while it stays few: at
+    most half the values its width holds, and well under the distinct values random bits show over as many frames
   - random: the rest, each run's bias (mean of its bits) given; "varying" for a lone column between fields
 """
 import numpy as np
@@ -223,7 +224,9 @@ def map(frames, groups=None, lengths=None, length=None, hold=0.95, max_width=32,
             while e < b and len(np.unique(_value(F[:, o:e + 1]))) <= max_values and e + 1 - o <= 16:
                 e += 1
             vals, cnt = np.unique(_value(F[:, o:e]), return_counts=True)
-            if e - o >= 2 and len(vals) <= max_values and len(vals) < 2**(e - o) and N >= 4*len(vals):
+            M = 2**(e - o)
+            chance = M*(1 - (1 - 1/M)**N) # distinct values random bits show over N frames
+            if e - o >= 2 and len(vals) <= min(max_values, M//2) and chance >= 1.5*len(vals) + 2:
                 fields.append(Field(o, e - o, "enum", values={int(v): int(c) for v, c in zip(vals, cnt)}))
                 taken[o:e] = True
             o = e

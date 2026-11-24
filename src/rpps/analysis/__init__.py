@@ -70,6 +70,7 @@ bits; strong codes at low SNR are beyond them on channel bits.
 | puncture of a known mother code | `code.conv.puncture.search` | every rate P/(P+1) pattern through the Viterbi decoder |
 | Reed-Solomon over GF(256) | `code.block.rs.search` | shared roots by Galois-field Fourier transform at every byte phase |
 | binary block code | `code.block.linear.solve_block` | length from rank deficiency, checks from the null space; then cyclic / BCH, product or LDPC |
+| block code from soft values (too noisy for the rank) | `code.block.linear.soft_dual`, `soft_find_length`, `solve_block(llr=, soft_length=)` | subsets of the likeliest clean words; checks kept on the tanh-product syndrome (BCH(63,51) named to 5 dB Eb/N0, hard bits above 6) |
 | additive scrambler | `sequence.scrambler.additive_search`, `explain`, `search` | Berlekamp-Massey over windows; polynomials factored into known scramblers |
 | scrambler taps | `sequence.recurrence.search`, `lfsr`, `keystream` | every recurrence to degree 24 at once; any degree by Berlekamp-Massey |
 | trellis code on PSK labels | `code.conv.tcm.search` | Walsh-Hadamard over label windows, every rotation and labelling |

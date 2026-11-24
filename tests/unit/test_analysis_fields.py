@@ -72,3 +72,28 @@ def test_units_of_burst_lengths():
     assert abs(u.unit - 1008) <= 1 and abs(u.overhead - 64) <= 3 and set(u.counts) == {1, 2, 3} and u.err < 1
     assert burst.units([1070 + int(rng.integers(-2, 3)) for _ in range(20)]) is None # one length: nothing to tell
     assert sum(burst.units(np.random.default_rng(s).integers(300, 3000, 40)) is not None for s in range(20)) == 0
+
+def test_the_profile_of_bursts_notes_their_units_and_header():
+    """TDMA bursts (a 32-symbol preamble; a header of a constant word, a counter and a type; then 1 to 3 units of 128
+    symbols): the profile notes the unit and the header's fields"""
+    rng = np.random.default_rng(1)
+    q = rp.symbol.load("qpsk")
+    pre = np.asarray(q.points)[rng.integers(0, 4, 32)]
+    Fs, sps = 1.6e6, 16
+    shape = rp.wave.Shape(sps, rp.signal.filters.load("pulse/rrc/0p35"))
+    xs = []
+    for i in range(40):
+        head = np.concatenate((bits(0x1ACF, 16), bits(i % 256, 8), bits(int(rng.choice([1, 2, 5])), 3), bits(0, 5)))
+        body = rng.integers(0, 2, 256*int(rng.integers(1, 4))).astype(bool)
+        w = np.asarray((rp.Data(np.concatenate([pre, q.modulate(np.concatenate((head, body)))]).astype(np.complex64), Fs=Fs/sps, sps=1)
+                        + shape).data)
+        xs += [np.zeros(int(rng.integers(1200, 2400)), np.complex64),
+               w*np.exp(1j*(2*np.pi*rng.uniform(-200, 200)/Fs*np.arange(len(w)) + rng.uniform(0, 2*np.pi)))]
+    x = np.concatenate(xs + [np.zeros(2000, np.complex64)])
+    x = x*np.exp(2j*np.pi*150e3/Fs*np.arange(len(x)))
+    y = (x + 0.02*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))).astype(np.complex64)
+    p = min(rp.analysis.profile(rp.source.Memory(y, Fs=Fs), blind=False), key=lambda p: abs(p.signal.mid - 150e3))
+    units = [s for s in p.steps if s.kind == "frame" and "unit" in s.detail]
+    header = [s for s in p.steps if s.kind == "header"]
+    assert units and abs(units[0].detail["unit"] - 128) <= 1 and set(units[0].detail["counts"]) == {1, 2, 3}
+    assert header and "counter" in header[0].what
