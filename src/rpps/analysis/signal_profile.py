@@ -180,7 +180,9 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
     """Shipped profiles with a frame sync step, run on timed symbols (the frequency offset taken off), conjugated first
     when the preamble turns the wrong way (`rotation`: a spectrum inverted on the way down, in which the coherent frame
     sync finds nothing): [(name,
-    {header id: ([(fields, count)] commonest first, how many)}, headers, inverted, params)] of those whose headers decode,
+    {header id: ([(fields, count)] commonest first, how many)}, headers, inverted, params, ids)] of those whose headers decode,
+    ids: the profile's header step ids in order, a list each (the headers of a branch point's branches together): one of
+    the last decoded says the frames' payload decoded too,
     best first; each variant a profile's choices make (rp.profile.variants) is tried, `params` the one that decoded, of the
     profiles whose "requires" admits the symbol rate (rp.profile.candidates)"""
     from .. import profile, symbol
@@ -223,7 +225,8 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
                 heads.setdefault(step, []).append(json.dumps(fields, sort_keys=True, default=str))
         if max((len(v) for v in heads.values()), default=0) >= min_headers:
             summary = {k: ([(json.loads(f), n) for f, n in Counter(v).most_common(4)], len(v)) for k, v in heads.items()}
-            out.append((name, summary, max(len(v) for v in heads.values()), inverted, params))
+            ids = _header_ids(prof.obj["steps"])
+            out.append((name, summary, max(len(v) for v in heads.values()), inverted, params, ids))
     return sorted(out, key=lambda t: -t[2])
 
 def preamble_offset(z, preamble, threshold=0.6, top=16):
@@ -242,6 +245,21 @@ def preamble_offset(z, preamble, threshold=0.6, top=16):
     peaks = np.nonzero(size > max(threshold, 0.75*size.max()))[0]
     best = peaks[np.argsort(-size[peaks])[:top]]
     return float(np.angle(np.sum(up[best])))
+
+def _header_ids(steps):
+    """A profile's header step ids (symbol or link headers) in order: [[id], ...], the headers of a branch point's
+    branches one list"""
+    out = []
+    for s in steps:
+        if s.get("id") and (s.get("symbol") == "header" or s.get("link") == "header"):
+            out.append([s["id"]])
+        br = s.get("branches")
+        if br:
+            inner = [h for b in (br.values() if isinstance(br, dict) else br)
+                     for g in _header_ids(b.get("steps", []) if isinstance(b, dict) else b) for h in g]
+            if inner:
+                out.append(inner)
+    return out
 
 def rotation(z, preamble, threshold=0.6, top=8):
     """Whether the spectrum is inverted, from the way a known preamble turns symbol to symbol: True (inverted), False, or
@@ -813,7 +831,7 @@ class _Chain:
             fr = []
             p.add("frame", "framed profiles", UNSOLVED, note=f"{type(e).__name__}: {e}")
         if fr:
-            name, heads, n, inverted, params = fr[0]
+            name, heads, n, inverted, params, ids = fr[0]
             p.profile_name, p.profile_params = name, params
             if inverted:
                 p.add("spectrum", "inverted: conjugate the symbols before the profile",
@@ -824,6 +842,10 @@ class _Chain:
                     p.add("header", f"{hid}: {total} decoded, all different, e.g. {sets[0][0]}")
                 else:
                     p.add("header", f"{hid}: " + "; ".join(f"{n}x {fields}" for fields, n in sets))
+            if ids and not any(h in heads for h in ids[-1]): # The frames were found and read, what they carry wasn't decoded
+                p.add("payload", f"{name}: no {' or '.join(ids[-1])} decoded", UNSOLVED,
+                      note=f"the frames' {', '.join(h for g in ids for h in g if h in heads)} headers read, but not one frame's payload "
+                           "decoded: a mode the profile doesn't cover (the headers say which), or symbols too poor for its code")
             return p
         if weak:
             # At a wrong rate (or off the constellation) the symbols repeat or smear, and a weak code (short constraint,

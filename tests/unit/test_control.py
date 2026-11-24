@@ -130,7 +130,32 @@ def test_pl_header_codewords():
         rng = np.random.default_rng(0)
         noisy = sym + 0.7*(rng.normal(size=90) + 1j*rng.normal(size=90))
         got, errors = h.decode_fields(noisy)
-        assert got == fields and errors > 0 # soft decoding over the 128 words still finds it
+        assert got == {"s2x": 0, **fields} and errors > 0 # soft decoding over every word still finds it
+
+def test_pl_header_reads_dvbs2x_modcods():
+    """EN 302 307-2 5.5.2: b0 = 1 is a DVB-S2X MODCOD, coded with one more row (Figure 20) and sent a quarter turn on
+    from the SOF. The word built here from the standard's own construction is what the header sends and reads"""
+    h = rp.symbol.load_header("dvbs2_pl")
+    G = ["10010000101011000010110111011101", "01010101010101010101010101010101", "00110011001100110011001100110011",
+         "00001111000011110000111100001111", "00000000111111110000000011111111", "00000000000000001111111111111111", "1"*32]
+    scr = "0111000110011101100000111100100101010011010000100010110111111010"
+    for pls in (168, 182, 183): # 16APSK 13/18 normal; 32APSK 7/9 short; the same with pilots
+        b = [(pls >> (7 - i)) & 1 for i in range(8)]
+        y = np.zeros(32, int)
+        for i in range(7):
+            if b[i]:
+                y ^= np.array([int(c) for c in G[i]])
+        word = np.ravel(np.column_stack([y, y ^ b[7]])) ^ np.array([int(c) for c in scr])
+        fields = {"s2x": 1, "modcod": (pls >> 2) & 31, "short": (pls >> 1) & 1, "pilots": pls & 1}
+        sym = h.encode_fields(fields)
+        k = (np.arange(64) + 26) % 2
+        sent = np.real(sym[26:]*np.exp(-1j*np.deg2rad(45 + 90*k + 90))) < 0 # (the quarter turn)
+        assert np.array_equal(sent.astype(int), word)
+        rng = np.random.default_rng(pls)
+        got, errors = h.decode_fields(sym + 0.7*(rng.normal(size=90) + 1j*rng.normal(size=90)))
+        assert got == fields
+    t = rp.profile.table("dvbs2/modcod")
+    assert t.row({"modcod": 10, "short": 0}) is not None and t.row({"s2x": 1, "modcod": 10, "short": 0}) is None
 
 def test_pl_scrambling_sequence():
     ps = rp.symbol.PhaseScramble(rp.sequence.load("dvbs2_pl"), [131072, 0])

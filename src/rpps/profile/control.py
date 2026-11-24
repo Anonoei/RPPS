@@ -69,9 +69,13 @@ class Table:
         {"base": "table", "comment": "...", "key": "modcod",                 or a list of key columns
          "columns": ["modcod", "constellation", "ldpc"],
          "rows": [[4, "dvbs2_qpsk", "ldpc/dvbs2_64800_1_2"], ...]}
+
+    only: {field: value}: the rows apply only where the fields have these values (a field not given counts as its value),
+        e.g. DVB-S2's MODCODs, and not a DVB-S2X header's (its "s2x" bit set): no row then
     """
-    def __init__(self, name, key, columns, rows):
+    def __init__(self, name, key, columns, rows, only=None):
         self.name = name
+        self.only = dict(only or {})
         self.key = [key] if isinstance(key, str) else list(key)
         self.columns = list(columns)
         missing = [k for k in self.key if k not in self.columns]
@@ -88,6 +92,8 @@ class Table:
         """The row the fields' key values pick, or None (a key field missing, or no such row)"""
         if any(k not in fields or fields[k] is None for k in self.key):
             return None
+        if any(_norm(fields.get(k, v)) != _norm(v) for k, v in self.only.items()):
+            return None
         return self.rows.get(tuple(_norm(fields[k]) for k in self.key))
 
     def __repr__(self):
@@ -98,7 +104,7 @@ class Table:
         for k in ("key", "columns", "rows"):
             if k not in obj:
                 raise ConfigError(f"table {name}: needs '{k}'")
-        return Table(name, obj["key"], obj["columns"], obj["rows"])
+        return Table(name, obj["key"], obj["columns"], obj["rows"], obj.get("only"))
 
 def _norm(v):
     return int(v) if isinstance(v, bool) else v

@@ -131,7 +131,7 @@ def test_framed_takes_the_carrier_offset_from_the_preamble():
     y = rp.Data(o.data, Fs=o.Fs, sps=o.sps, delay=o.delay, flush=True) + rp.wave.Matched(rp.signal.filters.load("pulse/rrc/0p35"))
     z = np.tile(np.asarray(y.data)[::o.sps], 3)
     z = z*np.exp(2j*np.pi*0.06*np.arange(len(z))) # 60 kHz at 1 MBd that the chain didn't see
-    got = {name: headers for name, _, headers, _, _ in SP.framed(z, SimpleNamespace(cfo=0.0, baud=1e6), skip=0)}
+    got = {name: headers for name, _, headers, _, _, _ in SP.framed(z, SimpleNamespace(cfo=0.0, baud=1e6), skip=0)}
     assert got and max(got.values()) >= 3
 
 def test_framed_reads_the_headers_of_a_profile_ending_in_branches():
@@ -144,7 +144,7 @@ def test_framed_reads_the_headers_of_a_profile_ending_in_branches():
     o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=frames)
     y = rp.Data(o.data, Fs=o.Fs, sps=o.sps, delay=o.delay, flush=True) + rp.wave.Matched(rp.signal.filters.load("pulse/rrc/0p35"))
     z = np.asarray(y.data)[::o.sps]
-    got = {name: headers for name, _, headers, _, _ in SP.framed(np.tile(z, 3), SimpleNamespace(cfo=0.0, baud=1e6), skip=0)}
+    got = {name: headers for name, _, headers, _, _, _ in SP.framed(np.tile(z, 3), SimpleNamespace(cfo=0.0, baud=1e6), skip=0)}
     assert "dvbs2/mis" in got and got["dvbs2/mis"] >= 3
 
 @pytest.mark.kernels
@@ -295,3 +295,8 @@ def test_a_product_code_laid_out_in_each_frame_is_found_from_few_frames(fixed_st
     fec = next(s for s in p.steps if s.kind == "fec")
     assert p.solved and "product (64,57) x (16,11)" in fec.what, p
     assert ("into the unique word" in fec.note) == fixed_start and (f"{16 + fixed_start}-symbol unique word" in str(p))
+
+def test_header_ids_group_a_branch_points_headers():
+    """A framed profile's payload decoded when one of its last headers did: the branches' headers count together"""
+    assert SP._header_ids(rp.profile.load("dvbs2/normal").obj["steps"]) == [["pls"], ["bbheader"]]
+    assert SP._header_ids(rp.profile.load("dvbs2/mis").obj["steps"]) == [["pls"], ["bb_a", "bb_b"]]

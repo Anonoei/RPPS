@@ -19,6 +19,8 @@ A header is a definition: config/header/physical/<name>.json, `rp.symbol.load_he
      "code": {"n": 64, "rows": ["0x...", ...],                generator rows, one per message bit, n bits each, and
               "scramble": "0x..."},                           a mask XOR'd onto every code word
      "fields": [{"name": "modcod", "bits": 5}, ...],          the message, first field first, most significant bit first
+     "turn": {"field": "s2x", "degrees": 90},                 optional: a message with this one-bit field set has its
+                                                              code word sent turned this much more (DVB-S2X's MODCODs)
      "max_errors": 16}                                        receive: a header with more bit errors is refused
 """
 from types import SimpleNamespace
@@ -106,7 +108,8 @@ class Header(_Frame):
     """
     EMITS = True # Every header, taken or refused, is a message (rpps.profile.message)
 
-    def __init__(self, name, constellation, phase, rotate, known, rows, n, scramble, fields, max_errors=None, cycle=None):
+    def __init__(self, name, constellation, phase, rotate, known, rows, n, scramble, fields, max_errors=None, cycle=None,
+                 turn=None):
         super().__init__()
         self.name = name
         self.constellation, self.phase, self.rotate, self.cycle = constellation, float(phase), float(rotate), cycle
@@ -124,6 +127,16 @@ class Header(_Frame):
         self.max_errors = self.n//4 if max_errors is None else int(max_errors)
         self.length = len(self.known_bits) + self.n # Symbols per header (one bit per symbol)
         self.preamble = rotating(self.known_bits, constellation, self.phase, self.rotate, 0, cycle)
+        # turn: {"field": f, "degrees": d}: a message with that one-bit field set has its code word sent turned by d more
+        # degrees (DVB-S2X: its MODCODs' PLS a quarter turn on from the SOF), so the field is read from the turn and the code
+        self.turned = np.zeros(len(self.messages), bool)
+        self.turn_deg = 0.0
+        if turn:
+            names = [f for f, _ in self.fields]
+            if turn.get("field") not in names or dict(self.fields)[turn["field"]] != 1:
+                raise ConfigError(f"header {name}: turn needs a one-bit field of {names}, not {turn.get('field')!r}")
+            self.turned = self.messages[:, names.index(turn["field"])].astype(bool)
+            self.turn_deg = float(turn.get("degrees", 0))
         self.CONTROLS = {"frame": "live", **{f: "live" for f, _ in self.fields}}
         self.values = {f: 0 for f, _ in self.fields}
 
@@ -139,14 +152,15 @@ class Header(_Frame):
 
     def words(self):
         """The symbols each message's code word is sent as, after the known part: (2^k, n)"""
-        return np.array([rotating(w, self.constellation, self.phase, self.rotate, len(self.known_bits), self.cycle)
-                         for w in self.codebook])
+        return np.array([rotating(w, self.constellation, self.phase + self.turn_deg*t, self.rotate, len(self.known_bits),
+                                  self.cycle) for w, t in zip(self.codebook, self.turned)])
 
     def encode_fields(self, values):
         """The header's symbols for these field values"""
         bits = np.concatenate([_bits(int(values.get(f, 0)), b) for f, b in self.fields])
         idx = int(bits @ (1 << np.arange(self.k - 1, -1, -1)))
-        return np.concatenate((self.preamble, rotating(self.codebook[idx], self.constellation, self.phase, self.rotate,
+        return np.concatenate((self.preamble, rotating(self.codebook[idx], self.constellation,
+                                                       self.phase + self.turn_deg*self.turned[idx], self.rotate,
                                                        len(self.known_bits), self.cycle)))
 
     def decode_fields(self, sym):
@@ -155,7 +169,12 @@ class Header(_Frame):
         y = y*np.conj(turns(len(y), self.phase, self.rotate, self.cycle, len(self.known_bits)))
         llr = self.constellation.llr(y) # positive: bit 0
         score = (1.0 - 2.0*self.codebook) @ llr
+        if self.turn_deg: # Turned messages scored on the symbols turned back
+            llr_t = self.constellation.llr(y*np.exp(-1j*np.deg2rad(self.turn_deg)))
+            score = np.where(self.turned, (1.0 - 2.0*self.codebook) @ llr_t, score)
         best = int(np.argmax(score))
+        if self.turned[best]:
+            llr = llr_t
         errors = int(np.sum((llr < 0) != self.codebook[best].astype(bool)))
         m = self.messages[best]
         out, i = {}, 0
@@ -224,7 +243,7 @@ class Header(_Frame):
         code = obj["code"]
         return Header(name, load_mod(obj["constellation"]), obj.get("phase", 0), obj.get("rotate", 0),
                       _bits(known["bits"], int(known["n"])), code["rows"], code["n"], code.get("scramble"),
-                      obj["fields"], obj.get("max_errors"), obj.get("cycle"))
+                      obj["fields"], obj.get("max_errors"), obj.get("cycle"), obj.get("turn"))
 
 # ---- Pilot blocks
 
