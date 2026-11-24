@@ -55,6 +55,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   `pulse/rc/0p20_frequency`, `sequence/word/p25_fs` and the eight `dmr_*` sync patterns, link headers `p25_nid`,
   `p25_tsbk`, `dmr_slot_type`, `dmr_bptc`). A framed link header takes a default `length`.
 - `examples/zc_modes.py`: a Zadoff-Chu preamble whose root picks each frame's modulation and code.
+- **Bursts that touch are cut apart** (`rp.analysis.framing.frames.split`, run by `gate` unless `touching=False`): at a
+  guard time shorter than the gate's hang (a dip longer than the bursts' own envelope dips) or at a power step
+  between transmitters, so `burst.demodulate` acquires each one instead of one merged span.
 - **TDMA bursts follow their symbol clock and give LLRs** (`rp.analysis.spectrum.burst.demodulate`): a burst of a few
   hundred symbols or more has its clock offset measured (`clock`) and taken out (`burst.retime`), so long bursts no
   longer drift off their timing; each burst's `llr`, and `Bursts.llrs()` for the soft code searches.

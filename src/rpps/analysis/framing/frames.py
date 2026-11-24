@@ -298,9 +298,99 @@ class Burst:
         d = f", {self.det.mod} {self.det.baud/1e3:.1f} kBd, Es/N0 {self.det.esn0:.1f} dB" if self.det is not None else ""
         return f"<burst {self.start}-{self.stop}{d}>"
 
-def gate(x, Fs, smooth=4e-6, contrast=10.0, min_len=64e-6, hang=8e-6):
+def _segments(F, min_seg, thr):
+    """Change points of the rows of F (windows x features, each feature's noise about 1): binary segmentation, a split
+    where the two sides' means differ by n1 n2 / n |m1 - m2|^2 above thr, both sides min_seg windows at least"""
+    cuts, todo = [], [(0, len(F))]
+    while todo:
+        a, b = todo.pop()
+        n = b - a
+        if n < 2*min_seg:
+            continue
+        c = np.cumsum(F[a:b], axis=0)
+        k = np.arange(min_seg, n - min_seg + 1)
+        m1 = c[k - 1]/k[:, None]
+        m2 = (c[-1] - c[k - 1])/(n - k)[:, None]
+        gain = k*(n - k)/n*np.sum(np.abs(m1 - m2)**2, axis=1)
+        i = int(np.argmax(gain))
+        if gain[i] > thr:
+            cuts.append(a + int(k[i]))
+            todo += [(a, a + int(k[i])), (a + int(k[i]), b)]
+    return sorted(cuts)
+
+def _noise(f):
+    """A feature's noise level from its first differences (median absolute, robust to the steps being looked for)"""
+    d = np.abs(np.diff(f))
+    return max(float(np.median(d))/0.6745/np.sqrt(2) if len(d) else 1.0, 1e-9)
+
+def _guards(p, level, min_gap, ratio=2.0, q=95):
+    """Runs of the fine power p under `level` (one for all, or one a sample: the local level less a margin) long enough
+    to be guard times: [(start, stop)] in p's samples. At least
+    `min_gap` long, and `ratio` times the `q`th percentile of all runs' lengths (a burst's own envelope dips through
+    zero, a fraction of a symbol each, are most of the runs; guard times are a few)"""
+    low = np.concatenate(([0], (p < level).astype(np.int8), [0]))
+    d = np.diff(low)
+    runs = list(zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1)))
+    if not runs:
+        return []
+    typical = np.percentile([b - a for a, b in runs], q)
+    return [(int(a), int(b)) for a, b in runs if b - a >= max(min_gap, ratio*typical)]
+
+def split(x, Fs, a, b, win=4e-6, min_len=64e-6, min_gap=2e-6, thr=None):
+    """Where bursts that touch (no gap the gate sees, or one shorter than its `hang`) meet in x[a:b]: [(start, stop)].
+      - guard times: dips of the power (smoothed over a sixteenth of a window) 10 dB under the span's level, `min_gap`
+        long at least and much longer than the bursts' own envelope dips (`_guards`)
+      - power steps between transmitters' levels: binary segmentation of the power (dB) in windows of `win` (32 samples
+        at least), the gain over its noise above `thr` (default 30 + 6 ln(windows): above chance over every position)
+    Parts `min_len` long at least. Not cut: bursts at one level with no guard between them, told apart only by their
+    carriers (the line of x^M in a few symbols is mostly the data's own noise; tried and dropped)"""
+    x = np.asarray(x[a:b], dtype=np.complex128)
+    w = max(32, int(Fs*win))
+    n = len(x)//w
+    min_seg = max(2, int(np.ceil(min_len*Fs/w)))
+    if n < 2*min_seg:
+        return [(a, b)]
+    pw = np.abs(x)**2
+    P = 10*np.log10(np.mean(pw[:n*w].reshape(n, w), axis=1) + 1e-30)
+    top = np.percentile(P, 90)
+    f = max(2, w//16)
+    fine = np.convolve(pw, np.ones(f)/f, mode="same")
+    # The level around each sample (the louder of the windows within min_len either side: a quiet burst beside a loud
+    # one is judged against its own level), 10 dB under it a guard time
+    from numpy.lib.stride_tricks import sliding_window_view
+    Pm = np.median(sliding_window_view(np.pad(P, min_seg//2, mode="edge"), 2*(min_seg//2) + 1), axis=1)[:n]
+    Pl = np.max(sliding_window_view(np.pad(Pm, 1, mode="edge"), 3), axis=1)
+    local = np.repeat(Pl, w)
+    local = np.concatenate((local, np.full(len(x) - len(local), local[-1])))
+    gaps = _guards(fine, 10**((local - 10)/10), int(min_gap*Fs))
+    cuts = []
+    lp = 10*np.log10(fine + 1e-30)
+    for k in _segments((P/_noise(P))[:, None], min_seg, 30 + 6*np.log(n) if thr is None else thr):
+        c = w*k
+        if any(g0 - 2*w <= c <= g1 + 2*w for g0, g1 in gaps): # a guard time there already parts them, exactly
+            continue
+        lo, hi = max(0, c - 3*w), min(len(x), c + 3*w) # to the sample: the best single split of the fine power near it
+        seg = lp[lo:hi]
+        cs = np.cumsum(seg)
+        j = np.arange(1, len(seg))
+        gain = j*(len(seg) - j)*((cs[j - 1]/j - (cs[-1] - cs[j - 1])/(len(seg) - j))**2)
+        cuts.append(lo + int(j[np.argmax(gain)]))
+    cuts = sorted(cuts)
+    out, last = [], 0
+    for c in cuts + [len(x)]:
+        segs = [[last, c]]
+        last = c
+        for g0, g1 in gaps: # the guard times taken out
+            segs = [r for s0, s1 in segs for r in (([[s0, s1]]) if g1 <= s0 or g0 >= s1 else [[s0, g0], [g1, s1]])
+                    if r[1] > r[0]]
+        out += [(a + s0, a + s1) for s0, s1 in segs
+                if s1 - s0 >= min_len*Fs and np.median(fine[s0:s1]) > 10**((top - 10)/10)]
+    return out or [(a, b)]
+
+def gate(x, Fs, smooth=4e-6, contrast=10.0, min_len=64e-6, hang=8e-6, touching=True):
     """[(start, stop)] where the power is on: above the geometric mean of its low and high levels (`contrast` apart at
-    least), bursts closer than `hang` merged, those shorter than `min_len` dropped"""
+    least), bursts closer than `hang` merged, those shorter than `min_len` dropped; each span then cut where bursts
+    touch (`split`: a power step or a guard time), unless `touching` is False"""
     p = np.abs(np.asarray(x))**2
     w = max(2, int(Fs*smooth))
     e = np.convolve(p, np.ones(w)/w, mode="same")
@@ -316,7 +406,10 @@ def gate(x, Fs, smooth=4e-6, contrast=10.0, min_len=64e-6, hang=8e-6):
             merged[-1][1] = b
         else:
             merged.append([a, b])
-    return [(int(a), int(b)) for a, b in merged if b - a >= min_len*Fs]
+    spans = [(int(a), int(b)) for a, b in merged if b - a >= min_len*Fs]
+    if touching:
+        spans = [p for a, b in spans for p in (split(x, Fs, a, b, min_len=min_len) if b - a >= 2*min_len*Fs else [(a, b)])]
+    return spans
 
 def bursts(x, Fs, names=None, baud=None, min_symbols=128, betas=(0.2, 0.25, 0.35), **kw):
     """The bursts of x (`gate`), each acquired on its own: rate (or `baud` for all), modulation, offset, timing (as a

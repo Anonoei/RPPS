@@ -8,7 +8,8 @@
 Every burst comes from another transmitter (or the same one after a gap), with its own carrier offset, phase and symbol
 timing, and is too short to train loops on: so each is acquired on its own, data-aided, from the preamble.
 
-  1. rpps.analysis.framing.frames.bursts gates the bursts and acquires each blind (rate, modulation, offset); bursts too short
+  1. rpps.analysis.framing.frames.bursts gates the bursts (bursts that touch cut apart at a guard time or a power step:
+     frames.split) and acquires each blind (rate, modulation, offset); bursts too short
      for that keep only their span. The modulation is the bursts' majority, the rate their median (or `mod` / `baud`).
   2. The preamble: the leading run of symbols the bursts agree on, as phase steps (rpps.analysis.framing.frames.preamble, or
      `shared_preamble` for a short one, whichever is longer), or `preamble` given. A network's burst types each carry a
