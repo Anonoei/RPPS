@@ -23,8 +23,38 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   matches the standards. A link header's new `"payload_order": "lsb"` does it for `ble_adv` and `ieee80211b_plcp`; the
   `interleave/block/lsb_first` definition (each octet's bits reversed) is the last step of `ieee802154/2450`, whose
   receive output is now data bits (Rep.DATA), not channel bits.
+- **`fec/block/trellis/p25_1_2` is one codeword per 96 bits** (its new `length`): encode and decode take whole
+  codewords, each started and flushed on its own (96 bits to 196), so it works as a profile's block step. A whole
+  stream decoded as one trellis sequence is `decode_batch` on a row.
 
 ### Added
+- **Codes bit by bit:** any block code takes `append` (check bits after the codeword, each the XOR of the codeword bits
+  listed), `extend` (an overall parity bit, now for any block code), `layout` (where each codeword bit is sent, or
+  `{"message": [...], "parity": "rest"}`) and `xor` (a pattern on the sent word), decoded in reverse, soft or hard
+  (`rpps.code.types.layout`). A `linear` code takes its parity bits as equations (`"parity": [[0, 1, 3], ...]`), and the
+  new `expr` type each codeword bit as an expression of the message bits: loaded as a linear code in its own layout when
+  it is affine, decoded from its codebook otherwise. `fsm` trellis codes take a codeword `length`. New:
+  `bch/p25_nid` (BCH (63,16) and its DUID bit, checked against TIA-102.BAAA-A's generator matrix), which
+  `projects/p25_dmr/p25_sync.py` now loads.
+- **Frame sync by named words, among symbols** (`{"sync": "frame"}`, `rp.sync.FrameSync`): alternatives (`sequences`:
+  {name: word}; `zc`: a set of Zadoff-Chu roots and shifts), the one found published as `word` with its fields; a word
+  mid-burst (`before`, `length`, controlled); real levels kept real, a polarity rather than a phase (`polarity`, `scale`);
+  `segments` for a carrier that turns across a long word; and what each match measured published with its frame (`scale`,
+  `cfo`, `esn0`), `cfo` taken off the frame when asked, `classify` naming the constellation from the frame's symbols.
+  `controls` drive later steps from these fields through a table, as from a header's. A `zc` sequence definition.
+- **`{"symbol": "marker"}`** (known symbols before each frame: a sequence with symbols, or a Zadoff-Chu root and shift a
+  control sets per frame) and **`{"symbol": "puncture"}`** (symbols at fixed places of every period dropped, and inserted
+  on transmit: P25's status symbols).
+- **Branches that read part of a frame:** `take` gives a branch item ranges of each frame (an end may be null: to the
+  frame's end; `unit` keeps whole groups) and `select` only the frames whose fields (published by a trunk step) an
+  expression accepts. Frames are a fixed `frame` length, or start where a trunk control drives the branch step's `frame`
+  (frames of any length) (`rpps.profile.branch`).
+- **Profiles `p25/tsdu` and `dmr/burst`:** P25 phase 1 control channel TSDUs of one to three TSBKs, each read to the next
+  frame sync (NID and TSBKs, CRC-checked) and DMR bursts
+  (every slot type; the data bursts' BPTC payloads), with the definitions they use (`constellation/ask/4level`,
+  `pulse/rc/0p20_frequency`, `sequence/word/p25_fs` and the eight `dmr_*` sync patterns, link headers `p25_nid`,
+  `p25_tsbk`, `dmr_slot_type`, `dmr_bptc`). A framed link header takes a default `length`.
+- `examples/zc_modes.py`: a Zadoff-Chu preamble whose root picks each frame's modulation and code.
 - **TDMA bursts follow their symbol clock and give LLRs** (`rp.analysis.spectrum.burst.demodulate`): a burst of a few
   hundred symbols or more has its clock offset measured (`clock`) and taken out (`burst.retime`), so long bursts no
   longer drift off their timing; each burst's `llr`, and `Bursts.llrs()` for the soft code searches.
@@ -280,6 +310,14 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   symbol-rate line at least `min_line` over its floor (taken anyway), the symbols are at a wrong rate and no code fits:
   the configured scans still run, the blind ones (the puncture search, block and convolutional searches, the layers
   inside) don't. A rate given (a hint, the cyclic spectrum's second pass) has no line and is always searched.
+
+### Fixed
+- A block definition's `decoder` that cannot be built from its code (a trellis for a non-linear `expr` code, a code type
+  that is not a decoder) is a ConfigError saying why, not an AttributeError.
+- A framed link header whose fields are the whole frame (no payload) was restarted before it was read, so no frame came
+  out; and a header whose last bit ended a block was read only when more data came, so a stream's last header was lost.
+- A profile's output joined frames decoded to bits with frames passed on as LLRs (a code a header switched off) as one
+  array, so the bits read as LLRs; such outputs are all LLRs now, a decided bit as sure as the surest soft one.
 
 ## 0.6.0 (2026-11-22)
 

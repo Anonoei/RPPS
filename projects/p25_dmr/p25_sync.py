@@ -5,7 +5,7 @@
 Per channel: mix to zero (the channel's strongest line is used as the carrier), 7 kHz low-pass, 48 kS/s (10 samples per symbol), FM demodulate, pick the best of 10 sample phases, scale to
 levels +-1/+-3 and correlate with the 24-symbol frame sync 0x5575F5FF77FF (dibits 01 = +3, 00 = +1, 10 = -1, 11 = -3). Peaks above --corr are sync hits (a random signal never reaches 0.9; noise-free
 sync gives 1.00). After each hit the 32 NID symbols are sliced and printed as NAC (12 bits) and DUID (4 bits).
-The NID is BCH(63,16, t=11) over GF(2^6) (poly 0x43) plus an overall parity bit: it is decoded with rpps' `bchgf`, and a NAC / DUID counts only when the decode succeeds. The levels of each sync word
+The NID is BCH(63,16, t=11) over GF(2^6) (poly 0x43) plus a 64th bit P = S1 xor S0 of the DUID: the definition `bch/p25_nid` decodes it, and a NAC / DUID counts only when the decode succeeds. The levels of each sync word
 (all +-3) calibrate the slicer for the 32 NID symbols that follow. Limits: the fixed sample-phase pick is the only timing recovery. DMR and NXDN are also 4800 baud 4-level but use other sync words.
 Meant to be upstreamed into RPPS.
 """
@@ -16,9 +16,7 @@ import sys
 from collections import Counter
 
 import numpy as np
-from rpps.code.types.bchgf import bchgf
 import rpps as rp
-from rpps.logger import Logger
 from rpps.signal.sample import resample_poly
 from rpps.signal.filters import low_pass
 
@@ -72,7 +70,7 @@ def sync_hits(sn, corr=0.9, sync=None):
     return [i for i in range(1, len(r) - 1) if r[i] > corr and r[i] >= r[i - 1] and r[i] >= r[i + 1]], r
 
 
-_BCH = bchgf(Logger("p25"), 63, 16, m=6, poly=0x43, t=11)
+_BCH = rp.code.load("block/bch/p25_nid").decoder # (63,16) BCH + the DUID bit P (TIA-102.BAAA-A 8.5)
 
 
 def slice_dibits(seg):
@@ -87,7 +85,7 @@ def nid(sn, i):
         return None
     seg = np.delete(seg, 35 - len(SYNC))/(np.mean(a*SYNC)/9.0) # a status symbol follows every 35 symbols of the frame; the sync's +-3 levels set the scale
     bits = np.array([int(b) for b in "".join(format(int(v), "02b") for v in slice_dibits(seg))], np.uint8)
-    word, errors = _BCH.decode(bits[:63], status=True)
+    word, errors = _BCH.decode(bits[:64], status=True)
     if errors[0] < 0:
         return None
     w = "".join(map(str, word.astype(int)))

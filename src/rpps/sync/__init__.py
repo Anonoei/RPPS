@@ -17,7 +17,7 @@ and its rate across windows and gates outliers; the correction is evaluated per 
 | channel | `equalize.BlockLS`: least squares per window against decisions | `equalize: ls` (default) |
 | OFDM timing and frequency | `CPSync`: from the cyclic prefix | |
 | carrier phase per frame | `PilotPhase` (pilot blocks), `phase.FFCarrier` (Viterbi & Viterbi) | `carrier: pilots`, `carrier: ff` |
-| frame starts | `FrameSync` (a preamble and the best word of a header code), `Delimiter` (a word among bits) | `frame`, `delimit` |
+| frame starts | `FrameSync` (a preamble and the best word of a header code; or named alternatives, Zadoff-Chu sets, a word mid-burst, real levels, what the match says: word, scale, cfo, esn0, modulation), `Delimiter` (a word among bits) | `frame`, `delimit` |
 | alignment on bits | `Align` (markers, patterns, polarity), `Puncture` (puncture phase) | `align`, `puncture` |
 | modulation, rate, offset | `Acquire` (`detect` once), `Lock` (a snapshot: `Lock.find`, `lock.update`; contiguous blocks joined: `lock.follow`); code phase and Doppler: `acquire_code` | |
 | channel code, bit map, alignment | `AcquireFEC` | |

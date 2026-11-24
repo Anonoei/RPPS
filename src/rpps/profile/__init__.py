@@ -24,7 +24,7 @@ receive and transmit is in `rpps.wave`.
 | Header-driven control | `"controls"`: a header's fields drive other steps' parameters from a position on, without losing lock | `rpps.profile.control`, `rpps.base.control`, `rpps.profile.runner` |
 | Bursts | `{"sync": "burst"}`: the steps after it are built anew for every burst; transmitting places bursts on one stream (`gap_s`, `at=`, `ramp_s`, `freq=`, `hop`) | `rpps.profile.burst`, `rpps.sync.Burst`, `rpps.sync.BurstTx` |
 | Preambles | `{"sync": "preamble"}` after a burst step: by repetition or a waveform the profile makes from a `sequence` word; `"attach": true` sends it on transmit | `rpps.sync.Preamble` |
-| Branches | a last `{"branch": ...}` step fans the chain out; a header in one branch drives the branches after it, `frame` makes them read whole frames | `rpps.profile.branch` |
+| Branches | a last `{"branch": ...}` step fans the chain out; a header in one branch drives the branches after it, `frame` makes them read whole frames, `take` only parts of each (a code split around a sync word), `select` only the frames a trunk step's fields accept | `rpps.profile.branch` |
 | Resource grids | `grid` steps take an OFDM system's samples to frames of its grid; its channels are branches (`lte/downlink`, `nr/downlink`) | `rpps.grid` |
 | Parallel region | `"parallel": "<step id>"`: the per-frame rest of the chain on threads or processes | `rpps.parallel`, `rpps.profile.parallel` |
 | Messages | every frame is also a `Message` (kind, fields, payload, `crc_ok`, where it starts), from `runner.take_messages()` | `rpps.profile.message` |

@@ -77,7 +77,7 @@ from .differential import Differential
 from .spread import Spread
 from .despread import Despread, correlate
 from .ofdm import Carriers
-from .frame import Header, Pilots, PhaseScramble, pilot_layout, rotating
+from .frame import Header, Pilots, PhaseScramble, Marker, Puncture, pilot_layout, rotating
 from .serial import ls, load, load_header, init, generate, load_or_generate
 
 from .modulation import Modulation

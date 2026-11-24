@@ -19,8 +19,9 @@ A definition, config/header/link/<name>.json, `rp.link.load("header/ieee80211b_p
      "fcs": "crc24_ble",                                  a crc definition over header and payload, sent after the payload
      "payload": "length*signal//10",                      receive: payload bits after the header, from the fields
      "preamble": {"ones": 128, "word": "0xF3A0", "bits": 16},   transmit: sent before the header (in `order`)
-     "framed": true}                                      frames of `length` bits (a controlled parameter: DVB-S2 Kbch),
+     "framed": true,                                      frames of `length` bits (a controlled parameter: DVB-S2 Kbch),
                                                           the payload padded to fill them
+     "length": 96}                                        framed: the frame length until a control sets one (fixed blocks)
 
 Receiving, each frame starts where a profile applies a change (a delimiter before it publishes frame starts), or, framed,
 `length` bits after the last. The header's fields, with "bits" (the payload's length), are published from the payload's
@@ -219,8 +220,9 @@ class Header(Pipe):
             self._start = False
             self._restart(st, pos0)
         while i < len(x):
-            if self.framed and self.length and st.frame_left is not None and st.frame_left <= 0:
-                self._restart(st, pos0 + i) # Framed: the next frame follows this one
+            if (self.framed and self.length and st.frame_left is not None and st.frame_left <= 0
+                    and (st.mode == "skip" or (st.mode == "header" and not len(st.held)))):
+                self._restart(st, pos0 + i) # Framed: the next frame follows this one (once this one is read)
             if st.mode == "header":
                 need = self.need(st.held)
                 if len(st.held) < need: # (a header whose fields size it: what is read so far says how much more)
@@ -230,8 +232,9 @@ class Header(Pipe):
                     self._used(st, take)
                     if len(st.held) < need:
                         break
-                    continue
-                fields, ok = self.parse(st.held)
+                    if len(st.held) < self.need(st.held): # (what it read says there is more)
+                        continue
+                fields, ok = self.parse(st.held) # (now: the block may end with the header)
                 hb = len(st.held)
                 if not ok:
                     est["crc_failed"] += 1
@@ -259,6 +262,9 @@ class Header(Pipe):
                 publish(data.meta, self, {"frame_bits": whole}, at=st.start, out=None, span=whole, group=st.start)
                 anchor(data.meta, self, at, n_out)
                 st.mode, st.left, st.body, st.fields, st.part = "payload", n, np.zeros(0, bool), fields, np.zeros(0, bool)
+                if n == 0 and self.fcs is None: # A header that is the whole frame: done now, not when more bits come
+                    st.mode = "skip"
+                    self._emit(data.meta, st.fields, self._bytes_order(st.body), True if self.crc is not None else None, st.start)
             elif st.mode == "payload":
                 take = min(st.left, len(x) - i)
                 if self.fcs is None: # (with an FCS: held until it says the frame is good)
@@ -372,8 +378,13 @@ class Header(Pipe):
     def load(name, obj):
         if "fields" not in obj:
             raise ConfigError(f"header {name}: needs 'fields'")
-        return Header(name, obj["fields"], obj.get("order", "msb"), obj.get("crc"), obj.get("payload"), obj.get("preamble"),
-                      obj.get("framed", False), obj.get("fcs"), obj.get("payload_order", "msb"), obj.get("payload_fields"))
+        h = Header(name, obj["fields"], obj.get("order", "msb"), obj.get("crc"), obj.get("payload"), obj.get("preamble"),
+                   obj.get("framed", False), obj.get("fcs"), obj.get("payload_order", "msb"), obj.get("payload_fields"))
+        if obj.get("length") is not None: # A framed header's frame length until a control says another
+            if not h.framed:
+                raise ConfigError(f"header {name}: `length` is the frame length of a framed header (\"framed\": true)")
+            h.length = int(obj["length"])
+        return h
 
 def _crc(name):
     from .serial import load

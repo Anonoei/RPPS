@@ -94,6 +94,51 @@ For an unknown signal, `rp.analysis.framing.payload.fixed_word(bits)` finds such
 (bit errors and all). It gives the word, its period, and the bits each frame's copy differs by, with an `errors` to
 start from. `rp.analysis.framing.frames.find(symbols)` does the same among symbols.
 
+### A preamble that says what follows
+
+A frame sync can look for several words at once and say which it found. Each alternative is named, and the one that
+matched is published with the frame as `word`, with its own fields, so `controls` drive the steps after it from a table,
+the same way a header's fields do:
+
+- `"sequences": {"bs_voice": "dmr_bs_voice", ...}`: words given as bits, mapped to symbols by the profile's own steps
+  (DMR's eight sync patterns: voice or data, base station or mobile).
+- `"zc": {"roots": [25, 29, 34], "length": 63, "shifts": [0]}`: a set of Zadoff-Chu sequences, published with `root`
+  and `shift`. One complex sequence alone is a definition of type `zc` named by `"sequence"`.
+- `"before": 54, "length": 132`: the frame starts that many symbols ahead of its word (a sync word in the middle of a
+  burst) and is that long; `length` can be driven by a control too.
+- Real levels (an FM discriminator's) stay real, and the match's phase is a polarity. `"scale": true` puts the levels
+  back where the word's are; `"polarity": false` matches in phase only, for a discriminator whose sense is known, and
+  is needed when alternatives are each other inverted (DMR's voice and data patterns).
+- Every frame also publishes what its preamble measured: `scale`, `phase`, `cfo` (cycles a symbol, from the phase between
+  the word's halves), `esn0` (the frame's symbols over the noise left after the word). `"cfo": true` takes that
+  frequency off the frame; `"segments": 4` correlates the word in parts so a carrier that turns across a long word
+  doesn't hide it. Offsets past about 1/L cycles a symbol are for a carrier step before.
+- `"classify": ["psk/qpsk", "psk/8psk"]`: when the word does not say the modulation, each frame's symbols are scored
+  against the candidates and the best published as `modulation`.
+
+On transmit, `{"symbol": "marker", "zc": {"length": 63, "root": 25}}` puts known symbols before each frame (its `root`,
+`shift` or `sequence` set per frame by a control), and strips them on receive. `{"symbol": "puncture", "every": 36,
+"at": [35]}` drops a symbol at those places of every period (P25's status symbols) and puts `value` there on transmit.
+
+```python
+--8<-- "examples/zc_modes.py"
+```
+
+One frame can hold several codes: a branch step can give each branch only its `take` (item ranges of every frame,
+joined) and only the frames its `select` expression accepts, over the fields a trunk step published for that frame.
+Frames are a fixed `frame` length, or start where a trunk control drives the branch step's `frame` (a frame sync's
+`{"tsdu": {"frame": "frame"}}`) and run to the next. A range's end can be null (to the frame's end), and
+`{"ranges": [[64, null]], "unit": 196}` keeps whole groups only: `profile/p25/tsdu` reads one to three TSBKs a frame
+that way. `profile/dmr/burst` reads every burst's slot type (Golay (20,8), split around the sync word) and only the
+data bursts' BPTC payload:
+
+```json
+{"branch": "burst", "frame": 264,
+ "take": {"slot": [[98, 108], [156, 166]], "data": [[0, 98], [166, 264]]},
+ "select": {"data": {"step": "fs", "when": "word == 'bs_data' or word == 'ms_data'"}},
+ "branches": {"slot": [...], "data": [...]}}
+```
+
 ## Decoded messages, and only some of them
 
 Every frame a profile receives is also a record, `rp.profile.Message`: its kind, the fields it decoded, its payload,

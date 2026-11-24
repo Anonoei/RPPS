@@ -1,0 +1,10 @@
+{
+  "base": "sequence",
+  "type": "word",
+  "comment": "P25 phase 1 frame synchronization, 48 bits (24 symbols, all +3 / -3) at the start of every data unit, most significant bit first",
+  "ref": "TIA-102.BAAA-A 8.3",
+  "tags": ["p25"],
+  "word": "0x5575F5FF77FF",
+  "bits": 48,
+  "order": "msb"
+}

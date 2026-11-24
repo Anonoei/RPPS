@@ -411,3 +411,174 @@ class PhaseScramble(_Frame):
 
     def decode(self, data):
         return self._run(data, False)
+
+# ---- Known symbols before each frame
+
+class Marker(_Frame):
+    """Known symbols at the start of every frame (a symbol-level sync word: a Zadoff-Chu preamble, a word already mapped)
+
+        rx: frame -> the symbols after the marker (a frame sync gives each frame from its preamble on); the marker's
+            match, |<marker, received>| / (|marker| |received|), is in stream.est[name]["match"]
+        tx: the marker, then the frame's symbols
+
+    symbols: the marker; or `zc` (a length) and the Zadoff-Chu root and shift, controlled per frame (`root`, `shift`),
+    or `sequence` (a definition with symbols), so a transmitter sends the preamble that says what its frame is.
+    length: symbols of a frame after the marker; None: frames as a profile's control starts them (`frame`).
+    """
+    CONTROLS = {"frame": "live", "root": "live", "shift": "live", "sequence": "live"}
+
+    def __init__(self, symbols=None, length=None, zc=None, root=None, shift=0, name="marker"):
+        super().__init__()
+        self.zc, self.root, self.shift, self.name = zc, root, int(shift or 0), name
+        self.length = None if length is None else int(length)
+        if self.length is not None and self.length <= 0:
+            raise ValueError("symbol Marker: the frame length after the marker is positive (or None: frames by control)")
+        self.symbols = None if symbols is None else np.asarray(symbols, dtype=np.complex128)
+        if self.symbols is None:
+            self._make()
+
+    def __str__(self):
+        return f"Marker({self.name})"
+
+    def _make(self):
+        if self.zc is not None and self.root is not None:
+            from ..sequence import zadoff_chu
+            self.symbols = zadoff_chu(self.root, self.zc, self.shift)
+        if self.symbols is None:
+            raise ValueError("symbol Marker: its symbols, a sequence, or a Zadoff-Chu length and root")
+
+    def control(self, frame=None, root=None, shift=None, sequence=None):
+        if sequence is not None:
+            from .. import sequence as seq
+            self.symbols = np.asarray(seq.load(sequence).symbols, dtype=np.complex128)
+        if root is not None or shift is not None:
+            self.root = self.root if root is None else int(root)
+            self.shift = self.shift if shift is None else int(shift)
+            self._make()
+        self._start = True
+
+    @property
+    def n(self):
+        return len(self.symbols)
+
+    def pos_rate(self, decode):
+        if self.length is None:
+            return 1.0
+        L, n = self.length, self.n
+        return L/(L + n) if decode else (L + n)/L
+
+    def encode(self, data):
+        from ..base.rpps import align
+        ctx = dict(data.ctx)
+        x = np.asarray(data.data, dtype=np.complex64)
+        if self.length is None:
+            if len(x) and self._start:
+                self._start = False
+                anchor(data.meta, self, data.meta.pos, self.n) # The frame's first symbol follows the marker
+                x = np.concatenate((self.symbols.astype(np.complex64), x))
+            return self._out(data, x, ctx)
+        x = align(ctx, (self, "tx"), x, self.length, pad=True)
+        frames = x.reshape(-1, self.length)
+        y = np.concatenate((np.broadcast_to(self.symbols.astype(np.complex64), (len(frames), self.n)), frames), axis=1)
+        return self._out(data, y.reshape(-1), ctx)
+
+    def _match(self, data, head):
+        m = self.symbols[:len(head)]
+        den = np.linalg.norm(m)*np.linalg.norm(head)
+        data.meta.stream.est[self.name] = {"match": float(abs(np.vdot(m, head))/den) if den else 0.0}
+
+    def decode(self, data):
+        from ..base.rpps import align
+        ctx = dict(data.ctx)
+        x = np.asarray(data.data)
+        if self.length is not None:
+            x = align(ctx, (self, "rx"), x, self.n + self.length, pad=False)
+            frames = x.reshape(-1, self.n + self.length)
+            if len(frames):
+                self._match(data, frames[-1, :self.n])
+            return self._out(data, frames[:, self.n:].reshape(-1), ctx)
+        key = (self, "strip") # The marker at each frame start is stripped (held while it is not all in yet)
+        if self._start:
+            self._start = False
+            ctx[key] = np.zeros(0, dtype=x.dtype)
+        held = ctx.pop(key, None)
+        y = x
+        if held is not None:
+            head = np.concatenate((held, x))
+            if len(head) < self.n and not ctx.get("flush"):
+                ctx[key] = head
+                y = x[:0]
+            else:
+                self._match(data, head[:self.n])
+                y = head[self.n:]
+                anchor(data.meta, self, data.meta.pos + self.n - len(held), 0) # The first symbol after the marker
+        return self._out(data, y, ctx)
+
+# ---- Periodic symbols of no interest (status symbols)
+
+class Puncture(_Frame):
+    """Symbols at fixed places of every period of a frame, removed on receive and inserted on transmit: P25's status
+    symbol after every 35 (`every` 36, `at` [35]), counted from the frame start
+
+        rx: the frame without them; tx: the frame with `value` put in (a status symbol's level, a known point), its
+            last ones (after its last data symbol: P25's status symbol at 359 of 360) when the next frame starts or the
+            stream ends
+    """
+    CONTROLS = {"frame": "live"}
+
+    def __init__(self, every, at, value=0.0, name="puncture"):
+        super().__init__()
+        self.every = int(every)
+        self.at = sorted({int(a) % self.every for a in at})
+        if not self.at or len(self.at) >= self.every:
+            raise ValueError(f"symbol Puncture: some, not all, of every {self.every} positions")
+        self.value, self.name = complex(value), name
+        self.keep = np.array([i for i in range(self.every) if i not in self.at]) # where the data of a period goes
+        self._hole = np.zeros(self.every, bool)
+        self._hole[self.at] = True
+
+    def __str__(self):
+        return f"Puncture({self.name}: {self.at} of {self.every})"
+
+    def pos_rate(self, decode):
+        r = len(self.keep)/self.every
+        return r if decode else 1/r
+
+    def restart(self, st):
+        st.i = 0 # receive: input symbols of the frame so far; transmit: output symbols
+
+    def decode(self, data):
+        ctx = dict(data.ctx)
+        st = self._state(ctx, False)
+        self._anchor(data)
+        x = np.asarray(data.data)
+        i = st.i + np.arange(len(x))
+        st.i += len(x)
+        return self._out(data, x[~self._hole[i % self.every]], ctx)
+
+    def _trailing(self, i):
+        """Holes from frame position i to the end of its period: the last ones of a frame, after its last data symbol"""
+        n = 0
+        while (i + n) % self.every and self._hole[(i + n) % self.every]:
+            n += 1
+        return n
+
+    def encode(self, data):
+        ctx = dict(data.ctx)
+        prev = ctx.get((self, "tx"))
+        tail = self._trailing(prev.i) if self._start and prev is not None else 0 # The last frame's holes, now it is over
+        st = self._state(ctx, True)
+        if self._began:
+            anchor(data.meta, self, data.meta.pos, tail) # This frame's first symbol follows them
+        x = np.asarray(data.data)
+        d = len(self.keep)
+        n_done = (st.i//self.every)*d + int(np.count_nonzero(~self._hole[:st.i % self.every])) # data symbols placed so far
+        k = n_done + np.arange(len(x))
+        o = (k//d)*self.every + self.keep[k % d] # output position of each
+        end = int(o[-1]) + 1 if len(x) else st.i
+        if ctx.get("flush"): # The stream's last frame ends here
+            end += self._trailing(end)
+        y = np.full(tail + end - st.i, self.value, dtype=np.complex64)
+        y[tail + o - st.i] = x
+        st.i = end
+        return self._out(data, y, ctx)

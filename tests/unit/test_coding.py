@@ -34,7 +34,7 @@ def test_block_round_trip(name, rng):
         msg = bits(rng, code.num*20)
         per = 1
     coded = code.encode(msg)
-    tail = getattr(code, "tail", 0)*getattr(code, "n", 0) # A trellis code's flush steps
+    tail = getattr(code, "tail", 0)*getattr(code, "n", 0) if getattr(code, "length", None) is None else 0 # A trellis code's flush steps (in each codeword's den when it has a length)
     assert len(coded) == len(msg)//(code.num*per)*code.den*per + tail
     if getattr(code, "levels", None) is not None: # Decoded from the amplitudes it sends
         coded = code.modulate(coded)

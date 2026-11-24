@@ -83,6 +83,7 @@ class FrameSync(Stage):
 
         frames = symbols + rp.sync.FrameSync(preamble)          # preamble: the known symbols, complex
         frames = symbols + rp.sync.FrameSync(sof, words)        # then one of a set of known continuations (DVB-S2 PLS)
+        frames = levels + rp.sync.FrameSync({"bs_voice": a, "bs_data": b}, before=54, length=132, scale=True)  # DMR
 
     Block estimation: the normalised correlation with the preamble, |c| / sqrt(E_window E_preamble) (1 for a perfect
     match), peaks above `threshold` and the largest within a preamble's length. With `words` (M, n): the n symbols after
@@ -98,16 +99,42 @@ class FrameSync(Stage):
     bit search only corrects an inversion). pending: the preamble comes later (`set_template`), as a profile makes it
     from such a word. Over L symbols random data correlates about 1/sqrt(L) (0.05 for a 400-symbol word), so a long word
     may use a threshold well under the default.
-    Estimates in stream.est[name]: frames, the last preamble's correlation and phase.
-    """
-    CONTROLS = {}
 
-    def __init__(self, preamble, words=None, threshold=None, max_length=None, name="frame", pending=False, device=False):
+    preamble: the symbols, or alternatives of one length: {name: symbols} or {name: (symbols, {field: value})} (sync
+        words that say what follows: DMR's voice / data, base / mobile; Zadoff-Chu roots and shifts). Each is
+        correlated; the best names the frame, published as `word` with its fields, for controls to drive steps by.
+    before, length: the frame starts `before` symbols ahead of its preamble (a sync word mid-burst) and is `length`
+        symbols long (a controlled parameter too: a header says it); without a length a frame runs to the next one.
+    segments: the preamble correlated in that many parts, added without their phases: a carrier offset turns a long
+        word (a Zadoff-Chu sequence moves its peak with it) and a coherent sum over the whole word loses it.
+    cfo: take the carrier frequency its preamble measured off each frame too (within +-1/L cycles a symbol: a larger
+        offset is for a carrier step before), not only its phase.
+    scale: divide each frame by the gain its preamble measured, so levels come out as the preamble's (4FSK +-1, +-3).
+    Real levels (a discriminator's output) stay real: the phase is a polarity, a frame upside down is turned over.
+    polarity: an inverted (turned) match counts (an unknown carrier phase, a discriminator of unknown sense); False:
+        only matches in phase, where the sense is known and alternatives are each other inverted (DMR voice / data).
+    classify: constellation names; each frame's symbols after its preamble are scored against them (rpps.sync.acquire)
+        at the Es/N0 the preamble measured, and the best published as `modulation` (when it leads by `margin` nats a
+        symbol over at least `min_symbols`; otherwise the last one stays, reported).
+
+    Each frame start publishes {"frame": k, "metric", "phase", "scale", "esn0" (dB: the frame's power less the noise
+    the residual after its preamble measured, over that noise), "cfo" (cycles a symbol, from the phase between the preamble's halves; complex input), "word" and its fields
+    (alternatives), "modulation" (classify)}. Estimates in stream.est[name]: the same of the last frame.
+    """
+    CONTROLS = {"length": "live"}
+
+    def __init__(self, preamble, words=None, threshold=None, max_length=None, name="frame", pending=False, device=False,
+                 before=0, length=None, segments=1, scale=False, classify=None, margin=0.1, min_symbols=64, polarity=True,
+                 cfo=False):
         if preamble is None and not pending:
             raise ValueError("FrameSync: a preamble, or pending=True (set_template gives it later)")
         if pending and words is not None:
             raise ValueError("FrameSync: words follow a preamble given now, not a pending one")
         self.preamble, self.L, self._ep = None, 0, 0.0
+        self.pres, self.names, self.fields = None, None, None
+        self.segments = int(segments)
+        if self.segments < 1:
+            raise ValueError("FrameSync: segments >= 1")
         if preamble is not None:
             self.set_template(preamble)
         self.words = None if words is None else np.conj(np.asarray(words, dtype=np.complex128)) # (M, n), conjugated
@@ -118,15 +145,59 @@ class FrameSync(Stage):
         self.name = name
         self.max_length = None if max_length is None else int(max_length)
         self.device, self._xp = bool(device), None # device: the metric on the GPU of rpps._accel.device() (numpy without one)
+        self.before = int(before)
+        if self.before < 0:
+            raise ValueError("FrameSync: before >= 0 (symbols of the frame ahead of its preamble)")
+        self.length = None
+        self.control(length=length)
+        self.scale = bool(scale)
+        self.classify = None if not classify else list(classify)
+        self.margin, self.min_symbols = float(margin), int(min_symbols)
+        self.polarity = bool(polarity)
+        self.cfo = bool(cfo)
+        self._check()
+
+    def _check(self):
+        plain = self.pres is None or self._plain
+        if self.words is not None and not plain:
+            raise ValueError("FrameSync: header words follow one preamble correlated whole (no alternatives, no segments)")
+        if self.pres is not None and self.segments > self.L:
+            raise ValueError(f"FrameSync: {self.segments} segments of a {self.L}-symbol preamble")
+
+    def control(self, length=None):
+        self.length = None if length is None else int(length)
+        if self.length is not None and self.length <= self.before:
+            raise ValueError(f"FrameSync: a frame of {self.length} symbols does not reach its preamble ({self.before} before it)")
 
     def set_template(self, preamble, first=0, span=None):
-        """The known symbols that start each frame (a profile makes them from a word, through its own transmit side down to
-        the symbol mapping: rpps.profile.Profile._template; first and span are unused, the symbols being one a sample)"""
-        self.preamble = np.asarray(preamble, dtype=np.complex128)
-        self.L = len(self.preamble)
-        if not self.L:
+        """The known symbols that start each frame, or {name: symbols or (symbols, fields)} of one length (a profile makes
+        them from words, through its own transmit side down to the symbol mapping: rpps.profile.Profile._template; first
+        and span are unused, the symbols being one a sample)"""
+        if isinstance(preamble, dict):
+            items = list(preamble.items())
+        else:
+            items = [(None, preamble)]
+        names, pres, fields = [], [], []
+        for k, v in items:
+            f = {}
+            if isinstance(v, tuple):
+                v, f = v
+            names.append(k)
+            pres.append(np.asarray(v, dtype=np.complex128).reshape(-1))
+            fields.append(dict(f))
+        if not pres or not len(pres[0]):
             raise ValueError("FrameSync: an empty preamble")
-        self._ep = float(np.sum(np.abs(self.preamble)**2))
+        if len({len(p) for p in pres}) != 1:
+            raise ValueError(f"FrameSync: alternatives of one length, not {sorted({len(p) for p in pres})}")
+        self.pres, self.names, self.fields = np.stack(pres), names, fields
+        self.preamble = self.pres[0]
+        self.L = len(self.preamble)
+        self._eps = np.sum(np.abs(self.pres)**2, axis=1)
+        self._ep = float(self._eps[0])
+        bounds = np.linspace(0, self.L, min(self.segments, self.L) + 1).round().astype(int)
+        self._segs = [(int(a), int(b)) for a, b in zip(bounds[:-1], bounds[1:])]
+        if hasattr(self, "words"):
+            self._check()
 
     def __str__(self):
         return f"FrameSync({self.name})"
@@ -136,19 +207,27 @@ class FrameSync(Stage):
 
     def new_state(self, meta):
         return SimpleNamespace(buf=np.zeros(0, np.complex128), base=None, searched=None, start=None, phase=0.0, k=0,
-                               metric=0.0)
+                               metric=0.0, p=None, info=None, queue=[], floor=None, last=None, real=None, modulation=None,
+                               est={})
+
+    @property
+    def _plain(self):
+        return len(self.pres) == 1 and self.segments == 1 and self.polarity
 
     def _peaks(self, y, lo, hi):
-        """Preamble starts in y[lo:hi) (indices into y): above threshold and the largest within L"""
+        """Preamble starts in y[lo:hi) (indices into y): above threshold and the largest within L, as (index, phase,
+        metric, alternative)"""
         L = self.L
         if hi - lo <= 0 or len(y) < L:
             return [], None
+        if not self._plain:
+            return self._peaks_alt(y, lo, hi), None
         a, b = max(lo - L, 0), min(hi + L, len(y) - L + 1)
         if self.device:
             if self._xp is None:
                 self._xp = _accel.device()[0]
             if has_device_kernels(self._xp):
-                return self._peaks_device(self._xp, y, a, b, lo, hi), None
+                return [(i, ph, m, 0) for i, ph, m in self._peaks_device(self._xp, y, a, b, lo, hi)], None
         seg = y[a:b + L - 1]
         rest = y[a:]
         if _accel.native is not None and L <= NATIVE_CORRELATION: # C++: the direct correlation and its normalisation, on several threads
@@ -168,8 +247,41 @@ class FrameSync(Stage):
                 continue
             w = m[max(j - L + 1, 0):j + L]
             if m[j] >= w.max():
-                out.append((i, float(np.angle(c[j])), float(m[j])))
+                out.append((i, float(np.angle(c[j])), float(m[j]), 0))
         return out, (c, a)
+
+    def _peaks_alt(self, y, lo, hi):
+        """`_peaks` over alternatives and segments: per alternative the segments' correlations, their magnitudes added
+        (their sum's phase is the frame's), normalised by the window's energy; the best alternative at each position"""
+        L = self.L
+        a, b = max(lo - L, 0), min(hi + L, len(y) - L + 1)
+        npos = b - a
+        if npos <= 0:
+            return []
+        seg = y[a:b + L - 1]
+        cs = np.concatenate(([0.0], np.cumsum(seg.real**2 + seg.imag**2)))
+        e = np.maximum(cs[L:L + npos] - cs[:npos], 1e-30)
+        best_m = np.full(npos, -1.0)
+        best_c = np.zeros(npos, np.complex128)
+        best_a = np.zeros(npos, np.int64)
+        for k, p in enumerate(self.pres):
+            mag = np.zeros(npos)
+            tot = np.zeros(npos, np.complex128)
+            for s0, s1 in self._segs:
+                cseg = convolve(seg[s0:s0 + npos + (s1 - s0) - 1], np.conj(p[s0:s1][::-1]), "valid")[:npos]
+                mag += np.abs(cseg) if self.polarity else np.maximum(cseg.real, 0.0) # (the phase known: in phase only)
+                tot += cseg
+            m = mag/np.sqrt(e*self._eps[k])
+            better = m > best_m
+            best_m[better], best_c[better], best_a[better] = m[better], tot[better], k
+        out = []
+        for j in np.nonzero(best_m > self.threshold)[0]:
+            i = a + j
+            if not lo <= i < hi:
+                continue
+            if best_m[j] >= best_m[max(j - L + 1, 0):j + L].max():
+                out.append((i, float(np.angle(best_c[j])), float(best_m[j]), int(best_a[j])))
+        return out
 
     def _peaks_device(self, xp, y, a, b, lo, hi):
         """`_peaks` with the metric on a device, in single precision: the correlation and window energy of every position
@@ -243,54 +355,142 @@ class FrameSync(Stage):
     def step(self, x, st, meta):
         if self.preamble is None:
             raise ValueError(f"{self}: no preamble yet (a profile makes it from its word: set_template)")
+        x = np.asarray(x)
+        if st.real is None:
+            st.real = x.dtype.kind != "c" # Levels (a discriminator's): frames stay real, their phase a polarity
         if st.base is None:
-            st.base = meta.pos
-            st.searched = meta.pos
-        st.buf = np.concatenate((st.buf, np.asarray(x, dtype=np.complex128)))
+            st.base = st.searched = st.floor = meta.pos
+        st.buf = np.concatenate((st.buf, x.astype(np.complex128)))
         end = st.base + len(st.buf)
         flush = meta.flush
+        L, before = self.L, self.before
         # Search the positions not searched yet whose neighbourhood is all in
         lo = st.searched - st.base
-        hi = len(st.buf) - (self.L if flush else 2*self.L) - self.n + 1
+        hi = len(st.buf) - (L if flush else 2*L) - self.n + 1
         peaks, _ = self._peaks(st.buf, lo, hi)
         st.searched = max(st.searched, st.base + max(hi, lo))
         out, n_out = [], 0
-        for i, ph, m in peaks:
+        for i, ph, m, alt in peaks:
             p = st.base + i
-            if st.start is not None and p - st.start < self.L:
+            if st.last is not None and p - st.last < L:
                 continue
-            if st.start is not None:
-                n_out += self._emit(st, p, ph, out, meta, n_out, publish, anchor)
-            st.start, st.phase, st.metric = p, ph, m
-        if st.start is not None and self.max_length and end - st.start > self.max_length + self.L:
-            n_out += self._emit(st, st.start + self.max_length, None, out, meta, n_out, publish, anchor)
+            f = p - before
+            if f < st.floor: # Its start is gone: before the stream, or inside the last frame of a fixed length
+                continue
+            st.last = p
+            info = self._measure(st.buf[i:i + L], alt, ph, m, st.real)
+            if self.length is None:
+                if st.start is not None:
+                    n_out += self._emit(st, f, info["phase"], out, meta, n_out)
+                st.start, st.p, st.info = f, p, info
+                st.floor = f
+            else:
+                st.queue.append((f, f + self.length, p, info))
+                st.floor = f + self.length
+        while st.queue and (st.queue[0][1] <= end or flush): # Frames of a fixed length that are all in (or all there is)
+            f, g, p, info = st.queue.pop(0)
+            st.start, st.p, st.info = f, p, info
+            n_out += self._emit(st, min(g, end), None, out, meta, n_out)
+            st.start = None
+        if st.start is not None and self.max_length and end - st.start > self.max_length + L + before:
+            n_out += self._emit(st, st.start + self.max_length, None, out, meta, n_out)
             st.start = None
         if flush and st.start is not None:
-            n_out += self._emit(st, end, None, out, meta, n_out, publish, anchor)
+            n_out += self._emit(st, end, None, out, meta, n_out)
             st.start = None
-        # Keep what may still hold a frame or a preamble
-        keep_from = st.start if st.start is not None else max(st.searched - self.L, st.base)
+        # Keep what may still hold a frame or a preamble (and the symbols ahead of one)
+        held = [st.start] if st.start is not None else []
+        held += [q[0] for q in st.queue]
+        keep_from = max(min(held + [st.searched - L - before]), st.base)
         cut = keep_from - st.base
         st.buf, st.base = st.buf[cut:], st.base + cut
-        meta.stream.est[self.name] = dict(frames=st.k, metric=st.metric, phase=st.phase)
-        return np.concatenate(out).astype(np.complex64) if out else np.zeros(0, np.complex64)
+        meta.stream.est[self.name] = dict(st.est, frames=st.k)
+        if not out:
+            return np.zeros(0, np.float32 if st.real else np.complex64)
+        return np.concatenate(out).astype(np.float32 if st.real else np.complex64)
 
-    def _emit(self, st, until, next_phase, out, meta, n_out, publish, anchor):
-        """Frame st.start .. until, phase turned back; returns its length"""
+    def _measure(self, y, alt, ph, metric, real):
+        """What the preamble at y (L symbols) says: {metric, phase, scale (the gain), esn0 (dB, the residual after the
+        known symbols), cfo (cycles a symbol: the phase between its halves; complex symbols), word and its fields}"""
+        p, ep, L = self.pres[alt], float(self._eps[alt]), self.L
+        info = {"metric": float(metric)}
+        if real:
+            g = float(np.real(np.vdot(p, y)))/ep
+            r = y.real - g*p.real
+            info["phase"] = 0.0 if g >= 0 else float(np.pi)
+        else:
+            h = L//2
+            cfo = 0.0
+            if h:
+                c1, c2 = np.vdot(p[:h], y[:h]), np.vdot(p[h:], y[h:])
+                cfo = float(np.angle(c2*np.conj(c1)))/(2*np.pi*L/2)
+                info["cfo"] = cfo
+            q = p*np.exp(2j*np.pi*cfo*(np.arange(L) - (L - 1)/2))
+            g = np.vdot(q, y)/ep
+            r = y - g*q
+            info["phase"] = float(np.angle(g))
+        sig = abs(g)**2*ep/L
+        info["scale"] = float(abs(g))
+        info["_noise"] = max(float(np.sum(np.abs(r)**2))/max(L - 1, 1), sig*1e-12, 1e-300) # (per symbol, as received)
+        if self.names[alt] is not None:
+            info["word"] = self.names[alt]
+            info.update(self.fields[alt])
+        return info
+
+    def _emit(self, st, until, next_phase, out, meta, n_out):
+        """Frame st.start .. until, phase turned back (real: turned over when upside down), scaled; returns its length"""
         a, b = st.start - st.base, until - st.base
         y = st.buf[a:b]
-        c = (self.L - 1)/2
-        if next_phase is None:
-            turn = np.exp(-1j*st.phase)
-        else: # a line from this preamble's phase to the next one's
-            d = np.angle(np.exp(1j*(next_phase - st.phase)))
-            rate = d/max(until - st.start, 1)
-            turn = track.line_phasor(st.phase - rate*c, rate, len(y))
-        out.append(y*turn)
-        publish(meta, self, {"frame": st.k}, at=st.start, out=n_out)
+        info = dict(st.info)
+        noise = info.pop("_noise")
+        es = float(np.mean(np.abs(y)**2)) - noise if len(y) else 0.0 # The frame's symbols: their power less the noise
+        info["esn0"] = float(10*np.log10(max(es, noise*1e-12)/noise))
+        if st.real:
+            y = y.real*(1.0 if np.cos(info["phase"]) >= 0 else -1.0)
+        else:
+            c = (st.p - st.start) + (self.L - 1)/2 # The preamble's centre, where its phase was measured
+            if self.cfo and "cfo" in info: # The frequency the preamble measured, from its centre on
+                turn = np.exp(-1j*(info["phase"] + 2*np.pi*info["cfo"]*(np.arange(len(y)) - c)))
+            elif next_phase is None:
+                turn = np.exp(-1j*info["phase"])
+            else: # a line from this preamble's phase to the next one's
+                d = np.angle(np.exp(1j*(next_phase - info["phase"])))
+                rate = d/max(until - st.p, 1)
+                turn = track.line_phasor(info["phase"] - rate*c, rate, len(y))
+            y = y*turn
+        if self.scale:
+            y = y/max(info["scale"], 1e-30)
+        fields = {"frame": st.k, **info}
+        if self.classify:
+            mod = self._classify(y, st.p - st.start, info["esn0"], st, meta)
+            if mod is not None:
+                fields["modulation"] = mod
+        out.append(y)
+        publish(meta, self, fields, at=st.start, out=n_out)
         anchor(meta, self, st.start, n_out)
+        st.est = fields
         st.k += 1
         return len(y)
+
+    def _classify(self, y, off, esn0, st, meta):
+        """The constellation of `classify` this frame's symbols after (and before) its preamble fit best, at the preamble's
+        Es/N0; the last one when the frame is too short or no candidate leads by `margin`"""
+        from .acquire import candidates, score
+        from ..base.control import of
+        pay = np.concatenate((y[:off], y[off + self.L:])).astype(np.complex128)
+        if len(pay) < self.min_symbols:
+            of(meta.stream).reports.append({"what": "unclassified", "step": self.name, "frame": st.k,
+                                            "note": f"{len(pay)} symbols (classify needs {self.min_symbols})"})
+            return st.modulation
+        pay = pay/np.sqrt(max(np.mean(np.abs(pay)**2), 1e-30))
+        s = {n: score(pay, pts, esn0=esn0) for n, pts in candidates(self.classify).items()}
+        ranked = sorted(s, key=s.get, reverse=True)
+        if len(ranked) == 1 or s[ranked[0]] - s[ranked[1]] >= self.margin:
+            st.modulation = ranked[0]
+        else:
+            of(meta.stream).reports.append({"what": "unclassified", "step": self.name, "frame": st.k,
+                                            "note": f"{ranked[0]} leads {ranked[1]} by {s[ranked[0]] - s[ranked[1]]:.3f}"})
+        return st.modulation
 
 class Delimiter(BitStage):
     """Find frames in a bit stream by the word that comes before each one (a start-of-frame delimiter), give the bits

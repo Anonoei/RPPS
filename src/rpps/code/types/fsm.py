@@ -12,6 +12,8 @@ class fsm(_code):
         start: the state the encoder starts in (default 0); null: unknown (the decoder starts from any)
         tail: input words of zeros appended by the encoder (P25: one), decoded and dropped; end: the state the
               path must end in (null: any)
+        length: message bits of a codeword (P25 TSBK: 96): each codeword a trellis of its own, from `start`, with its
+              tail; encode / decode then take any number of whole codewords. Without it a call is one sequence
         symbols: {"bits": b, "levels": [...]} to decode received amplitudes instead of bits: each b-bit group of a
               word is sent as levels[group] (ATSC: 3 bits -> -7..7). decode() then takes the amplitudes, n/b per step,
               and the branch metric is the squared distance. {"bits": b, "points": [[re, im], ...]}: the same with points
@@ -25,9 +27,9 @@ class fsm(_code):
     @classmethod
     def from_config(cls, log, obj):
         return cls(log, obj["k"], obj["n"], obj["next"], obj["output"], obj.get("start", 0), obj.get("end"),
-                   obj.get("tail", 0), obj.get("symbols"))
+                   obj.get("tail", 0), obj.get("symbols"), obj.get("length"))
 
-    def __init__(self, log, k, n, next_state, output, start=0, end=None, tail=0, symbols=None):
+    def __init__(self, log, k, n, next_state, output, start=0, end=None, tail=0, symbols=None, length=None):
         nxt = np.asarray(next_state, dtype=np.int64)
         out = np.asarray(output, dtype=np.int64)
         U = 1 << k
@@ -54,8 +56,14 @@ class fsm(_code):
                 self.sym_bits, self.levels = b, np.asarray(symbols["levels"], dtype=np.float64)
             if len(self.levels) != 1 << b:
                 raise ValueError(f"{1 << b} levels needed for {b}-bit symbols")
-        steps_out = n
-        super().__init__(log, None, k, steps_out)
+        self.length = None if length is None else int(length)
+        if self.length is not None and (self.length <= 0 or self.length % k):
+            raise ValueError(f"length {self.length}: a positive number of {k}-bit input words")
+        if self.length is None:
+            super().__init__(log, None, k, n)
+        else: # Whole codewords: the message bits in, its steps and tail's words out (as amplitudes: n/bits of them a step)
+            per = n // int(symbols["bits"]) if symbols is not None else n
+            super().__init__(log, None, self.length, (self.length//k + self.tail)*per)
         # Predecessors of each state: every (state, input) pair that leads there
         pred = [[] for _ in range(S)]
         for s in range(S):
@@ -85,6 +93,13 @@ class fsm(_code):
 
     # ------------------------------------------------------------------ encoder
     def encode(self, bits):
+        if self.length is not None:
+            b = np.asarray(bits).reshape(-1)
+            b = b[:len(b)//self.length*self.length].reshape(-1, self.length)
+            return np.concatenate([self._encode_one(w) for w in b]) if len(b) else np.zeros(0, bool)
+        return self._encode_one(bits)
+
+    def _encode_one(self, bits):
         b = np.asarray(bits).astype(np.uint8).reshape(-1)
         b = np.concatenate((b[:len(b)//self.k*self.k], np.zeros(self.tail*self.k, dtype=np.uint8)))
         words = (b.reshape(-1, self.k) * (1 << np.arange(self.k - 1, -1, -1))).sum(axis=1)
@@ -186,6 +201,12 @@ class fsm(_code):
 
     def _decode(self, bits, soft=None):
         x = np.asarray(bits)
+        if self.length is not None: # Whole codewords, decoded together
+            x = x[:len(x)//self.den*self.den].reshape(-1, self.den)
+            if not len(x):
+                return np.zeros(0, bool), np.zeros(0, int)
+            bits, errors, _ = self._batch(x, soft)
+            return bits.reshape(-1), errors
         per = self.n // self.sym_bits if self.levels is not None else self.n
         x = x[:len(x)//per*per]
         bits, errors, _ = self._batch(x[None], soft)

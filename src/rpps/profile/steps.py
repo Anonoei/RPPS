@@ -23,12 +23,16 @@ The kinds (`python -m rpps steps` lists them with the sync methods):
              atten_db), decimate, resample (up/down), channelize (freq, width), shift (freq), conjugate (spectral inversion),
              dc_block, deemphasis
     every    class: your own operator by module path, in the category it does ("class", "args"; wave: "tx_class")
-    sync     timing, carrier, equalize, agc (methods), frame (a physical header's preamble), delimit (a word among bits:
+    sync     timing, carrier, equalize, agc (methods), frame (a physical header's preamble, a word or a complex
+             sequence, or named alternatives / a Zadoff-Chu set; before, length, segments, scale, polarity, classify), delimit (a word among bits:
              word + bits, a word sequence, or a link header's preamble; length, keep, polarity, errors), align (a repeating
              marker), puncture, pilots, squelch, quality (Es/N0 and EVM to est), ofdm
     wave     shape (a pulse definition; symbol pulses get a matched filter), stagger, fm (h + sps: FSK; deviation: analog),
              am (the envelope; alpha null keeps its mean), ssb (bw, sideband), ofdm (n_fft, n_cp)
-    symbol   constellation (name, mapping), differential, spread (a chip sequence), carriers, header, pilots, scramble
+    symbol   constellation (name, mapping), differential, spread (a chip sequence), carriers, header, pilots, scramble,
+             marker (known symbols before each frame: a `sequence` with symbols, or `zc` {length, root, shift}; root,
+             shift, sequence controlled per frame), puncture (symbols at `at` of every `every` from the frame start,
+             dropped; `value` inserted on transmit: P25's status symbols)
     code     fec (type block / conv / interleave, name, args), scramble (name, args; length: frames of that many bits from
              the first), line (invert, nrzi, nrzm, manchester, thomas), marker (a word before each frame: length, or frames by
              control), uncoded
@@ -38,6 +42,8 @@ The kinds (`python -m rpps steps` lists them with the sync methods):
              span, resolution, period, acquire, lose, gate, fc), nr_grid, nr_pbch, nr_pdcch (rntis), nr_pdsch
 """
 from dataclasses import dataclass, field
+
+import numpy as np
 
 from .. import _config
 from ..base.types import Rep
@@ -459,22 +465,66 @@ def _ofdm(m, ctx):
     from .. import sync
     return sync.CPSync(m.get("n_fft", 64), m.get("n_cp", 16), **_given(m, ("window", "min_symbols", "snr", "bw", "gate", "name")))
 
+_FRAME_KEYS = ("before", "length", "segments", "scale", "polarity", "cfo", "classify", "margin", "min_symbols")
+
+def frame_words(m, where="sync frame"):
+    """The preambles of a frame step: [(name, kind, value, fields)], kind "symbols" (a complex sequence: a Zadoff-Chu
+    definition, the "zc" set) or "bits" (a word the profile maps to symbols through its transmit side). name None: the
+    one preamble of `sequence` / `word`"""
+    from .. import sequence
+    def one(name, spec):
+        if isinstance(spec, str):
+            spec = {"sequence": spec}
+        fields = dict(spec.get("fields", {}))
+        if "sequence" in spec:
+            s = sequence.load(spec["sequence"])
+            if hasattr(s, "symbols"):
+                return (name, "symbols", np.asarray(s.symbols), {**getattr(s, "fields", {}), **fields})
+            if not hasattr(s, "bits") or not hasattr(s, "value"):
+                raise ConfigError(f"{where}: sequence {spec['sequence']!r} is neither a word nor complex symbols")
+            return (name, "bits", np.asarray(s.bits, bool), fields)
+        from ..sequence.word import word_bits
+        w, bits, order = _need(spec, "word", where), _need(spec, "bits", where), spec.get("order", "msb")
+        return (name, "bits", np.asarray(word_bits(w, bits, order), bool), fields)
+    out = []
+    if "sequence" in m or "word" in m:
+        out.append(one(None, {k: m[k] for k in ("sequence", "word", "bits", "order") if k in m}))
+    for name, spec in (m.get("sequences") or {}).items():
+        out.append(one(str(name), spec))
+    if m.get("zc"):
+        from ..sequence import zadoff_chu
+        z = m["zc"]
+        n = int(_need(z, "length", f"{where} zc"))
+        for u in _need(z, "roots", f"{where} zc"):
+            for sh in z.get("shifts", [0]):
+                out.append((f"{u}_{sh}", "symbols", zadoff_chu(u, n, sh), {"root": int(u), "shift": int(sh)}))
+    if len(out) > 1 and any(n is None for n, *_ in out):
+        raise ConfigError(f"{where}: one preamble (`sequence` / `word`) or named alternatives (`sequences`, `zc`), not both")
+    return out
+
 @_sync_one("frame")
 def _frame(m, ctx):
-    """Frames by a known preamble among symbols: the one a physical header definition starts with ("header"), or a unique
-    word given as bits (a `sequence` word, or `word` + `bits` + `order`), which the profile maps to symbols through its own
-    transmit side, from the steps after this one down to the symbol mapping (rpps.profile.Profile._template), so any
-    rotation of the constellation is resolved by the word"""
+    """Frames by a known preamble among symbols: the one a physical header definition starts with ("header"); a
+    `sequence` (a word, or complex symbols: a Zadoff-Chu definition) or a `word` given as bits; or alternatives, named
+    (`sequences`: {name: sequence, or {"sequence" | "word" + "bits", "fields"}}) or a Zadoff-Chu set (`zc`: roots,
+    length, shifts), the one found published as `word` with its fields. Words given as bits become symbols through the
+    profile's own transmit side, from the steps after this one down to the symbol mapping
+    (rpps.profile.Profile._template), so any rotation of the constellation is resolved by the word. Also `before`,
+    `length`, `segments`, `scale`, `polarity`, `classify` (rpps.sync.FrameSync)"""
     from .. import sync, symbol
-    named = "sequence" in m or "word" in m
-    if named == ("header" in m):
-        raise ConfigError("sync frame: a `header`, or a word (`sequence`, or `word` and `bits`), one of the two")
-    if named:
-        _word(m, "sync frame") # (checked now; the profile makes the symbols)
-        return sync.FrameSync(None, None, m.get("threshold"), m.get("max_length"), m.get("name", "frame"), pending=True)
+    words = frame_words(m)
+    if bool(words) == ("header" in m):
+        raise ConfigError("sync frame: a `header`, or a word / sequence (`sequence`, `word` and `bits`, `sequences`, `zc`), one of the two")
+    kw = dict(threshold=m.get("threshold"), max_length=m.get("max_length"), name=m.get("name", "frame"),
+              **{k: m[k] for k in _FRAME_KEYS if k in m})
+    if words:
+        if any(kind == "bits" for _, kind, _, _ in words):
+            return sync.FrameSync(None, None, pending=True, **kw) # (the profile makes the symbols)
+        if words[0][0] is None:
+            return sync.FrameSync(words[0][2], **kw)
+        return sync.FrameSync({n: (v, f) for n, _, v, f in words}, **kw)
     h = symbol.load_header(m["header"])
-    return sync.FrameSync(h.preamble, h.words() if m.get("words", True) else None, m.get("threshold"), m.get("max_length"),
-                          m.get("name", "frame"), device=m.get("device", False))
+    return sync.FrameSync(h.preamble, h.words() if m.get("words", True) else None, device=m.get("device", False), **kw)
 
 def _word(m, where):
     """(word, bits, order) a step gives: a `sequence` of type word, or `word` + `bits` (+ `order`) inline"""
@@ -647,6 +697,22 @@ def _symbol(kind, spec, rep, ctx):
         make = lambda: symbol.Pilots(**_given(spec, ("slot", "every", "length", "slots", "pilots"), value=_complex),
                                      name=spec.get("id", "pilots"))
         return _pair(make(), make(), Rep.SYMBOLS)
+    if kind == "puncture": # {"symbol": "puncture", "every": 36, "at": [35], "value": -1}: P25's status symbols
+        make = lambda: symbol.Puncture(_need(spec, "every", "symbol puncture"), _need(spec, "at", "symbol puncture"),
+                                       _complex(spec.get("value", 0)), spec.get("id", "puncture"))
+        return _pair(make(), make(), Rep.SYMBOLS)
+    if kind == "marker": # Known symbols before each frame: a sequence with symbols, or a Zadoff-Chu length + root (controlled)
+        def make():
+            syms = None
+            if "sequence" in spec:
+                s = sequence.load(spec["sequence"])
+                if not hasattr(s, "symbols"):
+                    raise ConfigError(f"symbol marker: sequence {spec['sequence']!r} has no symbols (a bit word is `code marker`)")
+                syms = s.symbols
+            z = spec.get("zc") or {}
+            return symbol.Marker(syms, spec.get("length"), z.get("length"), z.get("root"), z.get("shift", 0),
+                                 spec.get("id", "marker"))
+        return _pair(make(), make(), Rep.SYMBOLS)
     if kind == "scramble":
         from .. import sequence
         ref = _need(spec, "sequence", "symbol scramble")
@@ -695,7 +761,7 @@ def _link(kind, spec, rep, ctx):
         return _pair(make(), make(), Rep.PACKETS)
 
 for _cat, _fn, _kinds in (("wave", _wave, ("shape", "stagger", "fm", "am", "ssb", "ofdm")),
-                          ("symbol", _symbol, ("constellation", "differential", "spread", "carriers", "header", "pilots", "scramble")),
+                          ("symbol", _symbol, ("constellation", "differential", "spread", "carriers", "header", "pilots", "scramble", "marker", "puncture")),
                           ("code", _code, ("block", "conv", "interleave", "scramble", "uncoded", "line", "marker")),
                           ("link", _link, ("crc", "frame", "header"))):
     for _k in _kinds:

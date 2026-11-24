@@ -1,0 +1,34 @@
+{
+  "base": "header",
+  "type": "link",
+  "comment": "DMR slot type after its Golay (20,8) decode (fec block/golay/20_8): colour code and data type, 8 bits a burst",
+  "ref": "ETSI TS 102 361-1 V2.6.1 9.1.3, 9.3.6",
+  "tags": ["dmr"],
+  "order": "msb",
+  "fields": [
+    {
+      "name": "cc",
+      "bits": 4
+    },
+    {
+      "name": "dt",
+      "bits": 4,
+      "enum": {
+        "0": "PI header",
+        "1": "voice LC header",
+        "2": "terminator with LC",
+        "3": "CSBK",
+        "4": "MBC header",
+        "5": "MBC continuation",
+        "6": "data header",
+        "7": "rate 1/2 data",
+        "8": "rate 3/4 data",
+        "9": "idle",
+        "10": "rate 1 data"
+      }
+    }
+  ],
+  "payload": "0",
+  "framed": true,
+  "length": 8
+}

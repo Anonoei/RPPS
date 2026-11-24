@@ -30,7 +30,7 @@ python -m rpps ls sequence scramble   # some resources
 | `constellation` | point sets (or PSK/APSK rings) and their bit maps; shapes by name (16QAM) come from `rp.symbol.generate` | `psk/qpsk` | `rp.symbol.load("psk/qpsk")` | [symbol/constellation.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/symbol/constellation.py) |
 | `pulse` | symbol and frequency pulses (`"kind"`): `rrc`, `rc`, `halfsine`, `gaussian`, `rect/symbol`, `rect/frequency` | `rrc/0p35` | `rp.signal.filters.load("pulse/rrc/0p35")` | [signal/filters/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/signal/filters/serial.py) |
 | `filter` | FIR, IIR, windows | `fir/windowed/lowpass_0p1_60db` | `rp.signal.filters.load("fir/windowed/lowpass_0p1_60db")` | [signal/filters/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/signal/filters/serial.py) |
-| `sequence` | bit sequences (recurrences, Gold), chip codes (Barker, PN sets, GPS C/A) and fixed words (sync markers, access addresses: `word/ccsds_asm`) | `recurrence/lte_gold` | `rp.sequence.load("lte_gold", c_init=77)` | [sequence/\_\_init\_\_.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/sequence/__init__.py) |
+| `sequence` | bit sequences (recurrences, Gold), chip codes (Barker, PN sets, GPS C/A) fixed words (sync markers, access addresses: `word/ccsds_asm`) and Zadoff-Chu sequences (`zc`: root, length, shift) | `recurrence/lte_gold` | `rp.sequence.load("lte_gold", c_init=77)` | [sequence/\_\_init\_\_.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/sequence/__init__.py) |
 | `scramble` | how a sequence is applied: `additive` (names a sequence), `feedthrough` (self-synchronizing) | `additive/dvb_energy` | `rp.code.scram.load("dvb_energy")` | [code/scram/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/code/scram/serial.py) |
 | `fec` | block and convolutional codes (LDPC from DVB-S2 tables, dense or sparse checks, or a quasi-cyclic matrix of shifts: `ldpc/ieee80211n_648_1_2`) | `block/rs/204_188` | `rp.code.load("block/rs/204_188")` | [code/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/code/serial.py) |
 | `interleave` | block and Forney interleavers | `forney/12_17` | `rp.code.load("interleave/forney/12_17")` | [code/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/code/serial.py) |
@@ -141,6 +141,36 @@ headers' and frames' `"payload_fields"` (a message's `fields["payload"]`) and in
 - `frame/ax25` (addresses, control, PID), `header/ble_adv` (PDU type names, AdvA, AD structures) and `dvbs/qpsk` (the TS
   adaptation field and PCR) are written this way.
 
+## Codes bit by bit
+A block code whose standard writes its parity bits as equations, puts its bits in its own order or inverts some of them
+is still a definition. Any block code (`fec/block`) takes, after its own keys:
+
+- `"append": [[14, 15]]`: check bits after the codeword, each the XOR of the codeword bits listed (P25's NID: BCH (63,16)
+  and a 64th bit that is S1 xor S0 of the DUID, `bch/p25_nid`). `"extend": true` is the overall parity bit.
+- `"layout"`: where each codeword bit is sent, a list of positions or `{"message": [...], "parity": "rest"}`.
+- `"xor"`: a pattern on the word sent (a number of n bits, or a list), for inverted or masked parity.
+
+Decoding undoes them in reverse; an appended bit the decision disagrees with counts as one more error, and a word past
+what the code corrects is a failure. A `linear` code can give its parity bits as the message bits each one XORs, the way
+standards write them:
+
+```json
+{"base": "block", "type": "linear", "n": 7, "k": 4, "parity": [[0, 1, 3], [0, 2, 3], [1, 2, 3]],
+ "layout": {"message": [2, 4, 5, 6], "parity": "rest"}}
+```
+
+A short code given only as what each bit is, `"type": "expr"`, writes one expression per codeword bit over the message
+bits `m0..` (and the bits before it, `c0..`), with `^ & | ~`. One that is linear (or linear and inverted) loads as a
+linear code in its own layout and decodes on its syndrome trellis, soft; any other decodes against its whole codebook
+(k up to 16):
+
+```json
+{"base": "block", "type": "expr", "k": 4, "bits": ["m0 ^ m1 ^ m3", "m0 ^ m2 ^ m3 ^ 1", "m0", "m1 ^ m2 ^ m3", "m1", "m2", "m3"]}
+```
+
+A trellis code (`fsm`) with a `length` (message bits a codeword) is one codeword per block, each started and flushed on
+its own: `trellis/p25_1_2` takes 96 bits to 196.
+
 ## Tags
 `"tags": ["dvb-s2"]` says which standards or systems use a definition. The folders say what a thing is; tags say who uses
 it; `ref` cites the clause. Tags come from [tags.json](https://github.com/Anonoei/RPPS/blob/main/config/tags.json) (a tag not listed there fails the tests), and children
@@ -200,4 +230,4 @@ Without `name` they return the dict. Arrays in memory go through `fir_def`, `sos
 | `packet_headergenerator` + CRC trailer | `header/link` with `fields`, `payload` and `fcs` (a CRC over header and payload after the payload) |
 
 Anything GNU Radio builds from parameters can be built without a file: `rp.code.Hamming/RS/Repetition/Conv`, or `rp.code.init(name, dict)`.
-Not expressible yet: 5G NR base graphs (the quasi-cyclic loader takes them once written out), a frequency-hopping schedule.
+Not expressible yet: a frequency-hopping schedule.

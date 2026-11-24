@@ -22,6 +22,7 @@ import copy
 
 import numpy as np
 
+from ..base import dtype
 from ..base.rpps import FLUSH, failed_of
 from . import control as _ctl
 from ..base import control as _control
@@ -356,7 +357,16 @@ class Runner:
         if len(outs) == 1:
             return outs[0]
         last = outs[-1]
-        arrs = [np.asarray(o.data) for o in outs if len(o)]
+        forms = {o.DT for o in outs if len(o)}
+        if dtype.LLR in forms and len(forms) > 1: # Frames decoded to bits and frames passed on as LLRs (a code switched
+            # off by a header): all LLRs, a decided bit as sure as the surest soft one, so neither reads as the other
+            soft = [np.asarray(o.data, dtype=dtype.LLR.dtype) for o in outs if len(o) and o.DT == dtype.LLR]
+            sure = max(1.0, max(float(np.abs(a).max()) for a in soft if len(a)))
+            arrs = [np.asarray(o.data, dtype=dtype.LLR.dtype) if o.DT == dtype.LLR
+                    else np.where(np.asarray(o.bits()).astype(bool), -sure, sure).astype(dtype.LLR.dtype) for o in outs if len(o)]
+            last = next(o for o in reversed(outs) if len(o) and o.DT == dtype.LLR)
+        else:
+            arrs = [np.asarray(o.data) for o in outs if len(o)]
         arr = np.concatenate(arrs) if arrs else np.asarray(last.data)
         meta = last.meta.fork()
         meta.pos = outs[0].meta.pos

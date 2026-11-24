@@ -46,6 +46,8 @@ from .nr_ldpc import nr_ldpc
 from .product import product
 from .ldpc import ldpc, gallager
 from .linear import linear
+from .expr import expr
+from .layout import arranged
 from .cyclic import cyclic
 from .syndrome import syndrome
 from .repeat import repeat

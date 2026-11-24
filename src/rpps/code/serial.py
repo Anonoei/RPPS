@@ -4,7 +4,15 @@ config/interleave/<type>/<name>.json (`rp.code.load("interleave/forney/12_17")`)
 Folders are kind (`base`), then the structure of the code; the standard goes in `ref`/`comment`. Names are parameters.
 
     block       {"base": "block", "type": ..., "decoder": optional type to decode with instead}
-      linear      "code": [n, k], "p": parity block rows    or    "g": generator rows, "h": check rows (decoded on its syndrome "trellis" when small)
+                  any block code also takes, as sent (rpps.code.types.layout): "append": check bits after the codeword,
+                  each the XOR of the codeword bits listed ([[14, 15]]); "extend": an overall parity bit; "layout": the
+                  sent position of each codeword bit, or {"message": [...], "parity": [...] | "rest"}; "xor": a pattern on
+                  the sent word (inverted parity, a coset)
+      linear      "n", "k" and "p": parity block rows (one per message bit)    or    "parity": one list per parity bit of the
+                  message bits it XORs, as standards write P0 = I0 + I1 + I3    or    "g": generator rows, "h": check
+                  rows; "extend" (decoded on its syndrome "trellis" when small)
+      expr        "k", "bits": an expression per codeword bit over m0.. (and c0.., the bits before), ^ & | ~: loaded as a
+                  linear code (in its arrangement) when affine, else decoded from its 2^k codebook (k <= 16), "t"
       cyclic      "n", "k", "poly": generator polynomial as a number, bit i = x^i (polynomial order: "0xb" is x^3 + x + 1;
                   a convolutional or turbo generator is the other way round, its first or most significant bit the
                   current input), "extend": overall parity bit, "shorten": leading
