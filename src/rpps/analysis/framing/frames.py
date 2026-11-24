@@ -387,16 +387,39 @@ def split(x, Fs, a, b, win=4e-6, min_len=64e-6, min_gap=2e-6, thr=None):
                 if s1 - s0 >= min_len*Fs and np.median(fine[s0:s1]) > 10**((top - 10)/10)]
     return out or [(a, b)]
 
+def occupied(x, Fs, nfft=1024, share=0.9):
+    """The bandwidth holding `share` of the power above the noise floor (Hz): about the symbol rate of a shaped signal"""
+    x = np.asarray(x, dtype=np.complex128)
+    n = min(nfft, 1 << int(np.floor(np.log2(max(len(x), 16)))))
+    k = len(x)//n
+    if k == 0:
+        return Fs
+    S = np.fft.fftshift(np.mean(np.abs(np.fft.fft(x[:k*n].reshape(k, n)*np.hanning(n), axis=1))**2, axis=0))
+    floor = np.percentile(S, 10)
+    e = np.maximum(S - 2*floor, 0)
+    if e.sum() <= 0:
+        return Fs
+    c = np.cumsum(e)/e.sum()
+    lo, hi = np.searchsorted(c, (1 - share)/2), np.searchsorted(c, (1 + share)/2)
+    return max(hi - lo + 1, 1)*Fs/n
+
 def gate(x, Fs, smooth=4e-6, contrast=10.0, min_len=64e-6, hang=8e-6, touching=True):
     """[(start, stop)] where the power is on: above the geometric mean of its low and high levels (`contrast` apart at
     least), bursts closer than `hang` merged, those shorter than `min_len` dropped; each span then cut where bursts
-    touch (`split`: a power step or a guard time), unless `touching` is False"""
+    touch (`split`: a power step or a guard time), unless `touching` is False. The smoothing and hang are at least 2 and
+    6 symbols of a rate the occupied bandwidth gives (`occupied`): a slow signal's own envelope dips last longer than the
+    defaults, and would open the gate inside its bursts"""
     p = np.abs(np.asarray(x))**2
     w = max(2, int(Fs*smooth))
     e = np.convolve(p, np.ones(w)/w, mode="same")
-    lo, hi = np.percentile(e, 5), np.percentile(e, 99)
+    lo, hi = np.percentile(e, 5), np.percentile(e, 99) # the levels, at `smooth`
     if hi < contrast*lo:
         return []
+    bw = occupied(x, Fs)
+    if 2/bw > smooth: # on and off over a few symbols
+        w = max(2, int(Fs*2/bw))
+        e = np.convolve(p, np.ones(w)/w, mode="same")
+    hang = max(hang, 6/bw)
     on = (e > np.sqrt(lo*hi)).astype(np.int8)
     d = np.diff(np.concatenate(([0], on, [0])))
     spans = list(zip(np.nonzero(d == 1)[0], np.nonzero(d == -1)[0]))

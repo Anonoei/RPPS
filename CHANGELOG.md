@@ -55,6 +55,11 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   `pulse/rc/0p20_frequency`, `sequence/word/p25_fs` and the eight `dmr_*` sync patterns, link headers `p25_nid`,
   `p25_tsbk`, `dmr_slot_type`, `dmr_bptc`). A framed link header takes a default `length`.
 - `examples/zc_modes.py`: a Zadoff-Chu preamble whose root picks each frame's modulation and code.
+- **Bursts with known symbols anywhere, or none** (`rp.analysis.spectrum.burst`): a mid-amble or postamble the bursts
+  share (`shared_segments`) is found and each burst acquired on it at its offset (`Bursts.offsets`,
+  `BurstResult.known`, `.payload`); bursts that share nothing come back each acquired blind (`Bursts.blind`) instead of
+  raising. The gate's smoothing and hang now scale with the occupied bandwidth (`frames.occupied`), so slow bursts are
+  no longer cut by their own envelope dips.
 - **Bursts that touch are cut apart** (`rp.analysis.framing.frames.split`, run by `gate` unless `touching=False`): at a
   guard time shorter than the gate's hang (a dip longer than the bursts' own envelope dips) or at a power step
   between transmitters, so `burst.demodulate` acquires each one instead of one merged span.

@@ -14,7 +14,9 @@ timing, and is too short to train loops on: so each is acquired on its own, data
   2. The preamble: the leading run of symbols the bursts agree on, as phase steps (rpps.analysis.framing.frames.preamble, or
      `shared_preamble` for a short one, whichever is longer), or `preamble` given. A network's burst types each carry a
      unique word of their own: when the bursts share fewer than `min_shared` symbols, they are grouped by length and
-     each group's own preamble found (`burst_kinds`); each burst is acquired on its kind's. Its symbols are rebuilt from the steps and turned onto the constellation (one rotation for all
+     each group's own preamble found (`burst_kinds`); each burst is acquired on its kind's. Known symbols elsewhere (a
+     mid-amble, a postamble: `shared_segments`) serve the same way, at their offset; with none at all, each burst is
+     returned as acquired blind (`Bursts.blind`: its phase known only to the constellation's symmetry). Its symbols are rebuilt from the steps and turned onto the constellation (one rotation for all
      bursts: the M-fold phase ambiguity is the same for every burst, so their bits agree with each other).
   3. In each burst the preamble is found by correlating its shaped waveform in pieces (the pieces' magnitudes added: a
      carrier offset costs little), then the fractional timing that best matches the preamble's phase steps (blind to
@@ -38,16 +40,22 @@ class BurstResult:
     """One burst: start (sample of its preamble's first symbol, fractional), symbols, bits, llr (per bit, log(P0/P1), the
     preamble's included, as bits), cfo (Hz), clock (its symbol clock's offset, a fraction: +1e-4 is 100 ppm fast), phase
     (rad), gain, score (the preamble's correlation 0..1), evm (rms, of the data after the preamble), frame, slot, kind
-    (which of the preambles it was acquired on), ok"""
+    (which of the preambles it was acquired on), known ((first, length): the known symbols in `symbols`), ok"""
     __slots__ = ("start", "symbols", "bits", "llr", "cfo", "clock", "phase", "gain", "score", "evm", "frame", "slot",
-                 "kind", "ok")
+                 "kind", "known", "ok")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
 
+    @property
+    def payload(self):
+        """The symbols without the known ones"""
+        a, n = self.known if self.known else (0, 0)
+        return np.concatenate((self.symbols[:a], self.symbols[a + n:]))
+
     def __repr__(self):
         if not self.ok:
-            return f"<burst at {self.start:.0f}: not acquired (preamble score {self.score:.2f})>"
+            return f"<burst at {self.start:.0f}: not acquired (preamble score {self.score or 0:.2f})>"
         sl = f", frame {self.frame} slot {self.slot}" if self.slot is not None else ""
         ck = f", clock {1e6*self.clock:+.0f} ppm" if self.clock else ""
         return (f"<burst at {self.start:.1f}: {len(self.symbols)} symbols, cfo {self.cfo:+.1f} Hz{ck}, EVM "
@@ -55,17 +63,23 @@ class BurstResult:
 
 class Bursts:
     """`demodulate`: bursts [BurstResult], mod, baud, beta, preamble (symbols: the most common kind's), preambles (every
-    kind's), frame (s, None), slots (offsets within the frame, s)"""
-    __slots__ = ("bursts", "mod", "baud", "beta", "preamble", "preambles", "frame", "slots")
+    kind's), offsets (each kind's known symbols from the bursts' start; negative: from their end), frame (s, None), slots
+    (offsets within the frame, s), blind (no known symbols: each burst's phase only to the constellation's symmetry)"""
+    __slots__ = ("bursts", "mod", "baud", "beta", "preamble", "preambles", "offsets", "frame", "slots", "blind")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
 
     def __str__(self):
         ok = [b for b in self.bursts if b.ok]
-        kinds = self.preambles or [self.preamble]
+        kinds = [k for k in (self.preambles or [self.preamble]) if k is not None and len(k)]
+        where = ""
+        if self.offsets and len(kinds) == 1 and self.offsets[0]:
+            o = self.offsets[0]
+            where = f" {o} symbols in" if o > 0 else f" {-o} symbols before the end"
         s = (f"{len(self.bursts)} bursts ({len(ok)} demodulated), {self.mod} at {self.baud/1e3:.3f} kBd, "
-             + (f"a {len(self.preamble)}-symbol preamble" if len(kinds) == 1 else
+             + ("blind (no known symbols they share)" if not kinds else
+                f"{len(kinds[0])} known symbols{where}" if len(kinds) == 1 else
                 f"{len(kinds)} burst kinds (preambles of {', '.join(str(len(p)) for p in kinds)} symbols)"))
         if self.frame:
             s += f"; frame {self.frame*1e3:.3f} ms, {len(self.slots)} slots"
@@ -76,13 +90,14 @@ class Bursts:
     __repr__ = __str__
 
     def llrs(self, kind=None, preamble=False):
-        """Each demodulated burst's LLRs (of `kind` only, when given), without its preamble's unless `preamble`: a list, the
-        bursts' lengths differing"""
+        """Each demodulated burst's LLRs (of `kind` only, when given), without its known symbols' unless `preamble`: a
+        list, the bursts' lengths differing"""
         out = []
         for b in self.bursts:
             if b.ok and b.llr is not None and (kind is None or b.kind == kind):
-                skip = 0 if preamble else len(self.preambles[b.kind] if self.preambles else self.preamble)*(len(b.llr)//len(b.symbols))
-                out.append(b.llr[skip:])
+                m = len(b.llr)//len(b.symbols)
+                a, n = b.known if b.known else (0, 0)
+                out.append(b.llr if preamble else np.concatenate((b.llr[:a*m], b.llr[(a + n)*m:])))
         return out
 
 def shared_preamble(burst_list, search=8, win=12, agree=0.8, max_len=512):
@@ -135,6 +150,76 @@ def preamble_symbols(steps, points):
             best = (e, q)
     q = best[1]
     return pts[np.argmin(np.abs(q[:, None] - pts[None, :]), axis=1)]
+
+class Segment:
+    """`shared_segments`: steps (d[n] = s[n] conj(s[n-1]) the bursts agree on), offset (symbols from the bursts' start
+    to the segment's first symbol; negative: from their end, a postamble), agree (|mean| of the steps over bursts)"""
+    __slots__ = ("steps", "offset", "agree")
+    def __init__(self, steps, offset, agree):
+        self.steps, self.offset, self.agree = steps, offset, agree
+
+    def __repr__(self):
+        where = f"{self.offset} symbols from the start" if self.offset >= 0 else f"{-self.offset} symbols before the end"
+        return f"<{len(self.steps) + 1} shared symbols, {where}, agreement {self.agree:.2f}>"
+
+def _unit_steps(v):
+    return v[1:]*np.conj(v[:-1])/(np.abs(v[1:]*v[:-1]) + 1e-12)
+
+def shared_segments(burst_list, search=8, min_len=12, agree=0.8, refs=6):
+    """Runs of symbols every burst carries at the same place: a preamble, a mid-amble, a postamble ([Segment], longest
+    first). Phase steps, so each burst's own carrier phase drops out. Each burst is aligned on a reference by a lag
+    within `search` symbols: the one with the best window of `min_len` steps (a known run of that length adds up to its
+    length, random steps to its square root), once from the start and once from the end (bursts of several lengths
+    sharing a postamble); the reference is the burst the others agree with most (of the first `refs`). A run is where
+    the mean step over the bursts has magnitude above `agree`, `min_len` steps long at least"""
+    S = [b.symbols for b in burst_list if b.symbols is not None and len(b.symbols) > 2*search + min_len + 2]
+    if len(S) < 3:
+        return []
+    out = []
+    for end in (False, True):
+        D = [_unit_steps(v[::-1] if end else v) for v in S]
+        best = None
+        for r in range(min(refs, len(D))):
+            ref = D[r]
+            lags = []
+            for d in D:
+                n = min(len(ref), len(d)) - 2*search
+                c = []
+                for l in range(-search, search + 1):
+                    pr = np.conj(ref[search:search + n])*d[search + l:search + l + n]
+                    cs = np.concatenate(([0], np.cumsum(pr)))
+                    c.append(np.abs(cs[min_len:] - cs[:-min_len]).max()) # the best window of min_len steps
+                lags.append(int(np.argmax(c)) - search)
+            lo = max(0, -min(lags))
+            L = min(len(d) - l - lo for d, l in zip(D, lags))
+            if L <= min_len:
+                continue
+            rows = np.array([d[l + lo:l + lo + L] for d, l in zip(D, lags)])
+            mean = rows.mean(axis=0)
+            m = np.abs(mean)
+            if best is None or np.sum(m > agree) > best[0]:
+                best = (int(np.sum(m > agree)), m, mean, lo)
+        if best is None:
+            continue
+        _, m, mean, lo = best
+        on = np.concatenate(([0], (m > agree).astype(np.int8), [0]))
+        d = np.diff(on)
+        for a, b in zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1)):
+            if b - a < min_len:
+                continue
+            steps = mean[a:b]
+            if end: # reversed: steps of the reversed run are the conjugates, in reverse order
+                steps = np.conj(steps[::-1])
+                offset = -(a + lo + (b - a) + 1) # its first symbol, counted back from the last
+            else:
+                offset = a + lo
+            out.append(Segment(steps, int(offset), float(np.mean(m[a:b]))))
+    # The same run seen from both ends (bursts of one length): keep the start-anchored one
+    keep = []
+    for sg in sorted(out, key=lambda g: (-len(g.steps), g.offset < 0)):
+        if all(not (sg.offset < 0 <= k.offset and abs(len(sg.steps) - len(k.steps)) <= 2) for k in keep):
+            keep.append(sg)
+    return keep
 
 def _bits(idx, con):
     """Bits of point indices under the constellation's map (label of point i: its map's entry i, first bit most
@@ -256,13 +341,18 @@ def burst_kinds(B, sps, pts, min_shared=16, min_group=3):
             kinds.append(preamble_symbols(d, pts))
     if not kinds and n: # (no group of its own: what they all share, however short)
         n, d = shared(B)
-        return [preamble_symbols(d, pts)], [0]*len(B)
+        if n and np.all(np.isfinite(d)):
+            return [preamble_symbols(d, pts)], [0]*len(B)
+        return [], [None]*len(B)
     return kinds, member
 
-def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None, slot_tol=4, min_score=0.5, min_shared=16, **kw):
+def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, frame=None, slot_tol=4, min_score=0.5,
+               min_shared=16, **kw):
     """Every burst of x, demodulated on its own from its preamble (see the module). Bursts of several kinds, each with a
     preamble of its own (burst_kinds: by length, when they share fewer than `min_shared` symbols), are each acquired on
-    their kind's. kw: frames.gate's"""
+    their kind's. With no preamble they share, known symbols elsewhere (`shared_segments`: a mid-amble, a postamble);
+    with none at all, each burst blind (`Bursts.blind`). preamble: known symbols given, `offset` symbols after the
+    burst's start (negative: before its end). kw: frames.gate's"""
     from ... import symbol as rsym
     x = np.asarray(x, dtype=np.complex128)
     B = frames.bursts(x, Fs, names=None if mod is None else [mod], baud=baud,
@@ -282,52 +372,78 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None,
     con = rsym.load(mod)
     pts = np.asarray(con.points, dtype=np.complex128)
     sps = Fs/baud
+    offsets = None
     if preamble is None:
         kinds, member = burst_kinds(B, sps, pts, min_shared)
-        if not kinds:
-            raise ValueError("the bursts share no preamble: give preamble (symbols)")
+        if len(kinds) <= 1: # one kind, or none: where the known symbols sit (a "preamble" may be a mid-amble)
+            segs = shared_segments(B, min_len=max(8, min_shared - 1))
+            top = segs[0] if segs else None
+            if top is not None and (not kinds or len(top.steps) + 1 > len(kinds[0])
+                                    or (len(top.steps) + 1 >= len(kinds[0]) - 2 and not 0 <= top.offset <= 8)):
+                o = 0 if 0 <= top.offset <= 8 else top.offset # (within the gate's slack of the start: a preamble)
+                kinds, member, offsets = [preamble_symbols(top.steps, pts)], [0]*len(B), [o]
+        if not kinds or len(kinds[0]) < 8: # a symbol or two in common is chance: each burst blind
+            return _blind(B, mod, baud, beta, con, pts, frame, slot_tol, x, Fs)
     else:
         kinds, member = [np.asarray(preamble, dtype=np.complex128)], [0]*len(B)
-    pre = kinds[0]
+        offsets = [int(offset)]
+    offsets = offsets or [0]*len(kinds)
     out = []
     for b, m in zip(B, member):
         tries = [m] if m is not None else range(len(kinds)) # A burst of no group: every kind's preamble, the best kept
         best = None
         for kind in tries:
-            p = kinds[kind]
+            p, o = kinds[kind], offsets[kind]
             pad = int(np.ceil(16*sps)) + len(p)
             a2, b2 = max(0, b.start - pad), min(len(x), b.stop + pad)
             # The burst's own blind carrier offset off first: the preamble search correlates in pieces, which a carrier
             # tens of kHz out (a large share of a turn a symbol) turns past finding
             f0 = float(getattr(b.det, "cfo", 0.0) or 0.0) if b.det is not None else 0.0
             seg = x[a2:b2]*np.exp(-2j*np.pi*f0/Fs*np.arange(b2 - a2)) if f0 else x[a2:b2]
-            r = acquire(seg, Fs, p, baud, beta, search=(0, b.start - a2 + 4*len(p)*sps))
+            if o == 0:
+                search = (0, b.start - a2 + 4*len(p)*sps)
+            else: # where the known run should be, from the gate's start (or its end: a postamble)
+                e = (b.start - a2 if o > 0 else b.stop - a2) + o*sps
+                margin = max(16, len(p))*sps
+                search = (e - margin, e + margin)
+            r = acquire(seg, Fs, p, baud, beta, search=search)
             if r is not None and (best is None or r[1] > best[0][1]):
                 best = (r, kind, a2, seg, f0)
         if best is None:
             out.append(BurstResult(start=float(b.start), score=0.0, ok=False))
             continue
         r, kind, a2, seg, f0 = best
-        pre = kinds[kind]
+        pre, o = kinds[kind], offsets[kind]
         t0, score, w, phase, gain = r
         if score < min_score:
             out.append(BurstResult(start=a2 + t0, score=score, kind=kind, ok=False))
             continue
+        # The burst's first symbol: `o` before the known run, or (a postamble) wherever the gate opened
+        oe = o if o >= 0 else max(0, int(round((t0 - (b.start - a2))/sps)))
+        oe = min(oe, int((t0 - 8*sps - 5)//sps)) # (the matched filter's span before it)
         from ...sync.time.mat import centres_in
-        c = centres_in(len(seg), t0, sps, 8)
+        c = centres_in(len(seg), t0 - oe*sps, sps, 8)
         c = c[c <= b.stop - a2 + sps] # to the end of the gate
-        c, clock = retime(seg, c, sps, beta, anchor=len(pre)/2)
+        n = len(pre)
+        c, clock = retime(seg, c, sps, beta, anchor=oe + n/2)
         y = _mf(seg, c, sps, beta)
-        k = np.arange(len(y))
+        k = np.arange(len(y)) - oe
         y = y*np.exp(-1j*(w*k + phase))/max(gain, 1e-12)
-        y = np.concatenate((y[:len(pre)], track(y[len(pre):], pts))) if len(y) > len(pre) else y
+        if len(y) > oe + n: # the carrier loop from the known run out, both ways
+            y = np.concatenate((track(y[:oe][::-1], pts)[::-1], y[oe:oe + n], track(y[oe + n:], pts)))
         idx = np.argmin(np.abs(y[:, None] - pts[None, :]), axis=1)
         dec = pts[idx]
-        data = slice(len(pre), None)
-        evm = float(np.sqrt(np.mean(np.abs(y[data] - dec[data])**2)/np.mean(np.abs(pts)**2))) if len(y) > len(pre) else 0.0
-        out.append(BurstResult(start=a2 + t0, symbols=y, bits=_bits(idx, con), llr=con.llr(y), cfo=f0 + w*baud/(2*np.pi),
-                               clock=clock, phase=phase, gain=gain, score=score, evm=evm, kind=kind, ok=True))
-    # TDMA structure
+        data = np.ones(len(y), bool)
+        data[oe:oe + n] = False
+        evm = float(np.sqrt(np.mean(np.abs(y[data] - dec[data])**2)/np.mean(np.abs(pts)**2))) if data.any() else 0.0
+        out.append(BurstResult(start=a2 + c[0], symbols=y, bits=_bits(idx, con), llr=con.llr(y), cfo=f0 + w*baud/(2*np.pi),
+                               clock=clock, phase=phase, gain=gain, score=score, evm=evm, kind=kind, known=(oe, n), ok=True))
+    frame, slots = _structure(out, x, Fs, baud, frame, slot_tol)
+    return Bursts(bursts=out, mod=mod, baud=baud, beta=beta, preamble=kinds[0], preambles=kinds, offsets=offsets, frame=frame,
+                  slots=slots, blind=False)
+
+def _structure(out, x, Fs, baud, frame, slot_tol):
+    """The TDMA frame (given, or the period of the bursts' starts) and its slots; each burst's frame and slot set"""
     slots = []
     ok = [b for b in out if b.ok]
     if frame is None and len(ok) >= 3:
@@ -347,4 +463,24 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, frame=None,
             b.frame = int((s - t0 + tol)//frame)
             dist = [min(abs(p - q), frame - abs(p - q)) for q in slots]
             b.slot = int(np.argmin(dist))
-    return Bursts(bursts=out, mod=mod, baud=baud, beta=beta, preamble=kinds[0], preambles=kinds, frame=frame, slots=slots)
+    return frame, slots
+
+def _blind(B, mod, baud, beta, con, pts, frame, slot_tol, x, Fs):
+    """Bursts that share no known symbols: each as frames.bursts acquired it blind (its own rate, timing, carrier, and a
+    phase known only to the constellation's symmetry: bits may differ burst to burst by that rotation)"""
+    out = []
+    for b in B:
+        if b.symbols is None:
+            out.append(BurstResult(start=float(b.start), score=0.0, ok=False))
+            continue
+        y = b.symbols
+        idx = np.argmin(np.abs(y[:, None] - pts[None, :]), axis=1)
+        evm = float(np.sqrt(np.mean(np.abs(y - pts[idx])**2)/np.mean(np.abs(pts)**2)))
+        out.append(BurstResult(start=float(b.start), symbols=y, bits=_bits(idx, con), llr=con.llr(y), cfo=float(b.det.cfo),
+                               clock=0.0, phase=None, gain=None, score=None, evm=evm, kind=None, known=(0, 0), ok=True))
+    frame, slots = _structure(out, x, Fs, baud, frame, slot_tol)
+    none = np.zeros(0, dtype=np.complex128) # (no known symbols: one kind, of an empty preamble)
+    for b in out:
+        b.kind = 0 if b.ok else None
+    return Bursts(bursts=out, mod=mod, baud=baud, beta=beta, preamble=none, preambles=[none], offsets=[0], frame=frame,
+                  slots=slots, blind=True)
