@@ -166,6 +166,11 @@ A plan (`rpps.plan`) comes from where the network keeps it:
 - **Learned from the bursts**, when the forward link is not heard: `rp.analysis.spectrum.burst.learn_plan(bursts)` finds
   the BTU, the frame and the slots, and saves a definition (`.save(name)`).
 
+Whether a plan, from anywhere, explains the bursts: `rp.analysis.spectrum.burst.check_plan(plan, bursts)` fits its origin
+and clock to them and puts each in a slot of its carrier (in a slot of its kind, another kind's, overrunning it, or
+in none), and `rp.viz.bursts(None, check, fold=True)` draws the bursts folded onto the superframe's slots: a right plan
+stacks them on its slots, a wrong BTU or frame smears them across.
+
 ```python
 --8<-- "examples/mftdma.py"
 ```

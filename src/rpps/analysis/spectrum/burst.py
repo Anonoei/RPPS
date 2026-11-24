@@ -31,6 +31,11 @@ timing, and is too short to train loops on: so each is acquired on its own, data
      clusters of the starts within a frame (to within `slot_tol` symbols): each burst's frame and slot.
 Limits: the clock is followed as a straight line (a constant offset over the burst), from windows of a few hundred
 symbols; a burst whose preamble is weaker than the data's noise floor allows is reported with `ok` False and no bits.
+
+A network's burst time plan (rpps.plan) from the bursts rp.sync.Bursts detects: `learn_plan` (the BTU, the frame, each
+carrier's slots and the kinds of burst in them), and whether a plan, learned or told, explains the bursts:
+`check_plan` (each burst in a slot of its carrier and kind, the plan's origin and clock fitted to them; rp.viz.bursts
+draws it, folded on the superframe or along the capture).
 """
 import numpy as np
 
@@ -806,16 +811,7 @@ def learn_plan(bursts, quantum=None, max_btus=4096, clock=27e6, purity=0.95, tol
     Only what the bursts show is learned: slots never used are single BTUs, carriers never used are not in it."""
     from ..result import Guess
     from ...plan import Plan, TxType, FrameType, Sequence, Frame
-    rec = []
-    for b in bursts:
-        f = getattr(b, "ctx", None)
-        if f is not None:
-            g = f.get("burst", {})
-            rec.append({"freq": float(g["freq"]), "start": float(g["start"]), "length": len(b)/b.meta.Fs,
-                        "kind": g.get("word") or g.get("tx_type"), "rate": None})
-        else:
-            rec.append({"freq": float(b["freq"]), "start": float(b["start"]), "length": float(b["length"]),
-                        "kind": b.get("kind"), "rate": b.get("rate")})
+    rec = _records(bursts)
     if len(rec) < 4:
         raise ValueError("learn_plan: a few bursts at least")
     starts = np.array([r["start"] for r in rec])
@@ -896,6 +892,21 @@ def learn_plan(bursts, quantum=None, max_btus=4096, clock=27e6, purity=0.95, tol
     g.plan = plan
     return g
 
+def _records(bursts):
+    """Detected bursts as dicts {freq, start, length [s], kind, rate}: from rp.sync.Bursts' output (its ctx["burst"]) or
+    dicts of those keys"""
+    rec = []
+    for b in bursts:
+        f = getattr(b, "ctx", None)
+        if f is not None:
+            g = f.get("burst", {})
+            rec.append({"freq": float(g["freq"]), "start": float(g["start"]), "length": len(b)/b.meta.Fs,
+                        "kind": g.get("word") or g.get("tx_type"), "rate": None})
+        else:
+            rec.append({"freq": float(b["freq"]), "start": float(b["start"]), "length": float(b["length"]),
+                        "kind": b.get("kind"), "rate": b.get("rate")})
+    return rec
+
 def _overlap(cells, need, M):
     """Whether the slots of a frame of M BTUs collide: on a carrier, a burst's BTUs reaching into the next burst's"""
     by = {}
@@ -927,3 +938,188 @@ def _quantum(starts, tol):
     # Refine: the q near it whose cosine sum is largest
     fine = np.linspace(0.97*q, 1.03*q, 601)
     return float(fine[np.argmax([np.sum(np.cos(2*np.pi*d/x)) for x in fine])])
+
+# ---- how well a plan explains the bursts
+
+SLOT, KIND, LONG, NONE = "slot", "kind", "long", "none"
+
+class PlanCheck:
+    """check_plan's answer: how well a burst time plan explains the bursts detected.
+
+    plan; origin (plan clock ticks at the capture's first sample) and rate (the network clock's offset from the
+    capture's, a fraction): a capture time t [s] is plan tick origin + t*clock*(1 + rate); cf (the capture's centre in
+    the plan's frequencies); bursts (the bursts as records: freq, start, length, kind); per burst its `status`:
+      "slot"  in a slot of its carrier (its start to `tol` of the slot's burst start), of its kind, and fitting it
+      "kind"  in a slot whose tx type is another kind's (its unique word, `kind` or `word` in the tx type's fields)
+      "long"  in a slot, but running past the slot's end by more than `tol`
+      "none"  no slot of its carrier starts near it: the plan does not explain it
+    its `window` (rpps.plan.Window; None where "none") and `error` (s: its start minus its window's burst start, nan
+    where "none"); `windows`, every window starting within the bursts' span, and `filled`, how many bursts each holds"""
+    __slots__ = ("plan", "origin", "rate", "cf", "tol", "bursts", "status", "window", "error", "windows", "filled")
+    def __init__(self, **kw):
+        for k in self.__slots__:
+            setattr(self, k, kw.get(k))
+
+    def tick(self, t):
+        """The plan's clock at capture time t [s]"""
+        return self.origin + np.asarray(t)*self.plan.clock*(1 + self.rate)
+
+    def time(self, tick):
+        """The capture time [s] of plan tick `tick`"""
+        return (np.asarray(tick) - self.origin)/(self.plan.clock*(1 + self.rate))
+
+    @property
+    def counts(self):
+        return {s: sum(1 for x in self.status if x == s) for s in (SLOT, KIND, LONG, NONE)}
+
+    @property
+    def explained(self):
+        """The fraction of the bursts in a slot of their own kind that they fit"""
+        return self.counts[SLOT]/max(len(self.status), 1)
+
+    @property
+    def rms(self):
+        """The rms start error [s] of the bursts in slots"""
+        e = np.asarray([e for e, s in zip(self.error, self.status) if s != NONE])
+        return float(np.sqrt(np.mean(e**2))) if len(e) else float("nan")
+
+    def __str__(self):
+        c, n = self.counts, len(self.status)
+        used = int(np.sum(self.filled > 0)) if self.filled is not None else 0
+        return (f"{c[SLOT]} of {n} bursts in a slot of their kind, {c[KIND]} in another kind's, {c[LONG]} overrunning "
+                f"theirs, {c[NONE]} in none; start error {1e6*self.rms:.1f} us rms; {used} of "
+                f"{len(self.windows or [])} slots used; clock {1e6*self.rate:+.1f} ppm")
+
+def check_plan(plan, bursts, origin=None, rate=0.0, cf=0.0, tol=None, fit=True, votes=48):
+    """How well a burst time plan (rpps.plan: learned, a definition or from a forward link) explains detected bursts:
+    each burst placed in the slot of its carrier whose burst start is nearest its own, and judged (PlanCheck: "slot",
+    "kind", "long", "none"). A right plan puts every burst in a slot of its kind; a wrong BTU or frame leaves bursts in
+    none, or drifting through their slots (`error` growing with time); a wrong slot layout puts them in other kinds'.
+
+    bursts: rp.sync.Bursts' output or dicts {freq [Hz from the capture's centre], start [s], length [s], kind}, as
+    learn_plan takes. origin: plan ticks at the capture's first sample (a forward link's clock reference); None: voted
+    for (known only to a whole superframe: the one nearest the capture's start is taken), as rp.sync.Bursts acquires it (each of `votes` bursts spread over the capture votes for the origins that put it
+    on a slot of its carrier, of its kind when both are known; the most voted wins). rate: the network clock's offset.
+    fit: refine the origin and rate on the bursts placed (a line through their start errors, its slope taken where it is
+    over three standard errors), placing them again.
+    cf: the capture's centre in the plan's frequencies. tol: how far [s] a burst's start may be from its slot's (None:
+    half the shortest BTU). Plans whose sequences have different superframe durations are voted on the longest."""
+    from ...sync import track
+    rec = _records(bursts)
+    if not rec:
+        raise ValueError("check_plan: no bursts")
+    clock = plan.clock
+    if tol is None:
+        tol = 0.5*min(ft.btu_duration for ft in plan.frame_types.values())/clock
+    rate = float(rate)
+    if origin is None:
+        origin = _vote_origin(plan, rec, cf, tol, votes, track)
+    if origin is None: # (no slot on any burst's carrier)
+        nan = float("nan")
+        return PlanCheck(plan=plan, origin=nan, rate=rate, cf=cf, tol=tol, bursts=rec, status=[NONE]*len(rec),
+                         window=[None]*len(rec), error=np.full(len(rec), nan), windows=[], filled=np.zeros(0, int))
+    origin = float(origin)
+    for it in range(3 if fit else 1):
+        out = _place(plan, rec, origin, rate, cf, tol)
+        if not fit or it == 2:
+            break
+        ok = [(r["start"], e) for r, s, e in zip(rec, out[0], out[2]) if s != NONE]
+        if not ok:
+            break
+        t, e = np.asarray(ok).T
+        a, b = float(np.mean(e)), 0.0
+        if len(t) >= 8 and np.ptp(t) > 0: # (the rate only where the start errors lean beyond their scatter)
+            (b1, a1), cov = np.polyfit(t, e, 1, cov=True)
+            if abs(b1) > 3*np.sqrt(cov[0, 0]):
+                a, b = a1, b1
+        # e = (tick(t) - window)/clock = a + b t: the window's tick is origin - a clock + t clock (1 + rate - b)
+        origin, rate = origin - a*clock, rate - b
+    status, window, error, windows, filled = out
+    return PlanCheck(plan=plan, origin=origin, rate=rate, cf=cf, tol=tol, bursts=rec, status=status, window=window,
+                     error=error, windows=windows, filled=filled)
+
+def _kind_of(w, plan):
+    tx = plan.tx_types.get(w.tx_type)
+    f = tx.fields if tx else {}
+    return f.get("word") or f.get("kind")
+
+def _same_kind(kind, w, plan):
+    """Whether a burst of `kind` (None: unknown) may be in window w"""
+    if kind is None:
+        return True
+    k = _kind_of(w, plan)
+    return k is None or str(k) == str(kind) or str(kind) == str(w.tx_type)
+
+def _vote_origin(plan, rec, cf, tol, votes, track):
+    clock = plan.clock
+    span = lambda s: s.duration*(len(s.hop.channels) if s.hop is not None else 1)
+    P = max(span(s) for s in plan.sequences.values() if s.duration > 0)
+    ws = [w for s in plan.sequences.values() if s.duration > 0 for w in plan.windows(s.start, s.start + span(s), sequences=[s.id])]
+    idx = np.unique(np.linspace(0, len(rec) - 1, min(votes, len(rec))).round().astype(int))
+    C, B = [], []
+    for j, i in enumerate(idx):
+        r = rec[i]
+        for w in ws:
+            if abs(w.freq - cf - r["freq"]) <= 0.5*max(w.bw, 1.0) and _same_kind(r["kind"], w, plan):
+                C.append(w.burst - r["start"]*clock)
+                B.append(j)
+    if not C:
+        return None
+    C, B = np.asarray(C), np.asarray(B)
+    first = np.r_[0, np.nonzero(np.diff(B))[0] + 1]
+    T = tol*clock
+    best, n_best = 0, -1
+    for a in range(0, len(C), 256): # (each candidate: how many bursts have a candidate within T of it)
+        hit = (np.abs(track.wrap(C[None, :] - C[a:a + 256, None], P)) <= T).astype(np.uint8)
+        n = np.maximum.reduceat(hit, first, axis=1).sum(axis=1)
+        k = int(np.argmax(n))
+        if n[k] > n_best:
+            best, n_best = a + k, int(n[k])
+    d = track.wrap(C - C[best], P)
+    near = [d[(B == j) & (np.abs(d) <= T)] for j in range(len(idx))]
+    near = [x[np.argmin(np.abs(x))] for x in near if len(x)]
+    return float(track.wrap(C[best] + np.mean(near), P)) # (to a whole superframe: the one nearest the capture's start)
+
+def _place(plan, rec, origin, rate, cf, tol):
+    clock = plan.clock
+    T = tol*clock
+    k = clock*(1 + rate)
+    starts = np.asarray([r["start"] for r in rec])
+    longest = max(ft.duration for ft in plan.frame_types.values())
+    t0, t1 = origin + starts.min()*k, origin + starts.max()*k
+    ws = plan.windows(t0 - longest - T, t1 + longest + T)
+    span = np.asarray([t0 - T <= w.burst <= t1 + T for w in ws], dtype=bool)
+    by = {}
+    for i, w in enumerate(ws):
+        by.setdefault(w.freq, []).append(i)
+    by = {f: (np.asarray([ws[i].burst for i in v], dtype=np.float64), np.asarray(v)) for f, v in by.items()}
+    bw = {f: max(ws[v[0]].bw, 1.0) for f, (_, v) in by.items()}
+    status, window, error = [], [], np.full(len(rec), np.nan)
+    count = np.zeros(len(ws), int)
+    for n, r in enumerate(rec):
+        tick = origin + r["start"]*k
+        best = None
+        for f, (b, v) in by.items():
+            if abs(f - cf - r["freq"]) > 0.5*bw[f]:
+                continue
+            j = int(np.searchsorted(b, tick))
+            for jj in (j - 1, j):
+                if 0 <= jj < len(b) and (best is None or abs(b[jj] - tick) < best[0]):
+                    best = (abs(b[jj] - tick), v[jj])
+        if best is None or best[0] > T:
+            status.append(NONE)
+            window.append(None)
+            continue
+        w = ws[best[1]]
+        count[best[1]] += 1
+        error[n] = (tick - w.burst)/clock
+        end = origin + (r["start"] + r["length"])*k
+        if not _same_kind(r["kind"], w, plan):
+            status.append(KIND)
+        elif end > w.start + w.length + 2*T:
+            status.append(LONG)
+        else:
+            status.append(SLOT)
+        window.append(w)
+    keep = np.nonzero(span)[0]
+    return status, window, error, [ws[i] for i in keep], count[keep]

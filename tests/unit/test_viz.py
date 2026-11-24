@@ -50,3 +50,16 @@ def test_eye_is_upright_and_takes_a_block_with_no_traces():
     lines = eye.IQ(None, np.exp(2j*np.pi*0.01*np.arange(400)).astype(np.complex64), 8)
     lo, hi = lines[0][0].axes.get_ylim() if isinstance(lines, tuple) else lines[0].axes.get_ylim()
     assert lo < hi
+
+def test_bursts_on_their_plan():
+    plan = rp.plan.load("demo/mftdma")
+    recs = [{"freq": w.freq, "start": w.burst/plan.clock, "length": 0.8*w.length/plan.clock, "kind": None}
+            for w in plan.windows(0, 4*plan.sequences[0].duration)[::5]]
+    recs.append({"freq": 0.0, "start": 1e-3, "length": 1e-3, "kind": None}) # (no carrier there: in no slot)
+    check = rp.analysis.spectrum.burst.check_plan(plan, recs)
+    assert check.counts["none"] == 1
+    rng = np.random.default_rng(0)
+    x = (rng.standard_normal(60000) + 1j*rng.standard_normal(60000)).astype(np.complex64)
+    ax = rp.viz.bursts(None, check, x=x, Fs=8e6)
+    assert ax.collections and ax.patches
+    rp.viz.bursts(None, check, fold=True)

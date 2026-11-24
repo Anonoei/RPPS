@@ -34,6 +34,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   from a forward link (`rp.plan.builder("dvb-rcs2")`: SCT, FCT2, BCT, TBTP2 and the NCR clock, read by the new
   `profile/dvbrcs2/forward`; `rp.plan.rcs2.tables` writes them), or learned from detected bursts
   (`rp.analysis.spectrum.burst.learn_plan`, saved as a definition).
+- **Whether a burst time plan explains the bursts** (`rp.analysis.spectrum.burst.check_plan`): each detected burst
+  put in the slot of its carrier nearest its start and judged (in a slot of its kind, another kind's, overrunning it,
+  in none), the plan's origin voted for and its clock fitted to the bursts; `rp.viz.bursts` draws it along the
+  capture (over a spectrogram) or folded on the superframe, where a right plan stacks the bursts on its slots.
 - **Bursts on many carriers** (`rp.sync.Bursts`; `{"sync": "burst", "carriers": [...] | "plan": ...}`): each carrier
   channelized (to `sps` samples a symbol), its neighbours filtered out, cut at absolute positions; with a plan each burst
   is placed (superframe, frame, slot, tx type, assignment), the plan's origin acquired from the bursts and tracked from

@@ -245,3 +245,60 @@ def test_a_capture_at_any_rate(rng):
         blk + rx
         got |= {(m.fields["terminal"], m.fields["seq"]) for m in rx.take_messages() if m.kind == "hdr" and m.crc_ok}
     assert got == {(f["terminal"], f["seq"]) for _, f, _ in items}
+
+# ---- checking a plan against the bursts detected
+
+C3 = [{"freq": -2e6, "width": 337.5e3, "rate": 250e3}, {"freq": -1.5e6, "width": 337.5e3, "rate": 250e3},
+      {"freq": 1.5e6, "width": 675e3, "rate": 500e3}]
+
+def _detected(rng):
+    x, items = _send(rng, superframes=6, per=6)
+    y = _channel(x, rng)
+    return rp.Data(y, Fs=8e6, flush=True) + rp.sync.Bursts(carriers=C3, sps=4, factor=4, win=16, min_s=0.5e-3), items
+
+def _demo(edit=None):
+    d = rp.plan.load("demo/mftdma").definition()
+    if edit:
+        edit(d)
+    return rp.plan.init("edited", d)
+
+def test_the_right_plan_explains_every_burst_and_finds_its_origin(rng):
+    bursts, items = _detected(rng)
+    check = rp.analysis.spectrum.burst.check_plan(rp.plan.load("demo/mftdma"), bursts)
+    assert len(bursts) == len(items) and check.explained == 1.0 and check.rms < 20e-6
+    assert abs(check.origin - (-LEAD/8e6*NCR)) < check.tol*NCR # (where the plan's tick 0 is in the capture: its first superframe)
+    assert int(np.sum(check.filled)) == len(items) and np.all(check.filled <= 1)
+    learned = rp.analysis.spectrum.burst.learn_plan(bursts, carriers=C3)
+    assert rp.analysis.spectrum.burst.check_plan(learned.plan, bursts).explained == 1.0
+
+def test_a_wrong_btu_or_slot_layout_leaves_bursts_in_no_slot(rng):
+    bursts, _ = _detected(rng)
+    def btu(d):
+        for ft in d["frame_types"].values():
+            ft["btu"]["duration"], ft["duration"] = int(ft["btu"]["duration"]*1.03), int(ft["duration"]*1.03)
+        d["sequences"]["0"]["duration"] = int(d["sequences"]["0"]["duration"]*1.03)
+    def layout(d):
+        d["frame_types"]["1"]["sections"] = [[129, 2], [128, 2], [128, 1], [129, 2], [128, 0]]
+    check = rp.analysis.spectrum.burst.check_plan
+    assert check(_demo(btu), bursts).explained < 0.6
+    c = check(_demo(layout), bursts)
+    assert c.counts["none"] >= 3 and c.explained < 0.95
+
+def _ideal(plan, origin, rate, seconds, every=7):
+    """A burst every `every`th window over `seconds` of capture, its kind its tx type's word, at exact starts"""
+    ws = plan.windows(origin, origin + seconds*plan.clock*(1 + rate))[::every]
+    return [{"freq": w.freq, "start": (w.burst - origin)/(plan.clock*(1 + rate)), "length": 0.8*w.length/plan.clock,
+             "kind": plan.tx_types[w.tx_type].fields["word"]} for w in ws]
+
+def test_another_kinds_slot_and_the_clock_offset():
+    plan = rp.plan.load("demo/mftdma")
+    recs = _ideal(plan, 123456.0, 150e-6, 4.0) # (600 us over the capture: twice the tolerance)
+    c = rp.analysis.spectrum.burst.check_plan(plan, recs)
+    assert c.explained == 1.0 and c.rate == pytest.approx(150e-6, abs=1e-6) and abs(rp.sync.track.wrap(c.origin - 123456.0, plan.sequences[0].duration)) < 50
+    stale = rp.analysis.spectrum.burst.check_plan(plan, recs, fit=False, origin=123456.0) # (the clock not followed)
+    assert stale.counts["none"] > 0
+    def swap(d):
+        a, b = d["tx_types"]["128"]["fields"], d["tx_types"]["129"]["fields"]
+        a["word"], b["word"] = b["word"], a["word"]
+    c = rp.analysis.spectrum.burst.check_plan(_demo(swap), recs, origin=123456.0, rate=150e-6, fit=False)
+    assert c.counts["kind"] > 0 and c.counts["kind"] + c.counts["slot"] == len(recs)

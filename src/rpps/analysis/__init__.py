@@ -89,6 +89,7 @@ bits; strong codes at low SNR are beyond them on channel bits.
 | PM telemetry end to end | `framing.telemetry.analyze` | BPSK per subcarrier, line code, frame period, counters |
 | what each header bit is | `framing.fields.map` | constants, counters (either bit order, per terminal), ids, length fields, enums, random; a link header definition |
 | code blocks a burst is made of | `spectrum.burst.units` | burst lengths as overhead + n units, the unit to a symbol or so |
+| a burst time plan, and whether one explains the bursts | `spectrum.burst.learn_plan`, `check_plan` | BTU, frame, slots from the starts; each burst in a slot of its carrier and kind, the plan's origin and clock fitted (`rp.viz.bursts` draws it) |
 | which CRC, over which bits | `framing.crc.search` | GCD of frame differences (RevEng's method on bit streams); init and xorout from two lengths; config/crc names |
 | framing in decoded bits | `framing.payload.signatures` | E1/T1, ATM, GFP, HDLC, IPv4, CCSDS ASM, MPEG-TS, fixed bits, each against chance |
 | structured, scrambled or random | `framing.payload.verdict` | signatures, bias, linear complexity, compressibility |

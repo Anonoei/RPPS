@@ -6,6 +6,7 @@ from .plots import eye
 from .plots import freq
 from .plots import spectrogram
 from .plots.survey import survey
+from .plots.bursts import bursts
 from .plots import time
 from .plots.phasor import phasor
 
