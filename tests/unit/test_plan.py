@@ -327,3 +327,15 @@ def test_a_burst_of_a_known_kind_is_placed_in_its_kinds_slot_not_the_filler_besi
     recs = _sparse(0)
     g = B.learn_plan(recs)
     assert B.check_plan(g.plan, recs).explained == 1.0
+
+def test_sparse_bursts_still_give_the_btu():
+    """Bursts in 4% of the slots, 16 us of jitter, 10 s: nearby starts sit hundreds of BTUs apart, their score's peaks
+    narrower than a fixed grid of q steps over (3 of 8 seeds found the BTU on one); stepping evenly in 1/q finds it
+    (8 of 8)"""
+    B = rp.analysis.spectrum.burst
+    recs, rng = _sparse(0, sec=10.0, use=0.04), np.random.default_rng(2)
+    for r in recs:
+        r["start"] += rng.normal(0, 15e-6) # (16 us with _sparse's 5)
+    g = B.learn_plan(recs)
+    assert g.evidence["frame"] == pytest.approx(15e-3/(1 + 30e-6), rel=1e-5)
+    assert B.check_plan(g.plan, recs).explained == 1.0

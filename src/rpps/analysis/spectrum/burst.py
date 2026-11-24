@@ -117,8 +117,9 @@ class Bursts:
 def shared_preamble(burst_list, search=8, win=12, agree=0.8, max_len=512):
     """The leading run of symbols the bursts share, as phase steps: (length in steps, steps, where it starts in each
     burst's symbols), or (0, None, None). Like rpps.analysis.framing.frames.preamble, but aligned on a short window (`win` steps
-    near the start, so a preamble shorter than framing's 64-step window aligns too), each burst against every other's
-    start, the reference being the burst the others agree with most"""
+    near the start, so a preamble shorter than framing's 64-step window aligns too), each burst against a dozen others'
+    starts (the longest, the first, some spread over the list), the reference being the burst the others agree with
+    most"""
     S = [b.symbols for b in burst_list if b.symbols is not None and len(b.symbols) > 2*search + win + 4]
     if len(S) < 3:
         return 0, None, None
@@ -130,8 +131,11 @@ def shared_preamble(burst_list, search=8, win=12, agree=0.8, max_len=512):
             offs.append(int(np.argmax(sc)) - search)
             score += max(sc)
         return offs, score
-    best = None
-    for i in range(min(len(D), 8)):
+    best = None # References: the longest bursts (their gate opened earliest: the preamble whole), the first, and some
+    # spread over the rest (a gate opening late cuts a burst's preamble short: no reference among those)
+    longest = sorted(range(len(D)), key=lambda i: -len(D[i]))[:4]
+    refs = list(dict.fromkeys(longest + list(range(min(len(D), 4))) + list(np.linspace(0, len(D) - 1, 4).astype(int))))
+    for i in refs:
         offs, score = align(D[i][search:search + win])
         if best is None or score > best[1]:
             best = (offs, score)
@@ -955,24 +959,44 @@ def _stretch(starts, q, tol, grid=1e-4):
             return q
         span *= 2
 
-def _quantum(starts, tol):
+def _quantum(starts, tol, chunk=1024, most=1 << 21):
     """The largest q whose multiples the start differences sit on (to tol*q): scored by the mean cosine of 2 pi d / q
-    over the differences of nearby bursts, from the longest q down. Returns q and the curve (q's tried, their scores)"""
+    over the differences d of nearby bursts (each to its next 8), from the longest q down. A difference of N BTUs
+    passes only within about tol/N of q: so q steps evenly in 1/q, by tol/4 of the longest differences' (sparse bursts
+    sit hundreds of BTUs apart, their peaks too narrow for a fixed grid), evaluated `chunk` at a time down to the first
+    that passes (at most `most` of them). Returns q and the curve (q's tried, their scores)"""
     s = np.sort(starts)
     d = np.concatenate([s[i + 1:i + 9] - s[i] for i in range(len(s))])
     d = d[d > 0]
     if not len(d):
         raise ValueError("learn_plan: the bursts start together")
+    if len(d) > 8192: # (a spread sample: the score is a mean)
+        d = np.sort(d)[np.linspace(0, len(d) - 1, 8192).astype(int)]
     lo = max(np.min(d)/64, 1e-7)
-    qs = np.geomspace(np.median(d), lo, 4000)
-    score = np.array([np.mean(np.cos(2*np.pi*d/q)) for q in qs])
-    good = np.nonzero(score >= np.cos(2*np.pi*tol))[0]
-    if not len(good):
+    hi = float(np.median(d))
+    df = tol/(4*float(np.percentile(d, 99)))
+    thr = np.cos(2*np.pi*tol)
+    qs, score, found = [], [], None
+    f = 1/hi
+    while f < 1/lo and len(qs)*chunk < most:
+        fr = f + df*np.arange(chunk)
+        fr = fr[fr < 1/lo]
+        sc = np.cos(2*np.pi*np.outer(fr, d)).mean(axis=1)
+        qs.append(1/fr)
+        score.append(sc)
+        good = np.nonzero(sc >= thr)[0]
+        if len(good):
+            found = 1/fr[good[0]]
+            break
+        f = fr[-1] + df
+    qs, score = np.concatenate(qs), np.concatenate(score)
+    if found is None:
         raise ValueError("learn_plan: the bursts' starts sit on no grid (give `quantum`)")
-    q = qs[good[0]]
-    # Refine: the q near it whose cosine sum is largest
-    fine = np.linspace(0.97*q, 1.03*q, 601)
-    return float(fine[np.argmax([np.sum(np.cos(2*np.pi*d/x)) for x in fine])]), (qs, score)
+    # Refine: the q whose cosine sum is largest over the peak the first passing q is on the edge of (its half-width
+    # about tol*q/d over the typical difference d), below it (the descent comes from above)
+    width = 2*tol*found*found/float(np.median(d))
+    fine = np.linspace(found + 0.25*width, found - width, 401)
+    return float(fine[np.argmax(np.cos(2*np.pi*np.outer(1/fine, d)).sum(axis=1))]), (qs, score)
 
 # ---- how well a plan explains the bursts
 

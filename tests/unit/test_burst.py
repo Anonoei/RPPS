@@ -377,3 +377,16 @@ def test_bursts_cut_far_off_centre():
     B = FR.bursts(x, Fs, names=["qpsk"], baud=baud)
     assert len(B) == 4 and all(abs(b.det.cfo - 60e3) < 300 for b in B)
     assert all(np.mean(np.min(np.abs(b.symbols[:, None] - q[None, :]), axis=1)) < 0.06 for b in B)
+
+def test_a_shared_preamble_when_the_first_bursts_gated_late():
+    """One kind of burst whose gate opened 18 symbols early on some (noise before the word) and on time on the rest:
+    with the on-time ones listed first (a group sorted by length does that), no reference among them has the word where
+    the early ones can reach it; one that opened early, among the longest or spread over the list, aligns them all"""
+    from types import SimpleNamespace
+    rng = np.random.default_rng(3)
+    qpsk = lambda n: np.exp(1j*np.pi/4*(2*rng.integers(0, 4, n) + 1))
+    word = qpsk(32)
+    on_time = [SimpleNamespace(symbols=np.concatenate((qpsk(rng.integers(0, 3)), word, qpsk(340)))) for _ in range(10)]
+    early = [SimpleNamespace(symbols=np.concatenate((qpsk(18 + rng.integers(0, 3)), word, qpsk(340)))) for _ in range(10)]
+    n, _, _ = burst.shared_preamble(on_time + early, search=32)
+    assert n >= 28 # (31 over seeds; the first 8 as references: 0 to 24)

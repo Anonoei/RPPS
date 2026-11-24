@@ -395,6 +395,12 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - `learn_plan` found no frame period in captures of more than a few thousand BTUs: its BTU, right to 1e-4 of
   itself, slipped the later bursts' BTU counts. It is now made exact over the whole capture (the least-squares
   slope of the starts on their counts, over a span doubling from the first burst).
+- `learn_plan` found no BTU when bursts are sparse (a few % of the slots): their nearby starts sit hundreds of BTUs
+  apart and the score's peaks were narrower than its fixed grid. q now steps evenly in 1/q, finely enough for the
+  longest differences, from the longest q down to the first passing.
+- `spectrum.burst.demodulate` found only one of two burst kinds on a carrier when the gate opened late on the
+  first bursts of a length group (`shared_preamble` took its references from the first 8 only): the references
+  are now the longest bursts, the first and some spread over the list.
 - A profile's change for a step that had not run yet was placed as if positions started at 0: in a stream that starts
   elsewhere (every burst of a burst profile, at its place in the capture) it landed at the wrong item. An empty position
   map now scales by its step's rate.
