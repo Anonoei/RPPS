@@ -168,8 +168,10 @@ A plan (`rpps.plan`) comes from where the network keeps it:
 
 Whether a plan, from anywhere, explains the bursts: `rp.analysis.spectrum.burst.check_plan(plan, bursts)` fits its origin
 and clock to them and puts each in a slot of its carrier (in a slot of its kind, another kind's, overrunning it, or
-in none), and `rp.viz.bursts(None, check, fold=True)` draws the bursts folded onto the superframe's slots: a right plan
-stacks them on its slots, a wrong BTU or frame smears them across.
+in none), and `rp.viz.bursts(None, check, fold=True)` draws a raster of superframes, one a row: a right plan keeps the
+bursts inside its slots' columns, a wrong frame slants them, a wrong BTU puts them across the columns' edges.
+`rp.viz.burst_timing` draws each burst's start error against time, and `rp.viz.plan_evidence` what learn_plan chose its
+BTU and frame on (or, from the `NoPlan` it raises, why every period was passed over).
 
 ```python
 --8<-- "examples/mftdma.py"

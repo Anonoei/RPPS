@@ -63,3 +63,42 @@ def test_bursts_on_their_plan():
     ax = rp.viz.bursts(None, check, x=x, Fs=8e6)
     assert ax.collections and ax.patches
     rp.viz.bursts(None, check, fold=True)
+
+def _demodulated(rng, n=40):
+    """A demodulate result made by hand: two kinds, each with its known run, two transmitters' offsets and powers"""
+    from rpps.analysis.spectrum.burst import BurstResult, Bursts
+    word = np.exp(1j*np.pi/4*(2*rng.integers(0, 4, 32) + 1))
+    out = []
+    for i in range(n):
+        data = np.exp(1j*np.pi/4*(2*rng.integers(0, 4, 200) + 1))
+        y = np.concatenate((word, data)) + 0.05*(rng.standard_normal(232) + 1j*rng.standard_normal(232))
+        tx = i % 2
+        out.append(BurstResult(start=1000.0*i, symbols=y, cfo=1e3*(1 + tx) + rng.normal(0, 30), clock=0.0,
+                               gain=10**((60 + 2*tx)/20), evm=0.05, kind=i % 3 == 0, slot=i % 5, frame=0,
+                               known=(0, 32), ok=True))
+    return Bursts(bursts=out, mod="psk/qpsk", baud=1e5)
+
+def test_burst_timing_stack_terminals_and_plan_evidence():
+    rng = np.random.default_rng(0)
+    plan = rp.plan.load("demo/mftdma")
+    B = rp.analysis.spectrum.burst
+    recs = [{"freq": w.freq, "start": w.burst/plan.clock + rng.normal(0, 5e-6), "length": 0.8*w.length/plan.clock,
+             "kind": plan.tx_types[w.tx_type].fields["word"]} for w in plan.windows(0, 20*plan.sequences[0].duration)
+            if rng.random() < 0.4]
+    check = B.check_plan(plan, recs)
+    for by in ("carrier", "slot", "kind"):
+        assert rp.viz.burst_timing(None, check, by=by).lines
+    r = _demodulated(rng)
+    for what in ("phase", "magnitude"):
+        ax = rp.viz.burst_stack(None, r, kind=False, what=what)
+        assert ax.images
+    ax = rp.viz.burst_terminals(None, r, x="cfo", y="gain", by="slot")
+    assert len(ax.lines) == 5
+    rp.viz.burst_terminals(None, r, x="clock", y="evm", by=None)
+    g = B.learn_plan(recs)
+    a, b = rp.viz.plan_evidence(None, g)
+    assert a.lines and b.lines
+    mixed = [dict(r_, kind=str(rng.integers(3))) for r_ in recs] # (kinds at random: no frame period is pure)
+    with pytest.raises(B.NoPlan) as e:
+        B.learn_plan(mixed)
+    rp.viz.plan_evidence(None, e.value)

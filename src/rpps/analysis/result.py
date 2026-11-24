@@ -45,7 +45,7 @@ class Report:
 class Guess:
     """A guessed definition (a code, a scrambler, a CRC). Decoding only happens from a saved config: `save` it, then load
     it (rp.code.load("block/guess/<name>"), rp.code.scram.load("feedthrough/guess/<name>"), rp.link.load("crc/guess/<name>"))"""
-    __slots__ = ("kind", "definition", "evidence", "plan")
+    __slots__ = ("kind", "definition", "evidence", "plan", "scores")
     FOLDER = {"block": ("fec", "block"), "rs": ("fec", "block"), "conv": ("fec", "conv"),
               "scramble": ("scramble", "feedthrough"), "crc": ("crc", ""),
               "header": ("header", "link"), "plan": ("plan", "")} # kind: (config domain, folder in it)
@@ -55,6 +55,7 @@ class Guess:
         self.definition = definition
         self.evidence = evidence or {}
         self.plan = None # (a plan's guess: the Plan itself)
+        self.scores = None # (a plan's guess: the curves it was chosen on, rp.viz.plan_evidence)
 
     def __repr__(self):
         d = self.definition

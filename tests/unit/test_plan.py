@@ -302,3 +302,28 @@ def test_another_kinds_slot_and_the_clock_offset():
         a["word"], b["word"] = b["word"], a["word"]
     c = rp.analysis.spectrum.burst.check_plan(_demo(swap), recs, origin=123456.0, rate=150e-6, fit=False)
     assert c.counts["kind"] > 0 and c.counts["kind"] + c.counts["slot"] == len(recs)
+
+def test_the_btu_is_made_exact_over_the_whole_capture():
+    """learn_plan's coarse BTU is right to 1e-4 of itself: over 16000 BTUs that is more than half of one, so each
+    start's count of BTUs would slip; the starts' line makes it exact"""
+    rng = np.random.default_rng(1)
+    q = 0.6e-3
+    k = np.sort(rng.choice(16000, 500, replace=False))
+    starts = 0.01 + k*q + rng.normal(0, 16e-6, len(k))
+    got = rp.analysis.spectrum.burst._stretch(starts, q*(1 + 1e-4), 0.1)
+    assert abs(got/q - 1) < 1e-6
+
+def _sparse(seed, rate=30e-6, sec=30.0, use=0.02, origin=5e5):
+    """Bursts in `use` of the demo plan's windows, at exact starts plus 5 us of jitter, their kinds known"""
+    plan, rng = rp.plan.load("demo/mftdma"), np.random.default_rng(seed)
+    ws = [w for w in plan.windows(origin, origin + sec*plan.clock*(1 + rate)) if rng.random() < use]
+    return [{"freq": w.freq, "start": (w.burst - origin)/(plan.clock*(1 + rate)) + rng.normal(0, 5e-6),
+             "length": 0.8*w.length/plan.clock, "kind": plan.tx_types[w.tx_type].fields["word"]} for w in ws]
+
+def test_a_burst_of_a_known_kind_is_placed_in_its_kinds_slot_not_the_filler_beside_it():
+    """A learned plan fills the BTUs no burst used with untyped single-BTU slots: a burst of a known kind is placed in its
+    own kind's slot, not one BTU over in the filler (where it would overrun)"""
+    B = rp.analysis.spectrum.burst
+    recs = _sparse(0)
+    g = B.learn_plan(recs)
+    assert B.check_plan(g.plan, recs).explained == 1.0

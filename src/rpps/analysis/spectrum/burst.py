@@ -792,17 +792,23 @@ def _blind(B, mod, baud, beta, con, pts, frame, slot_tol, x, Fs):
 
 # ---- a burst time plan learned from bursts
 
+class NoPlan(ValueError):
+    """learn_plan found no frame period; `scores`: what it tried (as a Guess's, for rp.viz.plan_evidence)"""
+    scores = None
+
 def learn_plan(bursts, quantum=None, max_btus=4096, clock=27e6, purity=0.95, tol=0.1, carriers=None):
     """A burst time plan (rpps.plan) from detected bursts, for a network whose forward link is not heard: its BTU, frame
     period, a frame type per carrier, its slots and their tx types. Returns a Guess to `save` (config/plan/guess/<name>)
-    and load as a plan (`rp.plan.load("guess/<name>")`), whose `plan` is the Plan itself.
+    and load as a plan (`rp.plan.load("guess/<name>")`), whose `plan` is the Plan itself and `scores` what it was chosen
+    on (each BTU's score, each frame period's purity and why it was passed over: rp.viz.plan_evidence draws them).
 
     bursts: rp.sync.Bursts' output (each its ctx["burst"]: carrier freq, start; its length) or dicts {freq, start, length
     [s], kind (a burst type: its unique word), rate}. quantum: the BTU [s] when known. carriers: [{freq, width, rate}]
     the bursts were detected on (rp.sync.Bursts'): each frame type's bandwidth and symbol rate.
 
       1. The BTU: the quantum of the bursts' start differences (every slot starts on the grid of its frame): the largest q
-         whose multiples the differences sit on, to `tol` of q.
+         whose multiples the differences sit on, to `tol` of q, then made exact over the whole capture (each start's
+         count of BTUs, over a span doubling from the first burst: the slope of a line through them).
       2. The frame: the shortest period of M BTUs at which every (carrier, BTU in the frame) holds one kind of burst
          (`purity` of them; length clusters stand for kinds not given), with bursts at two or more places of it.
       3. A frame type per carrier: its slots where bursts were seen (as many BTUs as the longest burst of the kind needs),
@@ -823,28 +829,38 @@ def learn_plan(bursts, quantum=None, max_btus=4096, clock=27e6, purity=0.95, tol
             if last is not None and r["length"] > 1.1*last:
                 c += 1
             r["kind"], r["auto"], last = f"{fr:g}/{c}", True, r["length"]
-    q = float(quantum) if quantum else _quantum(starts, tol)
+    curve = None
+    if quantum:
+        q = float(quantum)
+    else:
+        q, curve = _quantum(starts, tol)
+        q = _stretch(starts, q, tol)
     t0 = float(starts.min())
     k = np.round((starts - t0)/q).astype(np.int64)
     off = (starts - t0) - k*q
     need = {}
     for r in rec: # BTUs each kind's longest burst takes
         need[str(r["kind"])] = max(need.get(str(r["kind"]), 1), int(np.ceil(r["length"]/q - 1e-9)))
-    best = None
+    best, tried = None, [] # tried: (M, purity, why not: "" taken, "purity", "repeats", "short", "overlap")
     for M in range(2, max_btus + 1):
         cells = {}
         for r, kk in zip(rec, k):
             cells.setdefault((r["freq"], int(kk % M)), []).append(r["kind"])
         major = sum(max(np.unique([str(x) for x in v], return_counts=True)[1]) for v in cells.values())
         repeated = sum(len(v) > 1 for v in cells.values())
-        if major < purity*len(rec) or repeated < 2 or M*q < max(r["length"] for r in rec):
-            continue
-        if _overlap(cells, need, M): # (the slots it makes collide: not the frame)
+        why = ("purity" if major < purity*len(rec) else "repeats" if repeated < 2 else
+               "short" if M*q < max(r["length"] for r in rec) else "overlap" if _overlap(cells, need, M) else "")
+        tried.append((M, major/len(rec), why)) # (the overlap check only where the rest pass: it costs most)
+        if why:
             continue
         best = (M, cells)
         break
     if best is None:
-        raise ValueError("learn_plan: no frame period found (too few bursts, or no plan)")
+        e = NoPlan("learn_plan: no frame period found (too few bursts, or no plan): rp.viz.plan_evidence(None, error) "
+                   "shows why each was passed over")
+        e.scores = {"quantum": curve, "btu": q, "tol": tol, "purity": purity, "frames": [(M_*q, pur, why) for M_, pur, why in tried],
+                    "frame": None}
+        raise e
     M, cells = best
     # The frame's start: where no carrier's slot crosses from one frame into the next (the first burst need not be first)
     slots = [(b, need[max(set(str(x) for x in v), key=[str(x) for x in v].count)]) for (f, b), v in cells.items()]
@@ -890,6 +906,8 @@ def learn_plan(bursts, quantum=None, max_btus=4096, clock=27e6, purity=0.95, tol
     g = Guess("plan", plan.definition("burst time plan learned from detected bursts (rpps.analysis.spectrum.burst.learn_plan)"),
               {"btu": q, "frame": M*q, "bursts": len(rec), "carriers": len(fts), "kinds": len(kinds)})
     g.plan = plan
+    g.scores = {"quantum": curve, "btu": q, "tol": tol, "purity": purity,
+                "frames": [(M_*q, pur, why) for M_, pur, why in tried], "frame": M*q}
     return g
 
 def _records(bursts):
@@ -920,9 +938,26 @@ def _overlap(cells, need, M):
                 return True
     return False
 
+def _stretch(starts, q, tol, grid=1e-4):
+    """q to the precision the whole capture holds: the starts' BTU counts from the first burst, counted over a span
+    that doubles, and q the least-squares slope of the starts on them (the starts more than tol*q off their count left
+    out). _quantum's q is right to its grid, `grid` of q: over thousands of BTUs that is half of one, so the first span
+    is as many BTUs as that error leaves within half the tolerance, and each fit makes the next span's count right"""
+    s = np.sort(np.asarray(starts, dtype=np.float64))
+    t0, span = s[0], 0.5*tol/grid*q
+    while True:
+        d = s[s - t0 <= span] - t0
+        k = np.round(d/q)
+        good = np.abs(d - k*q) <= tol*q
+        if good.sum() >= 4 and np.ptp(k[good]) >= 32:
+            q = float(np.polyfit(k[good], d[good], 1)[0])
+        if span >= s[-1] - t0:
+            return q
+        span *= 2
+
 def _quantum(starts, tol):
     """The largest q whose multiples the start differences sit on (to tol*q): scored by the mean cosine of 2 pi d / q
-    over the differences of nearby bursts, from the longest q down"""
+    over the differences of nearby bursts, from the longest q down. Returns q and the curve (q's tried, their scores)"""
     s = np.sort(starts)
     d = np.concatenate([s[i + 1:i + 9] - s[i] for i in range(len(s))])
     d = d[d > 0]
@@ -937,7 +972,7 @@ def _quantum(starts, tol):
     q = qs[good[0]]
     # Refine: the q near it whose cosine sum is largest
     fine = np.linspace(0.97*q, 1.03*q, 601)
-    return float(fine[np.argmax([np.sum(np.cos(2*np.pi*d/x)) for x in fine])])
+    return float(fine[np.argmax([np.sum(np.cos(2*np.pi*d/x)) for x in fine])]), (qs, score)
 
 # ---- how well a plan explains the bursts
 
@@ -1050,6 +1085,16 @@ def _same_kind(kind, w, plan):
     k = _kind_of(w, plan)
     return k is None or str(k) == str(kind) or str(kind) == str(w.tx_type)
 
+def _rank(kind, w, plan):
+    """How well a burst of `kind` fits window w's type: 0 its own kind, 1 a window of no kind (a single BTU an
+    assignment types, a learned plan's unused BTU; or the burst's kind unknown), 2 another kind's"""
+    if kind is None:
+        return 1
+    k = _kind_of(w, plan)
+    if str(kind) == str(w.tx_type) or (k is not None and str(k) == str(kind)):
+        return 0
+    return 1 if k is None else 2
+
 def _vote_origin(plan, rec, cf, tol, votes, track):
     clock = plan.clock
     span = lambda s: s.duration*(len(s.hop.channels) if s.hop is not None else 1)
@@ -1059,8 +1104,11 @@ def _vote_origin(plan, rec, cf, tol, votes, track):
     C, B = [], []
     for j, i in enumerate(idx):
         r = rec[i]
-        for w in ws:
-            if abs(w.freq - cf - r["freq"]) <= 0.5*max(w.bw, 1.0) and _same_kind(r["kind"], w, plan):
+        mine = [w for w in ws if abs(w.freq - cf - r["freq"]) <= 0.5*max(w.bw, 1.0)]
+        ranks = [_rank(r["kind"], w, plan) for w in mine]
+        best = min(ranks, default=2)
+        for w, rk in zip(mine, ranks): # (its own kind's windows where the carrier has them: an untyped one too would
+            if rk == best and rk < 2: # let the origin slip a BTU onto the filler around them)
                 C.append(w.burst - r["start"]*clock)
                 B.append(j)
     if not C:
@@ -1098,20 +1146,24 @@ def _place(plan, rec, origin, rate, cf, tol):
     count = np.zeros(len(ws), int)
     for n, r in enumerate(rec):
         tick = origin + r["start"]*k
-        best = None
+        best = None # (rank, distance, window): its own kind's window first, of those within the tolerance
         for f, (b, v) in by.items():
             if abs(f - cf - r["freq"]) > 0.5*bw[f]:
                 continue
             j = int(np.searchsorted(b, tick))
-            for jj in (j - 1, j):
-                if 0 <= jj < len(b) and (best is None or abs(b[jj] - tick) < best[0]):
-                    best = (abs(b[jj] - tick), v[jj])
-        if best is None or best[0] > T:
+            for jj in range(max(j - 2, 0), min(j + 2, len(b))):
+                d = abs(b[jj] - tick)
+                if d > T:
+                    continue
+                cand = (_rank(r["kind"], ws[v[jj]], plan), d, v[jj])
+                if best is None or cand[:2] < best[:2]:
+                    best = cand
+        if best is None:
             status.append(NONE)
             window.append(None)
             continue
-        w = ws[best[1]]
-        count[best[1]] += 1
+        w = ws[best[2]]
+        count[best[2]] += 1
         error[n] = (tick - w.burst)/clock
         end = origin + (r["start"] + r["length"])*k
         if not _same_kind(r["kind"], w, plan):

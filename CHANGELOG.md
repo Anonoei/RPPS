@@ -36,8 +36,14 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   (`rp.analysis.spectrum.burst.learn_plan`, saved as a definition).
 - **Whether a burst time plan explains the bursts** (`rp.analysis.spectrum.burst.check_plan`): each detected burst
   put in the slot of its carrier nearest its start and judged (in a slot of its kind, another kind's, overrunning it,
-  in none), the plan's origin voted for and its clock fitted to the bursts; `rp.viz.bursts` draws it along the
-  capture (over a spectrogram) or folded on the superframe, where a right plan stacks the bursts on its slots.
+  in none; its own kind's slot before an untyped one), the plan's origin voted for and its clock fitted to the
+  bursts. `rp.viz.bursts` draws it along the capture (over a spectrogram) or as a raster of superframes, one a row,
+  where a right plan keeps the bursts in its slots' columns (each column's use over it).
+- **Burst views** (`rp.viz`): `burst_timing` (each burst's start error against time, by carrier, slot or tx type),
+  `burst_stack` (the bursts of a kind lined up on their known symbols, phase or magnitude, and how far they agree
+  at each symbol: preambles, repeated words, constant runs), `burst_terminals` (the bursts' carrier offset, gain,
+  clock or EVM against each other: a cluster per transmitter), `plan_evidence` (learn_plan's BTU score and each
+  frame period's purity and why it was passed over, from its Guess's `scores` or the `NoPlan` error it raises).
 - **Bursts on many carriers** (`rp.sync.Bursts`; `{"sync": "burst", "carriers": [...] | "plan": ...}`): each carrier
   channelized (to `sps` samples a symbol), its neighbours filtered out, cut at absolute positions; with a plan each burst
   is placed (superframe, frame, slot, tx type, assignment), the plan's origin acquired from the bursts and tracked from
@@ -386,6 +392,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   inside) don't. A rate given (a hint, the cyclic spectrum's second pass) has no line and is always searched.
 
 ### Fixed
+- `learn_plan` found no frame period in captures of more than a few thousand BTUs: its BTU, right to 1e-4 of
+  itself, slipped the later bursts' BTU counts. It is now made exact over the whole capture (the least-squares
+  slope of the starts on their counts, over a span doubling from the first burst).
 - A profile's change for a step that had not run yet was placed as if positions started at 0: in a stream that starts
   elsewhere (every burst of a burst profile, at its place in the capture) it landed at the wrong item. An empty position
   map now scales by its step's rate.
