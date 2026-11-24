@@ -445,6 +445,30 @@ def gate(x, Fs, smooth=4e-6, contrast=2.5, min_len=64e-6, hang=8e-6, touching=Tr
                                                if b - a >= 2*min_len*Fs else [(a, b)])]
     return spans
 
+def tone_pair(x, Fs, sep, tol=0.02, min_snr=20.0):
+    """The middle (Hz) of the strongest pair of spectral lines `sep` apart (to `tol` of it) in the samples x, or None:
+    a periodic preamble (1100...: tones at the carrier +-baud/4) puts its carrier between two lines, which squaring
+    cannot tell from the lines themselves. Lines are taken over the floor (median of the spectrum), both `min_snr` over it"""
+    x = np.asarray(x, dtype=np.complex128)
+    n = 1 << int(np.ceil(np.log2(max(len(x), 64))))
+    X = np.abs(np.fft.fftshift(np.fft.fft(x*np.hanning(len(x)), 2*n)))**2
+    f = np.fft.fftshift(np.fft.fftfreq(2*n, 1/Fs))
+    floor = np.median(X) + 1e-30
+    df = f[1] - f[0]
+    k = int(round(sep/df))
+    w = max(1, int(round(tol*sep/df)))
+    if k <= w or k >= len(X):
+        return None
+    from numpy.lib.stride_tricks import sliding_window_view
+    pad = np.concatenate((X, np.zeros(k + w)))
+    partner = sliding_window_view(pad[k - w:], 2*w + 1).max(axis=1)[:len(X)] # the strongest line near sep above each
+    score = np.minimum(X, partner)/floor
+    i = int(np.argmax(score))
+    if score[i] < min_snr:
+        return None
+    j = i + k - w + int(np.argmax(pad[i + k - w:i + k + w + 1]))
+    return float((f[i] + f[min(j, len(f) - 1)])/2)
+
 def bursts(x, Fs, names=None, baud=None, min_symbols=128, betas=(0.2, 0.25, 0.35), **kw):
     """The bursts of x (`gate`), each acquired on its own: rate (or `baud` for all), modulation, offset, timing (as a
     TDMA receiver must: every burst comes from another transmitter, with its own clock and carrier). The rate is the
@@ -476,24 +500,41 @@ def bursts(x, Fs, names=None, baud=None, min_symbols=128, betas=(0.2, 0.25, 0.35
                 t0 = det.tau + (a - a2)
                 t0 -= np.floor((t0 - 8*sps - 5)/sps)*sps
                 pts = candidates([det.mod])[det.mod]
+                M = symmetry(pts)
+                rate = Fs/sps
+                # Carriers to try, the samples shifted by each before the matched filter: none (the blind estimate is
+                # taken from the symbols); a quarter of the rate either side, where that is not a turn of the
+                # constellation's symmetry (BPSK: a long 1100... preamble is a pair of tones at +-baud/4 a blind carrier
+                # can lock onto; for QPSK the turn is invisible to the decisions); and the middle of such a tone pair
+                # in the spectrum of the samples themselves (`tone_pair`: unambiguous, and strong where the preamble is)
+                shifts = [0.0]
+                if M % 4: # (a quarter of the rate turns each symbol 90 degrees: a symmetry of QPSK, 8PSK...)
+                    shifts += [rate/4, -rate/4]
+                tp = tone_pair(seg, Fs, rate/2)
+                if tp is not None:
+                    shifts.append(tp)
                 best = None
-                # The timing at quarter-symbol steps around the blind one, and the carrier there and a quarter of the
-                # rate either side, the pair whose decisions fit best: a long 1100... preamble is a pair of tones at
-                # +-baud/4, which can hold the blind timing half a symbol out and the blind carrier on one of its lines
                 n_ = np.arange(len(seg))
-                for df in (0.0, Fs/sps/4, -Fs/sps/4):
+                for df in shifts:
                     sg = seg*np.exp(-2j*np.pi*df/Fs*n_) if df else seg
                     for f in (0.0, 0.25, 0.5, 0.75):
                         tf = t0 + f*sps
                         tf -= np.floor((tf - 8*sps - 5)/sps)*sps
                         c = centres_in(len(sg), tf, sps, 8)
                         y = matrix_mf(sg, c, sps, det.beta, 8)
-                        y, r, _ = correct(y/np.sqrt(np.mean(np.abs(y)**2)), pts, symmetry(pts))
+                        y, r, _ = correct(y/np.sqrt(np.mean(np.abs(y)**2)), pts, M)
                         e = float(np.mean(np.min(np.abs(y[:, None] - pts[None, :])**2, axis=1)))
-                        if best is None or e < best[0] - 1e-9:
-                            best = (e, y, df + r*Fs/sps)
+                        if best is None or e < 0.95*best[0]: # (another carrier only when clearly better)
+                            best = (e, y, df, df + r*rate)
                 bu.symbols = best[1]
-                det.cfo = float(best[2]) # the carrier these symbols were taken at (the shift tried, and what was left)
+                if best[2]: # a shifted carrier: modulation and Es/N0 measured again there
+                    try:
+                        d2 = detect(seg*np.exp(-2j*np.pi*best[2]/Fs*n_), Fs, names, betas=betas, baud=det.baud)
+                        d2.cfo = float(d2.cfo + best[2])
+                        det = d2
+                    except Exception: # (keep the first detection, with the carrier corrected)
+                        pass
+                det.cfo = float(best[3]) # the carrier these symbols were taken at (the shift tried, and what was left)
                 bu.det = det
         except Exception: # A burst too short or too weak to acquire is kept, without symbols
             pass

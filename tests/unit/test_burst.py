@@ -337,3 +337,26 @@ def test_frame_period_of_slots_used_in_alternate_frames_or_none():
     assert abs(burst._frame([_B(t) for t in alt], x, 1e6, 512e3, 16)[0] - 2*T) < 1e-5
     assert abs(burst._frame([_B(t) for t in every], x, 1e6, 512e3, 16)[0] - T) < 1e-5
     assert burst._frame([_B(t) for t in loose], x, 1e6, 170.67e3, 16)[0] is None
+
+def test_a_preambles_tone_pair_gives_the_carrier_and_qpsk_keeps_its_own():
+    """A 1100 preamble's lines at the carrier +-baud/4: their middle is the carrier (to a few Hz, from -4 to +6 kHz at
+    19.2 kBd). QPSK bursts keep the carrier they were acquired at: a quarter of the rate either side turns every
+    symbol 90 degrees, which the decisions cannot see, so it is not tried"""
+    rng = np.random.default_rng(0)
+    Fs, baud = 390.625e3, 19.2e3
+    for cfo in (-4000, 500, 6000):
+        syms = np.concatenate((np.tile([1, 1, -1, -1], 163).astype(complex), np.array([1, -1], complex)[rng.integers(0, 2, 1700)]))
+        w = FR.word_waveform(syms, Fs/baud)*np.exp(2j*np.pi*cfo/Fs*np.arange(int(np.ceil((len(syms) + 16)*Fs/baud))))
+        x = w + 0.1*(rng.standard_normal(len(w)) + 1j*rng.standard_normal(len(w)))
+        assert abs(FR.tone_pair(x, Fs, baud/2) - cfo) < 20
+    q = rp.symbol.load("qpsk").points
+    xs, cfos = [np.zeros(4000, complex)], []
+    for _ in range(4):
+        f = rng.uniform(-3e3, 3e3)
+        w = FR.word_waveform(q[rng.integers(0, 4, 2000)], 2e6/250e3)
+        xs += [w*np.exp(1j*rng.uniform(0, 2*np.pi) + 2j*np.pi*f/2e6*np.arange(len(w))), np.zeros(4000, complex)]
+        cfos.append(f)
+    x = np.concatenate(xs)
+    x += 0.05*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    B = FR.bursts(x, 2e6, names=["qpsk"], baud=250e3)
+    assert len(B) == 4 and all(abs(b.det.cfo - f) < 500 for b, f in zip(B, cfos))

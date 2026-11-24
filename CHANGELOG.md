@@ -89,7 +89,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   divisor the starts cluster at (else their own spacing), then multiplied where the slots fill only some residues of
   the frame index (a divisor of the frame), not where terminals come and go. Each burst's blind timing is the best
   of four quarter-symbol steps, and its carrier the better of the estimate and a quarter of the rate either side (a
-  long 1100 preamble is a pair of tones at +-baud/4: it held the timing half a symbol out and the carrier on a line).
+  long 1100 preamble is a pair of tones at +-baud/4: it held the timing half a symbol out and the carrier on a line;
+  not tried where a quarter turn a symbol is the constellation's symmetry, QPSK), or the middle of such a tone pair
+  (`frames.tone_pair`); a burst taken at another carrier is detected again there.
   `Bursts.frame` is None when the starts fall on no slot grid, and `Bursts.plan_frame` is learn_plan's frame: half
   of `frame` where terminals get slots in alternate frames of the plan.
 - **Block codes from soft values** (`rp.analysis.code.block.linear.soft_dual`, `soft_find_length`, `soft_score`):
