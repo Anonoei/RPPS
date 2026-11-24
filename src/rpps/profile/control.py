@@ -215,12 +215,14 @@ class PosMap:
     """How a step's input positions become its output positions: anchors (input, output, rate), from which the output
     advances `rate` items per input item. A step gets one when it first runs, one at every change applied to it (its rate
     may change), and one wherever it reports that it dropped or inserted items"""
-    __slots__ = ("a",)
-    def __init__(self, anchors=None):
+    __slots__ = ("a", "r0")
+    def __init__(self, anchors=None, r0=1.0):
         self.a = list(anchors or [])
+        self.r0 = float(r0) if r0 else 1.0 # Before any anchor: positions scale by the step's rate from 0, as its first
+        # output is placed (a stream that does not start at 0: a burst at its place in a capture)
 
     def copy(self):
-        return PosMap([list(x) for x in self.a])
+        return PosMap([list(x) for x in self.a], self.r0)
 
     def __bool__(self):
         return bool(self.a)
@@ -244,7 +246,7 @@ class PosMap:
     def fwd(self, i):
         """Output position of input position i"""
         if not self.a:
-            return i
+            return i*self.r0
         k = max(bisect.bisect_right([x[0] for x in self.a], i) - 1, 0)
         a = self.a[k]
         return a[1] + (i - a[0])*a[2]
@@ -252,7 +254,7 @@ class PosMap:
     def back(self, o):
         """Input position of output position o"""
         if not self.a:
-            return o
+            return o/self.r0
         k = max(bisect.bisect_right([x[1] for x in self.a], o) - 1, 0)
         a = self.a[k]
         return a[0] + (o - a[1])/a[2] if a[2] else a[0]

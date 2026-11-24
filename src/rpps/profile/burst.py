@@ -18,8 +18,9 @@ class BurstRunner:
     make_post(): a new runner of the steps after it. `last` is the runner of the last burst (its controls, reports)"""
     kinds = None # The message kinds handed out (Profile.rx(kinds=...)), None: all
 
-    def __init__(self, pre, burst, make_post, name):
+    def __init__(self, pre, burst, make_post, name, entry=None):
         self.pre, self.burst, self.make_post, self.name = pre, burst, make_post, name
+        self.entry = entry # The controls entry of the burst step: its fields per burst (rpps.sync.Bursts) drive the burst's steps
         self.last = None
         self.bursts = 0
         self._msgs, self._input = [], (1.0, 0.0, None)
@@ -45,11 +46,37 @@ class BurstRunner:
         out = []
         for b in data + self.burst:
             run = self.make_post()
+            fields = b.ctx.get("burst")
+            if fields and self.entry is not None and self.entry.on in ("both", "rx"):
+                run.inject(self.entry, fields, b.meta.pos, ("burst", b.meta.pos))
             out.append(run(b))
-            self._msgs += run.take_messages() # (a burst's positions are absolute in the burst step's input)
+            if fields and hasattr(self.burst, "feedback"):
+                start = self._preamble_at(run, b)
+                if start is not None:
+                    self.burst.feedback(data.meta, b.ctx, start)
+            msgs = run.take_messages() # (a burst's positions are absolute in the burst step's input)
+            if fields:
+                for m in msgs: # Where the burst was: its carrier, and its place in a plan
+                    m.fields.setdefault("burst", dict(fields))
+            self._msgs += msgs
             self.last = run
             self.bursts += 1
         return out
+
+    @staticmethod
+    def _preamble_at(run, b):
+        """Where the burst's frame sync found its preamble [s from the capture's first sample], or None"""
+        from ..sync import FrameSync
+        from ..base.control import of
+        log = of(run._stream).log if run._stream is not None else []
+        for e in log:
+            slots = run._step_slots.get(e["step"], [])
+            op = run.slots[slots[0]].op if slots else None
+            if isinstance(op, FrameSync) and "frame" in e["fields"]:
+                pos = run._back(e["at"], slots[0], 0) # (the burst's input: samples of its carrier's stream)
+                delay = run._stream.est.get(op.name, {}).get("delay", b.meta.delay) # (all the delay before the frame sync)
+                return pos/b.meta.Fs - delay
+        return None
 
     def take_messages(self):
         """The frames decoded since the last call, every burst's, placed in the stream given"""
@@ -76,12 +103,14 @@ class BurstTxRunner:
     scrambler, header, marker and pulse starts over, and the burst ends whole: its data is sent as a stream of its own,
     flushed). The burst step's rpps.sync.BurstTx places it on the output stream: `at` [s from the stream's start], else
     `gap_s` after the burst before; `freq` [Hz from the centre], else the step's `hop`. The steps before the burst step
-    (pre, None for none) run on that stream. A call gives the samples no later burst can reach any more; `flush=True` (or
+    (pre, None for none) run on that stream. With a plan (rpps.sync.PlanTx) the burst's fields name its window: it goes
+    there, at its symbol rate, and its window's fields (its tx type's) drive the burst's steps. A call gives the samples no later burst can reach any more; `flush=True` (or
     `flush()`) gives the rest and ends the stream. A list of blocks is sent burst by burst (fields, at, freq: one each, or
     one for all). `last` is the runner of the last burst, `sent` the BurstTx's record: (start sample, samples, freq)"""
 
-    def __init__(self, make_post, burst_tx, pre, name):
+    def __init__(self, make_post, burst_tx, pre, name, entry=None):
         self.make_post, self.burst_tx, self.pre, self.name = make_post, burst_tx, pre, name
+        self.entry = entry # The controls entry of the burst step: a plan's fields of the burst's window drive its steps
         self.last = None
         self.bursts = 0
         burst_tx.reset()
@@ -127,10 +156,17 @@ class BurstTxRunner:
         d = data.derive(data.data, data.CAT, data.DT, rep=data.REP) # A stream of its own, ended: the burst goes out whole
         from ..base.meta import Meta
         m = data.meta
-        d.meta = Meta(m.Fs, m.sps, m.cf, m.delay)
+        w = None
+        if at is None and freq is None and hasattr(self.burst_tx, "where"): # A plan places it (rpps.sync.PlanTx), at its rate
+            at, freq, w = self.burst_tx.where(fields)
+        d.meta = Meta(m.Fs if w is None else w.symbol_rate, m.sps, m.cf, m.delay)
         d.flush = True
         run = self.make_post()
+        if w is not None and self.entry is not None and self.entry.on in ("both", "tx"): # its window's fields drive its steps
+            run.inject(self.entry, {**w.fields(self.burst_tx.plan), **(fields or {})}, d.meta.pos, ("burst", self.bursts))
         out = run(d, fields=fields)
+        if w is not None: # The plan's burst start is its first symbol's: the samples before it (a pulse's tail) go earlier
+            at -= out.meta.delay or 0.0
         self.burst_tx.add(out, at, freq)
         self.last = run
         self.bursts += 1

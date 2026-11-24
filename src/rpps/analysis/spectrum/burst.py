@@ -553,3 +553,146 @@ def _blind(B, mod, baud, beta, con, pts, frame, slot_tol, x, Fs):
         b.kind = 0 if b.ok else None
     return Bursts(bursts=out, mod=mod, baud=baud, beta=beta, preamble=none, preambles=[none], offsets=[0], frame=frame,
                   slots=slots, blind=True)
+
+# ---- a burst time plan learned from bursts
+
+def learn_plan(bursts, quantum=None, max_btus=4096, clock=27e6, purity=0.95, tol=0.1, carriers=None):
+    """A burst time plan (rpps.plan) from detected bursts, for a network whose forward link is not heard: its BTU, frame
+    period, a frame type per carrier, its slots and their tx types. Returns a Guess to `save` (config/plan/guess/<name>)
+    and load as a plan (`rp.plan.load("guess/<name>")`), whose `plan` is the Plan itself.
+
+    bursts: rp.sync.Bursts' output (each its ctx["burst"]: carrier freq, start; its length) or dicts {freq, start, length
+    [s], kind (a burst type: its unique word), rate}. quantum: the BTU [s] when known. carriers: [{freq, width, rate}]
+    the bursts were detected on (rp.sync.Bursts'): each frame type's bandwidth and symbol rate.
+
+      1. The BTU: the quantum of the bursts' start differences (every slot starts on the grid of its frame): the largest q
+         whose multiples the differences sit on, to `tol` of q.
+      2. The frame: the shortest period of M BTUs at which every (carrier, BTU in the frame) holds one kind of burst
+         (`purity` of them; length clusters stand for kinds not given), with bursts at two or more places of it.
+      3. A frame type per carrier: its slots where bursts were seen (as many BTUs as the longest burst of the kind needs),
+         single-BTU slots between; a tx type per kind (`kind` in its fields, and `word` when the kind is a word's name), its offset the bursts' median offset from
+         the slot's start. The superframe starts at the first burst's frame start.
+    Only what the bursts show is learned: slots never used are single BTUs, carriers never used are not in it."""
+    from ..result import Guess
+    from ...plan import Plan, TxType, FrameType, Sequence, Frame
+    rec = []
+    for b in bursts:
+        f = getattr(b, "ctx", None)
+        if f is not None:
+            g = f.get("burst", {})
+            rec.append({"freq": float(g["freq"]), "start": float(g["start"]), "length": len(b)/b.meta.Fs,
+                        "kind": g.get("word") or g.get("tx_type"), "rate": None})
+        else:
+            rec.append({"freq": float(b["freq"]), "start": float(b["start"]), "length": float(b["length"]),
+                        "kind": b.get("kind"), "rate": b.get("rate")})
+    if len(rec) < 4:
+        raise ValueError("learn_plan: a few bursts at least")
+    starts = np.array([r["start"] for r in rec])
+    # Kinds: given, else clusters of length per carrier (a new one where the sorted lengths jump by more than 10%)
+    for fr in {r["freq"] for r in rec if r["kind"] is None}:
+        mine = sorted((r for r in rec if r["freq"] == fr and r["kind"] is None), key=lambda r: r["length"])
+        c, last = 0, None
+        for r in mine:
+            if last is not None and r["length"] > 1.1*last:
+                c += 1
+            r["kind"], r["auto"], last = f"{fr:g}/{c}", True, r["length"]
+    q = float(quantum) if quantum else _quantum(starts, tol)
+    t0 = float(starts.min())
+    k = np.round((starts - t0)/q).astype(np.int64)
+    off = (starts - t0) - k*q
+    need = {}
+    for r in rec: # BTUs each kind's longest burst takes
+        need[str(r["kind"])] = max(need.get(str(r["kind"]), 1), int(np.ceil(r["length"]/q - 1e-9)))
+    best = None
+    for M in range(2, max_btus + 1):
+        cells = {}
+        for r, kk in zip(rec, k):
+            cells.setdefault((r["freq"], int(kk % M)), []).append(r["kind"])
+        major = sum(max(np.unique([str(x) for x in v], return_counts=True)[1]) for v in cells.values())
+        repeated = sum(len(v) > 1 for v in cells.values())
+        if major < purity*len(rec) or repeated < 2 or M*q < max(r["length"] for r in rec):
+            continue
+        if _overlap(cells, need, M): # (the slots it makes collide: not the frame)
+            continue
+        best = (M, cells)
+        break
+    if best is None:
+        raise ValueError("learn_plan: no frame period found (too few bursts, or no plan)")
+    M, cells = best
+    # The frame's start: where no carrier's slot crosses from one frame into the next (the first burst need not be first)
+    slots = [(b, need[max(set(str(x) for x in v), key=[str(x) for x in v].count)]) for (f, b), v in cells.items()]
+    shift = next((r for r in range(M) if all((b - r) % M + n <= M for b, n in slots)), 0)
+    t0 += shift*q
+    k = np.round((starts - t0)/q).astype(np.int64)
+    off = (starts - t0) - k*q
+    cells = {}
+    for r, kk in zip(rec, k):
+        cells.setdefault((r["freq"], int(kk % M)), []).append(r["kind"])
+    kinds = sorted({str(r["kind"]) for r in rec})
+    tx_id = {kd: 128 + i for i, kd in enumerate(kinds)}
+    longest = {kd: max(r["length"] for r in rec if str(r["kind"]) == kd) for kd in kinds}
+    btus = {kd: max(1, int(np.ceil(longest[kd]/q - 1e-9))) for kd in kinds}
+    offs = {kd: float(np.median([o for r, o in zip(rec, off) if str(r["kind"]) == kd])) for kd in kinds}
+    T = lambda s: int(round(s*clock))
+    word = {str(r["kind"]): r["kind"] for r in rec if isinstance(r["kind"], str) and not r.get("auto")} # (a word's name)
+    txs = {tx_id[kd]: TxType(tx_id[kd], btus[kd], max(T(offs[kd]), 0), {"kind": kd, **({"word": word[kd]} if kd in word else {})})
+           for kd in kinds}
+    fts, frames = {}, []
+    for ci, fr in enumerate(sorted({r["freq"] for r in rec})):
+        here = sorted((b_, max(set(v), key=v.count)) for (f_, b_), v in cells.items() if f_ == fr)
+        sections, t = [], 0
+        for b_, kd in here:
+            kd = str(kd)
+            if b_ < t:
+                continue # (a slot inside the one before: the purity let it through)
+            if b_ > t:
+                sections.append([0, b_ - t - 1])
+            sections.append([tx_id[kd], 0])
+            t = b_ + btus[kd]
+        if t < M:
+            sections.append([0, M - t - 1])
+        c = next((c for c in (carriers or []) if abs(float(c["freq"]) - fr) < 1.0), {})
+        rate = c.get("rate") or next((r["rate"] for r in rec if r["freq"] == fr and r["rate"]), None) or 1.0/q
+        fts[ci + 1] = FrameType(ci + 1, T(M*q), T(q), float(c.get("width") or rate), float(rate), M, [0.0],
+                                [tuple(s) for s in sections if s[1] >= 0])
+        frames.append(Frame(ci + 1, 0, fr))
+    seq = Sequence(0, T(t0), T(M*q), 0.0, 0, frames)
+    plan = Plan(clock, txs, fts, {0: seq}, name="learned")
+    for ft in fts.values():
+        ft.slots(txs) # (checked: the sections fill the frame)
+    g = Guess("plan", plan.definition("burst time plan learned from detected bursts (rpps.analysis.spectrum.burst.learn_plan)"),
+              {"btu": q, "frame": M*q, "bursts": len(rec), "carriers": len(fts), "kinds": len(kinds)})
+    g.plan = plan
+    return g
+
+def _overlap(cells, need, M):
+    """Whether the slots of a frame of M BTUs collide: on a carrier, a burst's BTUs reaching into the next burst's"""
+    by = {}
+    for (f, b), v in cells.items():
+        kd = max(set(str(x) for x in v), key=[str(x) for x in v].count)
+        by.setdefault(f, []).append((b, need[kd]))
+    for slots in by.values():
+        slots.sort()
+        for (b, n), (b2, _) in zip(slots, slots[1:] + [(slots[0][0] + M, 0)]):
+            if b + n > b2:
+                return True
+    return False
+
+def _quantum(starts, tol):
+    """The largest q whose multiples the start differences sit on (to tol*q): scored by the mean cosine of 2 pi d / q
+    over the differences of nearby bursts, from the longest q down"""
+    s = np.sort(starts)
+    d = np.concatenate([s[i + 1:i + 9] - s[i] for i in range(len(s))])
+    d = d[d > 0]
+    if not len(d):
+        raise ValueError("learn_plan: the bursts start together")
+    lo = max(np.min(d)/64, 1e-7)
+    qs = np.geomspace(np.median(d), lo, 4000)
+    score = np.array([np.mean(np.cos(2*np.pi*d/q)) for q in qs])
+    good = np.nonzero(score >= np.cos(2*np.pi*tol))[0]
+    if not len(good):
+        raise ValueError("learn_plan: the bursts' starts sit on no grid (give `quantum`)")
+    q = qs[good[0]]
+    # Refine: the q near it whose cosine sum is largest
+    fine = np.linspace(0.97*q, 1.03*q, 601)
+    return float(fine[np.argmax([np.sum(np.cos(2*np.pi*d/x)) for x in fine])])

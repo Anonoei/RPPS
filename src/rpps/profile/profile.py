@@ -293,7 +293,7 @@ class Profile:
         def make_post():
             post = build()[k + 1:]
             return Runner(self._slots(post), f"{self.name} rx (burst)", self.controls, "rx", profile=self.name)
-        return BurstRunner(pre, steps[k].obj, make_post, f"{self.name} rx")
+        return BurstRunner(pre, steps[k].obj, make_post, f"{self.name} rx", self.controls.get(steps[k].id))
 
     def _branch_rx(self, steps, parallel):
         """The receive side of a profile that ends in branches (rpps.profile.branch)"""
@@ -368,7 +368,7 @@ class Profile:
         def make_post():
             post = self._build()[k + 1:]
             return Runner(self._tx_slots(post), f"{self.name} tx (burst)", self.controls, "tx", profile=self.name)
-        return BurstTxRunner(make_post, built[k].tx[0][1], pre, f"{self.name} tx")
+        return BurstTxRunner(make_post, built[k].tx[0][1], pre, f"{self.name} tx", self.controls.get(built[k].id))
 
     def __repr__(self):
         return f"<Profile {self.name}: " + ", ".join(f"{s.category}:{s.kind}" for s in self.steps) + ">"

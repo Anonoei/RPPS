@@ -33,6 +33,10 @@
       "comment": "Digital Mobile Radio",
       "ref": "ETSI TS 102 361-1"
     },
+    "dvb-rcs2": {
+      "comment": "DVB-RCS2 interactive satellite: MF-TDMA return link, burst time plan in the forward link",
+      "ref": "EN 301 545-2"
+    },
     "dvb-s": {
       "comment": "DVB-S satellite television",
       "ref": "EN 300 421"

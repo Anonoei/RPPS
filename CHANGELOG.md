@@ -28,6 +28,25 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   stream decoded as one trellis sequence is `decode_batch` on a row.
 
 ### Added
+- **Burst time plans** (`rpps.plan`, a new `plan` resource): TDMA / MF-TDMA plans in DVB-RCS2's model (superframe
+  sequences, frames, a BTU grid of carriers and timeslots, burst types, assignments), with frequency hopping (`hop`: an
+  expression of the superframe and frame, or an algorithm: `ble_csa1`) and trains (`repeat`, `every`). From a definition,
+  from a forward link (`rp.plan.builder("dvb-rcs2")`: SCT, FCT2, BCT, TBTP2 and the NCR clock, read by the new
+  `profile/dvbrcs2/forward`; `rp.plan.rcs2.tables` writes them), or learned from detected bursts
+  (`rp.analysis.spectrum.burst.learn_plan`, saved as a definition).
+- **Bursts on many carriers** (`rp.sync.Bursts`; `{"sync": "burst", "carriers": [...] | "plan": ...}`): each carrier
+  channelized (to `sps` samples a symbol), its neighbours filtered out, cut at absolute positions; with a plan each burst
+  is placed (superframe, frame, slot, tx type, assignment), the plan's origin acquired from the bursts and tracked from
+  their unique words, `gate: "plan"` cutting slots energy cannot see. A burst's fields drive the steps after it and ride
+  on its messages (`fields["burst"]`). `rp.sync.PlanTx` places bursts by a plan; a profile's transmitter does it from
+  each burst's fields.
+- **GSE** (`{"link": "gse"}`, `rp.link.gse.pack`): PDUs in DVB-S2 data fields, fragmented and reassembled (CRC-32),
+  each PDU a frame of its own for the steps after it.
+- `profile/demo/mftdma` (three carriers, two rates, three burst types, LDPC units) and `examples/mftdma.py`: a network
+  whose return link is decoded with the plan its forward link gives. Definitions: `header/link/rcs2_table`,
+  `sequence/word/demo_uw1..3`, `table/demo/mftdma_types`, `plan/demo/mftdma`; tag `dvb-rcs2`.
+- `FrameSync(count=)`: frames to find in a stream (a burst's one); `{"sync": "timing", "method": "oerder_meyr",
+  "clock": false}`: the phase only (a burst a few windows long); the code marker's `sequence` is a controlled parameter.
 - **Codes bit by bit:** any block code takes `append` (check bits after the codeword, each the XOR of the codeword bits
   listed), `extend` (an overall parity bit, now for any block code), `layout` (where each codeword bit is sent, or
   `{"message": [...], "parity": "rest"}`) and `xor` (a pattern on the sent word), decoded in reverse, soft or hard
@@ -334,6 +353,12 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   inside) don't. A rate given (a hint, the cyclic spectrum's second pass) has no line and is always searched.
 
 ### Fixed
+- A profile's change for a step that had not run yet was placed as if positions started at 0: in a stream that starts
+  elsewhere (every burst of a burst profile, at its place in the capture) it landed at the wrong item. An empty position
+  map now scales by its step's rate.
+- `rp.sync.Burst`'s noise floor stopped at a handful of unusually quiet windows (a narrow channel's windows hold few
+  independent samples), and called a whole capture one burst; the floor's cluster must now hold 1% of the windows.
+- `BurstTx` takes a burst that starts a little before the last one, within its `lag` (bursts on several carriers at once).
 - A block definition's `decoder` that cannot be built from its code (a trellis for a non-linear `expr` code, a code type
   that is not a decoder) is a ConfigError saying why, not an AttributeError.
 - A framed link header whose fields are the whole frame (no payload) was restarted before it was read, so no frame came

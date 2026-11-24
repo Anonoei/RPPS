@@ -117,11 +117,15 @@ class Burst(Pipe):
             return 0.0
         cs = np.cumsum(s)
         m, n = s[0], 1
-        for _ in range(1000): # m grows by at least quiet/2 a step while below the noise (quiet > 2), then settles
-            n = max(int(np.searchsorted(s, self.quiet*m)), 1)
-            m2 = cs[n - 1]/n
+        least = max(4, len(s)//100) # A cluster of fewer windows is a few quiet outliers, not the noise (a narrow channel's
+        for _ in range(1000):       # windows hold few independent samples: a dip of a tenth comes now and then)
+            n = max(int(np.searchsorted(s, self.quiet*m)), 1) # m grows by at least quiet/2 a step while below the noise
+            m2 = cs[n - 1]/n                                  # (quiet > 2), then settles
             if m2 <= m*(1 + 1e-9):
-                break
+                if n >= least or n >= len(s):
+                    break
+                m = s[n] # (past the outliers: climb on from the next window)
+                continue
             m = m2
         return float(np.percentile(np.r_[np.zeros(zeros), s[:n]], self.percentile))
 
@@ -224,7 +228,7 @@ class BurstTx(Pipe):
         start = int(round(at*Fs)) if at is not None else (self._end if self.sent else 0) + int(round(self.gap_s*Fs))
         if at is not None and at < 0:
             raise ValueError("BurstTx: at is from the stream's start, not before it")
-        if self._start is not None and start < self._start:
+        if self._start is not None and start < self._start - self._lag_samples():
             raise ValueError(f"BurstTx: bursts come in the order of their starts ({start} is before {self._start})")
         if start < self._base:
             raise ValueError(f"BurstTx: sample {start} was handed out already (the stream is out to {self._base})")
@@ -234,7 +238,8 @@ class BurstTx(Pipe):
         if need > len(self._buf):
             self._buf = np.concatenate((self._buf, np.zeros(need - len(self._buf), np.complex128)))
         self._buf[start - self._base:need] += x
-        self._start, self._end = start, start + len(x)
+        self._start = start if self._start is None else max(self._start, start)
+        self._end = max(self._end, start + len(x))
         self.sent.append((start, len(x), float(freq)))
 
     def take(self, flush=False):
@@ -248,13 +253,18 @@ class BurstTx(Pipe):
             if end - self._base > len(self._buf):
                 self._buf = np.concatenate((self._buf, np.zeros(end - self._base - len(self._buf), np.complex128)))
         else:
-            end = self._start if self._start is not None else self._base
+            end = max(self._start - self._lag_samples(), self._base) if self._start is not None else self._base
         n = end - self._base
         out, self._buf, self._base = self._buf[:n], self._buf[n:], end
         d = Data(out.astype(np.complex64), flush=flush, Fs=self._Fs, sps=self._sps, cf=self._cf, stream=self._stream)
         self._stream = d.stream
         self._ended = flush
         return d
+
+    lag = 0.0 # Seconds before the last start held back from `take`: a burst may then start that much before the last one
+
+    def _lag_samples(self):
+        return int(round(self.lag*self._Fs)) if self._Fs else 0
 
     def _ramp(self, x, Fs):
         n = min(int(round(self.ramp_s*Fs)), len(x)//2)

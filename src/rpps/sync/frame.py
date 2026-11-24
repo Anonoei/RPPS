@@ -107,6 +107,8 @@ class FrameSync(Stage):
         symbols long (a controlled parameter too: a header says it); without a length a frame runs to the next one.
     segments: the preamble correlated in that many parts, added without their phases: a carrier offset turns a long
         word (a Zadoff-Chu sequence moves its peak with it) and a coherent sum over the whole word loses it.
+    count: frames to find in a stream, then no more searching (None: all; a burst's runner: 1, as data later in the burst
+        can pass for the word).
     cfo: take the carrier frequency its preamble measured off each frame too (within +-1/L cycles a symbol: a larger
         offset is for a carrier step before), not only its phase.
     scale: divide each frame by the gain its preamble measured, so levels come out as the preamble's (4FSK +-1, +-3).
@@ -125,7 +127,7 @@ class FrameSync(Stage):
 
     def __init__(self, preamble, words=None, threshold=None, max_length=None, name="frame", pending=False, device=False,
                  before=0, length=None, segments=1, scale=False, classify=None, margin=0.1, min_symbols=64, polarity=True,
-                 cfo=False):
+                 cfo=False, count=None):
         if preamble is None and not pending:
             raise ValueError("FrameSync: a preamble, or pending=True (set_template gives it later)")
         if pending and words is not None:
@@ -155,6 +157,7 @@ class FrameSync(Stage):
         self.margin, self.min_symbols = float(margin), int(min_symbols)
         self.polarity = bool(polarity)
         self.cfo = bool(cfo)
+        self.count = None if count is None else int(count)
         self._check()
 
     def _check(self):
@@ -208,7 +211,7 @@ class FrameSync(Stage):
     def new_state(self, meta):
         return SimpleNamespace(buf=np.zeros(0, np.complex128), base=None, searched=None, start=None, phase=0.0, k=0,
                                metric=0.0, p=None, info=None, queue=[], floor=None, last=None, real=None, modulation=None,
-                               est={})
+                               est={}, found=0)
 
     @property
     def _plain(self):
@@ -374,6 +377,9 @@ class FrameSync(Stage):
             p = st.base + i
             if st.last is not None and p - st.last < L:
                 continue
+            if self.count is not None and st.found >= self.count: # (a burst's one frame: no more searching in it)
+                break
+            st.found += 1
             f = p - before
             if f < st.floor: # Its start is gone: before the stream, or inside the last frame of a fixed length
                 continue
@@ -404,7 +410,7 @@ class FrameSync(Stage):
         keep_from = max(min(held + [st.searched - L - before]), st.base)
         cut = keep_from - st.base
         st.buf, st.base = st.buf[cut:], st.base + cut
-        meta.stream.est[self.name] = dict(st.est, frames=st.k)
+        meta.stream.est[self.name] = dict(st.est, frames=st.k, delay=meta.delay) # (delay: its input's, for a time of its positions)
         if not out:
             return np.zeros(0, np.float32 if st.real else np.complex64)
         return np.concatenate(out).astype(np.float32 if st.real else np.complex64)

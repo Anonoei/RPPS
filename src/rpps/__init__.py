@@ -13,7 +13,7 @@ Packages follow the categories of `rpps.base`; data goes samples -> symbols -> c
 |---|---|
 | `rpps.source` | files and their formats, WAV, SigMF, sockets, radios through pysdrlib (imported only when used); sinks |
 | `rpps.signal` | `filters` (FIR, IIR, windows, pulses, fractional delay, polyphase channelizer), `sample` (resampling), `channelize`, `DCBlock`, `Deemphasis`, `Conjugate`, `channel` (the simulated medium) |
-| `rpps.sync` | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `Lock`, `AcquireFEC`, `acquire_code`, `Squelch`, `PeakAGC`, `Burst`, `BurstTx`, `Preamble`, `ToneLock`. Second class: `time.MM` (Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `CMA` |
+| `rpps.sync` | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `Lock`, `AcquireFEC`, `acquire_code`, `Squelch`, `PeakAGC`, `Burst`, `BurstTx`, `Bursts` (many carriers, a burst time plan), `PlanTx`, `Preamble`, `ToneLock`. Second class: `time.MM` (Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `CMA` |
 | `rpps.wave` | `Shape`/`Matched`, `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod`, `demod` |
 | `rpps.symbol` | `Constellation` (PSK, QAM, APSK, ASK), `Differential`, `Spread`/`Despread`, `Carriers`, `Header`, `Pilots`, `PhaseScramble` |
 | `rpps.code` | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), `Line`, `Marker`, `Uncoded` |
@@ -22,6 +22,7 @@ Packages follow the categories of `rpps.base`; data goes samples -> symbols -> c
 | `rpps.profile` | a whole signal from one config file, both directions: loading, steps, header-driven control, runners |
 | `rpps.parallel` | a profile's frame-parallel region: executors, scheduler, batch kernels |
 | `rpps.sequence` | recurrences, Gold sequences, chip codes, words: what scramblers, spreaders and searches share |
+| `rpps.plan` | burst time plans (TDMA, MF-TDMA, hopping, trains): superframes, frames, timeslots, burst types, assignments; from a definition, a forward link's tables (DVB-RCS2) or the bursts themselves |
 | `rpps.analysis` | outside the data path: spectra, rates, surveys, blind analysis of modulation and FEC; can write definitions |
 | `rpps.base` | `Data`, `Pipe`, `Stage`, `BitStage`, `Pipeline`, `Stream`, `Tee`, type tags, control, kernels |
 | `rpps.math`, `rpps.utils`, `rpps.viz` | finite fields and GF(2) algebra; helpers; plots (`pip install rpps[viz]`) |
@@ -64,6 +65,7 @@ from . import analysis
 from . import code
 from . import link
 from . import sequence
+from . import plan
 from . import wave
 from . import profile
 from . import parallel

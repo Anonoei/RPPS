@@ -1,0 +1,11 @@
+{
+  "base": "table",
+  "comment": "Demo MF-TDMA burst types by their unique word: constellation, code, and the header's frame bits (the units' information bits)",
+  "key": "word",
+  "columns": ["word", "sequence", "constellation", "code", "bits"],
+  "rows": [
+    ["uw1", "demo_uw1", "psk/qpsk", "ldpc/ieee80211n_648_1_2", 324],
+    ["uw2", "demo_uw2", "psk/qpsk", "ldpc/ieee80211n_648_1_2", 648],
+    ["uw3", "demo_uw3", "psk/qpsk", "ldpc/ieee80211n_648_1_2", 972]
+  ]
+}

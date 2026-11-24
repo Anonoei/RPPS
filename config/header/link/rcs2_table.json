@@ -1,0 +1,308 @@
+{
+  "base": "header",
+  "type": "link",
+  "comment": "DVB-RCS2 lower layer signalling tables as carried in GSE (protocol type 0x0082, no label): table_id, interactive_network_id, version_number, current_next_indicator, then the table's content: the Superframe Composition Table (0xA0), Frame Composition Table 2 (0xAB), Broadcast Configuration Table (0xAC; each tx type's format data kept as bytes) and Terminal Burst Time Plan 2 (0xAD; assignment formats 0-3 and 10-12). Framed by the GSE step: each PDU one table (its length the PDU's). rpps.plan's dvb-rcs2 builder makes a burst time plan of them",
+  "ref": "ETSI EN 301 545-2 V1.2.1 6.4.3.1.1 (Table 6-4), 6.4.4 (Table 6-12), 6.4.5 (Table 6-14), 6.4.6 (Table 6-16), 6.4.9 (Table 6-31)",
+  "tags": ["dvb-rcs2"],
+  "order": "msb",
+  "fields": [
+    {
+      "name": "table_id",
+      "bits": 8,
+      "enum": {
+        "160": "SCT",
+        "171": "FCT2",
+        "172": "BCT",
+        "173": "TBTP2"
+      }
+    },
+    {
+      "name": "interactive_network_id",
+      "bits": 16
+    },
+    {
+      "name": "reserved",
+      "bits": 2
+    },
+    {
+      "name": "version_number",
+      "bits": 5
+    },
+    {
+      "name": "current_next_indicator",
+      "bits": 1
+    }
+  ],
+  "payload_fields": [
+    {
+      "name": "sct",
+      "if": "table_id == 160",
+      "fields": [
+        {
+          "name": "superframe_loop_count",
+          "bits": 8
+        },
+        {
+          "name": "superframes",
+          "repeat": "superframe_loop_count + 1",
+          "fields": [
+            {
+              "name": "superframe_sequence",
+              "bits": 8
+            },
+            {
+              "name": "large_timing_uncertainty_flag",
+              "bits": 1
+            },
+            {
+              "name": "reserved_1",
+              "bits": 5
+            },
+            {
+              "name": "uplink_polarization",
+              "bits": 2
+            },
+            {
+              "name": "superframe_start_time_base",
+              "bits": 33
+            },
+            {
+              "name": "reserved_2",
+              "bits": 6
+            },
+            {
+              "name": "superframe_start_time_ext",
+              "bits": 9
+            },
+            {
+              "name": "superframe_duration",
+              "bits": 32
+            },
+            {
+              "name": "superframe_centre_frequency",
+              "bits": 32
+            },
+            {
+              "name": "superframe_count",
+              "bits": 16
+            },
+            {
+              "name": "reserved_3",
+              "bits": 3
+            },
+            {
+              "name": "frame_loop_count",
+              "bits": 5
+            },
+            {
+              "name": "frames",
+              "repeat": "frame_loop_count + 1",
+              "fields": [
+                {"name": "frame_type", "bits": 8},
+                {"name": "frame_start_time", "bits": 32},
+                {"name": "frame_centre_frequency_offset", "bits": 24, "signed": true}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fct2",
+      "if": "table_id == 171",
+      "fields": [
+        {
+          "name": "frame_type_loop_count",
+          "bits": 8
+        },
+        {
+          "name": "frame_types",
+          "repeat": "frame_type_loop_count + 1",
+          "fields": [
+            {
+              "name": "frame_type",
+              "bits": 8
+            },
+            {
+              "name": "frame_duration",
+              "bits": 32
+            },
+            {
+              "name": "tx_format_class",
+              "bits": 8
+            },
+            {
+              "name": "btu_duration",
+              "bits": 24
+            },
+            {
+              "name": "btu_carrier_bw",
+              "bits": 24
+            },
+            {
+              "name": "btu_symbol_rate",
+              "bits": 24
+            },
+            {
+              "name": "time_unit_count",
+              "bits": 16
+            },
+            {
+              "name": "grid_repeat_count",
+              "bits": 8
+            },
+            {
+              "name": "grid_frequency_offsets",
+              "repeat": "grid_repeat_count",
+              "fields": [
+                {"name": "grid_frequency_offset", "bits": 24, "signed": true}
+              ]
+            },
+            {
+              "name": "section_loop_count",
+              "bits": 8
+            },
+            {
+              "name": "sections",
+              "repeat": "section_loop_count + 1",
+              "fields": [
+                {"name": "default_tx_type", "bits": 8},
+                {"name": "reserved", "bits": 4},
+                {"name": "fixed_access_method", "bits": 4},
+                {"name": "repeat_count", "bits": 16}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "bct",
+      "if": "table_id == 172",
+      "fields": [
+        {
+          "name": "tx_type_loop_count",
+          "bits": 8
+        },
+        {
+          "name": "tx_types",
+          "repeat": "tx_type_loop_count",
+          "fields": [
+            {"name": "tx_type", "bits": 8},
+            {"name": "tx_content_type", "bits": 8},
+            {"name": "tx_format_class", "bits": 8},
+            {"name": "tx_format_data_length", "bits": 8},
+            {"name": "tx_format_data", "type": "bytes", "bytes": "tx_format_data_length"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "tbtp2",
+      "if": "table_id == 173",
+      "fields": [
+        {
+          "name": "group_id",
+          "bits": 8
+        },
+        {
+          "name": "superframe_sequence",
+          "bits": 8
+        },
+        {
+          "name": "assignment_context",
+          "bits": 8
+        },
+        {
+          "name": "superframe_count",
+          "bits": 8
+        },
+        {
+          "name": "assignment_format",
+          "bits": 8
+        },
+        {
+          "name": "frame_loop_count",
+          "bits": 8
+        },
+        {
+          "name": "frames",
+          "repeat": "frame_loop_count + 1",
+          "fields": [
+            {
+              "name": "frame_number",
+              "bits": 8
+            },
+            {
+              "name": "assignment_offset",
+              "bits": 16
+            },
+            {
+              "name": "assignment_loop_count",
+              "bits": 16
+            },
+            {
+              "name": "assignments",
+              "repeat": "assignment_loop_count + 1",
+              "fields": [
+                {
+                  "name": "assignment_af0",
+                  "if": "assignment_format == 0",
+                  "fields": [
+                    {"name": "assignment_id", "bits": 48}
+                  ]
+                },
+                {
+                  "name": "assignment_af1",
+                  "if": "assignment_format == 1",
+                  "fields": [
+                    {"name": "assignment_id", "bits": 8}
+                  ]
+                },
+                {
+                  "name": "assignment_af2",
+                  "if": "assignment_format == 2",
+                  "fields": [
+                    {"name": "assignment_id", "bits": 16}
+                  ]
+                },
+                {
+                  "name": "assignment_af3",
+                  "if": "assignment_format == 3",
+                  "fields": [
+                    {"name": "assignment_id", "bits": 24}
+                  ]
+                },
+                {
+                  "name": "assignment_af10",
+                  "if": "assignment_format == 10",
+                  "fields": [
+                    {"name": "dynamic_tx_type", "bits": 8},
+                    {"name": "assignment_id", "bits": 8}
+                  ]
+                },
+                {
+                  "name": "assignment_af11",
+                  "if": "assignment_format == 11",
+                  "fields": [
+                    {"name": "dynamic_tx_type", "bits": 8},
+                    {"name": "assignment_id", "bits": 16}
+                  ]
+                },
+                {
+                  "name": "assignment_af12",
+                  "if": "assignment_format == 12",
+                  "fields": [
+                    {"name": "dynamic_tx_type", "bits": 8},
+                    {"name": "assignment_id", "bits": 24}
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "framed": true
+}

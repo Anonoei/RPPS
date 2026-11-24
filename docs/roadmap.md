@@ -93,7 +93,7 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
   transport block's TBS_LBRM, HARQ combining across redundancy versions; LDPC tables for CCSDS AR4JA / C2, DVB-S2X, DVB-T2,
   ATSC 3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; fountain codes.
 - **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
-  spread spectrum, space-time codes; a burst step in a parallel region; a channelized burst step (receiving MF-TDMA or a hopping carrier); a preamble `offset`
+  spread spectrum, space-time codes; a burst step in a parallel region; DVB-RCS (first generation) tables over MPEG-TS sections, DVB-RCS2's duo-binary turbo code and reference waveforms; a preamble `offset`
   with known timing `anchor` (the grid lands off); the transmit side of branches (and of `grid`:
   `grid.lte.tx`, `grid.nr.tx` are test transmitters); NR at 30 kHz and above, NR VRB-to-PRB interleaving, several
   code blocks a transport block, multiple antenna ports; LTE beyond SIB1 (unicast DCI formats, multiple code blocks, TDD, extended prefix); `lte/downlink` in

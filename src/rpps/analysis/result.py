@@ -45,15 +45,16 @@ class Report:
 class Guess:
     """A guessed definition (a code, a scrambler, a CRC). Decoding only happens from a saved config: `save` it, then load
     it (rp.code.load("block/guess/<name>"), rp.code.scram.load("feedthrough/guess/<name>"), rp.link.load("crc/guess/<name>"))"""
-    __slots__ = ("kind", "definition", "evidence")
+    __slots__ = ("kind", "definition", "evidence", "plan")
     FOLDER = {"block": ("fec", "block"), "rs": ("fec", "block"), "conv": ("fec", "conv"),
               "scramble": ("scramble", "feedthrough"), "crc": ("crc", ""),
-              "header": ("header", "link")} # kind: (config domain, folder in it)
+              "header": ("header", "link"), "plan": ("plan", "")} # kind: (config domain, folder in it)
 
     def __init__(self, kind, definition, evidence=None):
         self.kind = kind
         self.definition = definition
         self.evidence = evidence or {}
+        self.plan = None # (a plan's guess: the Plan itself)
 
     def __repr__(self):
         d = self.definition
@@ -70,6 +71,8 @@ class Guess:
             return f"<Guess header {[(f['name'], f['bits']) for f in d['fields']]} {self.evidence}>"
         if self.kind == "crc":
             return f"<Guess CRC-{d['width']} poly {d['poly']} init {d['init']} xorout {d['xorout']} {self.evidence}>"
+        if self.kind == "plan":
+            return f"<Guess burst time plan {self.evidence}>"
         if self.kind == "scramble":
             return f"<Guess feedthrough scrambler taps {d['poly']} {self.evidence}>"
         # A convolutional guess: a mother code it extends (its puncture its own), or the generators themselves

@@ -36,7 +36,11 @@ class Slot:
     __slots__ = ("how", "op", "step", "index", "map", "in_end", "out_next", "params", "rate")
     def __init__(self, how, op, step, index):
         self.how, self.op, self.step, self.index = how, op, step, index
-        self.map = _ctl.PosMap()
+        try:
+            r0 = _ctl.rate_of(op, how)
+        except Exception: # (an operator that can't say before it runs)
+            r0 = None
+        self.map = _ctl.PosMap(r0=r0 or 1.0)
         self.in_end = None   # Input position read up to
         self.out_next = None # Pipes: the position of their next output item (stages keep theirs in the stream)
         self.params = {}     # Controlled parameters, as last applied
@@ -335,6 +339,24 @@ class Runner:
         while len(self._handed) > self.HANDED:
             self._handed.pop(next(iter(self._handed)))
         return sorted((m for m in out if self.kinds is None or m.kind in self.kinds), key=lambda m: m.sample)
+
+    def inject(self, entry, fields, pos, key):
+        """Fields a step outside this runner published (another branch's header, a burst cutter's labels), driving this
+        runner's steps from `pos` of its input, as its own header's would"""
+        if key in self._keys:
+            return
+        self._keys.add(key)
+        values, _ = entry.values(fields)
+        params = {i: dict(ps) for sid, ps in values.items() for i in self._step_slots.get(sid, [])}
+        if not params:
+            return
+        ch = Change()
+        ch.key, ch.fields, ch.origin, ch.at, ch.params, ch.step = key, dict(fields), -1, pos, params, entry.header
+        self._seq += 1
+        ch.seq = self._seq
+        ch.fwd, ch.hop, ch.pos = set(params), 0, pos
+        ch.group, ch.btargets, ch.back, ch.s0 = (-1, pos), [], {}, None
+        self.changes.append(ch)
 
     def to_input(self, pos):
         """A position in this runner's output, in its input (the stream it was given)"""

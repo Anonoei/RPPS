@@ -29,8 +29,10 @@ class OerderMeyr(Stage):
     CONTROLS = {}
     ACQUIRE = 4 # Windows the loop runs wide (bandwidth 0.6) while it pulls in, then `bw`
 
-    def __init__(self, sps=None, window=1e-3, min_symbols=2048, bw=0.25, gate=2.0, name="timing"):
+    def __init__(self, sps=None, window=1e-3, min_symbols=2048, bw=0.25, gate=2.0, name="timing", clock=True):
         self.sps, self.window, self.min_symbols, self.bw, self.gate, self.name = sps, window, min_symbols, bw, gate, name
+        self.clock = bool(clock) # False: the phase only, no clock rate (a burst a few windows long: two windows' phases
+        # say nothing of the clock, and a rate taken from them slips symbols)
 
     def __str__(self):
         return "OerderMeyr"
@@ -64,7 +66,9 @@ class OerderMeyr(Stage):
                         if abs(first) > 0 and abs(second) > 0: # (a half of zeros, as before a stream starts, says nothing)
                             rate = track.wrap(-np.angle(second/first)*sps/(2*np.pi), sps)/(h/u)
                     bw = self.bw if st.tr.windows >= self.ACQUIRE else max(self.bw, 0.6) # Wide while it pulls in
-                    track.update(st.tr, tau, (a0 + b)/2, sps, bw, rate)
+                    track.update(st.tr, tau, (a0 + b)/2, sps, bw, rate if self.clock else 0.0)
+                    if not self.clock:
+                        st.tr.rate = 0.0
                 else:
                     track.miss(st.tr, (a0 + b)/2)
             if st.tr.started: # The first time from what is held: the window before, too (a signal that starts part way into a

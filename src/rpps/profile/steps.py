@@ -36,7 +36,8 @@ The kinds (`python -m rpps steps` lists them with the sync methods):
     code     fec (type block / conv / interleave, name, args), scramble (name, args; length: frames of that many bits from
              the first), line (invert, nrzi, nrzm, manchester, thomas), marker (a word before each frame: length, or frames by
              control), uncoded
-    link     crc, frame (HDLC), header (fields, crc, fcs, payload; select: the frames with those field values)
+    link     crc, frame (HDLC), header (fields, crc, fcs, payload; select: the frames with those field values), gse
+             (GSE packets of DVB-S2 data fields: protocols, each PDU a frame)
     grid     resource grids (rpps.grid), receive only: lte_cell (offset, span, resolution, acquire, lose, gate), lte_grid
              (n_rb), and the channels on its frames, lte_pbch, lte_pcfich, lte_pdcch (rntis), lte_pdsch; nr_cell (offset,
              span, resolution, period, acquire, lose, gate, fc), nr_grid, nr_pbch, nr_pdcch (rntis), nr_pdsch
@@ -280,7 +281,7 @@ def _sps(m, ctx, where):
 def _om(m, rep, ctx):
     from .. import sync
     return sync.time.OerderMeyr(m.get("sps"), m.get("window", 1e-3), m.get("min_symbols", 2048), m.get("bw", 0.25),
-                                m.get("gate", 2.0), m.get("name", "timing"))
+                                m.get("gate", 2.0), m.get("name", "timing"), m.get("clock", True))
 
 @register_sync_method("timing", "mm")
 def _mm(m, rep, ctx):
@@ -385,6 +386,8 @@ def _burst(kind, spec, rep, ctx):
     from .. import sync
     if rep is not None and rep != Rep.SAMPLES:
         raise ConfigError(f"sync burst: cuts samples, not {rep}")
+    if any(k in spec for k in ("carriers", "plan", "gate", "origin")): # Many carriers, a burst time plan (rpps.sync.plan)
+        return _bursts(spec)
     op = sync.Burst(spec.get("factor", 6.0), spec.get("win", 100), spec.get("min_s", 0.0), spec.get("max_s"),
                     spec.get("percentile", 20), spec.get("history", 1 << 17), spec.get("settle", 512), spec.get("quiet", 3.0))
     hop = spec.get("hop")
@@ -392,6 +395,30 @@ def _burst(kind, spec, rep, ctx):
         raise ConfigError("sync burst: hop is a list of carrier offsets [Hz]")
     try:
         tx = sync.BurstTx(spec.get("Fs"), spec.get("gap_s", 0.0), spec.get("ramp_s", 0.0), hop)
+    except ValueError as e:
+        raise ConfigError(f"sync burst: {e}") from None
+    return [(STAGE, op)], [(STAGE, tx)], Rep.SAMPLES
+
+_BURST_KEYS = ("factor", "win", "min_s", "max_s", "percentile", "history", "settle", "quiet")
+
+def _bursts(spec):
+    """{"sync": "burst", "carriers": [{"freq", "width"}, ...] | "plan": "<plan>", "origin": ticks, "gate": "energy" |
+    "plan", "tol": s, "lock": bursts, "margin": s}: bursts on many carriers, placed in a plan (rpps.sync.Bursts);
+    transmitting, a plan places them (rpps.sync.PlanTx: "origin", "cf", "Fs", "ramp_s")"""
+    from .. import sync, plan as _plan
+    p = spec.get("plan")
+    if isinstance(p, str):
+        p = _plan.load(p) if p else None # ("": no plan, detection only)
+    carriers = spec.get("carriers") or None # ([]: the plan's)
+    try:
+        op = sync.Bursts(carriers, p, spec.get("origin"), spec.get("gate", "energy"), spec.get("tol"), spec.get("lock", 8),
+                         spec.get("margin"), spec.get("oversample", 3.0), sps=spec.get("sps"),
+                         **{k: spec[k] for k in _BURST_KEYS if k in spec})
+        if p is not None:
+            tx = sync.PlanTx(p, spec.get("origin") or 0.0, spec.get("cf", 0.0), spec.get("Fs"), spec.get("ramp_s", 0.0))
+        else:
+            tx = sync.BurstTx(spec.get("Fs"), spec.get("gap_s", 0.0), spec.get("ramp_s", 0.0),
+                              [c["freq"] for c in carriers] if carriers else None)
     except ValueError as e:
         raise ConfigError(f"sync burst: {e}") from None
     return [(STAGE, op)], [(STAGE, tx)], Rep.SAMPLES
@@ -465,7 +492,7 @@ def _ofdm(m, ctx):
     from .. import sync
     return sync.CPSync(m.get("n_fft", 64), m.get("n_cp", 16), **_given(m, ("window", "min_symbols", "snr", "bw", "gate", "name")))
 
-_FRAME_KEYS = ("before", "length", "segments", "scale", "polarity", "cfo", "classify", "margin", "min_symbols")
+_FRAME_KEYS = ("before", "length", "segments", "scale", "polarity", "cfo", "classify", "margin", "min_symbols", "count")
 
 def frame_words(m, where="sync frame"):
     """The preambles of a frame step: [(name, kind, value, fields)], kind "symbols" (a complex sequence: a Zadoff-Chu
@@ -751,6 +778,10 @@ def _code(kind, spec, rep, ctx):
 
 def _link(kind, spec, rep, ctx):
     from .. import link
+    if kind == "gse": # {"link": "gse", "protocols": [130]}: GSE packets of BBFRAME data fields (rpps.link.gse)
+        from ..link.gse import GSE
+        make = lambda: GSE(spec.get("protocols"), spec.get("id", "gse"))
+        return _pair(make(), make(), Rep.PACKETS)
     if kind in ("crc", "frame", "header"):
         name = _need(spec, "name", f"link {kind}")
         def make():
@@ -763,7 +794,7 @@ def _link(kind, spec, rep, ctx):
 for _cat, _fn, _kinds in (("wave", _wave, ("shape", "stagger", "fm", "am", "ssb", "ofdm")),
                           ("symbol", _symbol, ("constellation", "differential", "spread", "carriers", "header", "pilots", "scramble", "marker", "puncture")),
                           ("code", _code, ("block", "conv", "interleave", "scramble", "uncoded", "line", "marker")),
-                          ("link", _link, ("crc", "frame", "header"))):
+                          ("link", _link, ("crc", "frame", "header", "gse"))):
     for _k in _kinds:
         register_step(_cat, _k)(_fn)
 

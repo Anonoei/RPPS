@@ -203,21 +203,7 @@ class BranchChain(Runner):
 
     def inject(self, entry, fields, pos, key):
         """A change from another branch's header, at `pos` of this branch's input (a trunk position)"""
-        if key in self._keys:
-            return
-        self._keys.add(key)
-        pos = self.branch_pos(pos)
-        values, _ = entry.values(fields)
-        params = {i: dict(ps) for sid, ps in values.items() for i in self._step_slots.get(sid, [])}
-        if not params:
-            return
-        ch = Change()
-        ch.key, ch.fields, ch.origin, ch.at, ch.params, ch.step = key, dict(fields), -1, pos, params, entry.header
-        self._seq += 1
-        ch.seq = self._seq
-        ch.fwd, ch.hop, ch.pos = set(params), 0, pos
-        ch.group, ch.btargets, ch.back, ch.s0 = (-1, pos), [], {}, None
-        self.changes.append(ch)
+        super().inject(entry, fields, self.branch_pos(pos), key)
 
 
 class _Bus:

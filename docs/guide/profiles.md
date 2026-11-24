@@ -139,6 +139,37 @@ data bursts' BPTC payload:
  "branches": {"slot": [...], "data": [...]}}
 ```
 
+## Burst time plans
+
+A TDMA or MF-TDMA network's terminals send bursts in timeslots of a repeating plan: superframes of frames, each frame a
+grid of carriers and timeslots, each slot a burst type, and which terminal has which slot. A burst step that knows the
+carriers cuts each burst on its own carrier, and with a plan names its place:
+
+- `{"sync": "burst", "carriers": [{"freq", "width", "rate"}, ...], "sps": 4}`: bursts on many carriers of one wideband
+  capture, each carrier brought to baseband at `sps` samples a symbol (`rp.sync.Bursts`). Each burst's fields
+  (`carrier`, `freq`, `start`) reach the steps after it; its type comes from its unique word (a frame sync with
+  `sequences`), its length and code from a table keyed on the word.
+- `"plan": "<name>"` (or `control(plan=...)`): each burst is placed in the plan (`superframe`, `frame`, `slot`,
+  `tx_type`, `assignment`), and its decoded messages carry those under `fields["burst"]`. The plan's time in the capture
+  (its origin) is given, or found: the bursts vote for it, and their unique words keep it there (the clock is tracked).
+  `"gate": "plan"` cuts every slot the plan gives, whether its energy shows or not.
+- Transmitting, the plan places each burst: `tx(data, fields={"superframe", "frame", "slot"})`.
+
+A plan (`rpps.plan`) comes from where the network keeps it:
+
+- **Over the air.** DVB-RCS2's hub broadcasts it in its forward link: SCT, FCT2, BCT and TBTP2 tables in GSE packets,
+  and the network clock (NCR). `profile/dvbrcs2/forward` reads them and `rp.plan.builder("dvb-rcs2")` makes the plan
+  and the clock of its messages.
+- **A definition**, `config/plan/<family>/<name>.json`, in the same model: a standard's fixed structure, a test. A
+  sequence's `hop` moves its frames from channel to channel (an expression, or an algorithm by name: `ble_csa1`); a
+  frame's `repeat` and `every` make a train of bursts.
+- **Learned from the bursts**, when the forward link is not heard: `rp.analysis.spectrum.burst.learn_plan(bursts)` finds
+  the BTU, the frame and the slots, and saves a definition (`.save(name)`).
+
+```python
+--8<-- "examples/mftdma.py"
+```
+
 ## Decoded messages, and only some of them
 
 Every frame a profile receives is also a record, `rp.profile.Message`: its kind, the fields it decoded, its payload,

@@ -21,7 +21,7 @@ and its rate across windows and gates outliers; the correction is evaluated per 
 | alignment on bits | `Align` (markers, patterns, polarity), `Puncture` (puncture phase) | `align`, `puncture` |
 | modulation, rate, offset | `Acquire` (`detect` once), `Lock` (a snapshot: `Lock.find`, `lock.update`; contiguous blocks joined: `lock.follow`); code phase and Doppler: `acquire_code` | |
 | channel code, bit map, alignment | `AcquireFEC` | |
-| bursts | `Burst` splits a stream into bursts, `BurstTx` places them; `Preamble` finds each one's preamble (`attach_tx()`: its `PreambleTx`) | `burst`, `preamble` |
+| bursts | `Burst` splits a stream into bursts, `BurstTx` places them; `Bursts` on many carriers, placed in a burst time plan (rpps.plan) whose origin it acquires and tracks, `PlanTx` places them by one; `Preamble` finds each one's preamble (`attach_tx()`: its `PreambleTx`) | `burst`, `preamble` |
 | a pilot tone | `ToneLock` (FM stereo's 19 kHz, ATSC's pilot) | |
 
 Rules for feedforward estimators:
@@ -91,6 +91,7 @@ from .ofdm import CPSync
 from .burst import Burst, BurstTx
 from .tone import ToneLock
 from .preamble import Preamble, PreambleTx
+from .plan import Bursts, PlanTx
 
 from ..base.rpps import tag_stages as _tag_stages
 from ..base.types import Category as _Category
