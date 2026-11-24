@@ -208,20 +208,25 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   names it (BCH, LDPC checks, cyclic...), or the payload's randomness is reported.
 - **Survey boxes are fitted to their signals before profiling**: `rp.analysis.profile` reads a stretch of the capture
   once (`source.peek`), takes a fine spectrum of it (the 95th percentile over time), and moves each box's edges to
-  where its signal falls 10 dB under its top (`signal_profile._refit`), so the channel is cut around the signal, not
-  around the survey's coarse box beside, inside or over it. A box holding more than one signal, one whose fit runs into
-  something wider, or one already within 8% of the fit is kept; a refitted one says so in a "box" step. On a
-  hand-reviewed pool, box width over symbol rate went from 0.98-1.35 to 1.15-1.19 (10-90%).
+  where its signal falls 10 dB under its top, or halfway down to the floor around a weak one
+  (`signal_profile._refit`), so the channel is cut around the signal, not around the survey's coarse box beside,
+  inside or over it. A box holding more than one signal, one whose fit runs into something wider, one under 6 dB over
+  the floor, or one already within 8% of the fit is kept; a refitted one says so in a "box" step. On a hand-reviewed
+  pool, box width over symbol rate went from 0.98-1.35 to 1.15-1.19 (10-90%), and 3 of 325 boxes reviewers said were
+  right moved far.
 - **Carriers a notch separates are each profiled**: the survey's spectrum (a few ms, valleys smoothed over a fixed share
   of the band) runs narrow neighbours together into one box. `rp.analysis.profile` now looks at each box in a fine
-  spectrum of its own channel samples (the 95th percentile over time, about 400 bins across the box) and, where it dips
-  6 dB under the box's top, profiles each part on its own and lists every one (`_Chain.carriers`); the box itself is
-  dropped. On reviewed captures this splits 59 of 74 boxes holding several carriers and 3 of 305 holding one.
+  spectrum of its own channel samples (the 95th percentile over time, about 400 bins across the box) and, at each
+  valley 4 dB under the lower of the peaks either side (more on a noisy spectrum), profiles each part on its own and
+  lists every one (`_Chain.carriers`); the box itself is dropped unless it solved as one signal and no part did. On
+  reviewed captures this splits 64 of 73 boxes holding several carriers and 6 of 325 holding one.
 - **The DVB-S2 PLHEADER reads DVB-S2X MODCODs**: `dvbs2_pl` has a first field `s2x` (EN 302 307-2 5.5.2: b0 = 1 for
   a DVB-S2X MODCOD, coded with one more row and sent a quarter turn on from the SOF); with `s2x` 0 it is DVB-S2's
   header as before. A header definition can turn a field's code words (`"turn": {"field": ..., "degrees": ...}`), and a
   table can apply only where fields have given values (`"only": {"s2x": 0}`, a field not given counting as that value):
   `dvbs2/modcod` has no row for a DVB-S2X header, so its frames are read but not decoded as DVB-S2 ones.
+- **`signal_profile.framed` ranks a profile whose payload decoded first**, then by headers: DVB-S2 normal and MIS
+  share the PL header, and the one with more headers read could be the one whose payload never decodes.
 - **A framed profile whose frames' payload never decodes is not solved**: `rp.analysis.profile` adds an unsolved
   payload step when none of the profile's last headers (DVB-S2's BBHEADER, a branch point's headers together) decoded,
   where it called a signal solved on its first headers alone. `signal_profile.framed` returns the profile's header ids

@@ -327,6 +327,49 @@ def test_carriers_a_notch_separates_are_each_profiled():
     assert len(ps) == 3 and mids == [-52, 0, 52], [(p.name, p.signal.mid) for p in ps]
     assert all(any(s.kind == "split" and "notches" in s.what for s in p.steps) for p in ps)
 
+def _carriers(levels, spacing, snr_db, n_sym=40000, seed=21, Fs=8e6, sps=20):
+    """QPSK carriers at 400 kBd, `spacing` apart around 0 Hz, each at its level (amplitude), the strongest's spectrum
+    `snr_db` over the noise's"""
+    rng = np.random.default_rng(seed)
+    shape = rp.wave.Shape(sps, rp.signal.filters.load("pulse/rrc/0p25"))
+    q = rp.symbol.load("qpsk")
+    y = np.zeros(n_sym*sps, np.complex64)
+    for i, a in enumerate(levels):
+        f = (i - (len(levels) - 1)/2)*spacing
+        s = q.modulate(rng.integers(0, 2, 2*n_sym).astype(np.uint8)).astype(np.complex64)
+        w = np.asarray((rp.Data(s, Fs=Fs/sps, sps=1) + shape).data)[:len(y)]
+        y[:len(w)] += a*w*np.exp(2j*np.pi*f/Fs*np.arange(len(w)))
+    top = np.mean(np.abs(y)**2)/sum(a**2 for a in levels)*max(levels)**2 # (the strongest's power, over 400 kHz)
+    sigma = np.sqrt(top*(Fs/400e3)/10**(snr_db/10)/2)
+    y = (y + sigma*(rng.standard_normal(len(y)) + 1j*rng.standard_normal(len(y)))).astype(np.complex64)
+    return rp.source.Memory(y, Fs=Fs)
+
+def test_carriers_at_different_levels_are_cut_only_at_their_notches():
+    """Three carriers, two of them 6 dB under the first, in one box: cut at the two notches between them, not where the
+    weaker ones' tops ripple across a level set by the strongest"""
+    import copy
+    src = _carriers([1.0, 0.5, 0.5], 600e3, 30)
+    sv = list(rp.analysis.survey(src))
+    box = copy.copy(sv[0])
+    box.mid, box.width = 0.0, 1.75e6
+    box.lo, box.hi = -0.875e6, 0.875e6
+    ps = rp.analysis.profile(src, signals=[box], survey=sv + [box], blind=False)
+    mids = sorted(round(p.signal.mid/1e4) for p in ps)
+    assert len(ps) == 3 and mids == [-60, 0, 60], [(p.name, p.signal.mid, p.signal.width) for p in ps]
+
+def test_a_weak_carrier_between_neighbours_is_fitted_above_the_floor():
+    """A carrier 7 dB over the noise between two like it 520 kHz away, its box narrow and off to one side: the fit
+    stops halfway down to the floor, where the neighbours' gaps are, instead of walking through the noise into them"""
+    import copy
+    from rpps.analysis.signal_profile import _refit
+    src = _carriers([1.0, 1.0, 1.0], 520e3, 7, seed=4)
+    sv = list(rp.analysis.survey(src))
+    box = copy.copy(sv[0])
+    box.mid, box.width = 60e3, 330e3
+    box.lo, box.hi = box.mid - box.width/2, box.mid + box.width/2
+    r = _refit(src, [box])[0]
+    assert r.refit and 350e3 < r.width < 550e3 and abs(r.mid) < 30e3, (r.mid, r.width)
+
 @pytest.mark.kernels
 def test_a_box_off_its_signal_is_fitted_to_it():
     """A survey box twice as wide as its DVB-S carrier and off to one side: the box is fitted to the carrier in a fine

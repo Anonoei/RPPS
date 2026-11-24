@@ -183,8 +183,9 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
     {header id: ([(fields, count)] commonest first, how many)}, headers, inverted, params, ids)] of those whose headers decode,
     ids: the profile's header step ids in order, a list each (the headers of a branch point's branches together): one of
     the last decoded says the frames' payload decoded too,
-    best first; each variant a profile's choices make (rp.profile.variants) is tried, `params` the one that decoded, of the
-    profiles whose "requires" admits the symbol rate (rp.profile.candidates)"""
+    those whose payload decoded first, then most headers first; each variant a profile's choices make
+    (rp.profile.variants) is tried, `params` the one that decoded, of the profiles whose "requires" admits the symbol rate
+    (rp.profile.candidates)"""
     from .. import profile, symbol
     from ..base import Data
     from ..base.types import Rep
@@ -227,7 +228,8 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
             summary = {k: ([(json.loads(f), n) for f, n in Counter(v).most_common(4)], len(v)) for k, v in heads.items()}
             ids = _header_ids(prof.obj["steps"])
             out.append((name, summary, max(len(v) for v in heads.values()), inverted, params, ids))
-    return sorted(out, key=lambda t: -t[2])
+    # A profile whose payload decoded before one whose headers only read (DVB-S2 normal and mis share the PL header)
+    return sorted(out, key=lambda t: (not (t[5] and any(h in t[1] for h in t[5][-1])), -t[2]))
 
 def preamble_offset(z, preamble, threshold=0.6, top=16):
     """The carrier offset left on symbols z, in radians a symbol (within +-pi), from where a known preamble is: the phase
@@ -359,12 +361,16 @@ class _Chain:
             self.errors.append(("channel", e, traceback.format_exc(limit=4)))
             self.dead = True
 
-    def carriers(self, drop=6.0, q=95, bins=400, min_frac=1/40):
+    def carriers(self, depth=4.0, q=95, bins=400, min_frac=1/40, ripple=4.0, edge=15.0):
         """The carriers in this chain's box that a fine spectrum of its own channel samples shows apart: the box's
         `q`th-percentile spectrum over time (bursts and TDD carriers at their full level, not averaged down) at `bins`
-        bins across it, split where it dips `drop` dB under the box's top, pieces under `min_frac` of the box dropped.
-        Signals of the capture, two or more, else [] (the survey's own spectrum is too coarse and too short to see
-        notches between carriers a few tens of kHz apart)"""
+        bins across it, cut at each valley `depth` dB under the lower of the peaks either side (`ripple` times the
+        spectrum's own ripple when that is more: a noisy estimate's dips aren't notches), within where it is less than
+        `edge` dB under its top (the channel filter's skirts aren't valleys); each piece the span of its bins over
+        halfway from its top to the valleys bounding it, pieces under `min_frac` of the box dropped. Signals of the
+        capture, two or more, else [] (the survey's own spectrum is too coarse and too short to see notches between
+        carriers a few tens of kHz apart). On a hand-reviewed pool: 65 of 73 boxes reviewers said held several signals
+        split, 6 of 325 they said held one"""
         import copy
         if not self.near or not self.sig.width:
             return []
@@ -377,28 +383,43 @@ class _Chain:
         P = np.abs(np.fft.fftshift(np.fft.fft(seg*np.hanning(n), axis=1), axes=1))**2
         f = np.fft.fftshift(np.fft.fftfreq(n, 1/Fs))
         inb = np.abs(f) <= self.sig.width/2 # (the channel is centred on the box)
-        p = 10*np.log10(np.percentile(P[:, inb], q, axis=0) + 1e-30)
+        raw = 10*np.log10(np.percentile(P[:, inb], q, axis=0) + 1e-30)
         fb = f[inb]
-        k = max(1, len(p)//80)
-        p = np.convolve(p, np.ones(k)/k, mode="same")
-        on = p > np.percentile(p, 90) - drop
-        runs, start = [], None
-        for i, o in enumerate(np.append(on, False)):
-            if o and start is None:
-                start = i
-            elif not o and start is not None:
-                if i - start >= max(3, int(len(p)*min_frac)):
-                    runs.append((fb[start], fb[i - 1]))
-                start = None
-        if len(runs) < 2:
+        k = max(1, len(raw)//80)
+        p = np.convolve(raw, np.ones(k)/k, mode="same")
+        core = np.flatnonzero(p > np.percentile(p, 95) - edge)
+        if len(core) < 8:
             return []
+        i0 = core[0]
+        v = p[i0:core[-1] + 1]
+        wide = np.convolve(raw, np.ones(4*k)/(4*k), mode="same")[i0:core[-1] + 1]
+        need = max(depth, ripple*1.4826*np.median(np.abs(v - wide)))
+        cuts = []
+        for i in range(1, len(v) - 1):
+            if not (v[i] <= v[i - 1] and v[i] < v[i + 1]):
+                continue
+            l = i # Out each way while no lower: the highest passed is that side's peak
+            while l > 0 and v[l - 1] >= v[i]:
+                l -= 1
+            r = i
+            while r < len(v) - 1 and v[r + 1] >= v[i]:
+                r += 1
+            if min(v[l:i + 1].max(), v[i:r + 1].max()) - v[i] >= need:
+                cuts.append(i)
+        bounds = [0] + cuts + [len(v) - 1]
         out = []
-        for lo, hi in runs:
+        for a, b in zip(bounds[:-1], bounds[1:]):
+            if b - a < max(3, int(len(p)*min_frac)):
+                continue
+            t = 0.5*(v[a:b + 1].max() + max(v[a], v[b]))
+            on = a + np.flatnonzero(v[a:b + 1] >= t)
+            lo, hi = fb[i0 + on[0]], fb[i0 + on[-1]]
             s = copy.copy(self.sig)
             s.mid, s.width = self.sig.mid + 0.5*(lo + hi), hi - lo
             s.lo, s.hi = s.mid - s.width/2, s.mid + s.width/2
+            s.refit = None # (the box was fitted, not each carrier in it)
             out.append(s)
-        return out
+        return out if len(out) >= 2 else []
 
     def split(self, baud, beta=0.35, fill=0.6):
         """When the cyclic spectrum's rate needs well under the box (its (1 + beta) x baud under `fill` of the width: carriers
@@ -1078,12 +1099,15 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
                 q.name = f"{box}.{j + 1}: {q.signal.mid/1e6:+.3f} MHz, {q.signal.width/1e3:.0f} kHz wide"
             best = max(range(len(built)), key=lambda j: _reach(built[j]))
             first = out[k]
-            if k in notched or _further(built[best], first): # (a box the notches split is not a signal itself)
+            # A box the notches split is not a signal itself, unless it solved as one and no piece did (a dip in one
+            # carrier's spectrum)
+            cut = k in notched and not (first.solved and not any(q.solved for q in built))
+            if cut or _further(built[best], first):
                 out[k] = built[best]
             # The rest, where they solved or went further than the box did (a piece that got nowhere is a lump of a
             # carrier's spectrum, or one the box's own profile already said as much of)
             # (carriers a notch separates are each a signal: all listed)
-            extra += [q for j, q in enumerate(built) if out[k] is not q and (k in notched or q.solved or _further(q, first))]
+            extra += [q for j, q in enumerate(built) if out[k] is not q and (cut or q.solved or _further(q, first))]
         for j, (k, ch) in enumerate(again.items()):
             q = build(ch)
             tell("build again", j + 1, len(again), len(again) - j - 1)
@@ -1099,14 +1123,15 @@ _JOB = None # What a forked worker of `_parallel` profiles (inherited, not pickl
 def _refit(source, sigs, samples=2**21, nfft=2**18, drop=10.0, q=95, move=0.08, widths=(0.8, 1.3)):
     """The survey's boxes fitted to their signals in a fine spectrum of the capture: `samples` read once (source.peek),
     the `q`th percentile over time of an `nfft`-bin spectrum (bursts and TDD carriers at their full level), each box's
-    edges where it falls `drop` dB under the box's top, walking out from its strongest point. The survey's own spectrum is
+    edges where it falls `drop` dB under the box's top (at most halfway down to the floor around it, a weak carrier's),
+    walking out from its strongest point; a box under 6 dB over that floor keeps the survey's. The survey's own spectrum is
     short and coarse: it places some boxes off their signal (wider, narrower, beside it). A fit that runs out of the
     span looked at (1.5 box widths each side: the signal is part of something wider) or changes the width more than 3x
     keeps the survey's box; so does one that moves the centre under `move` of the width with the width within `widths`
     times (the two measure a carrier differently: occupied power, edges). Returns the boxes, refitted ones as copies
-    (`refit` set). On a hand-reviewed pool: 21 of 29 boxes reviewers placed off their one signal moved the way they said
-    (3 the other way), and box width over symbol rate went from 0.98-1.35 (10-90%) to 1.15-1.19: a carrier's -10 dB
-    width, whatever share of its power the survey's box held"""
+    (`refit` set). On a hand-reviewed pool: 17 of 24 boxes reviewers placed off their one signal moved the way they said
+    (2 the other way), 3 of 325 they said were right moved far, and box width over symbol rate went from 0.98-1.35
+    (10-90%) to 1.15-1.19: a carrier's -10 dB width, whatever share of its power the survey's box held"""
     import copy
     if not sigs or not hasattr(source, "peek"):
         return list(sigs)
@@ -1141,7 +1166,12 @@ def _refit(source, sigs, samples=2**21, nfft=2**18, drop=10.0, q=95, move=0.08, 
         fs = f[span]
         box = (np.abs(fs - s.mid) <= s.width/2)
         top_i = int(np.flatnonzero(box)[np.argmax(p[box])])
-        thr = np.percentile(p[box], 90) - drop
+        # Down `drop` dB, but not into the floor (the span's lowest): a weak carrier's edges are halfway down to it
+        hi90, floor = np.percentile(p[box], 90), np.percentile(p, 10)
+        if hi90 - floor < 6.0: # (too weak over the floor to place its edges)
+            out.append(s)
+            continue
+        thr = max(hi90 - drop, floor + 0.5*(hi90 - floor))
         a = top_i
         while a > 0 and p[a - 1] > thr:
             a -= 1
