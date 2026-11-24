@@ -333,6 +333,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   test pattern sent again and again made every copy count as evidence, so code tests held on what was only copying.
   A code found on such a stream now stands only if one period shows it too, and `rp.analysis.profile` says the
   symbols repeat (and how often) where no code fits.
+- **A burst profile is not solved on its demodulation alone**: `rp.analysis.profile` adds an unsolved payload step
+  when no kind of burst has four demodulated to look for a code in (it called 3 of 295 noise "bursts" solved).
+  A frame found with under 64 payload symbols in all is not looked into (it raised "Need at least 8 symbols" and
+  lost the signal's profile).
 - **A framed profile whose frames' payload never decodes is not solved**: `rp.analysis.profile` adds an unsolved
   payload step when none of the profile's last headers (DVB-S2's BBHEADER, a branch point's headers together) decoded,
   where it called a signal solved on its first headers alone. `signal_profile.framed` returns the profile's header ids

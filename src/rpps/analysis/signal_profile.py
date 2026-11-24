@@ -21,6 +21,7 @@ from collections import Counter
 import numpy as np
 
 FOUND, GUESS, UNSOLVED = "found", "guess", "unsolved"
+MIN_PAYLOAD = 64 # Payload symbols (frames together) under which a frame's content is not looked into
 
 class Step:
     """One processing step. kind: what it does (channel, acquire, timing, carrier, map, fec, align, deinterleave,
@@ -656,10 +657,12 @@ class _Chain:
               note="blind (rpps.analysis.spectrum.burst): each burst acquired on its own preamble")
         c = symbol.load_or_generate(r.mod)
         kinds = r.preambles or [r.preamble]
+        looked = False
         for kind, pre in enumerate(kinds):
             group = [b for b in ok if (b.kind or 0) == kind and len(b.payload)]
             if len(group) < 4:
                 continue
+            looked = True
             pays = [np.asarray(b.payload, dtype=np.complex64) for b in group] # (blind bursts: each its own rotation)
             label = f"kind {kind} ({len(pre)}-symbol preamble, {len(group)} bursts)" if len(kinds) > 1 else f"{len(group)} bursts"
             u = burst.units([len(y) for y in pays]) # code blocks a burst holds, from the bursts' lengths
@@ -694,6 +697,9 @@ class _Chain:
             else:
                 q.add("fec", f"a length-{n} code in the payload of {label}", GUESS, detail={"n": n, "deficiency": d, "map": str(key)},
                       note=f"{d} checks a word on the bursts' payload words; not identified further")
+        if ok and not looked: # Demodulated, but no kind with bursts enough to look for a code in: not solved
+            q.add("fec", "the bursts' payload", UNSOLVED,
+                  note=f"{len(ok)} of {len(r.bursts)} bursts demodulated, under 4 of any one kind: too few to look for a code in")
 
     def _header(self, q, label, maps, bits=256, min_frames=8):
         """What the first `bits` of the bursts' payloads hold (rpps.analysis.framing.fields: constants, counters, enums,
@@ -774,9 +780,14 @@ class _Chain:
         whole = len(bits) >= n + 48
         if not whole and len(bits) < 8:
             return
+        pay = cut[:400, fr.uw_length:].ravel()
+        if len(pay) < MIN_PAYLOAD: # A unique word with next to nothing after it (a short period the comb found): no code
+            p.add("fec", "block code on the frame-aligned payload: not tried", UNSOLVED,
+                  note=f"{len(pay)} payload symbols in the frames found: too few to judge the decisions by, or a code in")
+            return
         from .. import symbol
         from .modulation.quality import gate
-        g = gate(cut[:400, fr.uw_length:].ravel(), symbol.load_or_generate(det.mod).points)
+        g = gate(pay, symbol.load_or_generate(det.mod).points)
         if not g.ok: # Bit errors the noise doesn't explain fill the rank: a full rank then says nothing
             p.add("fec", "block code on the frame-aligned payload: not tried", UNSOLVED,
                   note=f"the hard decisions can't be trusted ({g.why}): fix the symbols (a pilot-aided sync, "

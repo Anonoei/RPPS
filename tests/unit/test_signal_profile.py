@@ -210,6 +210,26 @@ def test_a_hint_skips_what_an_earlier_look_found(dvbs_capture):
     assert [s.kind for s in hinted.steps] == [s.kind for s in plain.steps]
 
 @pytest.mark.kernels
+def test_three_bursts_demodulated_are_not_a_solved_signal():
+    """Bursts too few to look for a code in leave the payload unsolved: the profile is not called solved on its
+    demodulation alone"""
+    rng = np.random.default_rng(3)
+    q = rp.symbol.load("qpsk")
+    pre = np.asarray(q.points)[rng.integers(0, 4, 32)]
+    Fs, sps = 1.6e6, 16
+    shape = rp.wave.Shape(sps, rp.signal.filters.load("pulse/rrc/0p35"))
+    xs = []
+    for _ in range(3):
+        w = np.asarray((rp.Data(np.concatenate([pre, q.modulate(rng.integers(0, 2, 1600).astype(bool))]).astype(np.complex64),
+                                Fs=Fs/sps, sps=1) + shape).data)
+        xs += [np.zeros(int(rng.integers(30000, 40000)), np.complex64), w*np.exp(1j*rng.uniform(0, 2*np.pi))]
+    x = np.concatenate(xs + [np.zeros(30000, np.complex64)])
+    x = x*np.exp(2j*np.pi*150e3/Fs*np.arange(len(x)))
+    y = (x + 0.02*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))).astype(np.complex64)
+    p = min(rp.analysis.profile(rp.source.Memory(y, Fs=Fs), blind=False), key=lambda p: abs(p.signal.mid - 150e3))
+    assert "demodulate" in [s.kind for s in p.steps]
+    assert not p.solved and "too few to look for a code in" in str(p.to_dict())
+
 def test_tdma_bursts_are_demodulated_one_by_one_and_their_code_found():
     """QPSK bursts (a shared 32-symbol preamble, then BCH(63,51) words), each with its own carrier phase and offset:
     the continuous chain can't follow them; each is acquired on its preamble and the code found in the payloads"""
