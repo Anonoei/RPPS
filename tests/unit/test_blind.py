@@ -109,6 +109,17 @@ def test_an_unmodulated_carrier_is_not_a_code():
     s = (np.ones(40000) + 0.3*(rng.standard_normal(40000) + 1j*rng.standard_normal(40000))).astype(np.complex64)
     assert not F.identify(s, "bpsk").found
 
+def test_bpsk_read_as_qpsk_is_not_a_code_with_equal_generators():
+    # I == Q makes (c_a * g) ^ (c_b * g) = 0 for every g: a relation of the bits, not a code
+    from rpps.analysis.code.conv.mother import scan_conv
+    rng = np.random.default_rng(5)
+    u = rng.integers(0, 2, 20000).astype(np.uint8)
+    hyps, _ = scan_conv(np.repeat(u, 2), ks=range(3, 6), rates=(2,))
+    assert not [h for h in hyps if h.z > 6]
+    c = np.asarray(conv(Logger().Child("t", 0), 1, 2, [[1, 1, 1], [1, 0, 1]], 3).encode(u.astype(bool))).astype(np.uint8)
+    best = max(scan_conv(c, ks=range(3, 6), rates=(2,))[0], key=lambda h: h.z) # a real code is still found
+    assert best.params["K"] == 3 and best.z > 20
+
 def test_acquire_fec_says_it_is_still_acquiring():
     from rpps.sync import Detection
     d = rp.Data(np.ones(1000, np.complex64), Fs=1e4, sps=1)

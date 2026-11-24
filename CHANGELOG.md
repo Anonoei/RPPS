@@ -234,6 +234,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   `dvbs2/modcod` has no row for a DVB-S2X header, so its frames are read but not decoded as DVB-S2 ones.
 - **`signal_profile.framed` ranks a profile whose payload decoded first**, then by headers: DVB-S2 normal and MIS
   share the PL header, and the one with more headers read could be the one whose payload never decodes.
+- **The blind convolutional scan skips generator pairs with a common factor** (`analysis.code.conv.mother.scan_conv`):
+  equal generators held on any two equal bit streams, so a BPSK carrier read as QPSK (or fill with I = Q) was found
+  as a rate 1/2 code and called solved. Such a pair is a catastrophic code, not one anybody sends.
 - **A framed profile whose frames' payload never decodes is not solved**: `rp.analysis.profile` adds an unsolved
   payload step when none of the profile's last headers (DVB-S2's BBHEADER, a branch point's headers together) decoded,
   where it called a signal solved on its first headers alone. `signal_profile.framed` returns the profile's header ids

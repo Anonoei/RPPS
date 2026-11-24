@@ -7,12 +7,19 @@ import itertools
 import numpy as np
 
 from ....math.prob import deviance_z
+from ....math.gf2 import pgcd
 from ....code.coding import puncture_period, mismatch, mismatch_batch, cached
 from ...result import Hypothesis, Guess
 
 def _polys(K):
     """Generators of constraint length K: first and last tap set (otherwise it is a shorter code)"""
     return [np.array((1,) + m + (1,), dtype=np.uint8) for m in itertools.product((0, 1), repeat=K-2)]
+
+def _shared(polys):
+    """(P, P) bool: generator pairs with a common factor. Such a pair is a catastrophic code, and its relation holds on
+    whatever the factor leaves alike: equal generators test only c_a == c_b (BPSK read as QPSK, or fill), not a code"""
+    ints = [int("".join(map(str, g)), 2) for g in polys]
+    return np.array([[pgcd(a, b) != 1 for b in ints] for a in ints])
 
 def _convolve_all(c, polys, K):
     """c * g for every generator, kept at length len(c)-K+1 (the part with full history)"""
@@ -59,6 +66,7 @@ def scan_conv(bits, ks=range(3, 8), rates=(2, 3), periods=(), tag=None):
             streams = [b[i:m*n:n] for i in range(n)]
             for K in ks:
                 polys = _polys(K)
+                shared = _shared(polys)
                 conv = [_convolve_all(c, polys, K) for c in streams]
                 for a, bb in itertools.combinations(range(n), 2):
                     for ia, ga in enumerate(polys):
@@ -66,7 +74,7 @@ def scan_conv(bits, ks=range(3, 8), rates=(2, 3), periods=(), tag=None):
                         s = conv[a] ^ conv[bb][ia]
                         k = s.sum(axis=1, dtype=np.int64)
                         # polys[ib] is g_b: relation uses c_a*g_b with c_b*g_a: here conv[a][ib], conv[bb][ia]
-                        z = deviance_z(k, s.shape[1])
+                        z = np.where(shared[ia], 0.0, deviance_z(k, s.shape[1]))
                         trials += len(polys)
                         j = int(np.argmax(np.abs(z)))
                         if abs(z[j]) > 3.0:
@@ -80,7 +88,7 @@ def scan_conv(bits, ks=range(3, 8), rates=(2, 3), periods=(), tag=None):
                                 params["period_pairs"] = per[0]
                                 hyps.append(Hypothesis("linear-block", f"short checks, period {per[0]:.1f} pairs", float(abs(z[j])), params))
                         for T in periods:
-                            zf = _fold_z(s, T)
+                            zf = np.where(shared[ia], 0.0, _fold_z(s, T))
                             trials += len(polys)
                             j = int(np.argmax(zf))
                             if zf[j] > 3.0:
