@@ -657,10 +657,10 @@ class _Chain:
         c = symbol.load_or_generate(r.mod)
         kinds = r.preambles or [r.preamble]
         for kind, pre in enumerate(kinds):
-            group = [b for b in ok if (b.kind or 0) == kind and len(b.symbols) > len(pre)]
+            group = [b for b in ok if (b.kind or 0) == kind and len(b.payload)]
             if len(group) < 4:
                 continue
-            pays = [np.asarray(b.symbols[len(pre):], dtype=np.complex64) for b in group]
+            pays = [np.asarray(b.payload, dtype=np.complex64) for b in group] # (blind bursts: each its own rotation)
             best = None
             for key in _distinct(bit_streams(pays[0], c, differential=False), c):
                 rows = [bit_streams(y, c, differential=False, keys=[key])[key] for y in pays]
@@ -948,6 +948,8 @@ class _Chain:
                    "are not a code)")
         else:
             why = f"best of {fec.report.trials} hypotheses, all below the threshold z>{fec.report.z_crit:.1f}"
+        if fec.repeat is not None: # The same symbols again and again: more of them is no more evidence
+            why = f"the symbols repeat every {fec.repeat} (fill, a test pattern or one frame sent again); {why}"
         if coded: # (the blind block code on the frames is the fec step: a guess, which the configured scans had none of)
             return p
         p.add("fec", "no definition fits", UNSOLVED, candidates=cand,

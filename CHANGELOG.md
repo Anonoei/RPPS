@@ -270,6 +270,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **The blind convolutional scan skips generator pairs with a common factor** (`analysis.code.conv.mother.scan_conv`):
   equal generators held on any two equal bit streams, so a BPSK carrier read as QPSK (or fill with I = Q) was found
   as a rate 1/2 code and called solved. Such a pair is a catastrophic code, not one anybody sends.
+- **`identify` sees a payload that repeats** (`rpps.analysis.identify.repeat_period`, `CodeDetection.repeat`): fill or a
+  test pattern sent again and again made every copy count as evidence, so code tests held on what was only copying.
+  A code found on such a stream now stands only if one period shows it too, and `rp.analysis.profile` says the
+  symbols repeat (and how often) where no code fits.
 - **A framed profile whose frames' payload never decodes is not solved**: `rp.analysis.profile` adds an unsolved
   payload step when none of the profile's last headers (DVB-S2's BBHEADER, a branch point's headers together) decoded,
   where it called a signal solved on its first headers alone. `signal_profile.framed` returns the profile's header ids

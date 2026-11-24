@@ -104,6 +104,34 @@ def test_solve_finds_rs_of_random_payload_behind_a_known_scrambler():
     layers = F.solve(y, rs_lengths=(219,))
     assert layers[0][0].params.get("config") == "v35" and layers[1][1].definition["n"] == 219
 
+def _repeated(sym, times, rng, sigma=0.2, cfo=1e-3):
+    y = np.tile(sym, times)
+    y = y*np.exp(2j*np.pi*cfo*np.arange(len(y)))
+    return y + sigma*(rng.standard_normal(len(y)) + 1j*rng.standard_normal(len(y)))
+
+def test_a_repeating_stream_has_its_period_and_data_has_none():
+    rng = np.random.default_rng(6)
+    q = rp.symbol.load("qpsk")
+    one = q.modulate(rng.integers(0, 2, 2000).astype(bool))
+    assert F.repeat_period(_repeated(one, 15, rng)) == 1000
+    assert F.repeat_period(_repeated(q.modulate(rng.integers(0, 2, 30000).astype(bool)), 1, rng)) is None
+    assert F.repeat_period(_repeated(np.ones(1), 20000, rng)) == 1 # A carrier: every symbol the last one, turned
+
+def test_fill_is_tested_on_one_period():
+    # 1000 fixed symbols again and again: the copies make any test on them hold; one period is too short to tell
+    rng = np.random.default_rng(7)
+    q = rp.symbol.load("qpsk")
+    f = F.identify(_repeated(q.modulate(rng.integers(0, 2, 2000).astype(bool)), 16, rng), "qpsk", blind=True)
+    assert not f.found and f.repeat == 1000 and f.complete
+
+@pytest.mark.kernels
+def test_a_code_over_a_long_repeating_frame_is_still_found():
+    rng = np.random.default_rng(8)
+    code = rp.code.load("conv/k7_133_171/1_2")
+    cw = code.encoder.encode(rng.integers(0, 2, 8000).astype(bool))[:16000]
+    f = F.identify(_repeated(rp.symbol.load("qpsk").modulate(cw), 5, rng, sigma=0.1, cfo=0), "qpsk")
+    assert f.repeat == 8000 and f.found and f.name in ("k7_133_171/1_2", "k7_171_133/1_2") # (I and Q swapped)
+
 def test_an_unmodulated_carrier_is_not_a_code():
     rng = np.random.default_rng(4)
     s = (np.ones(40000) + 0.3*(rng.standard_normal(40000) + 1j*rng.standard_normal(40000))).astype(np.complex64)

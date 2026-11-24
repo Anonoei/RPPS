@@ -369,6 +369,31 @@ def guess_block(bits, n=None, offsets=None, hints=()):
 # --- One answer: which code a symbol stream carries ------------------------------------------------------
 
 CONV_SYMBOLS = 2**15 # Symbols the convolutional and block scans look at (the inner layers use all there are)
+REPEAT_AGREE = 0.5 # |sum y[n] y*[n+P]| / sum |y|^2 above this: the symbols repeat with period P
+
+
+def repeat_period(symbols, agree=REPEAT_AGREE, periods=3):
+    """The period (symbols) the symbol stream repeats with, or None: fill, a test pattern or one frame sent again and again
+
+    The symbols against themselves P later, |sum y[n] conj(y[n+P])| over the energy: about 1/sqrt(N) on data, the share
+    of signal in signal and noise on a repeating stream, whatever the constellation and through a carrier offset (it
+    turns every product alike). The shortest P whose agreement is over `agree`, seen at least `periods` times over.
+    One period is all the evidence such a stream holds: a code test counted over every copy finds structure that is
+    only the copying (rpps.analysis.identify runs on one period)"""
+    y = np.asarray(symbols, dtype=np.complex128)
+    n = len(y)
+    if n < 4*periods:
+        return None
+    F = np.fft.fft(y - y.mean(), 2*n)
+    ac = np.abs(np.fft.ifft(np.abs(F)**2)[:n//2])
+    ac = ac/np.arange(n, n - len(ac), -1)/(np.mean(np.abs(y - y.mean())**2) + 1e-30) # per overlapping pair
+    # Every multiple too: neighbours alike (symbols read at too high a rate, a narrow filter) agree at one lag only
+    for P in np.nonzero(ac[1:] > agree)[0] + 1:
+        if (periods - 1)*P >= len(ac):
+            break
+        if all(ac[k*P] > agree for k in range(2, periods)):
+            return int(P)
+    return None
 
 
 def _transform(points, src, dst, rotate=True):
@@ -452,12 +477,13 @@ class CodeDetection:
     mismatch, baseline: re-encoding mismatch of a convolutional code, and what a wrong hypothesis gets
     slips: carrier turns and symbol slips rp.sync.AcquireFEC caught and put right; latency: seconds it held the symbols for
     report: the ranked hypotheses of the tier that decided (none did: of every tier)
+    repeat: the period (symbols) the stream repeats with (`repeat_period`), when it does
     guesses: with blind, the `Guess`es for what no definition covers (a code, an RS code or a scrambler inside a convolutional
         code, see `solve`), outermost first; they are in `inner` but never in `steps`: save one to decode with it
     """
     __slots__ = ("found", "complete", "mod", "kind", "name", "stream", "equivalent", "offset", "period", "inner",
                  "steps", "profile_name", "profile_params", "target", "correction", "z", "mismatch", "baseline", "report", "guesses", "n",
-                 "slips", "latency", "payload")
+                 "slips", "latency", "payload", "repeat")
 
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -539,10 +565,24 @@ def identify(symbols, constellation, names=None, blind=False, differential=True,
     symbols: the symbols (any gain); constellation: a Constellation or its name (the detected modulation)
     names: only these convolutional definitions. baud: the symbol rate, when known: the shipped profile named
     (profile_name) is one whose "requires" admits it (rp.profile.fits). Returns a CodeDetection
+    A stream that repeats (`repeat_period`: fill, a test pattern) has the period in `repeat`, and a code found on it
+    stands only when one period shows it too.
     prior: what identify gave on the start of these same symbols (AcquireFEC's previous, shorter window). The configured
     scans look at the first CONV_SYMBOLS only: when prior saw all of them, its answer there stands (a convolutional code
     found is decoded again on the longer window for what is inside it; nothing found goes straight to the blind tools)
     """
+    y = np.asarray(symbols, dtype=np.complex128)
+    P = repeat_period(y) if len(y) >= 1024 else None
+    out = _identify(y, constellation, names, blind, differential, profiles, baud, prior)
+    if P is not None:
+        # A code over copies is only as good as it is on one: the layers inside it (RS behind a convolutional code over
+        # repeated packets) still use every copy
+        if out.found and not _identify(y[:P], constellation, names, False, differential, False, baud, None).found:
+            out = _identify(y[:P], constellation, names, blind, differential, profiles, baud, None)
+        out.repeat, out.complete = P, True # More symbols are more copies
+    return out
+
+def _identify(symbols, constellation, names, blind, differential, profiles, baud, prior):
     c = _constellation(constellation)
     y = np.asarray(symbols, dtype=np.complex128)
     if len(y):
