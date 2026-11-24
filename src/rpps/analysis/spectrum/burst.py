@@ -474,7 +474,7 @@ def burst_kinds(B, sps, pts, min_shared=16, min_group=3):
         return [], [None]*len(B)
     return kinds, member
 
-def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, frame=None, slot_tol=8, min_score=0.5,
+def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, frame=None, slot_tol=16, min_score=0.5,
                min_shared=16, **kw):
     """Every burst of x, demodulated on its own from its preamble (see the module). Bursts of several kinds, each with a
     preamble of its own (burst_kinds: by length, when they share fewer than `min_shared` symbols), are each acquired on
@@ -576,15 +576,61 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, f
     return Bursts(bursts=out, mod=mod, baud=baud, beta=beta, preamble=kinds[0], preambles=kinds, offsets=offsets, frame=frame,
                   slots=slots, blind=False, period=period)
 
+def _clustered(starts, frame, tol):
+    """Share of starts whose phase in the frame lies within tol of two others' at least (a slot used again and again)"""
+    ph = np.sort(starts % frame)
+    ext = np.concatenate((ph - frame, ph, ph + frame))
+    lo, hi = np.searchsorted(ext, ph - tol), np.searchsorted(ext, ph + tol, side="right")
+    return float(np.mean(hi - lo - 1 >= 2))
+
+def _occupancy(starts, frame, tol):
+    """Bursts over the (frame, slot) cells a period predicts: the slots are the clusters of the starts' phases (single
+    linkage at tol), the frames those the record spans. At a divisor of the true frame, slots used only in some of its
+    parts are predicted in every part, empty in the others: the share falls; at the frame or a multiple it holds"""
+    ph = starts % frame
+    srt = np.sort(ph)
+    edges = srt[np.flatnonzero(np.diff(srt) > tol) + 1]
+    slot = np.searchsorted(edges, ph, side="right")
+    if len(edges) and srt[0] + frame - srt[-1] <= tol: # (across the wrap: one slot)
+        slot[slot == len(edges)] = 0
+    t0 = starts.min() - (starts.min() % frame)
+    fr = ((starts - t0)//frame).astype(int)
+    cells = len(set(zip(fr.tolist(), slot.tolist())))
+    return cells/float((fr.max() - fr.min() + 1)*len(set(slot.tolist())))
+
+def _frame(ok, x, Fs, baud, slot_tol, multiples=16):
+    """The TDMA frame period (s), or None. Candidates: learn_plan's (the BTU grid of the starts, then the shortest
+    period at which every slot holds one kind: a divisor of the frame when few frames are seen) and its multiples, and
+    the on/off pattern's (rpps.analysis.spectrum.waveform.on_off: a near-period with many slots); each scored by how
+    many starts share a slot (`_clustered`) times how full the cells it predicts are (`_occupancy`); the shortest
+    within 2% of the best"""
+    from .waveform import on_off
+    starts = np.array([b.start/Fs for b in ok])
+    tol = slot_tol/baud
+    span = starts.max() - starts.min()
+    cands = []
+    try:
+        rec = [{"freq": 0.0, "start": float(b.start/Fs), "length": len(b.symbols)/baud, "kind": b.kind, "rate": baud}
+               for b in ok]
+        T = float(learn_plan(rec).evidence["frame"])
+        cands += [k*T for k in range(1, multiples + 1) if k*T <= span/2 or k == 1]
+    except (ValueError, KeyError, ZeroDivisionError):
+        pass
+    per = on_off(x, Fs)
+    if per is not None and per.period:
+        cands.append(float(per.period))
+    if not cands:
+        return None
+    score = {T: _clustered(starts, T, tol)*_occupancy(starts, T, tol) for T in cands}
+    top = max(score.values())
+    return min(T for T in cands if score[T] >= top - 0.02)
+
 def _structure(out, x, Fs, baud, frame, slot_tol):
-    """The TDMA frame (given, or the period of the bursts' on/off pattern: rpps.analysis.spectrum.waveform.on_off, which
-    a network of many slots can take a wrong period from) and its slots; each burst's frame and slot set"""
+    """The TDMA frame (given, or `_frame`'s) and its slots; each burst's frame and slot set"""
     slots = []
     ok = [b for b in out if b.ok]
     if frame is None and len(ok) >= 3:
-        from .waveform import on_off as wb
-        per = wb(x, Fs)
-        frame = per.period if per is not None and per.period else None
+        frame = _frame(ok, x, Fs, baud, slot_tol)
     if frame and ok:
         tol = slot_tol/baud
         starts = np.array([b.start/Fs for b in ok])
