@@ -323,7 +323,7 @@ def _noise(f):
     d = np.abs(np.diff(f))
     return max(float(np.median(d))/0.6745/np.sqrt(2) if len(d) else 1.0, 1e-9)
 
-def _guards(p, level, min_gap, ratio=2.0, q=95):
+def _guards(p, level, min_gap, ratio=3.0, q=95):
     """Runs of the fine power p under `level` (one for all, or one a sample: the local level less a margin) long enough
     to be guard times: [(start, stop)] in p's samples. At least
     `min_gap` long, and `ratio` times the `q`th percentile of all runs' lengths (a burst's own envelope dips through
@@ -342,13 +342,13 @@ def split(x, Fs, a, b, win=4e-6, min_len=64e-6, min_gap=2e-6, thr=None, bw=None,
         long at least and much longer than the bursts' own envelope dips (`_guards`)
       - power steps between transmitters' levels: binary segmentation of the power (dB) in windows of `win` (32 samples
         at least), the gain over its noise above `thr` (default 30 + 6 ln(windows): above chance over every position)
-    bw: the occupied bandwidth (Hz), when known: windows of 8 symbols and guards of three quarters of a symbol at least (a slow
+    bw: the occupied bandwidth (Hz), when known: windows of 8 symbols and guards of a symbol at least (a slow
     signal's envelope dips within a symbol). guards: look for guard times (not when the bursts stand under 10 dB over
     the floor, where noise dips as deep). Parts `min_len` long at least. Not cut: bursts at one level with no guard between them, told apart only by their
     carriers (the line of x^M in a few symbols is mostly the data's own noise; tried and dropped)"""
     x = np.asarray(x[a:b], dtype=np.complex128)
     if bw:
-        win, min_gap = max(win, 8/bw), max(min_gap, 0.75/bw)
+        win, min_gap = max(win, 8/bw), max(min_gap, 1/bw)
     w = max(32, int(Fs*win))
     n = len(x)//w
     min_seg = max(2, int(np.ceil(min_len*Fs/w)))

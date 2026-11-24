@@ -233,6 +233,28 @@ def test_long_bursts_of_frames_acquired_on_their_repeating_word():
         dec = q[np.argmin(np.abs(b.symbols[:, None] - q[None, :]), axis=1)]
         assert all(np.array_equal(dec[o:o + n], r.preamble) for o in range(a, len(dec) - n, P))
 
+def test_long_framed_bursts_take_their_carrier_from_every_word():
+    """The same bursts 3 kHz off, with phase noise, at 12 dB: the carrier from one 9-symbol word drifts off over 12000
+    symbols; from every word (the M-th power's offset over the burst, then each word's phase anchoring it) it holds.
+    Measured over the synthetic real-capture case: EVM 20% (the SNR's), from 56% on one word"""
+    rng = np.random.default_rng(3)
+    q = rp.symbol.load("qpsk").points
+    Fs, baud, P = 781.25e3, 170.67e3, 1482
+    uw = q[rng.integers(0, 4, 9)]
+    xs = [np.zeros(8000, complex)]
+    for _ in range(3):
+        syms = q[rng.integers(0, 4, 12000)]
+        for o in range(int(rng.integers(0, P)), 12000 - 9, P):
+            syms[o:o + 9] = uw
+        w = FR.word_waveform(syms, Fs/baud)
+        m = np.arange(len(w))
+        w = w*np.exp(1j*(rng.uniform(0, 2*np.pi) + 2*np.pi*rng.uniform(-3e3, 3e3)/Fs*m + np.cumsum(2e-3*rng.standard_normal(len(w)))))
+        xs += [w, np.zeros(14000, complex)]
+    x = np.concatenate(xs)
+    x += np.sqrt(np.mean(np.abs(xs[1])**2)/10**1.2/2)*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    r = burst.demodulate(x, Fs, mod="qpsk", baud=baud)
+    assert r.period == P and len(r.bursts) == 3 and all(b.ok and b.evm < 0.3 for b in r.bursts)
+
 def test_weak_sparse_bursts_with_a_long_preamble():
     """BPSK bursts at 4 dB over the floor, sparse, a 652-symbol 1100 preamble: the gate does not fire on noise (levels
     over 64 symbols), the rate is the line near the occupied bandwidth (the preamble's own lines at a half and 2x lie
@@ -253,3 +275,21 @@ def test_weak_sparse_bursts_with_a_long_preamble():
     r = burst.demodulate(x, Fs)
     assert r.mod == "bpsk" and abs(r.baud - baud) < 100 and not r.blind and len(r.preamble) >= 600
     assert len(r.bursts) == 5 and all(b.ok for b in r.bursts)
+    assert all(abs(b.clock) < 50e-6 for b in r.bursts) # (the 1100 preamble's energy peaks between symbols: not a clock)
+
+def test_four_weak_bursts_share_their_preamble():
+    """Four bursts at 2 dB over the floor: a decision error in one burst must not break the shared run (all but one
+    agree), and the run is still longer than chance could make for BPSK's two step values"""
+    rng = np.random.default_rng(5)
+    Fs, baud = 390.625e3, 19.2e3
+    pre = np.tile([1, 1, -1, -1], 163).astype(complex)
+    xs = [np.zeros(int(0.2*Fs), complex)]
+    for _ in range(4):
+        syms = np.concatenate((pre, np.array([1, -1], complex)[rng.integers(0, 2, 1700)]))
+        w = FR.word_waveform(syms, Fs/baud)
+        xs += [w*np.exp(1j*rng.uniform(0, 2*np.pi)), np.zeros(int(0.5*Fs), complex)]
+    x = np.concatenate(xs)
+    p = np.mean(np.abs(xs[1])**2)
+    x += np.sqrt(p/10**0.2/2)*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    r = burst.demodulate(x, Fs, mod="bpsk", baud=baud)
+    assert not r.blind and len(r.preamble) >= 600 and len(r.bursts) == 4 and all(b.ok for b in r.bursts)

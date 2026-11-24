@@ -169,17 +169,30 @@ class Segment:
 def _unit_steps(v):
     return v[1:]*np.conj(v[:-1])/(np.abs(v[1:]*v[:-1]) + 1e-12)
 
-def shared_segments(burst_list, search=8, min_len=12, agree=0.8, refs=6):
+def shared_segments(burst_list, search=8, min_len=12, agree=0.8, refs=6, M=4, false_alarm=1e-3):
     """Runs of symbols every burst carries at the same place: a preamble, a mid-amble, a postamble ([Segment], longest
     first). Phase steps, so each burst's own carrier phase drops out. Each burst is aligned on a reference by a lag
     within `search` symbols: the one with the best window of `min_len` steps (a known run of that length adds up to its
     length, random steps to its square root), once from the start and once from the end (bursts of several lengths
     sharing a postamble); the reference is the burst the others agree with most (of the first `refs`). A run is where
-    `agree` of the bursts' steps lie within 45 degrees of their mean (one burst's decision error at a few dB costs a
-    share, not the whole mean), `min_len` steps long at least"""
+    the bursts' steps lie within 45 degrees of their mean: all of 3, all but one of 4 or more (up to `agree`: a weak
+    burst's decision error), gaps of a step or two where a majority still agrees bridged; at least `min_len` steps, and
+    longer where chance would make one (M: the steps' alphabet, M-PSK; `false_alarm` over every position)"""
     S = [b.symbols for b in burst_list if b.symbols is not None and len(b.symbols) > 2*search + min_len + 2]
     if len(S) < 3:
         return []
+    # How many must agree: all of 3, all but one of 4 or more (a weak burst's decision error), at most `agree`; and so
+    # how long a run chance would not make: M-PSK steps of random data agree that well at a position with probability
+    # about M P(Binomial(K, 1/M) >= need), over every position of two alignments
+    from math import comb, ceil, log
+    K = len(S)
+    need = K if K < 4 else max(int(np.ceil(agree*K)), K - 1) if agree*K <= K - 1 else K - 1
+    need = min(need, K)
+    share = need/K - 1e-9
+    pc = min(1.0, M*sum(comb(K, j)*(1/M)**j*(1 - 1/M)**(K - j) for j in range(need, K + 1)))
+    positions = 2*max(len(v) for v in S)
+    if pc < 1:
+        min_len = max(min_len, int(ceil(log(false_alarm/positions)/log(pc))))
     out = []
     for end in (False, True):
         D = [_unit_steps(v[::-1] if end else v) for v in S]
@@ -203,12 +216,20 @@ def shared_segments(burst_list, search=8, min_len=12, agree=0.8, refs=6):
             mean = rows.mean(axis=0)
             m = np.mean(np.abs(np.angle(rows*np.conj(mean)[None, :])) < np.pi/4, axis=0) # share near the mean step
             m[np.abs(mean) < 0.3] = 0 # (no direction to be near)
-            if best is None or np.sum(m >= agree) > best[0]:
-                best = (int(np.sum(m >= agree)), m, mean, lo)
+            if best is None or np.sum(m >= share) > best[0]:
+                best = (int(np.sum(m >= share)), m, mean, lo)
         if best is None:
             continue
         _, m, mean, lo = best
-        on = np.concatenate(([0], (m >= agree).astype(np.int8), [0]))
+        ok = m >= share
+        gap = ~ok & (m >= 0.5) # a step or two where a weak burst slipped, between agreeing ones: bridged
+        for g in (1, 2):
+            fill = np.zeros_like(ok)
+            for i in range(1, len(ok) - g):
+                if ok[i - 1] and ok[i + g] and gap[i:i + g].all():
+                    fill[i:i + g] = True
+            ok |= fill
+        on = np.concatenate(([0], ok.astype(np.int8), [0]))
         d = np.diff(on)
         for a, b in zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1)):
             if b - a < min_len:
@@ -397,11 +418,13 @@ def units(lengths, tol=3, min_unit=16, hold=0.9):
         return Units(unit=u, err=err, overhead=over, counts={int(v): int(c) for v, c in zip(vals, cnt)}, fit=fit)
     return None
 
-def retime(x, c, sps, beta, anchor=0, window=256):
+def retime(x, c, sps, beta, anchor=0, window=256, skip=None, offset=False):
     """Symbol centres c (samples of x, one a symbol) with the symbol clock's offset taken out, and that offset (the
-    symbol rate's, a fraction: positive when the symbols come faster than sps): the matched filter's energy peak (best_tau) in each window of `window` symbols, unwrapped, a line
-    fitted through them by least squares and turned about symbol `anchor` (where the preamble set the timing). c and 0
-    when it holds fewer than three windows"""
+    symbol rate's, a fraction: positive when the symbols come faster than sps): the matched filter's energy peak
+    (best_tau) in each window of `window` symbols but those over the known symbols `skip` ((first, stop): a repeating
+    pattern's energy can peak between its symbols), unwrapped, a line through them (Theil-Sen: the median slope between
+    windows) turned about symbol `anchor` (where the preamble set the timing; with `offset`, the timing there from the
+    windows too, for an acquisition on a short word). c and 0 when fewer than three windows"""
     from ...sync.time.mat import best_tau
     nw = len(c)//window
     if nw < 3:
@@ -409,17 +432,65 @@ def retime(x, c, sps, beta, anchor=0, window=256):
     mids, offs = [], []
     for i in range(nw):
         a, b = i*window, (i + 1)*window - 1
+        if skip is not None and a < skip[1] and skip[0] <= b: # known symbols (a 1100 preamble's energy peaks between symbols)
+            continue
         lo, hi = max(0, int(c[a] - sps)), min(len(x), int(np.ceil(c[b] + sps)) + 1)
         tau, _ = best_tau(x, sps, beta, lo=lo, hi=hi)
         m = (a + b)/2
-        cm = c[0] + m*sps
+        cm = c[0] + a*sps # (a lattice point: tau is a phase of the lattice, the window's middle may fall between)
         offs.append(2*np.pi*((tau - cm) % sps)/sps)
         mids.append(m)
+    if len(offs) < 3:
+        return c, 0.0
     d = np.unwrap(np.array(offs))*sps/(2*np.pi)
     d = d - np.round(np.median(d)/sps)*sps # the lattice is periodic in sps: the nearest copy
-    slope, _ = np.polyfit(np.array(mids), d, 1)
+    mids = np.array(mids)
+    i, j = np.triu_indices(len(mids), 1) # Theil-Sen: the median of the slopes between windows (one odd window can't tilt it)
+    slope = float(np.median((d[j] - d[i])/(mids[j] - mids[i])))
     k = np.arange(len(c))
+    if offset: # the windows' timing at the anchor too, not the acquisition's (a short word's can be half a symbol out)
+        at = float(np.median(d - slope*(mids - anchor)))
+        at -= np.round(at/sps)*sps
+        return c + at + slope*(k - anchor), float(-slope/sps)
     return c + slope*(k - anchor), float(-slope/sps) # sps (1 + e) samples a symbol: a rate 1/(1 + e), about 1 - e
+
+def _word_carrier(y, word, first, period, M=4):
+    """Symbols y (one a symbol, a word every period) with the carrier the words show taken out: (y corrected, rad a
+    symbol, phase at the first word, gain, the first word's position: found again by folding every word's correlation
+    over the period, `first` only a start). The turn from word to word gives the offset (within half a turn
+    a period of what the acquisition left: the blind estimate is far closer); each word's phase, unwrapped along it,
+    anchors the phase there, and between words it is interpolated (phase noise followed word to word, which one
+    word's line over thousands of symbols cannot)"""
+    n = len(word)
+    # the offset first from the whole burst's M-th power (thousands of symbols: far finer than the half turn a period
+    # the words can tell apart), then the words for what is left
+    d = y[1:]*np.conj(y[:-1])
+    w0 = float(np.angle(np.sum(d**M/np.maximum(np.abs(d), 1e-12)**(M - 1))))/M
+    y = y*np.exp(-1j*w0*(np.arange(len(y)) - first))
+    # where the words are: the position in the period whose word correlations, summed in magnitude over every period,
+    # are largest (the acquisition's hit can be a later word, or a chance match of a short word)
+    from numpy.lib.stride_tricks import sliding_window_view
+    corr = np.abs(sliding_window_view(y, n) @ np.conj(word)) if len(y) >= n else np.zeros(0)
+    if len(corr) >= period:
+        fold = np.bincount(np.arange(len(corr)) % period, corr, period)
+        first = int(np.argmax(fold))
+    at = np.arange(first, len(y) - n + 1, period)
+    z = np.array([np.sum(y[a:a + n]*np.conj(word)) for a in at])
+    if len(z) < 2:
+        w = 0.0
+        ph = np.angle(z) if len(z) else np.zeros(1)
+    else:
+        w = float(np.angle(np.sum(z[1:]*np.conj(z[:-1]))))/period
+        ph = np.unwrap(np.angle(z*np.exp(-1j*w*(at - first)))) + w*(at - first)
+    mid = at + (n - 1)/2
+    k = np.arange(len(y))
+    theta = np.interp(k, mid, ph) if len(at) > 1 else ph[0] + w*(k - mid[0])
+    if len(at) > 1: # beyond the first and last word: their line's slope
+        theta = np.where(k < mid[0], ph[0] + w*(k - mid[0]), theta)
+        theta = np.where(k > mid[-1], ph[-1] + w*(k - mid[-1]), theta)
+    y = y*np.exp(-1j*theta)
+    gain = float(np.sqrt(np.mean(np.abs(y)**2)/np.mean(np.abs(word)**2))) # (the burst's power: the words' sums are noisy)
+    return y/max(gain, 1e-12), w + w0, float(ph[0]), gain, first
 
 def track(y, points, k1=0.05, k2=0.002):
     """A second-order decision-directed phase loop over corrected symbols y (one a symbol): the symbols with what was
@@ -504,7 +575,8 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, f
     if preamble is None:
         kinds, member = burst_kinds(B, sps, pts, min_shared)
         if len(kinds) <= 1: # one kind, or none: where the known symbols sit (a "preamble" may be a mid-amble)
-            segs = shared_segments(B, min_len=max(8, min_shared - 1))
+            from ...sync.acquire import symmetry
+            segs = shared_segments(B, min_len=max(8, min_shared - 1), M=max(2, symmetry(pts)))
             top = segs[0] if segs else None
             if top is not None and (not kinds or len(top.steps) + 1 > len(kinds[0])
                                     or (len(top.steps) + 1 >= len(kinds[0]) - 2 and not 0 <= top.offset <= 8)):
@@ -559,10 +631,14 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, f
         c = centres_in(len(seg), t0 - oe*sps, sps, 8)
         c = c[c <= b.stop - a2 + sps] # to the end of the gate
         n = len(pre)
-        c, clock = retime(seg, c, sps, beta, anchor=oe + n/2)
+        c, clock = retime(seg, c, sps, beta, anchor=oe + n/2, skip=(oe, oe + n), offset=o is None)
         y = _mf(seg, c, sps, beta)
         k = np.arange(len(y)) - oe
-        y = y*np.exp(-1j*(w*k + phase))/max(gain, 1e-12)
+        if o is None and period: # a word every period: the carrier from all of them, not from the first alone
+            from ...sync.acquire import symmetry
+            y, w, phase, gain, oe = _word_carrier(y, pre, oe, period, symmetry(pts))
+        else:
+            y = y*np.exp(-1j*(w*k + phase))/max(gain, 1e-12)
         if len(y) > oe + n: # the carrier loop from the known run out, both ways
             y = np.concatenate((track(y[:oe][::-1], pts)[::-1], y[oe:oe + n], track(y[oe + n:], pts)))
         idx = np.argmin(np.abs(y[:, None] - pts[None, :]), axis=1)

@@ -80,7 +80,12 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   over the floor; each burst's rate is searched within 0.7 to 1.4 times its occupied bandwidth (a long 1100 preamble
   locked it at 2x or 4x); a shared run tolerates single decision errors; long bursts of frames are acquired on the
   unique word they repeat at their own phase (`periodic_word`, `Bursts.period`); slots join within `slot_tol` (now
-  8 symbols) by single linkage. The profile's header step tries every bit map.
+  16 symbols) by single linkage, and the frame period is learn_plan's or on_off's, whichever the starts' slots fit
+  (clustering times occupancy: a divisor of the frame leaves cells empty). The profile's header step tries every bit
+  map. A burst acquired on a repeating word takes its carrier from every word (the M-th power's offset over the
+  burst, then each word's phase as an anchor) and its timing from the whole burst; a shared run allows one burst in
+  four or more to disagree (its length then set against chance for the steps' alphabet); `retime` skips windows over
+  known symbols and fits its line by Theil-Sen.
 - **Block codes from soft values** (`rp.analysis.code.block.linear.soft_dual`, `soft_find_length`, `soft_score`):
   parity checks from words too noisy for the rank, drawing subsets from the likeliest clean words and keeping checks
   on the tanh-product syndrome. `solve_block(llr=)` uses it when the hard dual comes out short, and finds the length
