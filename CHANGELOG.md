@@ -25,6 +25,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   receive output is now data bits (Rep.DATA), not channel bits.
 
 ### Added
+- **Blind CRC search** (`rp.analysis.framing.crc.search(frames)`): the generator, init, xorout and where the CRC
+  sits (bits it covers, fill after it) from error-free frames as sent, by GCDs of frame differences (RevEng's method on
+  bit streams; an uncovered header that varies is cancelled first). Two frame lengths separate init from xorout;
+  shipped `config/crc` definitions that fit are named, else `fit.guess.save(name)` writes `config/crc/guess/<name>.json`.
 - **A parallel region on a GPU, CUDA or ROCm/HIP alike** (`Parallel("thread", xp=xp)` with `xp, _ =
   rp._accel.device()`): layered min-sum LDPC (`rp.code.kernels.LdpcDecode`), BCH (`BchDecode`: syndromes on the device,
   only words with errors located on the host) and soft demapping (`Demap`) run hand-written device kernels, portable CUDA C

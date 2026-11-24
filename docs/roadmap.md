@@ -81,6 +81,7 @@ What is in each part of RPPS, and what is not yet.
 - [X] [Analysis](https://github.com/Anonoei/RPPS/tree/main/src/rpps/analysis): blind survey and identification of unknown signals
     - [X] Signals in a capture (`survey`, `find_signals`, `measure_band`), symbol rate, modulation (PSK/QAM/APSK, FSK index, CPM/SOQPSK offline), OFDM and its pilots, TDMA bursts and their kinds
     - [X] Codes: convolutional (mother code, puncturing, RSC and turbo, TCM), linear block, Reed-Solomon, polar, quasi-cyclic LDPC (generator and sparse checks); scramblers, interleavers, frame markers
+    - [X] CRCs: generator, init, xorout and coverage from frames (`framing.crc`)
     - [X] Step by step through a receive chain to a profile, or what is still unsolved (`analysis.profile`, `rpps solve`)
 - [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey
 

@@ -15,7 +15,7 @@ analysed, the way config/ and the implementation packages do:
    trellis-coded modulation), block (linear: length, alignment and checks by rank, BCH / cyclic, product; ldpc; rs;
    polar), interleave (block and Forney interleavers)
  - framing: how the stream is cut. frames (frame period and unique word on symbols), payload (what decoded bits carry),
-   telemetry (PM telemetry end to end)
+   telemetry (PM telemetry end to end), crc (the CRC frames carry: generator, init, xorout, what it covers)
  - code/conv/mother, framing/bits: a convolutional mother code's generators; sync markers, frame length and HDLC on bits
  - identify: which code a hard-bit stream carries, peeling layers (`identify`, which rp.sync.AcquireFEC runs, `solve`)
  - result: what the searches return (Hypothesis, Report, Guess) and `pick`
@@ -85,6 +85,7 @@ bits; strong codes at low SNR are beyond them on channel bits.
 | frame period and unique word on symbols | `framing.frames.find`, `cut`, `bursts` | coherence per position over candidate periods |
 | sync markers, frame length, HDLC | `framing.bits.find_sync`, `frame_length`, `scan_hdlc` | hits at a period, autocorrelation, flags and FCS against chance |
 | PM telemetry end to end | `framing.telemetry.analyze` | BPSK per subcarrier, line code, frame period, counters |
+| which CRC, over which bits | `framing.crc.search` | GCD of frame differences (RevEng's method on bit streams); init and xorout from two lengths; config/crc names |
 | framing in decoded bits | `framing.payload.signatures` | E1/T1, ATM, GFP, HDLC, IPv4, CCSDS ASM, MPEG-TS, fixed bits, each against chance |
 | structured, scrambled or random | `framing.payload.verdict` | signatures, bias, linear complexity, compressibility |
 | encrypted, or only compressed | `framing.randomness.test` | NIST SP 800-22 frequency, block, runs, serial, approximate entropy, cusum; byte chi-square and entropy |
