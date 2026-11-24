@@ -228,6 +228,8 @@ def test_long_bursts_of_frames_acquired_on_their_repeating_word():
     assert len(FR.gate(x, Fs)) == 3
     r = burst.demodulate(x, Fs, mod="qpsk", baud=baud)
     assert r.period == P and r.offsets == [None] and min(np.mean(np.abs(r.preamble*1j**k - uw) > 1e-6) for k in range(4)) == 0
+    every = (len(xs[1]) + len(xs[2]))/Fs # one burst a period: the frame is that, not twice it
+    assert abs(r.frame - every) < 1e-4
     for b in r.bursts:
         a, n = b.known
         dec = q[np.argmin(np.abs(b.symbols[:, None] - q[None, :]), axis=1)]

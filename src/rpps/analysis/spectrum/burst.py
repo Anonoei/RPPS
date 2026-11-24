@@ -169,7 +169,7 @@ class Segment:
 def _unit_steps(v):
     return v[1:]*np.conj(v[:-1])/(np.abs(v[1:]*v[:-1]) + 1e-12)
 
-def shared_segments(burst_list, search=8, min_len=12, agree=0.8, refs=6, M=4, false_alarm=1e-3):
+def shared_segments(burst_list, search=24, min_len=12, agree=0.8, refs=6, M=4, false_alarm=1e-3):
     """Runs of symbols every burst carries at the same place: a preamble, a mid-amble, a postamble ([Segment], longest
     first). Phase steps, so each burst's own carrier phase drops out. Each burst is aligned on a reference by a lag
     within `search` symbols: the one with the best window of `min_len` steps (a known run of that length adds up to its
@@ -190,7 +190,7 @@ def shared_segments(burst_list, search=8, min_len=12, agree=0.8, refs=6, M=4, fa
     need = min(need, K)
     share = need/K - 1e-9
     pc = min(1.0, M*sum(comb(K, j)*(1/M)**j*(1 - 1/M)**(K - j) for j in range(need, K + 1)))
-    positions = 2*max(len(v) for v in S)
+    positions = 2*max(len(v) for v in S)*(2*search + 1) # (every position of both alignments, each lag tried)
     if pc < 1:
         min_len = max(min_len, int(ceil(log(false_alarm/positions)/log(pc))))
     out = []
@@ -201,12 +201,18 @@ def shared_segments(burst_list, search=8, min_len=12, agree=0.8, refs=6, M=4, fa
             ref = D[r]
             lags = []
             for d in D:
-                n = min(len(ref), len(d)) - 2*search
                 c = []
-                for l in range(-search, search + 1):
-                    pr = np.conj(ref[search:search + n])*d[search + l:search + l + n]
+                for l in range(-search, search + 1): # d[k + l] against ref[k], over all they overlap (a run at the very
+                    r0, d0 = max(0, -l), max(0, l) #   start, a postamble's in the reversed pass, counts too)
+                    n = min(len(ref) - r0, len(d) - d0)
+                    if n <= min_len:
+                        c.append(0.0)
+                        continue
+                    pr = np.conj(ref[r0:r0 + n])*d[d0:d0 + n]
                     cs = np.concatenate(([0], np.cumsum(pr)))
-                    c.append(np.abs(cs[min_len:] - cs[:-min_len]).max()) # the best window of min_len steps
+                    c.append(np.real(cs[min_len:] - cs[:-min_len]).max()) # the best window of min_len steps (real:
+                    # steps drop each burst's phase, so a true alignment adds up positive; a periodic preamble one symbol
+                    # off adds up as large, negative)
                 lags.append(int(np.argmax(c)) - search)
             lo = max(0, -min(lags))
             L = min(len(d) - l - lo for d, l in zip(D, lags))
@@ -659,47 +665,69 @@ def _clustered(starts, frame, tol):
     lo, hi = np.searchsorted(ext, ph - tol), np.searchsorted(ext, ph + tol, side="right")
     return float(np.mean(hi - lo - 1 >= 2))
 
-def _occupancy(starts, frame, tol):
-    """Bursts over the (frame, slot) cells a period predicts: the slots are the clusters of the starts' phases (single
-    linkage at tol), the frames those the record spans. At a divisor of the true frame, slots used only in some of its
-    parts are predicted in every part, empty in the others: the share falls; at the frame or a multiple it holds"""
+def _slots_of(starts, frame, tol):
+    """Slot index of each start in a frame (single linkage of the phases at tol, joined across the wrap)"""
     ph = starts % frame
     srt = np.sort(ph)
     edges = srt[np.flatnonzero(np.diff(srt) > tol) + 1]
     slot = np.searchsorted(edges, ph, side="right")
-    if len(edges) and srt[0] + frame - srt[-1] <= tol: # (across the wrap: one slot)
+    if len(edges) and srt[0] + frame - srt[-1] <= tol:
         slot[slot == len(edges)] = 0
-    t0 = starts.min() - (starts.min() % frame)
-    fr = ((starts - t0)//frame).astype(int)
-    cells = len(set(zip(fr.tolist(), slot.tolist())))
-    return cells/float((fr.max() - fr.min() + 1)*len(set(slot.tolist())))
+    return slot
 
-def _frame(ok, x, Fs, baud, slot_tol, multiples=16):
-    """The TDMA frame period (s), or None. Candidates: learn_plan's (the BTU grid of the starts, then the shortest
-    period at which every slot holds one kind: a divisor of the frame when few frames are seen) and its multiples, and
-    the on/off pattern's (rpps.analysis.spectrum.waveform.on_off: a near-period with many slots); each scored by how
-    many starts share a slot (`_clustered`) times how full the cells it predicts are (`_occupancy`); the shortest
-    within 2% of the best"""
+def _multiple(starts, T0, tol, kmax=16, excess=0.2):
+    """The frame as k*T0: the smallest k at which the slots of period T0 leave residues of the frame index mod k empty
+    well beyond chance (a slot used only in some of the k parts of the true frame), else T0. Irregular use (a terminal
+    in some frames only) spreads over every residue, so it does not multiply the period"""
+    slot = _slots_of(starts, T0, tol)
+    fr = np.floor((starts - starts.min())/T0 + tol/T0).astype(int)
+    for k in range(2, kmax + 1):
+        gain, tot = 0.0, 0
+        for sl in np.unique(slot):
+            f = fr[slot == sl]
+            if len(f) < k:
+                continue
+            missing = k - len(set((f % k).tolist()))
+            gain += missing - k*(1 - 1/k)**len(f)
+            tot += k
+        if tot and gain/tot > excess:
+            return k*T0
+    return T0
+
+def _frame(ok, x, Fs, baud, slot_tol):
+    """The TDMA frame period (s), or None. A base period: learn_plan's (the BTU grid of the starts, then the shortest
+    period at which every slot holds one kind), else the on/off pattern's (rpps.analysis.spectrum.waveform.on_off),
+    reduced to its shortest divisor the starts cluster at as well (`_clustered`); then `_multiple`: k times it where
+    its slots are used in only some residues of the frame index mod k (the base was a divisor of the frame)"""
     from .waveform import on_off
     starts = np.array([b.start/Fs for b in ok])
     tol = slot_tol/baud
-    span = starts.max() - starts.min()
-    cands = []
+    T = None
     try:
         rec = [{"freq": 0.0, "start": float(b.start/Fs), "length": len(b.symbols)/baud, "kind": b.kind, "rate": baud}
                for b in ok]
         T = float(learn_plan(rec).evidence["frame"])
-        cands += [k*T for k in range(1, multiples + 1) if k*T <= span/2 or k == 1]
     except (ValueError, KeyError, ZeroDivisionError):
-        pass
-    per = on_off(x, Fs)
-    if per is not None and per.period:
-        cands.append(float(per.period))
-    if not cands:
+        per = on_off(x, Fs)
+        T = float(per.period) if per is not None and per.period else None
+    if T is None:
         return None
-    score = {T: _clustered(starts, T, tol)*_occupancy(starts, T, tol) for T in cands}
-    top = max(score.values())
-    return min(T for T in cands if score[T] >= top - 0.02)
+    # the shortest divisor the starts cluster at as well as at the best of them (learn_plan wants bursts at two places
+    # of a frame: one burst a period reads as two periods, which the starts fit worse), then up again where the slots show which part of a longer frame they belong to
+    for base in (T, float(np.median(np.diff(np.sort(starts))))): # (else the starts' own spacing: one burst a period)
+        cs = {base/k: _clustered(starts, base/k, tol) for k in range(1, 9) if base/k > 2*tol}
+        c = max(cs.values(), default=0.0)
+        if c >= 0.5:
+            break
+    else: # the starts fall in slots of none of them: nothing to reduce or build on
+        return T
+    T0 = min(t for t, v in cs.items() if v >= c - 0.02)
+    for _ in range(8): # (a factor at a time: 2 then 2 again for a quarter)
+        T1 = _multiple(starts, T0, tol)
+        if T1 == T0:
+            break
+        T0 = T1
+    return T0
 
 def _structure(out, x, Fs, baud, frame, slot_tol):
     """The TDMA frame (given, or `_frame`'s) and its slots; each burst's frame and slot set"""

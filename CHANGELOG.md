@@ -85,7 +85,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   map. A burst acquired on a repeating word takes its carrier from every word (the M-th power's offset over the
   burst, then each word's phase as an anchor) and its timing from the whole burst; a shared run allows one burst in
   four or more to disagree (its length then set against chance for the steps' alphabet); `retime` skips windows over
-  known symbols and fits its line by Theil-Sen.
+  known symbols and fits its line by Theil-Sen. The frame period: learn_plan's or on_off's, reduced to the shortest
+  divisor the starts cluster at (else their own spacing), then multiplied where the slots fill only some residues of
+  the frame index (a divisor of the frame), not where terminals come and go. Each burst's blind timing is the best
+  of four quarter-symbol steps (a long 1100 preamble held it half a symbol out).
 - **Block codes from soft values** (`rp.analysis.code.block.linear.soft_dual`, `soft_find_length`, `soft_score`):
   parity checks from words too noisy for the rank, drawing subsets from the likeliest clean words and keeping checks
   on the tanh-product syndrome. `solve_block(llr=)` uses it when the hard dual comes out short, and finds the length
