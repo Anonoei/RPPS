@@ -360,3 +360,20 @@ def test_a_preambles_tone_pair_gives_the_carrier_and_qpsk_keeps_its_own():
     x += 0.05*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
     B = FR.bursts(x, 2e6, names=["qpsk"], baud=250e3)
     assert len(B) == 4 and all(abs(b.det.cfo - f) < 500 for b, f in zip(B, cfos))
+
+def test_bursts_cut_far_off_centre():
+    """QPSK at 100 kBd, 60 kHz off the cut's centre: the blind carrier aliases (QPSK's repeats every 25 kHz) and the
+    matched filter loses the burst's edge. The spectral centroid, taken off before the filter, and a second detection
+    there give the carrier and symbols as clean as a centred burst's"""
+    rng = np.random.default_rng(0)
+    q = rp.symbol.load("qpsk").points
+    Fs, baud = 1e6, 100e3
+    xs = [np.zeros(4000, complex)]
+    for _ in range(4):
+        w = FR.word_waveform(q[rng.integers(0, 4, 1500)], Fs/baud)
+        xs += [w*np.exp(2j*np.pi*60e3/Fs*np.arange(len(w))), np.zeros(4000, complex)]
+    x = np.concatenate(xs)
+    x += 0.05*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    B = FR.bursts(x, Fs, names=["qpsk"], baud=baud)
+    assert len(B) == 4 and all(abs(b.det.cfo - 60e3) < 300 for b in B)
+    assert all(np.mean(np.min(np.abs(b.symbols[:, None] - q[None, :]), axis=1)) < 0.06 for b in B)

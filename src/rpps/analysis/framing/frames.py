@@ -445,6 +445,19 @@ def gate(x, Fs, smooth=4e-6, contrast=2.5, min_len=64e-6, hang=8e-6, touching=Tr
                                                if b - a >= 2*min_len*Fs else [(a, b)])]
     return spans
 
+def centroid(x, Fs, nfft=1024):
+    """The power-weighted mean frequency (Hz) of the spectrum's bins above twice its 10th-percentile floor: a coarse
+    carrier for a signal cut off-centre"""
+    x = np.asarray(x, dtype=np.complex128)
+    n = min(nfft, 1 << int(np.floor(np.log2(max(len(x), 16)))))
+    k = len(x)//n
+    if k == 0:
+        return 0.0
+    S = np.fft.fftshift(np.mean(np.abs(np.fft.fft(x[:k*n].reshape(k, n)*np.hanning(n), axis=1))**2, axis=0))
+    f = np.fft.fftshift(np.fft.fftfreq(n, 1/Fs))
+    e = np.maximum(S - 2*np.percentile(S, 10), 0)
+    return float(np.sum(f*e)/np.sum(e)) if e.sum() > 0 else 0.0
+
 def tone_pair(x, Fs, sep, tol=0.02, min_snr=20.0):
     """The middle (Hz) of the strongest pair of spectral lines `sep` apart (to `tol` of it) in the samples x, or None:
     a periodic preamble (1100...: tones at the carrier +-baud/4) puts its carrier between two lines, which squaring
@@ -469,15 +482,34 @@ def tone_pair(x, Fs, sep, tol=0.02, min_snr=20.0):
     j = i + k - w + int(np.argmax(pad[i + k - w:i + k + w + 1]))
     return float((f[i] + f[min(j, len(f) - 1)])/2)
 
+def _take(seg, t0, sps, beta, shifts, pts, M, Fs, margin=0.95):
+    """The burst's symbols at each carrier shift (taken off before the matched filter) and quarter-symbol timing step
+    around t0, corrected feed-forward: (mean squared decision error, symbols, shift, carrier in Hz) of the best, a later
+    shift only when its error is under `margin` of the best so far"""
+    from ...sync.acquire import correct
+    from ...sync.time.mat import matrix_mf, centres_in
+    n_ = np.arange(len(seg))
+    best = None
+    for df in shifts:
+        sg = seg*np.exp(-2j*np.pi*df/Fs*n_) if df else seg
+        for f in (0.0, 0.25, 0.5, 0.75):
+            tf = t0 + f*sps
+            tf -= np.floor((tf - 8*sps - 5)/sps)*sps
+            y = matrix_mf(sg, centres_in(len(sg), tf, sps, 8), sps, beta, 8)
+            y, r, _ = correct(y/np.sqrt(np.mean(np.abs(y)**2)), pts, M)
+            e = float(np.mean(np.min(np.abs(y[:, None] - pts[None, :])**2, axis=1)))
+            if best is None or e < margin*best[0]:
+                best = (e, y, df, df + r*Fs/sps)
+    return best
+
 def bursts(x, Fs, names=None, baud=None, min_symbols=128, betas=(0.2, 0.25, 0.35), **kw):
     """The bursts of x (`gate`), each acquired on its own: rate (or `baud` for all), modulation, offset, timing (as a
     TDMA receiver must: every burst comes from another transmitter, with its own clock and carrier). The rate is the
     |x|^2 line within 0.7 to 1.4 times the burst's occupied bandwidth (`occupied`). What is known
     narrows each burst's search: `baud` (no rate search), `names` (the modulations to try), `betas` (the roll-offs).
     [Burst]"""
-    from ...sync.acquire import detect, correct, candidates, symmetry
+    from ...sync.acquire import detect, candidates, symmetry
     from ...sync.rate import find_baud
-    from ...sync.time.mat import matrix_mf, centres_in
     x = np.asarray(x, dtype=np.complex128)
     out = []
     for a, b in gate(x, Fs, **kw):
@@ -513,27 +545,24 @@ def bursts(x, Fs, names=None, baud=None, min_symbols=128, betas=(0.2, 0.25, 0.35
                 tp = tone_pair(seg, Fs, rate/2)
                 if tp is not None:
                     shifts.append(tp)
-                best = None
+                # and the blind estimate and the burst's spectral centroid, taken off before the matched filter (a burst
+                # cut far off-centre loses its edge to the filter otherwise, or lies past the blind search)
+                shifts += [float(det.cfo), centroid(seg, Fs)]
                 n_ = np.arange(len(seg))
-                for df in shifts:
-                    sg = seg*np.exp(-2j*np.pi*df/Fs*n_) if df else seg
-                    for f in (0.0, 0.25, 0.5, 0.75):
-                        tf = t0 + f*sps
-                        tf -= np.floor((tf - 8*sps - 5)/sps)*sps
-                        c = centres_in(len(sg), tf, sps, 8)
-                        y = matrix_mf(sg, c, sps, det.beta, 8)
-                        y, r, _ = correct(y/np.sqrt(np.mean(np.abs(y)**2)), pts, M)
-                        e = float(np.mean(np.min(np.abs(y[:, None] - pts[None, :])**2, axis=1)))
-                        if best is None or e < 0.95*best[0]: # (another carrier only when clearly better)
-                            best = (e, y, df, df + r*rate)
-                bu.symbols = best[1]
-                if best[2]: # a shifted carrier: modulation and Es/N0 measured again there
-                    try:
-                        d2 = detect(seg*np.exp(-2j*np.pi*best[2]/Fs*n_), Fs, names, betas=betas, baud=det.baud)
+                best = _take(seg, t0, sps, det.beta, shifts, pts, M, Fs)
+                if best[2]: # a shifted carrier: detected again there (modulation, Es/N0, and the timing and roll-off the
+                    try:    #   first, aliased, detection had wrong), and the symbols taken again with them
+                        sh = seg*np.exp(-2j*np.pi*best[2]/Fs*n_)
+                        d2 = detect(sh, Fs, names, betas=betas, baud=det.baud)
+                        t2 = d2.tau - np.floor((d2.tau - 8*d2.sps - 5)/d2.sps)*d2.sps
+                        again = _take(seg, t2, d2.sps, d2.beta, [best[2]], pts, M, Fs)
+                        if again[0] <= best[0]:
+                            best = again
                         d2.cfo = float(d2.cfo + best[2])
                         det = d2
                     except Exception: # (keep the first detection, with the carrier corrected)
                         pass
+                bu.symbols = best[1]
                 det.cfo = float(best[3]) # the carrier these symbols were taken at (the shift tried, and what was left)
                 bu.det = det
         except Exception: # A burst too short or too weak to acquire is kept, without symbols

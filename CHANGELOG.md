@@ -91,7 +91,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   of four quarter-symbol steps, and its carrier the better of the estimate and a quarter of the rate either side (a
   long 1100 preamble is a pair of tones at +-baud/4: it held the timing half a symbol out and the carrier on a line;
   not tried where a quarter turn a symbol is the constellation's symmetry, QPSK), or the middle of such a tone pair
-  (`frames.tone_pair`); a burst taken at another carrier is detected again there.
+  (`frames.tone_pair`), the blind estimate, or the burst's spectral centroid (`frames.centroid`: a burst cut far off
+  the centre, past the blind search or its alias), each taken off before the matched filter; a burst taken at another
+  carrier is detected again there, and its symbols taken again with that detection's timing and roll-off.
   `Bursts.frame` is None when the starts fall on no slot grid, and `Bursts.plan_frame` is learn_plan's frame: half
   of `frame` where terminals get slots in alternate frames of the plan.
 - **Block codes from soft values** (`rp.analysis.code.block.linear.soft_dual`, `soft_find_length`, `soft_score`):
