@@ -9,18 +9,24 @@ STATUS = {"slot": ("#0ca30c", "", "in a slot of its kind"), "kind": ("#fab219", 
           "long": ("#ec835a", "//", "overruns its slot"), "none": ("#d03b3b", "..", "in no slot")}
 
 def bursts(ax, check, fold=False, x=None, Fs=None, nfft=256, span=None):
-    """A PlanCheck (rp.analysis.spectrum.burst.check_plan) drawn: the plan's slots (by tx type, heavier where a burst
-    used them) and the bursts (edged and hatched by their place: in a slot of their kind, another kind's, overrunning
-    it, in none), frequency up the side in the plan's frequencies [MHz].
+    """A PlanCheck (rp.analysis.spectrum.burst.check_plan) drawn: the plan's slots (by tx type) and the bursts (by their
+    place: in a slot of their kind, another kind's, overrunning it, in none).
 
-    fold=False: capture time along [ms], every slot in the bursts' span; x, Fs: the capture under it as a spectrogram
-    (nfft bins, dB over the floor), the slots then outlines and each burst's place a strip under its slot's row; span: (t0, t1) [s] to draw only that. fold=True: the time folded on the superframe (the sequence most
-    bursts are in), its slots once: a right plan stacks every burst onto a slot, a wrong BTU or frame smears them across
-    it, a drifting clock leans them"""
+    fold=False: the time-frequency plane, capture time along [ms], frequency up [MHz, the plan's], every slot in the
+    bursts' span (shaded; edged white where a burst used it); x, Fs: the capture under it as a spectrogram (nfft bins,
+    dB over the floor), the slots then outlines and each burst's place a strip under its slot's row; span: (t0, t1) [s]
+    to draw only that.
+    fold=True: a raster of superframes (of the sequence most bursts are in), one a row, time down the page, time in the
+    superframe along [ms], one block of rows per carrier; the slots are columns through every row and each burst a bar
+    in its superframe's row. A right plan keeps every bar inside a column all the way down; a wrong frame period slants
+    them across the rows, a wrong BTU or slot layout puts them across the columns' edges. (A hopping sequence's slots
+    are drawn where its first superframe has them.)"""
     with styled(): # (the legend and colour bar made now: in rpps' style, as the axes were)
-        return _draw(ax, check, fold, x, Fs, nfft, span)
+        if fold:
+            return _raster(ax, check)
+        return _draw(ax, check, x, Fs, nfft, span)
 
-def _draw(ax, check, fold, x, Fs, nfft, span):
+def _draw(ax, check, x, Fs, nfft, span):
     from matplotlib.patches import Patch, Rectangle
     from matplotlib.collections import PatchCollection
     from matplotlib.colors import to_rgba
@@ -34,34 +40,17 @@ def _draw(ax, check, fold, x, Fs, nfft, span):
     colour = {t: TX[i % len(TX)] for i, t in enumerate(types)}
     bws = [w.bw for w in c.windows] or [ft.btu_bw for ft in plan.frame_types.values()]
     h_min = min(bws)
-    if fold:
-        seqs = [w.sequence for w in c.window if w is not None] or list(plan.sequences)
-        sid = max(set(seqs), key=seqs.count)
-        s = plan.sequences[sid]
-        P = s.duration
-        phase = lambda tick: ((np.asarray(tick) - s.start) % P)*1e3/k
-        wins = plan.windows(s.start, s.start + P, sequences=[sid])
-        fill = {}
-        for w in c.window:
-            if w is not None and w.sequence == sid:
-                key = (w.frame, w.slot)
-                fill[key] = fill.get(key, 0) + 1
-        slots = [(phase(w.start), w.length*1e3/k, w.freq, w.bw, w.tx_type, fill.get((w.frame, w.slot), 0)) for w in wins]
-        xlim = (0, P*1e3/k)
-        xlabel = f"time in the superframe [ms] (sequence {sid}, {P*1e3/plan.clock:g} ms)"
-    else:
-        t0, t1 = span if span is not None else (None, None)
-        slots = []
-        for w, n in zip(c.windows, c.filled):
-            a = float(c.time(w.start))
-            if span is None or t0 <= a <= t1:
-                slots.append((a*1e3, w.length*1e3/k, w.freq, w.bw, w.tx_type, int(n)))
-        starts = [r["start"] for r in c.bursts]
-        lo = min(starts) if span is None else t0
-        hi = max(r["start"] + r["length"] for r in c.bursts) if span is None else t1
-        xlim = (lo*1e3, hi*1e3)
-        xlabel = "capture time [ms]"
-    over = x is not None and not fold
+    t0, t1 = span if span is not None else (None, None)
+    slots = []
+    for w, n in zip(c.windows, c.filled):
+        a = float(c.time(w.start))
+        if span is None or t0 <= a <= t1:
+            slots.append((a*1e3, w.length*1e3/k, w.freq, w.bw, w.tx_type, int(n)))
+    starts = [r["start"] for r in c.bursts]
+    lo = min(starts) if span is None else t0
+    hi = max(r["start"] + r["length"] for r in c.bursts) if span is None else t1
+    xlim = (lo*1e3, hi*1e3)
+    over = x is not None
     fs = [s_[2] for s_ in slots] + [r["freq"] + c.cf for r in c.bursts]
     pad = max(bws)
     ylim = ((min(fs) - pad)/1e6, (max(fs) + pad)/1e6)
@@ -85,37 +74,93 @@ def _draw(ax, check, fold, x, Fs, nfft, span):
         bw = w.bw if w is not None else h_min
         f = r["freq"] + c.cf
         col, hatch, _ = STATUS[st]
-        if fold:
-            a = float(phase(c.tick(r["start"])))
-            y = f + (((n*0.618034) % 1) - 0.5)*0.7*bw # (spread up the slot: each burst seen)
-            h = 0.08*bw
-        else:
-            if span is not None and not t0 <= r["start"] <= t1:
-                continue
-            a = r["start"]*1e3
-            if over: # (its verdict as a strip under its slot's row: the burst's own energy is the spectrogram's)
-                fc = w.freq if w is not None else f
-                ax.add_patch(Rectangle((a, (fc - bw/2 - 0.12*bw)/1e6), r["length"]*1e3, 0.08*bw/1e6, facecolor=col,
-                                       edgecolor=col, hatch=hatch, linewidth=0))
-                continue
-            y, h = f, 0.6*bw
+        if span is not None and not t0 <= r["start"] <= t1:
+            continue
+        a = r["start"]*1e3
+        if over: # (its verdict as a strip under its slot's row: the burst's own energy is the spectrogram's)
+            fc = w.freq if w is not None else f
+            ax.add_patch(Rectangle((a, (fc - bw/2 - 0.12*bw)/1e6), r["length"]*1e3, 0.08*bw/1e6, facecolor=col,
+                                   edgecolor=col, hatch=hatch, linewidth=0))
+            continue
+        y, h = f, 0.6*bw
         ax.add_patch(Rectangle((a, (y - h/2)/1e6), r["length"]*1e3, h/1e6, facecolor="none", edgecolor=col,
                                hatch=hatch, linewidth=1.2))
     ax.set_xlim(*xlim)
     ax.set_ylim(*ylim)
     if im is not None:
         ax.figure.colorbar(im, ax=ax, pad=0.01, fraction=0.03, label="dB over the floor")
-    ax.set_xlabel(xlabel)
+    ax.set_xlabel("capture time [ms]")
     ax.set_ylabel("frequency [MHz]")
-    cnt = c.counts
-    handles = [Patch(facecolor="none" if over else to_rgba(colour[t], 0.4), edgecolor=colour[t] if over else "black",
+    _legend(ax, c, colour, types, filled=not over, solid=over)
+    return ax
+
+def _legend(ax, c, colour, types, filled, solid):
+    """Tx types (shaded or outlined) and the bursts' places (solid or outlined), and the counts in the title"""
+    from matplotlib.patches import Patch
+    from matplotlib.colors import to_rgba
+    cnt, plan = c.counts, c.plan
+    handles = [Patch(facecolor=to_rgba(colour[t], 0.4) if filled else "none", edgecolor="black" if filled else colour[t],
                      label=f"tx type {t}" + (f" ({_kind(plan, t)})" if _kind(plan, t) else "")) for t in types]
-    handles += [Patch(facecolor=STATUS[s][0] if over else "none", edgecolor=STATUS[s][0], hatch=STATUS[s][1],
+    handles += [Patch(facecolor=STATUS[s][0] if solid else "none", edgecolor=STATUS[s][0], hatch=STATUS[s][1],
                       label=f"{STATUS[s][2]}: {cnt[s]}") for s in STATUS if cnt[s] or s == "slot"]
-    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=min(len(handles), 6),
+    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=min(len(handles), 4),
               fontsize="small", frameon=False)
     ax.set_title(f"{plan.name}: {cnt['slot']} of {len(c.status)} bursts in place, start error {1e6*c.rms:.1f} us rms, "
                  f"clock {1e6*c.rate:+.1f} ppm", fontsize="medium")
+
+def _raster(ax, c):
+    """fold=True: one row per superframe, one block of rows per carrier (see `bursts`)"""
+    from matplotlib.patches import Rectangle
+    from matplotlib.collections import PatchCollection
+    from matplotlib.colors import to_rgba
+    ax = axes(ax, layout="constrained")
+    plan = c.plan
+    if not np.isfinite(c.origin):
+        ax.set_title("no burst is on a carrier of the plan")
+        return ax
+    types = sorted(plan.tx_types)
+    colour = {t: TX[i % len(TX)] for i, t in enumerate(types)}
+    seqs = [w.sequence for w in c.window if w is not None] or list(plan.sequences)
+    sid = max(set(seqs), key=seqs.count)
+    s = plan.sequences[sid]
+    P, k = s.duration, plan.clock*(1 + c.rate)
+    wins = plan.windows(s.start, s.start + P, sequences=[sid])
+    carriers = sorted({w.freq for w in wins})
+    bw = {f: max(w.bw for w in wins if w.freq == f) for f in carriers}
+    rows = [] # (carrier or None: off the plan's, superframe, time in it [ms], burst)
+    for r, st in zip(c.bursts, c.status):
+        tick = float(c.tick(r["start"])) - s.start
+        sf = int(np.floor(tick/P))
+        f = r["freq"] + c.cf
+        near = [g for g in carriers if abs(g - f) <= 0.5*bw[g]]
+        rows.append((near[0] if near else None, sf, (tick - sf*P)*1e3/k, r, st))
+    sf0, sf1 = min(q[1] for q in rows), max(q[1] for q in rows)
+    K = sf1 - sf0 + 1
+    blocks = [f for f in carriers if any(q[0] == f for q in rows)] + ([None] if any(q[0] is None for q in rows) else [])
+    top = {f: i*(K + 2) for i, f in enumerate(blocks)} # (rows of a block: its superframes, a gap of 2 between blocks)
+    rects, faces = [], []
+    for f in blocks:
+        if f is None:
+            continue
+        for w in wins:
+            if w.freq == f:
+                rects.append(Rectangle(((w.start - s.start)*1e3/k, top[f] - 0.5), w.length*1e3/k, K))
+                faces.append(to_rgba(colour.get(w.tx_type, TX[-1]), 0.3))
+    ax.add_collection(PatchCollection(rects, facecolors=faces, edgecolors="black", linewidths=1.0))
+    bars = {st: [] for st in STATUS}
+    for f, sf, a, r, st in rows:
+        bars[st].append(Rectangle((a, top[f] + sf - sf0 - 0.4), r["length"]*1e3, 0.8))
+    for st, rs in bars.items():
+        if rs:
+            col, hatch, _ = STATUS[st]
+            ax.add_collection(PatchCollection(rs, facecolors=col, edgecolors=col, hatch=hatch or None, linewidths=0.3))
+    ax.set_xlim(0, P*1e3/k)
+    ax.set_ylim(top[blocks[-1]] + K - 0.5, -0.5) # (time runs down the page)
+    ax.set_yticks([top[f] + (K - 1)/2 for f in blocks],
+                  [f"{f/1e6:.3f} MHz" if f is not None else "off the plan's carriers" for f in blocks])
+    ax.set_xlabel(f"time in the superframe [ms] (sequence {sid}: {P*1e3/plan.clock:g} ms)")
+    ax.set_ylabel(f"superframes {sf0}..{sf1}, one a row, time down")
+    _legend(ax, c, colour, types, filled=True, solid=True)
     return ax
 
 def _kind(plan, t):
