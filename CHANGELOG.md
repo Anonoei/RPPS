@@ -88,7 +88,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   known symbols and fits its line by Theil-Sen. The frame period: learn_plan's or on_off's, reduced to the shortest
   divisor the starts cluster at (else their own spacing), then multiplied where the slots fill only some residues of
   the frame index (a divisor of the frame), not where terminals come and go. Each burst's blind timing is the best
-  of four quarter-symbol steps (a long 1100 preamble held it half a symbol out).
+  of four quarter-symbol steps, and its carrier the better of the estimate and a quarter of the rate either side (a
+  long 1100 preamble is a pair of tones at +-baud/4: it held the timing half a symbol out and the carrier on a line).
+  `Bursts.frame` is None when the starts fall on no slot grid, and `Bursts.plan_frame` is learn_plan's frame: half
+  of `frame` where terminals get slots in alternate frames of the plan.
 - **Block codes from soft values** (`rp.analysis.code.block.linear.soft_dual`, `soft_find_length`, `soft_score`):
   parity checks from words too noisy for the rank, drawing subsets from the likeliest clean words and keeping checks
   on the tanh-product syndrome. `solve_block(llr=)` uses it when the hard dual comes out short, and finds the length

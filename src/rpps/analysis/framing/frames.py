@@ -477,18 +477,23 @@ def bursts(x, Fs, names=None, baud=None, min_symbols=128, betas=(0.2, 0.25, 0.35
                 t0 -= np.floor((t0 - 8*sps - 5)/sps)*sps
                 pts = candidates([det.mod])[det.mod]
                 best = None
-                # The timing at a quarter-symbol steps around the blind one, the one whose decisions fit best: a long
-                # 1100... preamble's energy peaks between its symbols and can hold the blind timing half a symbol out
-                for f in (0.0, 0.25, 0.5, 0.75):
-                    tf = t0 + f*sps
-                    tf -= np.floor((tf - 8*sps - 5)/sps)*sps
-                    c = centres_in(len(seg), tf, sps, 8)
-                    y = matrix_mf(seg, c, sps, det.beta, 8)
-                    y = correct(y/np.sqrt(np.mean(np.abs(y)**2)), pts, symmetry(pts))[0]
-                    e = float(np.mean(np.min(np.abs(y[:, None] - pts[None, :])**2, axis=1)))
-                    if best is None or e < best[0]:
-                        best = (e, y)
+                # The timing at quarter-symbol steps around the blind one, and the carrier there and a quarter of the
+                # rate either side, the pair whose decisions fit best: a long 1100... preamble is a pair of tones at
+                # +-baud/4, which can hold the blind timing half a symbol out and the blind carrier on one of its lines
+                n_ = np.arange(len(seg))
+                for df in (0.0, Fs/sps/4, -Fs/sps/4):
+                    sg = seg*np.exp(-2j*np.pi*df/Fs*n_) if df else seg
+                    for f in (0.0, 0.25, 0.5, 0.75):
+                        tf = t0 + f*sps
+                        tf -= np.floor((tf - 8*sps - 5)/sps)*sps
+                        c = centres_in(len(sg), tf, sps, 8)
+                        y = matrix_mf(sg, c, sps, det.beta, 8)
+                        y, r, _ = correct(y/np.sqrt(np.mean(np.abs(y)**2)), pts, symmetry(pts))
+                        e = float(np.mean(np.min(np.abs(y[:, None] - pts[None, :])**2, axis=1)))
+                        if best is None or e < best[0] - 1e-9:
+                            best = (e, y, df + r*Fs/sps)
                 bu.symbols = best[1]
+                det.cfo = float(best[2]) # the carrier these symbols were taken at (the shift tried, and what was left)
                 bu.det = det
         except Exception: # A burst too short or too weak to acquire is kept, without symbols
             pass

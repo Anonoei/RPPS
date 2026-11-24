@@ -295,3 +295,45 @@ def test_four_weak_bursts_share_their_preamble():
     x += np.sqrt(p/10**0.2/2)*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
     r = burst.demodulate(x, Fs, mod="bpsk", baud=baud)
     assert not r.blind and len(r.preamble) >= 600 and len(r.bursts) == 4 and all(b.ok for b in r.bursts)
+
+def test_a_blind_carrier_on_the_preambles_line_is_put_right(monkeypatch):
+    """A 1100 preamble is a pair of tones at +-baud/4: a blind carrier estimate can lock onto one (on a real capture,
+    two bursts read -4.65 kHz at 19.2 kBd). Forced here: each burst is tried at the estimate and a quarter of the rate
+    either side, and the carrier whose decisions fit best kept"""
+    import rpps.sync.acquire as acq
+    real = acq.detect
+    def off(*a, **k):
+        d = real(*a, **k)
+        d.cfo -= d.baud/4
+        return d
+    monkeypatch.setattr(acq, "detect", off)
+    rng = np.random.default_rng(1)
+    Fs, baud = 390.625e3, 19.2e3
+    xs = [np.zeros(30000, complex)]
+    for _ in range(3):
+        syms = np.concatenate((np.tile([1, 1, -1, -1], 163).astype(complex), np.array([1, -1], complex)[rng.integers(0, 2, 1700)]))
+        w = FR.word_waveform(syms, Fs/baud)
+        xs += [w*np.exp(1j*rng.uniform(0, 2*np.pi) + 2j*np.pi*300/Fs*np.arange(len(w))), np.zeros(30000, complex)]
+    x = np.concatenate(xs)
+    x += 0.05*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    for b in FR.bursts(x, Fs, names=["bpsk"], baud=baud):
+        assert abs(b.det.cfo - 300) < 100
+        y = b.symbols/np.sqrt(np.mean(np.abs(b.symbols)**2))
+        assert np.mean(np.abs(np.abs(y.real) - 1)) < 0.2
+
+class _B:
+    def __init__(self, t, Fs=1e6, nsym=500):
+        self.start, self.symbols, self.kind = t*Fs, np.zeros(nsym), 0
+
+def test_frame_period_of_slots_used_in_alternate_frames_or_none():
+    """Slots of a 25 ms frame (20 BTUs), terminals in alternate frames: the pattern repeats at 50 ms (`frame`), not
+    25 or 100; used every frame: 25 ms. Bursts on no slot grid (starts jittered by +-20 ms): no frame at all"""
+    rng = np.random.default_rng(0)
+    T, btu = 0.025, 0.00125
+    alt = [f*T + s*btu + rng.normal(0, 2e-6) for f in range(40) for s in ((2, 7) if f % 2 == 0 else (4, 12))]
+    every = [f*T + s*btu + rng.normal(0, 2e-6) for f in range(40) for s in (2, 7, 4, 12)]
+    loose = np.arange(20)*0.18 + rng.uniform(-0.02, 0.02, 20)
+    x = np.zeros(1000)
+    assert abs(burst._frame([_B(t) for t in alt], x, 1e6, 512e3, 16)[0] - 2*T) < 1e-5
+    assert abs(burst._frame([_B(t) for t in every], x, 1e6, 512e3, 16)[0] - T) < 1e-5
+    assert burst._frame([_B(t) for t in loose], x, 1e6, 170.67e3, 16)[0] is None

@@ -66,8 +66,11 @@ class Bursts:
     kind's), offsets (each kind's known symbols from the bursts' start; negative: from their end), frame (s, None), slots
     (offsets within the frame, s), blind (no known symbols: each burst's phase only to the constellation's symmetry),
     period (symbols: a unique word repeating that often within each burst, at its own phase (offsets [None]); a burst's
-    `known` is its first)"""
-    __slots__ = ("bursts", "mod", "baud", "beta", "preamble", "preambles", "offsets", "frame", "slots", "blind", "period")
+    `known` is its first), frame (s: the period the bursts' pattern repeats at, every slot in the same frames of it; None
+    when the starts fall on no slot grid), plan_frame (s: the burst time plan's frame, learn_plan's: half or less of
+    `frame` where terminals get slots in alternate frames of it; None when not found or not fitting the starts)"""
+    __slots__ = ("bursts", "mod", "baud", "beta", "preamble", "preambles", "offsets", "frame", "slots", "blind", "period",
+                 "plan_frame")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
@@ -87,6 +90,8 @@ class Bursts:
                 f"{len(kinds)} burst kinds (preambles of {', '.join(str(len(p)) for p in kinds)} symbols)"))
         if self.frame:
             s += f"; frame {self.frame*1e3:.3f} ms, {len(self.slots)} slots"
+            if self.plan_frame and abs(self.plan_frame - self.frame) > 1e-6:
+                s += f" (the plan's frame {self.plan_frame*1e3:.3f} ms)"
         if ok:
             s += f"; EVM {100*np.median([b.evm for b in ok]):.1f}% median"
         return s
@@ -654,9 +659,9 @@ def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, f
         evm = float(np.sqrt(np.mean(np.abs(y[data] - dec[data])**2)/np.mean(np.abs(pts)**2))) if data.any() else 0.0
         out.append(BurstResult(start=a2 + c[0], symbols=y, bits=_bits(idx, con), llr=con.llr(y), cfo=f0 + w*baud/(2*np.pi),
                                clock=clock, phase=phase, gain=gain, score=score, evm=evm, kind=kind, known=(oe, n), ok=True))
-    frame, slots = _structure(out, x, Fs, baud, frame, slot_tol)
+    frame, slots, plan = _structure(out, x, Fs, baud, frame, slot_tol)
     return Bursts(bursts=out, mod=mod, baud=baud, beta=beta, preamble=kinds[0], preambles=kinds, offsets=offsets, frame=frame,
-                  slots=slots, blind=False, period=period)
+                  slots=slots, blind=False, period=period, plan_frame=plan)
 
 def _clustered(starts, frame, tol):
     """Share of starts whose phase in the frame lies within tol of two others' at least (a slot used again and again)"""
@@ -695,23 +700,27 @@ def _multiple(starts, T0, tol, kmax=16, excess=0.2):
     return T0
 
 def _frame(ok, x, Fs, baud, slot_tol):
-    """The TDMA frame period (s), or None. A base period: learn_plan's (the BTU grid of the starts, then the shortest
+    """(frame, plan_frame) in seconds, each or both None. frame: the period the bursts' pattern repeats at (every slot
+    used in the same frames of it); plan_frame: learn_plan's (the burst time plan's frame: every slot holds one kind),
+    which is shorter where terminals are given slots in alternate frames of it. A base period: learn_plan's (the BTU grid of the starts, then the shortest
     period at which every slot holds one kind), else the on/off pattern's (rpps.analysis.spectrum.waveform.on_off),
     reduced to its shortest divisor the starts cluster at as well (`_clustered`); then `_multiple`: k times it where
     its slots are used in only some residues of the frame index mod k (the base was a divisor of the frame)"""
     from .waveform import on_off
     starts = np.array([b.start/Fs for b in ok])
     tol = slot_tol/baud
-    T = None
+    T = plan = None
     try:
         rec = [{"freq": 0.0, "start": float(b.start/Fs), "length": len(b.symbols)/baud, "kind": b.kind, "rate": baud}
                for b in ok]
-        T = float(learn_plan(rec).evidence["frame"])
+        T = plan = float(learn_plan(rec).evidence["frame"])
     except (ValueError, KeyError, ZeroDivisionError):
         per = on_off(x, Fs)
         T = float(per.period) if per is not None and per.period else None
     if T is None:
-        return None
+        return None, None
+    if plan is not None and _clustered(starts, plan, tol) < 0.5:
+        plan = None
     # the shortest divisor the starts cluster at as well as at the best of them (learn_plan wants bursts at two places
     # of a frame: one burst a period reads as two periods, which the starts fit worse), then up again where the slots show which part of a longer frame they belong to
     for base in (T, float(np.median(np.diff(np.sort(starts))))): # (else the starts' own spacing: one burst a period)
@@ -719,22 +728,23 @@ def _frame(ok, x, Fs, baud, slot_tol):
         c = max(cs.values(), default=0.0)
         if c >= 0.5:
             break
-    else: # the starts fall in slots of none of them: nothing to reduce or build on
-        return T
+    else: # the starts fall in slots of none of them: bursts, but not on a slot grid
+        return None, plan
     T0 = min(t for t, v in cs.items() if v >= c - 0.02)
     for _ in range(8): # (a factor at a time: 2 then 2 again for a quarter)
         T1 = _multiple(starts, T0, tol)
         if T1 == T0:
             break
         T0 = T1
-    return T0
+    return T0, plan
 
 def _structure(out, x, Fs, baud, frame, slot_tol):
     """The TDMA frame (given, or `_frame`'s) and its slots; each burst's frame and slot set"""
     slots = []
     ok = [b for b in out if b.ok]
+    plan = None
     if frame is None and len(ok) >= 3:
-        frame = _frame(ok, x, Fs, baud, slot_tol)
+        frame, plan = _frame(ok, x, Fs, baud, slot_tol)
     if frame and ok:
         tol = slot_tol/baud
         starts = np.array([b.start/Fs for b in ok])
@@ -753,7 +763,7 @@ def _structure(out, x, Fs, baud, frame, slot_tol):
             b.frame = int((s - t0 + tol)//frame)
             dist = [min(abs(p - q), frame - abs(p - q)) for q in slots]
             b.slot = int(np.argmin(dist))
-    return frame, slots
+    return frame, slots, plan
 
 def _blind(B, mod, baud, beta, con, pts, frame, slot_tol, x, Fs):
     """Bursts that share no known symbols: each as frames.bursts acquired it blind (its own rate, timing, carrier, and a
@@ -768,12 +778,12 @@ def _blind(B, mod, baud, beta, con, pts, frame, slot_tol, x, Fs):
         evm = float(np.sqrt(np.mean(np.abs(y - pts[idx])**2)/np.mean(np.abs(pts)**2)))
         out.append(BurstResult(start=float(b.start), symbols=y, bits=_bits(idx, con), llr=con.llr(y), cfo=float(b.det.cfo),
                                clock=0.0, phase=None, gain=None, score=None, evm=evm, kind=None, known=(0, 0), ok=True))
-    frame, slots = _structure(out, x, Fs, baud, frame, slot_tol)
+    frame, slots, plan = _structure(out, x, Fs, baud, frame, slot_tol)
     none = np.zeros(0, dtype=np.complex128) # (no known symbols: one kind, of an empty preamble)
     for b in out:
         b.kind = 0 if b.ok else None
     return Bursts(bursts=out, mod=mod, baud=baud, beta=beta, preamble=none, preambles=[none], offsets=[0], frame=frame,
-                  slots=slots, blind=True, period=None)
+                  slots=slots, blind=True, period=None, plan_frame=plan)
 
 # ---- a burst time plan learned from bursts
 
