@@ -326,3 +326,25 @@ def test_carriers_a_notch_separates_are_each_profiled():
     mids = sorted(round(p.signal.mid/1e4) for p in ps)
     assert len(ps) == 3 and mids == [-52, 0, 52], [(p.name, p.signal.mid) for p in ps]
     assert all(any(s.kind == "split" and "notches" in s.what for s in p.steps) for p in ps)
+
+@pytest.mark.kernels
+def test_a_box_off_its_signal_is_fitted_to_it():
+    """A survey box twice as wide as its DVB-S carrier and off to one side: the box is fitted to the carrier in a fine
+    spectrum of the capture before the chain is built, and the profile says it was"""
+    import copy
+    rng = np.random.default_rng(8)
+    ts = rng.integers(0, 256, (400, 188)).astype(np.uint8)
+    ts[:, 0] = 0x47
+    w = rp.profile.load("dvbs/qpsk_3_4", sps=8).tx()(rp.Data(np.unpackbits(ts.reshape(-1)).astype(bool), Fs=1e6, sps=1, flush=True))
+    x = np.asarray(w.data)
+    x = x*np.exp(2j*np.pi*1.0e6/8e6*np.arange(len(x)))
+    y = (x + 0.03*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))).astype(np.complex64)
+    src = rp.source.Memory(y, Fs=8e6)
+    sv = list(rp.analysis.survey(src))
+    box = copy.copy(sv[0])
+    box.mid, box.width = 0.6e6, 2.2e6
+    box.lo, box.hi = box.mid - box.width/2, box.mid + box.width/2
+    p = rp.analysis.profile(src, signals=[box], survey=sv + [box], blind=False)[0]
+    assert p.solved and p.profile_name == "dvbs/qpsk_3_4", p
+    assert abs(p.signal.mid - 1.0e6) < 50e3 and 1.0e6 < p.signal.width < 1.6e6
+    assert any(s.kind == "box" for s in p.steps)

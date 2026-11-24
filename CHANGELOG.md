@@ -206,6 +206,12 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   out from the payload's start: `code.block.linear.frame_units(rows)`, the shortest length whose words at 0, n, 2n... of
   every frame are short of rank, on every bit map (one unknown rotation is common to the bursts); then `solve_block`
   names it (BCH, LDPC checks, cyclic...), or the payload's randomness is reported.
+- **Survey boxes are fitted to their signals before profiling**: `rp.analysis.profile` reads a stretch of the capture
+  once (`source.peek`), takes a fine spectrum of it (the 95th percentile over time), and moves each box's edges to
+  where its signal falls 10 dB under its top (`signal_profile._refit`), so the channel is cut around the signal, not
+  around the survey's coarse box beside, inside or over it. A box holding more than one signal, one whose fit runs into
+  something wider, or one already within 8% of the fit is kept; a refitted one says so in a "box" step. On a
+  hand-reviewed pool, box width over symbol rate went from 0.98-1.35 to 1.15-1.19 (10-90%).
 - **Carriers a notch separates are each profiled**: the survey's spectrum (a few ms, valleys smoothed over a fixed share
   of the band) runs narrow neighbours together into one box. `rp.analysis.profile` now looks at each box in a fine
   spectrum of its own channel samples (the 95th percentile over time, about 400 bins across the box) and, where it dips
