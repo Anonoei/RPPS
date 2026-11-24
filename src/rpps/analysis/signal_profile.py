@@ -359,6 +359,47 @@ class _Chain:
             self.errors.append(("channel", e, traceback.format_exc(limit=4)))
             self.dead = True
 
+    def carriers(self, drop=6.0, q=95, bins=400, min_frac=1/40):
+        """The carriers in this chain's box that a fine spectrum of its own channel samples shows apart: the box's
+        `q`th-percentile spectrum over time (bursts and TDD carriers at their full level, not averaged down) at `bins`
+        bins across it, split where it dips `drop` dB under the box's top, pieces under `min_frac` of the box dropped.
+        Signals of the capture, two or more, else [] (the survey's own spectrum is too coarse and too short to see
+        notches between carriers a few tens of kHz apart)"""
+        import copy
+        if not self.near or not self.sig.width:
+            return []
+        x = np.concatenate(self.near)
+        Fs = self.ch.Fs
+        n = 1 << int(np.ceil(np.log2(max(16, bins*Fs/self.sig.width))))
+        if len(x) < 8*n:
+            return []
+        seg = x[:len(x)//n*n].reshape(-1, n)[:256]
+        P = np.abs(np.fft.fftshift(np.fft.fft(seg*np.hanning(n), axis=1), axes=1))**2
+        f = np.fft.fftshift(np.fft.fftfreq(n, 1/Fs))
+        inb = np.abs(f) <= self.sig.width/2 # (the channel is centred on the box)
+        p = 10*np.log10(np.percentile(P[:, inb], q, axis=0) + 1e-30)
+        fb = f[inb]
+        k = max(1, len(p)//80)
+        p = np.convolve(p, np.ones(k)/k, mode="same")
+        on = p > np.percentile(p, 90) - drop
+        runs, start = [], None
+        for i, o in enumerate(np.append(on, False)):
+            if o and start is None:
+                start = i
+            elif not o and start is not None:
+                if i - start >= max(3, int(len(p)*min_frac)):
+                    runs.append((fb[start], fb[i - 1]))
+                start = None
+        if len(runs) < 2:
+            return []
+        out = []
+        for lo, hi in runs:
+            s = copy.copy(self.sig)
+            s.mid, s.width = self.sig.mid + 0.5*(lo + hi), hi - lo
+            s.lo, s.hi = s.mid - s.width/2, s.mid + s.width/2
+            out.append(s)
+        return out
+
     def split(self, baud, beta=0.35, fill=0.6):
         """When the cyclic spectrum's rate needs well under the box (its (1 + beta) x baud under `fill` of the width: carriers
         side by side the survey took for one, or one carrier in a box wider than it): the carriers in it, from a survey of
@@ -990,7 +1031,13 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
         tell("build", k + 1, len(chains), len(chains) - k - 1)
     # Where the chain found no rate (or a doubtful one) and the cyclic spectrum sees one: a second pass at that rate
     again, parts, extra = {}, {}, []
+    notched = set() # Boxes split at notches a fine spectrum shows: carriers, each listed
     for k, (ch, p) in enumerate(zip(chains, out)):
+        subs = ch.carriers() if not ch.dead else []
+        if subs:
+            parts[k] = [(s, None) for s in subs]
+            notched.add(k)
+            continue
         baud = ch.cyclic_rate(p) if not p.solved else None
         if baud:
             subs = ch.split(baud) # A box holding carriers side by side: each of them on its own (its rate acquired
@@ -1011,18 +1058,21 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
             built = [build(c) for c in mine]
             what = (f"one of {len(subs)} carriers the survey's box held side by side" if len(subs) > 1 else
                     "the one carrier in a survey box wider than it")
+            why = ("a fine spectrum of the box shows notches between them" if k in notched else
+                   "its cyclic spectrum's rate needs well under the box")
             for q, c in zip(built, mine):
-                q.steps.insert(1, Step("split", f"{what} (its cyclic spectrum's rate needs well under the box)", GUESS))
+                q.steps.insert(1, Step("split", f"{what} ({why})", GUESS))
             box = out[k].name.split(":")[0] # "signal 16": each carrier in it is "signal 16.1", "signal 16.2"...
             for j, q in enumerate(built):
                 q.name = f"{box}.{j + 1}: {q.signal.mid/1e6:+.3f} MHz, {q.signal.width/1e3:.0f} kHz wide"
             best = max(range(len(built)), key=lambda j: _reach(built[j]))
             first = out[k]
-            if _further(built[best], first):
+            if k in notched or _further(built[best], first): # (a box the notches split is not a signal itself)
                 out[k] = built[best]
             # The rest, where they solved or went further than the box did (a piece that got nowhere is a lump of a
             # carrier's spectrum, or one the box's own profile already said as much of)
-            extra += [q for j, q in enumerate(built) if out[k] is not q and (q.solved or _further(q, first))]
+            # (carriers a notch separates are each a signal: all listed)
+            extra += [q for j, q in enumerate(built) if out[k] is not q and (k in notched or q.solved or _further(q, first))]
         for j, (k, ch) in enumerate(again.items()):
             q = build(ch)
             tell("build again", j + 1, len(again), len(again) - j - 1)

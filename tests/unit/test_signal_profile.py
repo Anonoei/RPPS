@@ -244,7 +244,7 @@ def test_a_box_holding_two_carriers_is_split_at_the_cyclic_rate():
     ps = rp.analysis.profile(src, signals=[box], survey=sv + [box], blind=False)
     solved = [p for p in ps if p.solved and p.profile_name == "dvbs/qpsk_3_4"]
     assert len(solved) == 2 and all("." in p.name.split(":")[0] for p in solved)
-    assert sorted(round(p.signal.mid/1e5) for p in solved) == [-8, 8] or sorted(round(p.signal.mid/1e5) for p in solved) == [-7, 7]
+    assert all(abs(abs(p.signal.mid) - 0.75e6) < 30e3 for p in solved) and sorted(np.sign(p.signal.mid) for p in solved) == [-1, 1]
 
 @pytest.mark.kernels
 def test_a_box_wider_than_its_one_carrier_is_narrowed_to_it():
@@ -300,3 +300,29 @@ def test_header_ids_group_a_branch_points_headers():
     """A framed profile's payload decoded when one of its last headers did: the branches' headers count together"""
     assert SP._header_ids(rp.profile.load("dvbs2/normal").obj["steps"]) == [["pls"], ["bbheader"]]
     assert SP._header_ids(rp.profile.load("dvbs2/mis").obj["steps"]) == [["pls"], ["bb_a", "bb_b"]]
+
+@pytest.mark.kernels
+def test_carriers_a_notch_separates_are_each_profiled():
+    """Three QPSK carriers at 400 kBd, 520 kHz apart, given as one survey box: a fine spectrum of the box's own samples
+    shows the notches between them, and each is profiled on its own, every one listed"""
+    import copy
+    rng = np.random.default_rng(21)
+    Fs, sps = 8e6, 20
+    shape = rp.wave.Shape(sps, rp.signal.filters.load("pulse/rrc/0p25"))
+    q = rp.symbol.load("qpsk")
+    n_sym = 40000
+    y = np.zeros(n_sym*sps, np.complex64)
+    for f in (-520e3, 0.0, 520e3):
+        s = q.modulate(rng.integers(0, 2, 2*n_sym).astype(np.uint8)).astype(np.complex64)
+        w = np.asarray((rp.Data(s, Fs=Fs/sps, sps=1) + shape).data)[:len(y)]
+        y[:len(w)] += w*np.exp(2j*np.pi*f/Fs*np.arange(len(w)))
+    y = (y + 0.02*(rng.standard_normal(len(y)) + 1j*rng.standard_normal(len(y)))).astype(np.complex64)
+    src = rp.source.Memory(y, Fs=Fs)
+    sv = list(rp.analysis.survey(src))
+    box = copy.copy(sv[0])
+    box.mid, box.width = 0.0, 1.55e6
+    box.lo, box.hi = -0.775e6, 0.775e6
+    ps = rp.analysis.profile(src, signals=[box], survey=sv + [box], blind=False)
+    mids = sorted(round(p.signal.mid/1e4) for p in ps)
+    assert len(ps) == 3 and mids == [-52, 0, 52], [(p.name, p.signal.mid) for p in ps]
+    assert all(any(s.kind == "split" and "notches" in s.what for s in p.steps) for p in ps)

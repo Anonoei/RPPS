@@ -206,6 +206,11 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   out from the payload's start: `code.block.linear.frame_units(rows)`, the shortest length whose words at 0, n, 2n... of
   every frame are short of rank, on every bit map (one unknown rotation is common to the bursts); then `solve_block`
   names it (BCH, LDPC checks, cyclic...), or the payload's randomness is reported.
+- **Carriers a notch separates are each profiled**: the survey's spectrum (a few ms, valleys smoothed over a fixed share
+  of the band) runs narrow neighbours together into one box. `rp.analysis.profile` now looks at each box in a fine
+  spectrum of its own channel samples (the 95th percentile over time, about 400 bins across the box) and, where it dips
+  6 dB under the box's top, profiles each part on its own and lists every one (`_Chain.carriers`); the box itself is
+  dropped. On reviewed captures this splits 59 of 74 boxes holding several carriers and 3 of 305 holding one.
 - **The DVB-S2 PLHEADER reads DVB-S2X MODCODs**: `dvbs2_pl` has a first field `s2x` (EN 302 307-2 5.5.2: b0 = 1 for
   a DVB-S2X MODCOD, coded with one more row and sent a quarter turn on from the SOF); with `s2x` 0 it is DVB-S2's
   header as before. A header definition can turn a field's code words (`"turn": {"field": ..., "degrees": ...}`), and a
