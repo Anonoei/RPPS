@@ -169,3 +169,22 @@ def test_puncture_any_cut(rng, cuts):
     for a, b in zip(idx[:-1], idx[1:]):
         back.append(np.asarray((rp.Data(whole[a:b], sps=1, flush=(b == len(whole))) + rx).data))
     assert np.array_equal(np.concatenate(back), x)
+
+def test_auto_segments_hold_a_long_word_a_burst_turns(rng):
+    """A 64-symbol unique word under 0.01 cycles a symbol (5 kHz at 512 kBd: 0.64 of a turn across it): one coherent
+    correlation keeps about 0.42 of its match and loses it, "auto" (4 parts) finds every one"""
+    uw = {f"t{i}": (1 - 2*rng.integers(0, 2, 64)).astype(np.complex128) for i in range(3)}
+    qpsk = np.exp(1j*(np.pi/4 + np.pi/2*np.arange(4)))
+    seq, truth = [qpsk[rng.integers(4, size=40)]], []
+    for _ in range(12):
+        name = list(uw)[rng.integers(3)]
+        seq += [uw[name], qpsk[rng.integers(4, size=500)]]
+        truth.append(name)
+    x = np.concatenate(seq)
+    y = (x*np.exp(2j*np.pi*0.01*np.arange(len(x))) + 0.1*(rng.normal(size=len(x)) + 1j*rng.normal(size=len(x)))).astype(np.complex64)
+    whole = rp.sync.FrameSync(uw, threshold=0.6)
+    auto = rp.sync.FrameSync(uw, threshold=0.6, segments="auto")
+    assert auto.segments == 4
+    _, a = _run(auto, y, 0, rng)
+    _, w = _run(whole, y, 0, rng)
+    assert [p["word"] for p in a] == truth and len(w) < len(truth)//2

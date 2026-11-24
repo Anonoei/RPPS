@@ -234,3 +234,14 @@ def test_a_plan_learned_from_detected_bursts(rng, tmp_path):
         b = got[(f["terminal"], f["seq"])]
         names.setdefault((w.frame, w.slot), set()).add((b["frame"], b["slot"]))
     assert all(len(v) == 1 for v in names.values()) and len(set().union(*names.values())) == len(names)
+
+def test_a_capture_at_any_rate(rng):
+    """7.8125 MS/s (100 MS/s / 12.8) is no whole multiple of 4 x 250 kBd: each carrier is decimated, then resampled"""
+    from rpps.signal.sample.fractional import FractionalPolyphase
+    x, items = _send(rng)
+    y = np.asarray((rp.Data(_channel(x, rng), Fs=8e6, flush=True) + FractionalPolyphase(7.8125/8)).data)
+    rx, got = rp.profile.load("demo/mftdma").rx(), set()
+    for blk in rp.source.Memory(y, Fs=7.8125e6)(1 << 15):
+        blk + rx
+        got |= {(m.fields["terminal"], m.fields["seq"]) for m in rx.take_messages() if m.kind == "hdr" and m.crc_ok}
+    assert got == {(f["terminal"], f["seq"]) for _, f, _ in items}

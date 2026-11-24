@@ -544,6 +544,8 @@ def _frame(m, ctx):
         raise ConfigError("sync frame: a `header`, or a word / sequence (`sequence`, `word` and `bits`, `sequences`, `zc`), one of the two")
     kw = dict(threshold=m.get("threshold"), max_length=m.get("max_length"), name=m.get("name", "frame"),
               **{k: m[k] for k in _FRAME_KEYS if k in m})
+    if words and "segments" not in m: # A word's length says how many parts it is correlated in (rpps.sync.FrameSync)
+        kw["segments"] = "auto"
     if words:
         if any(kind == "bits" for _, kind, _, _ in words):
             return sync.FrameSync(None, None, pending=True, **kw) # (the profile makes the symbols)

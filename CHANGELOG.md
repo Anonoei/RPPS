@@ -45,6 +45,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - `profile/demo/mftdma` (three carriers, two rates, three burst types, LDPC units) and `examples/mftdma.py`: a network
   whose return link is decoded with the plan its forward link gives. Definitions: `header/link/rcs2_table`,
   `sequence/word/demo_uw1..3`, `table/demo/mftdma_types`, `plan/demo/mftdma`; tag `dvb-rcs2`.
+- `rp.sync.Bursts` takes a capture at any rate: each carrier decimated by a whole factor, the rest resampled
+  (`FractionalPolyphase`) to `sps` samples a symbol. A profile's frame step on a word correlates it in parts by default
+  (`segments: "auto"`, one a 16 symbols, at most 4), so a burst's own carrier offset does not hide a long unique word.
 - `FrameSync(count=)`: frames to find in a stream (a burst's one); `{"sync": "timing", "method": "oerder_meyr",
   "clock": false}`: the phase only (a burst a few windows long); the code marker's `sequence` is a controlled parameter.
 - **Codes bit by bit:** any block code takes `append` (check bits after the codeword, each the XOR of the codeword bits

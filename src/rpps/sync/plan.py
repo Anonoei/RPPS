@@ -23,7 +23,8 @@ and a plan learned from them (rpps.analysis.spectrum.burst) or told by a forward
 Each burst is a Data of its own stream (the steps after it start over), at the carrier's rate, its first sample at its
 position in the carrier's stream; `ctx["burst"]` holds its fields: carrier (index), freq (Hz from the capture's centre),
 start (seconds from the capture's first sample), and with a plan its window's fields. `sps` (or a carrier's own) with
-its `rate` decimates each carrier to exactly that many samples a symbol, so one profile serves carriers of several rates. Estimates in est["bursts"]:
+its `rate` brings each carrier to exactly that many samples a symbol (decimated by a whole factor, the rest resampled:
+a capture at any rate), so one profile serves carriers of several rates. Estimates in est["bursts"]:
 per carrier the floor and bursts, the origin, its rate, locked, labelled and unlabelled counts.
 """
 from types import SimpleNamespace
@@ -90,18 +91,26 @@ class Bursts(Pipe):
         for c in carriers:
             width = float(c.get("width") or c.get("rate") or meta.Fs)
             over, sps, rate = self.oversample, c.get("sps", self.sps), c.get("rate")
-            if sps and rate: # Decimated to sps samples a symbol exactly, where the capture's rate allows
-                D = meta.Fs/(float(sps)*float(rate))
-                if abs(D - round(D)) > 1e-9 or round(D) < 1:
-                    raise ValueError(f"Bursts: {meta.Fs:g} S/s is not a whole multiple of {sps} x {rate:g} Bd (carrier {c['freq']:g})")
-                over = meta.Fs/((round(D) + 0.5)*width)
+            ratio = None # What is left to resample after decimating
+            if sps and rate: # Decimated to sps samples a symbol: by a whole factor, the rest by resampling
+                target = float(sps)*float(rate)
+                D = meta.Fs/target
+                if abs(D - round(D)) < 1e-9 and round(D) >= 1:
+                    D = int(round(D))
+                else: # (a capture at 100 MS/s / 2^k: no whole factor; the largest that stays above the target)
+                    D = max(1, int(np.floor(D)))
+                    ratio = target*D/meta.Fs
+                over = meta.Fs/((D + 0.5)*width)
+            from ..base import Pipeline
             chan = Channelize(c["freq"], width, over)
             Fs_c = channelize(c["freq"], width, meta.Fs, over)[1]
             near = min((abs(float(o["freq"]) - float(c["freq"])) for o in carriers if o is not c), default=None)
             stop = min(0.5*Fs_c, near - 0.5*width) if near else 0.5*Fs_c
             if stop > 0.6*width: # The neighbours out: channelizing only keeps them from aliasing onto the channel
-                from ..base import Pipeline
                 chan = Pipeline(chan, low_pass_kaiser(0.5*(0.5*width + stop), stop - 0.5*width, 50, Fs_c))
+            if ratio is not None and abs(ratio - 1) > 1e-12:
+                from ..signal.sample.fractional import FractionalPolyphase
+                chan = Pipeline(chan, FractionalPolyphase(ratio))
             chans.append(SimpleNamespace(freq=float(c["freq"]), width=width, chan=chan,
                                          cut=Burst(**self.burst), stream=Stream(meta.Fs), Fs=None, delay=0.0, held=None,
                                          held_pos=0, sps=float(sps) if sps and rate else None, rate=rate, pending=[]))

@@ -106,7 +106,9 @@ class FrameSync(Stage):
     before, length: the frame starts `before` symbols ahead of its preamble (a sync word mid-burst) and is `length`
         symbols long (a controlled parameter too: a header says it); without a length a frame runs to the next one.
     segments: the preamble correlated in that many parts, added without their phases: a carrier offset turns a long
-        word (a Zadoff-Chu sequence moves its peak with it) and a coherent sum over the whole word loses it.
+        word (a Zadoff-Chu sequence moves its peak with it) and a coherent sum over the whole word loses it (a burst's
+        own offset, 3 kHz at 512 kBd, turns a 64-symbol word by 145 degrees). "auto": one part a 16 symbols, at most 4
+        (1 with header words): what a profile's frame step on a word takes unless it says.
     count: frames to find in a stream, then no more searching (None: all; a burst's runner: 1, as data later in the burst
         can pass for the word).
     cfo: take the carrier frequency its preamble measured off each frame too (within +-1/L cycles a symbol: a larger
@@ -134,7 +136,8 @@ class FrameSync(Stage):
             raise ValueError("FrameSync: words follow a preamble given now, not a pending one")
         self.preamble, self.L, self._ep = None, 0, 0.0
         self.pres, self.names, self.fields = None, None, None
-        self.segments = int(segments)
+        self._auto = segments == "auto" # (resolved when the preamble is known: its length says)
+        self.segments = 1 if self._auto else int(segments)
         if self.segments < 1:
             raise ValueError("FrameSync: segments >= 1")
         if preamble is not None:
@@ -193,6 +196,9 @@ class FrameSync(Stage):
         if len({len(p) for p in pres}) != 1:
             raise ValueError(f"FrameSync: alternatives of one length, not {sorted({len(p) for p in pres})}")
         self.pres, self.names, self.fields = np.stack(pres), names, fields
+        if getattr(self, "_auto", False):
+            words = getattr(self, "words", None) is not None
+            self.segments = 1 if words else min(4, max(1, len(pres[0])//16))
         self.preamble = self.pres[0]
         self.L = len(self.preamble)
         self._eps = np.sum(np.abs(self.pres)**2, axis=1)
