@@ -11,7 +11,7 @@ The receiver reads the forward link (profile/dvbrcs2/forward), builds the plan a
 (rp.plan.builder("dvbrcs2/forward"), a definition), and gives both to the return link's burst step: every burst is cut on its carrier, decoded,
 and named by its superframe, frame, timeslot, burst type and terminal. The return path's delay is not told: the bursts'
 own unique words pull the clock onto it. Without the forward link, a plan learned from the bursts themselves
-(rp.analysis.spectrum.burst.learn_plan) places them as well, under its own names, and check_plan says how well it
+(rp.analysis.burst.learn_plan) places them as well, under its own names, and check_plan says how well it
 explains them.
 """
 import numpy as np
@@ -94,14 +94,14 @@ def main():
     C = [{"freq": -2e6, "width": 337.5e3, "rate": 250e3}, {"freq": -1.5e6, "width": 337.5e3, "rate": 250e3},
          {"freq": 1.5e6, "width": 675e3, "rate": 500e3}]
     bursts = rp.Data(xr, Fs=8e6, flush=True) + rp.sync.Bursts(carriers=C, sps=4, factor=4, win=16, min_s=0.5e-3)
-    learned = rp.analysis.spectrum.burst.learn_plan(bursts, carriers=C)
+    learned = rp.analysis.burst.learn_plan(bursts, carriers=C)
     got = decode(xr, learned.plan)
     assert len(got) == len(sent)
     print(f"return link, plan learned from its own bursts: {learned}; {len(got)} of {len(sent)} bursts")
 
     # Whether a plan explains the bursts: each in a slot of its kind, the plan's origin and clock fitted to them
     # (rp.viz.bursts(None, check, fold=True) draws it: the bursts stacked on the superframe's slots)
-    check = rp.analysis.spectrum.burst.check_plan(learned.plan, bursts)
+    check = rp.analysis.burst.check_plan(learned.plan, bursts)
     assert check.explained == 1.0
     print(f"the learned plan against the bursts: {check}")
 

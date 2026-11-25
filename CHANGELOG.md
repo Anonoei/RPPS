@@ -34,8 +34,15 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - **`fec/block/trellis/p25_1_2` is one codeword per 96 bits** (its new `length`): encode and decode take whole
   codewords, each started and flushed on its own (96 bits to 196), so it works as a profile's block step. A whole
   stream decoded as one trellis sequence is `decode_batch` on a row.
+- **Burst analysis is `rp.analysis.burst`** (was `rp.analysis.spectrum.burst`), a package of its own: `preamble` (what
+  the bursts share), `demod` (each burst demodulated; the frame and slots), `plan` (`units`, `learn_plan`,
+  `check_plan`); every public name is also at the package level. `rp.analysis.spectrum.burst.demodulate` (stable API)
+  warns for this release, then goes; the rest of the old module is gone. Its `track` loop is gone too: the bursts'
+  carrier is followed by `rp.sync.Costas(..., points=)`.
 
 ### Added
+- **`rp.sync.Costas(..., points=)`**: a decision-directed loop on any constellation's points (APSK, QAM), the error
+  the angle to the nearest one (Python; the C++ kernel stays M-PSK).
 - **Bit kernels** (`rpps.math.bits.distance`, `find`, `unstuff`; C++ in `csrc/rpps_native/bits.cpp`): the Hamming
   distance to a word of up to 64 bits at every position of a hard-bit stream (a shift register and a popcount a
   bit), and bit destuffing over many spans in one call. HDLC deframing, `analysis.framing.bits.scan_hdlc` and
@@ -242,6 +249,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   bits match, and `rp.math.prob.log_binom_half_cdf`.
 
 ### Changed
+- `rp.math.runs(mask)` (the True runs of a mask) and `rp.signal.filters.correlate(x, t)` (a template slid along a
+  signal, by FFT blocks when long) replace private copies in the finder, framing, burst analysis, FrameSync and the
+  LTE/NR cell searches.
 - **The blind puncture search decodes a mother code's patterns together** (`analysis.code.conv.puncture.search`): every
   pattern of a mother decodes on the mother's trellis with erasures where it punctures, so a mother's periods, patterns,
   streams and offsets go through in a batch per length (`puncture.mismatches`, row for row what each punctured code's

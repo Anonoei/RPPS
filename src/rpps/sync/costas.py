@@ -21,6 +21,13 @@ def _oM(M, offset):
         return (ang - np.round(ang/step)*step)
     return err
 
+def _oPoints(points):
+    """Phase error to the nearest of any constellation's `points` (APSK, QAM: decision directed), in radians"""
+    pts = np.asarray(points, dtype=np.complex128).ravel()
+    def err(sym):
+        return float(np.angle(sym*np.conj(pts[np.argmin(np.abs(pts - sym))])))
+    return err
+
 class Costas(Stage):
     """Costas loop. Settings live here, `freq` and `pha` live in `meta.state_of(costas)`
 
@@ -30,12 +37,17 @@ class Costas(Stage):
         "alpha", "beta",
         "err_func", "order", "offset", "_builtin"
     )
-    def __init__(self, alpha, beta, order=2, offset=0.0):
+    def __init__(self, alpha, beta, order=2, offset=0.0, points=None):
         """alpha, beta: proportional and integral gain (see `from_bandwidth`)
-        order: 2 (BPSK), 4 (QPSK, points at 45 degrees) or any M >= 3 for M-PSK with a point at `offset` radians"""
+        order: 2 (BPSK), 4 (QPSK, points at 45 degrees) or any M >= 3 for M-PSK with a point at `offset` radians
+        points: any constellation's points instead (APSK, QAM): the error is the angle to the nearest one, the loop
+        decision directed (in Python: the C++ kernel knows M-PSK only); `order` is then len(points)"""
         self.alpha = alpha
         self.beta = beta
-        if order == 2:
+        if points is not None:
+            self.err_func = _oPoints(points)
+            order = len(np.ravel(points))
+        elif order == 2:
             self.err_func = _o2
         elif order == 4:
             self.err_func = _o4
@@ -45,13 +57,13 @@ class Costas(Stage):
             raise ValueError(f"Costas order must be 2 or more, got {order}")
         self.order = int(order)
         self.offset = float(offset)
-        self._builtin = self.err_func # A replaced err_func runs in Python
+        self._builtin = self.err_func if points is None else None # points, or a replaced err_func, run in Python
 
     @classmethod
-    def from_bandwidth(cls, bw, order=2, damping=0.7071, offset=0.0):
+    def from_bandwidth(cls, bw, order=2, damping=0.7071, offset=0.0, points=None):
         """Loop gains from a noise bandwidth normalised to the symbol rate (0.01-0.05 typical)"""
         from .pll import loop_gains
-        return cls(*loop_gains(bw, damping), order=order, offset=offset)
+        return cls(*loop_gains(bw, damping), order=order, offset=offset, points=points)
 
     def new_state(self, meta: Meta):
         return SimpleNamespace(pha=0.0, freq=0.0)

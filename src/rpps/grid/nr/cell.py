@@ -24,20 +24,13 @@ import numpy as np
 
 from ...base import Stage
 from ...base.types import Category, Rep
+from ...signal.filters import convolve, correlate, low_pass
 from . import phy
 
 def pss_time(n_id2, nfft):
     X = np.zeros(nfft, complex)
     X[(np.arange(127) - 64) % nfft] = phy.pss(n_id2) # SS/PBCH subcarriers 56-182 about its centre (120)
     return np.fft.ifft(X)
-
-def _correlate(x, t):
-    from ...signal.filters import convolve
-    return convolve(x, np.conj(np.asarray(t)[::-1]), "valid")
-
-def _lowpass(fs, cutoff=0.96e6, taps=129):
-    h = np.sinc(2*cutoff/fs*(np.arange(taps) - (taps - 1)/2))*np.hamming(taps)
-    return h/h.sum()
 
 
 class NrCell(Stage):
@@ -135,7 +128,7 @@ class NrCell(Stage):
         seg = y[max(a, 0):a + 2*half + len(tmpl)]
         if a < 0 or len(seg) < 2*half + len(tmpl):
             return None
-        c = np.abs(_correlate(seg, tmpl))
+        c = np.abs(correlate(seg, tmpl))
         j = int(np.argmax(c))
         e = np.sqrt(np.sum(np.abs(seg[j:j + len(tmpl)])**2)*np.sum(np.abs(tmpl)**2))
         return a + j, float(c[j]/max(e, 1e-30))
@@ -145,10 +138,9 @@ class NrCell(Stage):
     def _acquire(self, x, fs, nfft):
         # The samples moved by `offset`, filtered to the PSS's +-0.96 MHz and the span and taken to 3.84 MS/s once; each
         # offset tried is then a turn of the decimated samples
-        from ...signal.filters import convolve
         ratio = int(round(fs/3.84e6))
         P = int(round(self.period*3.84e6))
-        y0 = convolve(x*phy.lte_phy.ramp(len(x), 0.0, self.offset/fs), _lowpass(fs, 0.96e6 + self.span + 60e3), "same")[::ratio]
+        y0 = convolve(x*phy.lte_phy.ramp(len(x), 0.0, self.offset/fs), low_pass(129, 0.96e6 + self.span + 60e3, fs).filt, "same")[::ratio]
         # The correlations in the frequency domain: the samples' spectrum once, each offset a roll of it, each template's
         # conjugate spectrum once: one inverse FFT an offset and root
         n = len(y0)

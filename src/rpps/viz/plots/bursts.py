@@ -9,7 +9,7 @@ STATUS = {"slot": ("#0ca30c", "", "in a slot of its kind"), "kind": ("#fab219", 
           "long": ("#ec835a", "//", "overruns its slot"), "none": ("#d03b3b", "..", "in no slot")}
 
 def bursts(ax, check, fold=False, x=None, Fs=None, nfft=256, span=None):
-    """A PlanCheck (rp.analysis.spectrum.burst.check_plan) drawn: the plan's slots (by tx type) and the bursts (by their
+    """A PlanCheck (rp.analysis.burst.check_plan) drawn: the plan's slots (by tx type) and the bursts (by their
     place: in a slot of their kind, another kind's, overrunning it, in none).
 
     fold=False: the time-frequency plane, capture time along [ms], frequency up [MHz, the plan's], every slot in the
@@ -246,7 +246,7 @@ def burst_timing(ax, check, by="carrier"):
         return ax
 
 def burst_stack(ax, result, kind=0, what="phase"):
-    """The bursts of one kind (rp.analysis.spectrum.burst.demodulate's: its `kind` index) lined up on their known
+    """The bursts of one kind (rp.analysis.burst.demodulate's: its `kind` index) lined up on their known
     symbols, one a row in time order, symbol index along (0: the known run's first); `what` "phase" (degrees, a cyclic
     map) or "magnitude" (over the median). Above it, how far the bursts agree at each symbol, |mean of the unit
     symbols| (1: the same symbol in every burst, about 1/sqrt(n) for data). A burst's anatomy shows: its preamble or
@@ -301,7 +301,7 @@ TERMINAL = {"cfo": (lambda b: b.cfo/1e3, "carrier offset [kHz]"), "gain": (lambd
             "clock": (lambda b: 1e6*(b.clock or 0.0), "clock offset [ppm]"), "evm": (lambda b: 100*b.evm, "EVM [%]")}
 
 def burst_terminals(ax, result, x="cfo", y="gain", by="slot"):
-    """Each demodulated burst (rp.analysis.spectrum.burst.demodulate's) as a point of two of its measures (`x`, `y`:
+    """Each demodulated burst (rp.analysis.burst.demodulate's) as a point of two of its measures (`x`, `y`:
     cfo, gain, clock, evm), coloured by its slot, its kind or nothing (`by`: "slot", "kind", None). A transmitter keeps
     its oscillator's offset and its link's power from burst to burst, so each one is a cluster: how many there are, and
     which slots each has, without decoding them"""

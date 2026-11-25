@@ -100,6 +100,12 @@ Adding one: write `csrc/rpps_native/<name>.cpp` with `register_<name>(m)`, decla
 `module.cpp` (`setup.py` globs `*.cpp`); keep the Python fallback behind `_accel.native`; release the GIL for anything long;
 test it against the Python loop.
 
+**Where a kernel's Python side lives.** A kernel that is a primitive on plain arrays (bits, correlation, interpolation,
+GF(2) elimination) sits behind a wrapper in `rpps.math` or `rpps.signal` that holds the Python reference, and stages call
+the wrapper (`rpps.math.bits.distance` serves FrameSync, HDLC and blind framing). A kernel for one stage's loop stays
+behind that stage until a second caller appears, then moves down to a wrapper. Don't generalize a kernel ahead of
+its second caller. Portable bit helpers (`ctz64`, `popcount64`) are in `common.hpp`.
+
 Pitfalls found the hard way:
 - **`long long` loop and tap indices.** CPython builds with `-fno-strict-overflow`, so `int` indices are not widened: 3x
   slower inside the module.

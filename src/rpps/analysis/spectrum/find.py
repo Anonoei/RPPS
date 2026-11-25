@@ -47,6 +47,7 @@ import functools
 import numpy as np
 
 from ... import _effort
+from ...math.mask import runs
 from .signal import Signal, Survey
 
 # --- statistics (no scipy)
@@ -111,14 +112,9 @@ def _box(z, k):
     hi = np.clip(i - k//2 + k, 0, n)
     return (c[hi] - c[lo])/(hi - lo)
 
-def _runs(m):
-    """(starts, stops) of the True runs of a 1-D mask (stops exclusive)"""
-    d = np.diff(np.concatenate(([0], m.view(np.int8) if m.dtype == bool else m.astype(np.int8), [0])))
-    return np.flatnonzero(d == 1), np.flatnonzero(d == -1)
-
 def _close(m, gap=3):
     """A mask with its holes of up to `gap` points filled (where widths' detections meet they can leave a bin out)"""
-    s, e = _runs(~m)
+    s, e = runs(~m)
     inner = (s > 0) & (e < len(m)) & (e - s <= gap)
     m = m.copy()
     for a, b in zip(s[inner], e[inner]):
@@ -342,7 +338,7 @@ class _Detector:
             seed = Y > hi
             if not seed.any():
                 continue
-            gs, ge = _runs(Y > lo)
+            gs, ge = runs(Y > lo)
             cs = np.concatenate(([0], np.cumsum(seed)))
             keep = cs[ge] > cs[gs]
             gs, ge = gs[keep], ge[keep]
@@ -471,7 +467,7 @@ def fit_floor(P, hop, edge=0.005, blocks=64, sys_db=None):
         occ |= 10*np.log10(_box(Z, max(1, fl.bs//8)) + 1e-30) > 1.5
         busy = occ
         # Widen each cut with its signal: the floor beside a wide hump is fitted past its flanks, not up them
-        s0, s1 = _runs(occ)
+        s0, s1 = runs(occ)
         grow = np.clip((s1 - s0)//2, fl.bs//8, 2*fl.bs) # (at most two blocks: past that the passband's ripple misleads)
         occ = _paint(nfft, s0 - grow, s1 + grow)[0]
         lone = Z > _gamma_isf(1e-3, _dof(nfft, hop, M, 1)) # lines a box mean leaves
@@ -548,7 +544,7 @@ def _find_frames(P, hop, x, Fs, cf, fit, pfa, edge, split_db, drop_db, min_bins,
     prev = state.get("spans") if state is not None else None
     spans = []
     out = _net(c, occ, groups, t_start) if segment == "net" else []
-    for a, b in (zip(*_runs(occ)) if segment != "net" else ()):
+    for a, b in (zip(*runs(occ)) if segment != "net" else ()):
         if b - a < min_bins:
             continue
         a, b = int(a), int(b)
@@ -718,7 +714,7 @@ def _on(c, a, b, local):
     if on.all() or not on.any():
         return None, None, 1.0
     T = c.T
-    bursts = [(p*c.hop/c.Fs, min(T, ((q - 1)*c.hop + c.nfft)/c.Fs)) for p, q in zip(*_runs(on))]
+    bursts = [(p*c.hop/c.Fs, min(T, ((q - 1)*c.hop + c.nfft)/c.Fs)) for p, q in zip(*runs(on))]
     duty = float(on.mean())
     r = 1 << int(np.clip(np.floor(np.log2(max((b - a)/32, 1))), 0, np.log2(max(c.nfft//16, 1))))
     if r > 1:
@@ -735,7 +731,7 @@ def _on(c, a, b, local):
         gap = np.flatnonzero(~on_t[1:-1] & on_t[:-2] & on_t[2:]) + 1 # (a frame's dip inside a burst)
         on_t[gap] = True
         if bt[on_t].mean() > 2*hi_t if on_t.any() else False:
-            bursts = [(p*nt/c.Fs, min(T, q*nt/c.Fs)) for p, q in zip(*_runs(on_t))]
+            bursts = [(p*nt/c.Fs, min(T, q*nt/c.Fs)) for p, q in zip(*runs(on_t))]
             duty = float(on_t.mean())
     return on, bursts, duty
 
@@ -744,7 +740,7 @@ def _gate(band, hi, lo):
     seed, grow = band > hi, band > lo
     cs = np.concatenate(([0], np.cumsum(seed)))
     on = np.zeros(len(band), bool)
-    for p, q in zip(*_runs(grow)):
+    for p, q in zip(*runs(grow)):
         if cs[q] > cs[p]:
             on[p:q] = True
     return on
@@ -764,7 +760,7 @@ def _pelt(y, w, beta, lmin=2):
     2012), exact, about linear. Returns the segment bounds [0, ..., n]. The C++ kernel when loaded (the loop below is the
     reference it matches)"""
     from ... import _accel
-    if _accel.native is not None and hasattr(_accel.native, "pelt"):
+    if _accel.native is not None:
         return [int(v) for v in _accel.native.pelt(np.ascontiguousarray(y, np.float64), np.ascontiguousarray(w, np.float64),
                                                    float(beta), int(lmin))]
     return _pelt_py(y, w, beta, lmin)
@@ -933,7 +929,7 @@ def _seg_lines(c, segs, lo_r, d, spec, m, bursts, duty, a, b, boxes):
     occ, _s, _k = c.det.detect(resid, m)
     out = []
     v = 10*np.log10(np.maximum(spec[lo_r:lo_r + n], 1e-30))
-    for s0, e0 in zip(*_runs(occ)):
+    for s0, e0 in zip(*runs(occ)):
         if e0 - s0 > 2*d or not (a <= lo_r + (s0 + e0)//2 < b):
             continue
         pk = s0 + int(np.argmax(v[s0:e0]))

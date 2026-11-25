@@ -55,7 +55,7 @@ def eliminate_packed(A, ncols):
     reference"""
     from .. import _accel
     nat = _accel.native
-    if nat is not None and hasattr(nat, "gf2_eliminate") and A.dtype == np.uint64 and A.flags.c_contiguous:
+    if nat is not None and A.dtype == np.uint64 and A.flags.c_contiguous:
         return list(nat.gf2_eliminate(A, int(ncols)))
     return _eliminate_python(A, ncols)
 

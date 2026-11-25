@@ -113,7 +113,7 @@ def scl(llr, frozen, size):
     W, N = L.shape
     _check_n(N)
     frozen = np.asarray(frozen, dtype=bool)
-    if _accel.native is not None and hasattr(_accel.native, "polar_scl"): # (the C++ kernel: this function is its reference)
+    if _accel.native is not None: # (the C++ kernel: this function is its reference)
         u, pm = _accel.native.polar_scl(np.ascontiguousarray(L), np.ascontiguousarray(frozen), int(size))
         return u, pm
     return _scl(L, frozen, size)

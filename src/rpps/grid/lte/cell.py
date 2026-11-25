@@ -21,6 +21,7 @@ import numpy as np
 
 from ...base import Stage
 from ...base.types import Category, Rep
+from ...signal.filters import convolve, correlate, low_pass
 from . import phy
 from ...sequence import zadoff_chu
 
@@ -71,14 +72,6 @@ def sss_table(n_id2):
         _SSS[n_id2] = np.array([sss(n1, n_id2, h) for n1 in range(168) for h in (0, 1)])
     return _SSS[n_id2]
 
-def _correlate(x, t):
-    from ...signal.filters import convolve
-    return convolve(x, np.conj(np.asarray(t)[::-1]), "valid")
-
-def _lowpass(fs, cutoff=0.8e6, taps=129):
-    h = np.sinc(2*cutoff/fs*(np.arange(taps) - (taps - 1)/2))*np.hamming(taps)
-    return h/h.sum()
-
 
 class LteCell(Stage):
     """LTE cell search and half-frame timing (see the module)
@@ -108,17 +101,16 @@ class LteCell(Stage):
         """(N_ID2, offset [Hz], PSS position mod 5 ms at the full rate, metric) from the decimated fold. The samples are
         moved by `offset`, filtered to the PSS's +-465 kHz and the span, and taken to 1.92 MS/s once; each offset tried is
         then a turn of the decimated samples"""
-        from ...signal.filters import convolve
         ratio = int(round(fs/1.92e6))
         period = 9600
-        y0 = convolve(x*phy.ramp(len(x), 0.0, self.offset/fs), _lowpass(fs, 0.47e6 + self.span + 50e3), "same")[::ratio]
+        y0 = convolve(x*phy.ramp(len(x), 0.0, self.offset/fs), low_pass(129, 0.47e6 + self.span + 50e3, fs).filt, "same")[::ratio]
         td = np.arange(len(y0))/1.92e6
         tmpl = [pss_time(u, 128) for u in ROOTS]
         best = None
         for d in np.arange(-self.span, self.span + self.resolution/2, self.resolution):
             y = y0*np.exp(-2j*np.pi*d*td)
             for r, tp in enumerate(tmpl):
-                c = np.abs(_correlate(y, tp))**2
+                c = np.abs(correlate(y, tp))**2
                 m = len(c)//period*period
                 if m == 0:
                     continue
@@ -134,7 +126,7 @@ class LteCell(Stage):
         seg = y[max(a, 0):a + 2*half + len(tmpl)]
         if a < 0 or len(seg) < 2*half + len(tmpl):
             return None
-        c = np.abs(_correlate(seg, tmpl))
+        c = np.abs(correlate(seg, tmpl))
         j = int(np.argmax(c))
         e = np.sqrt(np.sum(np.abs(seg[j:j + len(tmpl)])**2)*np.sum(np.abs(tmpl)**2))
         return a + j, float(c[j]/max(e, 1e-30))

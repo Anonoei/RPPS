@@ -14,18 +14,6 @@ namespace rpps {
 
 namespace {
 
-inline int popcount64(uint64_t x) {
-#if defined(__GNUC__) || defined(__clang__)
-    return __builtin_popcountll(x);
-#elif defined(_MSC_VER) && defined(_M_X64)
-    return static_cast<int>(__popcnt64(x));
-#else
-    int n = 0;
-    while (x) { x &= x - 1; n++; }
-    return n;
-#endif
-}
-
 py::array_t<int16_t> bit_distance(carray<uint8_t> bits_a, carray<uint8_t> word_a) {
     const long long n = bits_a.size(), L = word_a.size();
     if (L < 1 || L > 64) throw std::invalid_argument("bit_distance: a word of 1 to 64 bits");

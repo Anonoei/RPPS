@@ -56,7 +56,7 @@ def test_bursts_on_their_plan():
     recs = [{"freq": w.freq, "start": w.burst/plan.clock, "length": 0.8*w.length/plan.clock, "kind": None}
             for w in plan.windows(0, 4*plan.sequences[0].duration)[::5]]
     recs.append({"freq": 0.0, "start": 1e-3, "length": 1e-3, "kind": None}) # (no carrier there: in no slot)
-    check = rp.analysis.spectrum.burst.check_plan(plan, recs)
+    check = rp.analysis.burst.check_plan(plan, recs)
     assert check.counts["none"] == 1
     rng = np.random.default_rng(0)
     x = (rng.standard_normal(60000) + 1j*rng.standard_normal(60000)).astype(np.complex64)
@@ -66,7 +66,7 @@ def test_bursts_on_their_plan():
 
 def _demodulated(rng, n=40):
     """A demodulate result made by hand: two kinds, each with its known run, two transmitters' offsets and powers"""
-    from rpps.analysis.spectrum.burst import BurstResult, Bursts
+    from rpps.analysis.burst import BurstResult, Bursts
     word = np.exp(1j*np.pi/4*(2*rng.integers(0, 4, 32) + 1))
     out = []
     for i in range(n):
@@ -81,7 +81,7 @@ def _demodulated(rng, n=40):
 def test_burst_timing_stack_terminals_and_plan_evidence():
     rng = np.random.default_rng(0)
     plan = rp.plan.load("demo/mftdma")
-    B = rp.analysis.spectrum.burst
+    B = rp.analysis.burst
     recs = [{"freq": w.freq, "start": w.burst/plan.clock + rng.normal(0, 5e-6), "length": 0.8*w.length/plan.clock,
              "kind": plan.tx_types[w.tx_type].fields["word"]} for w in plan.windows(0, 20*plan.sequences[0].duration)
             if rng.random() < 0.4]

@@ -213,7 +213,7 @@ def test_a_plan_learned_from_detected_bursts(rng, tmp_path):
     C = [{"freq": -2e6, "width": 337.5e3, "rate": 250e3}, {"freq": -1.5e6, "width": 337.5e3, "rate": 250e3},
          {"freq": 1.5e6, "width": 675e3, "rate": 500e3}]
     bursts = rp.Data(y, Fs=8e6, flush=True) + rp.sync.Bursts(carriers=C, sps=4, factor=4, win=16, min_s=0.5e-3)
-    g = rp.analysis.spectrum.burst.learn_plan(bursts, carriers=C)
+    g = rp.analysis.burst.learn_plan(bursts, carriers=C)
     assert g.evidence["btu"] == pytest.approx(BTU/NCR, rel=1e-3) and g.evidence["frame"] == pytest.approx(25*BTU/NCR, rel=1e-3)
     g.save("learned_test", tmp_path/"plan")
     rp.add_config_path(tmp_path)
@@ -264,12 +264,12 @@ def _demo(edit=None):
 
 def test_the_right_plan_explains_every_burst_and_finds_its_origin(rng):
     bursts, items = _detected(rng)
-    check = rp.analysis.spectrum.burst.check_plan(rp.plan.load("demo/mftdma"), bursts)
+    check = rp.analysis.burst.check_plan(rp.plan.load("demo/mftdma"), bursts)
     assert len(bursts) == len(items) and check.explained == 1.0 and check.rms < 20e-6
     assert abs(check.origin - (-LEAD/8e6*NCR)) < check.tol*NCR # (where the plan's tick 0 is in the capture: its first superframe)
     assert int(np.sum(check.filled)) == len(items) and np.all(check.filled <= 1)
-    learned = rp.analysis.spectrum.burst.learn_plan(bursts, carriers=C3)
-    assert rp.analysis.spectrum.burst.check_plan(learned.plan, bursts).explained == 1.0
+    learned = rp.analysis.burst.learn_plan(bursts, carriers=C3)
+    assert rp.analysis.burst.check_plan(learned.plan, bursts).explained == 1.0
 
 def test_a_wrong_btu_or_slot_layout_leaves_bursts_in_no_slot(rng):
     bursts, _ = _detected(rng)
@@ -279,7 +279,7 @@ def test_a_wrong_btu_or_slot_layout_leaves_bursts_in_no_slot(rng):
         d["sequences"]["0"]["duration"] = int(d["sequences"]["0"]["duration"]*1.03)
     def layout(d):
         d["frame_types"]["1"]["sections"] = [[129, 2], [128, 2], [128, 1], [129, 2], [128, 0]]
-    check = rp.analysis.spectrum.burst.check_plan
+    check = rp.analysis.burst.check_plan
     assert check(_demo(btu), bursts).explained < 0.6
     c = check(_demo(layout), bursts)
     assert c.counts["none"] >= 3 and c.explained < 0.95
@@ -293,14 +293,14 @@ def _ideal(plan, origin, rate, seconds, every=7):
 def test_another_kinds_slot_and_the_clock_offset():
     plan = rp.plan.load("demo/mftdma")
     recs = _ideal(plan, 123456.0, 150e-6, 4.0) # (600 us over the capture: twice the tolerance)
-    c = rp.analysis.spectrum.burst.check_plan(plan, recs)
+    c = rp.analysis.burst.check_plan(plan, recs)
     assert c.explained == 1.0 and c.rate == pytest.approx(150e-6, abs=1e-6) and abs(rp.sync.track.wrap(c.origin - 123456.0, plan.sequences[0].duration)) < 50
-    stale = rp.analysis.spectrum.burst.check_plan(plan, recs, fit=False, origin=123456.0) # (the clock not followed)
+    stale = rp.analysis.burst.check_plan(plan, recs, fit=False, origin=123456.0) # (the clock not followed)
     assert stale.counts["none"] > 0
     def swap(d):
         a, b = d["tx_types"]["128"]["fields"], d["tx_types"]["129"]["fields"]
         a["word"], b["word"] = b["word"], a["word"]
-    c = rp.analysis.spectrum.burst.check_plan(_demo(swap), recs, origin=123456.0, rate=150e-6, fit=False)
+    c = rp.analysis.burst.check_plan(_demo(swap), recs, origin=123456.0, rate=150e-6, fit=False)
     assert c.counts["kind"] > 0 and c.counts["kind"] + c.counts["slot"] == len(recs)
 
 def test_the_btu_is_made_exact_over_the_whole_capture():
@@ -310,7 +310,7 @@ def test_the_btu_is_made_exact_over_the_whole_capture():
     q = 0.6e-3
     k = np.sort(rng.choice(16000, 500, replace=False))
     starts = 0.01 + k*q + rng.normal(0, 16e-6, len(k))
-    got = rp.analysis.spectrum.burst._stretch(starts, q*(1 + 1e-4), 0.1)
+    got = rp.analysis.burst.plan._stretch(starts, q*(1 + 1e-4), 0.1)
     assert abs(got/q - 1) < 1e-6
 
 def _sparse(seed, rate=30e-6, sec=30.0, use=0.02, origin=5e5):
@@ -323,7 +323,7 @@ def _sparse(seed, rate=30e-6, sec=30.0, use=0.02, origin=5e5):
 def test_a_burst_of_a_known_kind_is_placed_in_its_kinds_slot_not_the_filler_beside_it():
     """A learned plan fills the BTUs no burst used with untyped single-BTU slots: a burst of a known kind is placed in its
     own kind's slot, not one BTU over in the filler (where it would overrun)"""
-    B = rp.analysis.spectrum.burst
+    B = rp.analysis.burst
     recs = _sparse(0)
     g = B.learn_plan(recs)
     assert B.check_plan(g.plan, recs).explained == 1.0
@@ -332,7 +332,7 @@ def test_sparse_bursts_still_give_the_btu():
     """Bursts in 4% of the slots, 16 us of jitter, 10 s: nearby starts sit hundreds of BTUs apart, their score's peaks
     narrower than a fixed grid of q steps over (3 of 8 seeds found the BTU on one); stepping evenly in 1/q finds it
     (8 of 8)"""
-    B = rp.analysis.spectrum.burst
+    B = rp.analysis.burst
     recs, rng = _sparse(0, sec=10.0, use=0.04), np.random.default_rng(2)
     for r in recs:
         r["start"] += rng.normal(0, 15e-6) # (16 us with _sparse's 5)
@@ -344,7 +344,7 @@ def test_a_carrier_of_one_kind_gives_its_frame():
     """The demo's 500 kBd carrier: six slots of one tx type, 2.4 ms each, in a 15 ms frame. A mean over the starts'
     nearby differences passes at 2.5 ms (2.4 and 4.8 within tol of 1 and 2 of it), whose grid the starts leave: the
     BTU is taken only where they sit on it, and the frame comes from it"""
-    B = rp.analysis.spectrum.burst
+    B = rp.analysis.burst
     recs = [r for r in _sparse(4, sec=2.0, use=0.5) if r["freq"] == 1.5e6]
     for r in recs:
         r["kind"] = None # (as demodulate gives them: one kind, by length)

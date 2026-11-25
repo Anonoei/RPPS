@@ -16,7 +16,7 @@ from .. import _accel
 from ..base import Stage, BitStage
 from ..base.kernel import device_functions, has_device_kernels, to_host
 from ..math import bits as bitops
-from ..signal.filters.convolve import convolve
+from ..signal.filters.convolve import convolve, correlate
 from ..base.control import publish, anchor
 from . import track
 
@@ -244,7 +244,7 @@ class FrameSync(Stage):
             c, m = _accel.native.preamble_metric(np.ascontiguousarray(seg, dtype=np.complex128), self.preamble, self._ep)
             cs = None
         else:
-            c = convolve(seg, np.conj(self.preamble[::-1]), "valid") # = np.correlate(seg, preamble, "valid"), by FFT blocks when long
+            c = correlate(seg, self.preamble)
             cs = np.concatenate(([0.0], np.cumsum(rest.real**2 + rest.imag**2))) # energy so far, from index a on
             e = cs[L:L + len(c)] - cs[:len(c)] # the energy of every window of L
             m = np.abs(c)/np.sqrt(np.maximum(e, 1e-30)*self._ep)
@@ -278,7 +278,7 @@ class FrameSync(Stage):
             mag = np.zeros(npos)
             tot = np.zeros(npos, np.complex128)
             for s0, s1 in self._segs:
-                cseg = convolve(seg[s0:s0 + npos + (s1 - s0) - 1], np.conj(p[s0:s1][::-1]), "valid")[:npos]
+                cseg = correlate(seg[s0:s0 + npos + (s1 - s0) - 1], p[s0:s1])[:npos]
                 mag += np.abs(cseg) if self.polarity else np.maximum(cseg.real, 0.0) # (the phase known: in phase only)
                 tot += cseg
             m = mag/np.sqrt(e*self._eps[k])

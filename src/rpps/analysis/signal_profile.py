@@ -638,10 +638,10 @@ class _Chain:
         return q
 
     def _bursts(self, q, x):
-        """TDMA bursts (rpps.analysis.spectrum.burst.demodulate: each acquired on its kind's preamble) into q, and for each
+        """TDMA bursts (rpps.analysis.burst.demodulate: each acquired on its kind's preamble) into q, and for each
         kind the code laid out from where its payload starts (linear.frame_units on every bit map: one rotation is
         common to all bursts and unknown), else what the payload bits are like"""
-        from .spectrum import burst
+        from . import burst
         from .code.block.linear import frame_units, solve_block
         from .framing.payload import verdict
         from .identify import bit_streams, _distinct
@@ -654,7 +654,7 @@ class _Chain:
         ok = [b for b in r.bursts if b.ok and b.symbols is not None]
         q.add("demodulate", str(r), FOUND if ok else UNSOLVED, detail={"mod": r.mod, "baud": r.baud, "bursts": len(r.bursts),
               "demodulated": len(ok), "kinds": len(r.preambles or [r.preamble])},
-              note="blind (rpps.analysis.spectrum.burst): each burst acquired on its own preamble")
+              note="blind (rpps.analysis.burst): each burst acquired on its own preamble")
         c = symbol.load_or_generate(r.mod)
         kinds = r.preambles or [r.preamble]
         looked = False
@@ -670,7 +670,7 @@ class _Chain:
                 q.add("frame", f"{label}: {u.unit} (+-{u.err:.1f}) symbol units, {u.overhead} symbols besides; "
                       f"{', '.join(f'{c} of {n}' for n, c in sorted(u.counts.items()))} units", GUESS,
                       detail={"unit": u.unit, "err": u.err, "overhead": u.overhead, "counts": u.counts, "fit": u.fit},
-                      note="rpps.analysis.spectrum.burst.units: payload lengths as overhead + n units")
+                      note="rpps.analysis.burst.units: payload lengths as overhead + n units")
             best = None
             for key in _distinct(bit_streams(pays[0], c, differential=False), c):
                 rows = [bit_streams(y, c, differential=False, keys=[key])[key] for y in pays]

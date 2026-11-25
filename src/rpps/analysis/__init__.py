@@ -45,7 +45,7 @@ bits; strong codes at low SNR are beyond them on channel bits.
 | FSK / MSK / GMSK, CPM index | `modulation.fsk.analyze`, `cpm_index` | instantaneous frequency; h from the phase lattice |
 | GMSK / SOQPSK bits, which pulse | `modulation.cpm.demodulate`, `identify` | per-survivor Viterbi, each survivor its own carrier loop |
 | OFDM pilot pattern | `spectrum.ofdm_pilots.discover`, `grid` | grid from CP peaks; period from coherent repetition; pilot lattice, boost, empty cells |
-| TDMA bursts, frame and slots | `spectrum.burst.demodulate` | each burst on its shared preamble, mid-amble or postamble (`shared_segments`), data-aided carrier and phase; its symbol clock followed; LLRs (`Bursts.llrs`); blind when nothing is shared |
+| TDMA bursts, frame and slots | `burst.demodulate` | each burst on its shared preamble, mid-amble or postamble (`shared_segments`), data-aided carrier and phase; its symbol clock followed; LLRs (`Bursts.llrs`); blind when nothing is shared |
 | two co-channel signals of equal power | `spectrum.separate.estimate`, `separate` | each one's carrier, timing and phase; joint sequence estimate |
 | which named system | `catalogue.match`, `features` | measured features against systems from their standards, weighted |
 | PM, residual carrier, subcarriers | `modulation.pm.analyze`, `subcarrier`, `nrz` | carrier tracked, phase around it |
@@ -89,15 +89,15 @@ bits; strong codes at low SNR are beyond them on channel bits.
 | sync markers, frame length, HDLC | `framing.bits.find_sync`, `frame_length`, `scan_hdlc` | hits at a period, autocorrelation, flags and FCS against chance |
 | PM telemetry end to end | `framing.telemetry.analyze` | BPSK per subcarrier, line code, frame period, counters |
 | what each header bit is | `framing.fields.map` | constants, counters (either bit order, per terminal), ids, length fields, enums, random; a link header definition |
-| code blocks a burst is made of | `spectrum.burst.units` | burst lengths as overhead + n units, the unit to a symbol or so |
-| a burst time plan, and whether one explains the bursts | `spectrum.burst.learn_plan`, `check_plan` | BTU, frame, slots from the starts; each burst in a slot of its carrier and kind, the plan's origin and clock fitted (`rp.viz.bursts`, `burst_timing`, `plan_evidence` draw them) |
-| a burst's layout, and how many transmitters | `spectrum.burst.demodulate` with `rp.viz.burst_stack`, `burst_terminals` | the bursts of a kind lined up on their known symbols (where they agree); a cluster per transmitter in offset and power |
+| code blocks a burst is made of | `burst.units` | burst lengths as overhead + n units, the unit to a symbol or so |
+| a burst time plan, and whether one explains the bursts | `burst.learn_plan`, `check_plan` | BTU, frame, slots from the starts; each burst in a slot of its carrier and kind, the plan's origin and clock fitted (`rp.viz.bursts`, `burst_timing`, `plan_evidence` draw them) |
+| a burst's layout, and how many transmitters | `burst.demodulate` with `rp.viz.burst_stack`, `burst_terminals` | the bursts of a kind lined up on their known symbols (where they agree); a cluster per transmitter in offset and power |
 | which CRC, over which bits | `framing.crc.search` | GCD of frame differences (RevEng's method on bit streams); init and xorout from two lengths; config/crc names |
 | framing in decoded bits | `framing.payload.signatures` | E1/T1, ATM, GFP, HDLC, IPv4, CCSDS ASM, MPEG-TS, fixed bits, each against chance |
 | structured, scrambled or random | `framing.payload.verdict` | signatures, bias, linear complexity, compressibility |
 | encrypted, or only compressed | `framing.randomness.test` | NIST SP 800-22 frequency, block, runs, serial, approximate entropy, cusum; byte chi-square and entropy |
 """
-from . import spectrum, modulation, sequence, code, framing
+from . import spectrum, modulation, sequence, code, framing, burst
 from . import result, identify
 from . import signal_profile
 from . import catalogue

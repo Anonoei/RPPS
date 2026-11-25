@@ -9,6 +9,9 @@ A call gives a list, one output per burst that ended in the block (Blocks flatte
 
 Transmitting is the mirror: every burst through a runner of its own of the steps after the burst step, the bursts placed
 on one stream (rpps.sync.BurstTx: gaps, start times, ramps, a carrier each), the steps before it on that stream.
+
+The rest of the burst code: rpps.sync.burst, rpps.sync.plan (the stages), rpps.analysis.burst (bursts demodulated blind;
+plans learned and checked: its docstring maps it all).
 """
 from ..errors import ConfigError
 

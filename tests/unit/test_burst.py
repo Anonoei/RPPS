@@ -1,8 +1,8 @@
-"""TDMA bursts demodulated on their shared preamble (rpps.analysis.spectrum.burst)"""
+"""TDMA bursts demodulated on their shared preamble (rpps.analysis.burst)"""
 import numpy as np
 
 import rpps as rp
-from rpps.analysis.spectrum import burst
+from rpps.analysis import burst
 from rpps.analysis.framing import frames as FR
 
 def tdma(rng, frames=3, slots=(0, 2, 3, 5), fs=2e6, baud=250e3, frame=4.8e-3, slot=0.6e-3, noise=0.08):
@@ -334,9 +334,9 @@ def test_frame_period_of_slots_used_in_alternate_frames_or_none():
     every = [f*T + s*btu + rng.normal(0, 2e-6) for f in range(40) for s in (2, 7, 4, 12)]
     loose = np.arange(20)*0.18 + rng.uniform(-0.02, 0.02, 20)
     x = np.zeros(1000)
-    assert abs(burst._frame([_B(t) for t in alt], x, 1e6, 512e3, 16)[0] - 2*T) < 1e-5
-    assert abs(burst._frame([_B(t) for t in every], x, 1e6, 512e3, 16)[0] - T) < 1e-5
-    assert burst._frame([_B(t) for t in loose], x, 1e6, 170.67e3, 16)[0] is None
+    assert abs(burst.demod._frame([_B(t) for t in alt], x, 1e6, 512e3, 16)[0] - 2*T) < 1e-5
+    assert abs(burst.demod._frame([_B(t) for t in every], x, 1e6, 512e3, 16)[0] - T) < 1e-5
+    assert burst.demod._frame([_B(t) for t in loose], x, 1e6, 170.67e3, 16)[0] is None
 
 def test_a_preambles_tone_pair_gives_the_carrier_and_qpsk_keeps_its_own():
     """A 1100 preamble's lines at the carrier +-baud/4: their middle is the carrier (to a few Hz, from -4 to +6 kHz at

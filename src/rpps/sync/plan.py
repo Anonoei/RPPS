@@ -7,7 +7,7 @@
 
 Detection comes first: each carrier is brought to baseband (rpps.signal.channelize) and cut into the bursts that rise
 out of its own noise floor (rpps.sync.Burst), at absolute positions, so a capture with no plan still gives its bursts,
-and a plan learned from them (rpps.analysis.spectrum.burst) or told by a forward link (rpps.plan) places them:
+and a plan learned from them (rpps.analysis.burst) or told by a forward link (rpps.plan) places them:
 
   - `plan`: each burst is labelled with its window (superframe, frame, slot, tx type, assignment) and the fields of its
     tx type (what a profile's controls drive per burst). A burst no window explains is given unlabelled, and counted.
@@ -26,6 +26,9 @@ start (seconds from the capture's first sample), and with a plan its window's fi
 its `rate` brings each carrier to exactly that many samples a symbol (decimated by a whole factor, the rest resampled:
 a capture at any rate), so one profile serves carriers of several rates. Estimates in est["bursts"]:
 per carrier the floor and bursts, the origin, its rate, locked, labelled and unlabelled counts.
+
+The rest of the burst code: rpps.sync.burst (one carrier's bursts by energy), rpps.profile.burst (a profile's burst step),
+rpps.analysis.burst (bursts demodulated blind; plans learned and checked: its docstring maps it all).
 """
 from types import SimpleNamespace
 

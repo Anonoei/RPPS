@@ -19,6 +19,9 @@ of the noise windows the floor is 0, and any power is a burst (a clean signal's 
 with that many zeros is one burst). For one flushed block of a whole capture this is a batch rule: every window of the capture sets the floor.
 A stream's first `settle` windows are decided together, once they are all in (or the stream ends): a floor taken from the
 first few windows alone would be a burst's own level.
+
+The rest of the burst code: rpps.sync.plan (bursts on many carriers, placed in a time plan), rpps.profile.burst (a
+profile's burst step), rpps.analysis.burst (bursts demodulated blind; plans learned and checked: its docstring maps it all).
 """
 from types import SimpleNamespace
 

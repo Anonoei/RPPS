@@ -23,7 +23,7 @@ seconds). Where a plan comes from:
     messages and gives a Plan, updated as new versions and each superframe's assignments come, and the network clock
     (rpps.plan.air: a builder is a definition too, mapping the tables onto this model)
   - a definition, `config/plan/<family>/<name>.json`, of the same model (a standard's fixed structure, a test, a plan
-    `rp.analysis.spectrum.burst` learned from detected bursts): `rp.plan.load("demo/mftdma")`
+    `rp.analysis.burst` learned from detected bursts): `rp.plan.load("demo/mftdma")`
 
 Hopping: a sequence's `hop` ({"channels": [Hz, ...], "carrier": "(k*hop + f) % 37", "params": {"hop": 7}}, or
 "algorithm": "ble_csa1") moves each frame's centre to a channel, superframe by superframe; a train (bursts at a fixed

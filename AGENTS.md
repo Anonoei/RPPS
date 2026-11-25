@@ -86,7 +86,8 @@ Nothing under `src/` may import scipy (`test_numpy_only.py`).
   is the stable API (`docs/guide/integrating.md`): its old name stays one release, warning, then goes.
 - **Be explicit:** fix a caller rather than loosen a contract check.
 - **Python first, then C++:** write the stage in Python with a block-cut test; move hot loops to `csrc/` behind
-  `rpps._accel.native`, keeping the Python loop as the reference the tests compare against.
+  `rpps._accel.native`, keeping the Python loop as the reference the tests compare against. A primitive's kernel goes
+  behind a `rpps.math`/`rpps.signal` wrapper that stages share; one stage's loop stays in that stage until a second caller.
 - **Decoders return status, never keep it** (`decode(x, status=True)`), so one loaded code serves many threads.
 - **Read the standard** when a decode does not work, instead of guessing.
 - **Statistical tests** assert with a margin measured over many seeds.

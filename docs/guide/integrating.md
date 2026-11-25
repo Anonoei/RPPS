@@ -17,7 +17,7 @@ stage's state) can change.
 | `Signal.channel()` | the filters that bring a signal to baseband: `front`, `Fs`, `decimation`, `delay`, `settle` (its start-up transient, in output samples) |
 | `rp.analysis.profile`, `rp.source.Memory` | every step that processes a signal, and what it might be where unknown, over a capture held in memory (`Memory.capture(device, n)`) |
 | `rp.analysis.spectrum.waveform.classify`, `rp.analysis.modulation.cumulants.classify`, `rp.analysis.modulation.fsk.analyze` | what kind of waveform (tones, on-off, OFDM, single carrier), which constellation, FSK's tones and deviation |
-| `rp.analysis.spectrum.hopping.track`, `rp.analysis.spectrum.burst.demodulate` | a hopping signal's dwells; TDMA bursts, each demodulated from its preamble |
+| `rp.analysis.spectrum.hopping.track`, `rp.analysis.burst.demodulate` | a hopping signal's dwells; TDMA bursts, each demodulated from its preamble (`rp.analysis.spectrum.burst.demodulate` until the next release, warning) |
 | `rp.analysis.framing.frames`: `find`, `cut`, `coherence`, `periods` | frame structure in symbols: the period, the frames cut at it, how alike they are |
 | `rp.analysis.spectrum.cyclic`: `alpha_profile`, `features`, `ORDER_NAMES`; `rp.analysis.spectrum.scf.coherence` | cyclic features: symbol rate and modulation order lines, spectral coherence |
 | `rp.signal.filters.rrc_pulse` | the root raised cosine pulse at any (fractional) time |

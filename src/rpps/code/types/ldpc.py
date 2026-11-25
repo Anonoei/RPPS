@@ -239,7 +239,7 @@ class ldpc(_code):
         iters = self.iters if iters is None else int(iters)
         llr = np.asarray(llr, dtype=np.float64)
         idx = np.where(self.valid, self.var[np.maximum(self.slot, 0)], 0)
-        if _accel.native is not None and hasattr(_accel.native, "ldpc_flood"):
+        if _accel.native is not None:
             return _accel.native.ldpc_flood(np.ascontiguousarray(llr), np.ascontiguousarray(idx), self.deg, iters, float(self.alpha))
         B, dmax, valid, alpha = len(llr), self.dmax, self.valid, self.alpha
         msg = np.zeros((B, self.M, dmax))

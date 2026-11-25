@@ -39,6 +39,19 @@ inline int ctz64(uint64_t x) {
 #endif
 }
 
+// The number of set bits of x
+inline int popcount64(uint64_t x) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_popcountll(x);
+#elif defined(_MSC_VER) && defined(_M_X64)
+    return static_cast<int>(__popcnt64(x));
+#else
+    int n = 0;
+    while (x) { x &= x - 1; n++; }
+    return n;
+#endif
+}
+
 template <typename T>
 using carray = py::array_t<T, py::array::c_style | py::array::forcecast>;
 

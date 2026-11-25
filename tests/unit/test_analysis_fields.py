@@ -1,10 +1,10 @@
 """What each bit of a set of frames is (rpps.analysis.framing.fields), and the units bursts are made of
-(rpps.analysis.spectrum.burst.units)"""
+(rpps.analysis.burst.units)"""
 import numpy as np
 
 import rpps as rp
 from rpps.analysis.framing import fields as FM
-from rpps.analysis.spectrum import burst
+from rpps.analysis import burst
 
 def bits(v, w, order="msb"):
     b = [(v >> i) & 1 for i in range(w)]

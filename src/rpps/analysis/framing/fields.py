@@ -15,7 +15,7 @@ what chance gives over that many frames:
   - counter: a value stepping by the same amount (mod 2^width) from frame to frame, in either bit order. Its lowest
     bit that changes flips every frame (step odd times 2^k); the field is grown from it both ways while the step holds
     in `hold` of the frames and each new bit changes at all (the counter's top bits never reached in the record read as
-    constant). With `groups` (a terminal per frame, e.g. from rpps.analysis.spectrum.burst), steps within each group:
+    constant). With `groups` (a terminal per frame, e.g. from rpps.analysis.burst), steps within each group:
     frames in record order, each group its own count
   - length: with `lengths` (each frame's own, in bits or symbols), a run whose value is a*length + b for one a, b
   - enum: a run taking at most `max_values` values over the frames (a type, a flag set), grown while it stays few: at
@@ -24,6 +24,7 @@ what chance gives over that many frames:
 """
 import numpy as np
 
+from ...math.mask import runs
 from ..result import Guess
 
 class Field:
@@ -158,10 +159,6 @@ def _inside(fields, L):
         m[f.start:f.stop] = True
     return m
 
-def _runs(mask):
-    d = np.diff(np.concatenate(([0], mask.astype(np.int8), [0])))
-    return list(zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1)))
-
 def map(frames, groups=None, lengths=None, length=None, hold=0.95, max_width=32, max_values=8):
     """FieldMap of the frames (bit rows, aligned at their first bit). groups: a label a frame (a terminal), for counters
     within each and ids; lengths: each frame's length, for length fields; length: bits to map (default: the shortest
@@ -186,7 +183,7 @@ def map(frames, groups=None, lengths=None, length=None, hold=0.95, max_width=32,
             q = g.mean(axis=0)
             within &= (q >= hold) | (q <= 1 - hold)
         if len(many) >= 2: # runs constant within the groups, through columns constant everywhere, ends that vary
-            for a, b in _runs(within):
+            for a, b in zip(*runs(within)):
                 vary = np.flatnonzero(~const[a:b])
                 if len(vary) == 0:
                     continue
@@ -201,7 +198,7 @@ def map(frames, groups=None, lengths=None, length=None, hold=0.95, max_width=32,
     if lengths is not None:
         ln = np.asarray([l for l, r in zip(lengths, frames) if len(np.asarray(r).reshape(-1)) >= L], dtype=np.float64)
         if len(np.unique(ln)) >= 3:
-            for a, b in _runs(~taken):
+            for a, b in zip(*runs(~taken)):
                 best = None
                 for w in range(2, min(16, b - a) + 1):
                     for o in range(a, b - w + 1):
@@ -217,7 +214,7 @@ def map(frames, groups=None, lengths=None, length=None, hold=0.95, max_width=32,
                     fields.append(Field(o, w, "length", scale=float(np.round(k, 6)), offset=float(np.round(c, 3))))
                     taken[o:o + w] = True
     # enums: runs of few values, grown while they stay few
-    for a, b in _runs(~taken):
+    for a, b in zip(*runs(~taken)):
         o = a
         while o < b:
             e = o + 1
@@ -231,9 +228,9 @@ def map(frames, groups=None, lengths=None, length=None, hold=0.95, max_width=32,
                 taken[o:e] = True
             o = e
     # constants, random and what is left
-    for a, b in _runs(const & ~used & ~_inside(fields, L)):
+    for a, b in zip(*runs(const & ~used & ~_inside(fields, L))):
         fields.append(Field(a, b - a, "constant", value=int(_value((p1[None, a:b] > 0.5).astype(np.uint8))[0])))
-    for a, b in _runs(~taken):
+    for a, b in zip(*runs(~taken)):
         if b - a == 1:
             fields.append(Field(a, 1, "varying"))
         else:

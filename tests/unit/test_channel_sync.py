@@ -94,6 +94,31 @@ def test_costas_locks_psk_of_any_order(M, rng):
     step = 2*np.pi/M
     assert np.std(ang - np.round(ang/step)*step) < 0.15
 
+def _dd_loop(y, points, k1, k2):
+    """The second-order decision-directed loop Costas(points=) runs (analysis.burst's own loop, before it used Costas)"""
+    out, ph, nu = np.empty_like(y), 0.0, 0.0
+    for i, v in enumerate(y):
+        r = v*np.exp(-1j*ph)
+        e = np.angle(r*np.conj(points[np.argmin(np.abs(points - r))]))
+        out[i] = r
+        nu += k2*e
+        ph += k1*e + nu
+    return out
+
+def test_costas_on_points_locks_apsk_and_is_the_decision_directed_loop(rng):
+    n = 6000
+    pts = np.concatenate((np.exp(1j*(np.pi/4 + np.pi/2*np.arange(4))), 2.6*np.exp(1j*(np.pi/12 + np.pi/6*np.arange(12))))) # 16APSK
+    pts /= np.sqrt(np.mean(np.abs(pts)**2))
+    s = pts[rng.integers(0, len(pts), n)]
+    y = (rp.Data(s.astype(np.complex64), sps=1) + rp.signal.channel.CFO(0.001) + rp.signal.channel.PhaseOffset(0.05)
+         + rp.signal.channel.AWGN(25, seed=1)).data.astype(np.complex128)
+    loop = rp.sync.Costas(0.05, 0.002, points=pts)
+    out = loop.step(y, loop.new_state(None), None)
+    assert np.allclose(out, _dd_loop(y, pts, 0.05, 0.002), atol=1e-9)
+    tail = out[n//2:]
+    near = pts[np.argmin(np.abs(tail[:, None] - pts[None, :]), axis=1)]
+    assert np.std(np.angle(tail*np.conj(near))) < 0.1
+
 def test_agc_settles_on_the_target(rng):
     x = (0.05*np.exp(2j*np.pi*0.05*np.arange(20000))).astype(np.complex64)
     out = (rp.Data(x) + rp.sync.AGC(1.0, 0.02)).data

@@ -15,6 +15,8 @@ Coded data under the unique word is random-looking; data that repeats (idle fram
 """
 import numpy as np
 
+from ...math.mask import runs
+
 class Frame:
     """`find`: period (symbols), uw_start (position in the period), uw_length (symbols), coherence (of the unique word,
     1 = the same symbols every frame), floor (of the other positions), uw (the unique word's symbols, from the first
@@ -328,13 +330,11 @@ def _guards(p, level, min_gap, ratio=3.0, q=95):
     to be guard times: [(start, stop)] in p's samples. At least
     `min_gap` long, and `ratio` times the `q`th percentile of all runs' lengths (a burst's own envelope dips through
     zero, a fraction of a symbol each, are most of the runs; guard times are a few)"""
-    low = np.concatenate(([0], (p < level).astype(np.int8), [0]))
-    d = np.diff(low)
-    runs = list(zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1)))
-    if not runs:
+    lows = list(zip(*runs(p < level)))
+    if not lows:
         return []
-    typical = np.percentile([b - a for a, b in runs], q)
-    return [(int(a), int(b)) for a, b in runs if b - a >= max(min_gap, ratio*typical)]
+    typical = np.percentile([b - a for a, b in lows], q)
+    return [(int(a), int(b)) for a, b in lows if b - a >= max(min_gap, ratio*typical)]
 
 def split(x, Fs, a, b, win=4e-6, min_len=64e-6, min_gap=2e-6, thr=None, bw=None, guards=True):
     """Where bursts that touch (no gap the gate sees, or one shorter than its `hang`) meet in x[a:b]: [(start, stop)].
@@ -429,10 +429,9 @@ def gate(x, Fs, smooth=4e-6, contrast=2.5, min_len=64e-6, hang=8e-6, touching=Tr
         return []
     n_sym = float(np.clip((4/(np.sqrt(hi/lo) - 1))**2, 2, 64))
     w = max(Fs*smooth, n_sym*sym)
-    on = (avg(w) > np.sqrt(lo*hi)).astype(np.int8)
+    on = avg(w) > np.sqrt(lo*hi)
     hang = max(hang, 6/bw, 2*w/Fs)
-    d = np.diff(np.concatenate(([0], on, [0])))
-    spans = list(zip(np.nonzero(d == 1)[0], np.nonzero(d == -1)[0]))
+    spans = list(zip(*runs(on)))
     merged = []
     for a, b in spans:
         if merged and a - merged[-1][1] < hang*Fs:

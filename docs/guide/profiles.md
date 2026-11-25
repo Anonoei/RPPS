@@ -164,10 +164,10 @@ A plan (`rpps.plan`) comes from where the network keeps it:
 - **A definition**, `config/plan/<family>/<name>.json`, in the same model: a standard's fixed structure, a test. A
   sequence's `hop` moves its frames from channel to channel (an expression, or an algorithm by name: `ble_csa1`); a
   frame's `repeat` and `every` make a train of bursts.
-- **Learned from the bursts**, when the forward link is not heard: `rp.analysis.spectrum.burst.learn_plan(bursts)` finds
+- **Learned from the bursts**, when the forward link is not heard: `rp.analysis.burst.learn_plan(bursts)` finds
   the BTU, the frame and the slots, and saves a definition (`.save(name)`).
 
-Whether a plan, from anywhere, explains the bursts: `rp.analysis.spectrum.burst.check_plan(plan, bursts)` fits its origin
+Whether a plan, from anywhere, explains the bursts: `rp.analysis.burst.check_plan(plan, bursts)` fits its origin
 and clock to them and puts each in a slot of its carrier (in a slot of its kind, another kind's, overrunning it, or
 in none), and `rp.viz.bursts(None, check, fold=True)` draws a raster of superframes, one a row: a right plan keeps the
 bursts inside its slots' columns, a wrong frame slants them, a wrong BTU puts them across the columns' edges.
