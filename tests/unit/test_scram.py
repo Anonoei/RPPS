@@ -100,3 +100,22 @@ def test_additive_descrambler_keeps_llrs():
     hard = np.asarray((rp.base.Mod(llr < 0, rep=rp.Rep.CHANNEL) / s).data).astype(bool)
     assert np.array_equal(soft < 0, hard)
     assert np.allclose(np.abs(soft[np.abs(soft) < 40]), np.abs(llr[np.abs(soft) < 40])) # magnitudes kept (known marker bits are sure)
+
+@pytest.mark.parametrize("name", rp.code.scram.ls()["feedthrough"])
+@pytest.mark.parametrize("enc", [True, False])
+def test_feedthrough_without_a_loop_is_the_register(name, enc, rng):
+    """The keystream from the register's start state and its delays (a FIR / a recursion over GF(2)) is the register
+    stepped a bit at a time, over any cut, short blocks (the register itself) and long ones alike"""
+    from rpps.code.scram.scrambler import Feedthrough
+    scr = _load("feedthrough", name)
+    x = rng.integers(0, 2, 5000).astype(bool)
+    reg = (scr.s_lfsr if enc else scr.d_lfsr).fresh()
+    want = Feedthrough._loop(x, reg.clone(), not enc)
+    for cuts in ([5000], [1, 3, 40, 4956], [777]*6 + [338], [10, 0, 4990], [30, 30, 4940]):
+        r, outs, i = reg, [], 0
+        for c in cuts:
+            o, r = scr._run_bits(x[i:i + c], r, not enc)
+            outs.append(o)
+            i += c
+        assert np.array_equal(np.concatenate(outs), want), cuts[:3]
+    assert reg.lfsr.tolist() == reg.fresh().lfsr.tolist() # (the register given is not changed)

@@ -286,6 +286,14 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   bits match, and `rp.math.prob.log_binom_half_cdf`.
 
 ### Changed
+- **Self-synchronizing scramblers and the Bi-phase/Miller line codes have no loop over the bits.**
+  `rp.code.scram.Feedthrough` finds its register's delays once (a 1 sent into a cleared register) and its start
+  state's part of the keystream (zeros in, gone after L bits); descrambling is then a FIR over GF(2) and scrambling a
+  recursion (`rp.math.gf2.fir`, `rp.math.gf2.recur`: y = u/g(x) as u g(x) g(x^2) .. / g(x^(2^k)), a chunk of bits at a
+  time). The same bits as the register a bit at a time, every shipped definition, any cut; v35 scrambles at 195 Mb/s
+  (was 0.7) and descrambles at 1.9 Gb/s (0.85 Mb/s). Recurrence sequences (`rpps.sequence`, what additive scramblers
+  XOR in) extend by `gf2.recur` too, whatever their taps. `Line("biphase_m" | "biphase_s" | "miller")` encodes the
+  level as a running parity of its transitions (76 Mb/s).
 - **`rp.sync.PeakAGC` has no loop**: the running peak in closed form, a running maximum in logs. The same output to
   rounding, about 5-8x faster (7.5 MS/s before, with or without the kernels).
 - **Recursive filters have no loop over samples.** `IIR`'s path without the C++ kernels is one state space system

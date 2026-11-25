@@ -12,6 +12,7 @@ from ...base.data import expect
 from ...base.rpps import FRAME
 from ...errors import ConfigError
 from ...sequence import lfsr
+from ...math import gf2
 
 
 SURE = 50.0 # LLR of a bit that is known (a frame marker): certain, short of overflowing anything
@@ -95,6 +96,7 @@ class Feedthrough(Scram):
         super().__init__()
         self.s_lfsr = scram_lfsr
         self.d_lfsr = descram_lfsr
+        self._delays = None
     def __str__(self):
         return f"{type(self).__name__}:{self.s_lfsr}"
 
@@ -107,32 +109,62 @@ class Feedthrough(Scram):
     def descramble(bits, taps):
         """d[n] = y[n] ^ y[n-t] for every tap t, on a whole array at once (the first max(taps) bits are not fully
         descrambled: the register before them is unknown). What a search over taps runs (rpps.analysis.sequence)"""
-        y = np.asarray(bits, dtype=np.uint8)
-        d = y.copy()
-        for t in taps:
-            t = int(t)
-            if 0 < t < len(y):
-                d[t:] ^= y[:-t]
-        return d
+        return gf2.fir(bits, [int(t) for t in taps if 0 < int(t)])
+
+    def delays(self):
+        """The delays t whose bits through the register (what went in, scrambling; what came in, descrambling) the
+        keystream XORs: found by sending one 1 into a cleared register (every register form here is linear)"""
+        if self._delays is None:
+            reg = self.s_lfsr.clone()
+            reg.lfsr[:] = 0
+            out = [reg.advance(b, True) for b in [1] + [0]*len(reg.lfsr)]
+            self._delays = [t for t in range(1, len(out)) if out[t]]
+        return self._delays
 
     @staticmethod
-    def _run_bits(data, reg, descramble):
-        out = np.empty_like(data, dtype=bool)
+    def _loop(data, reg, descramble):
+        out = np.empty(len(data), dtype=bool)
         for i, bit in enumerate(data):
             out[i] = reg.advance(bit, descramble)
         return out
 
+    def _run_bits(self, data, reg, descramble):
+        """Scramble (or descramble) `data` from register `reg`: (the bits, the register after them). With no loop over the
+        bits: the keystream is the register's start state (gone after L bits: zeros in, read off a copy) XOR the bits
+        through it at `delays`, so descrambling is a FIR and scrambling a recursion over GF(2) (rpps.math.gf2)"""
+        bits = np.asarray(data).astype(np.uint8) & 1
+        L = len(reg.lfsr)
+        if len(bits) < 2*L: # (a short block: the register a bit at a time)
+            reg = reg.clone()
+            return self._loop(bits, reg, descramble), reg
+        probe = reg.clone()
+        start = np.array([probe.advance(0, True) for _ in range(L)], dtype=np.uint8) # the start state's part
+        if descramble:
+            out = gf2.fir(bits, self.delays())
+            out[:L] ^= start
+            through = bits
+        else:
+            u = bits.copy()
+            u[:L] ^= start
+            out = through = gf2.recur(u, self.delays())
+        after = reg.clone() # the register after: what its last L bits leave in it
+        after.lfsr[:] = 0
+        for b in through[-L:]:
+            after.advance(b, True)
+        return out.astype(bool), after
+
     def encode(self, data):
         """Scramble, continuing from where the last call left this scrambler"""
-        return self._run_bits(data, self.s_lfsr, False)
+        out, self.s_lfsr = self._run_bits(data, self.s_lfsr, False)
+        return out
 
     def decode(self, data):
-        return self._run_bits(data, self.d_lfsr, True)
+        out, self.d_lfsr = self._run_bits(data, self.d_lfsr, True)
+        return out
 
     def _stream(self, ctx, key, bits, enc):
-        reg = ctx[key].clone() if key in ctx else (self.s_lfsr if enc else self.d_lfsr).fresh()
-        out = self._run_bits(bits, reg, not enc)
-        ctx[key] = reg
+        reg = ctx[key] if key in ctx else (self.s_lfsr if enc else self.d_lfsr).fresh()
+        out, ctx[key] = self._run_bits(bits, reg, not enc)
         return out
 
     @staticmethod

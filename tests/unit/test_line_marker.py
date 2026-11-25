@@ -336,3 +336,28 @@ def test_irig_line_codes(name, rng):
         assert runs.max() <= 4
     assert np.array_equal(np.asarray((rp.Data(y) / line).data, bool), x)
     assert np.array_equal(np.asarray((rp.Data(~y) / line).data, bool), x) # an inverted line decodes the same
+
+@pytest.mark.parametrize("name", ["biphase_m", "biphase_s", "miller"])
+def test_two_level_codes_without_a_loop_are_the_state_machine(name, rng):
+    """The level as a running parity of the transitions is the state machine stepped a bit at a time"""
+    from rpps.code.line import MID
+    def machine(x, level=False, prev=True):
+        y = []
+        for b in x:
+            if name != "miller" or (not b and not prev):
+                level = not level
+            y.append(level)
+            if bool(b) == MID[name]:
+                level = not level
+            y.append(level)
+            prev = bool(b)
+        return np.array(y, bool)
+    b = rng.integers(0, 2, 3001).astype(bool)
+    L = rp.code.Line(name)
+    outs, ctx, i = [], None, 0
+    for c in [1, 0, 2, 500, 2498]:
+        d = rp.Data(b[i:i + c]) if ctx is None else rp.Data(b[i:i + c], ctx=ctx)
+        o = d * L
+        ctx, i = o.ctx, i + c
+        outs.append(hard(o))
+    assert np.array_equal(np.concatenate(outs), machine(b))
