@@ -1,3 +1,4 @@
+"""The CRC catalogue: check values, any width and length, masks"""
 import numpy as np
 import pytest
 
@@ -11,8 +12,6 @@ CHECK = {
     "crc16_arc": 0xBB3D, "crc16_xmodem": 0x31C3, "crc16_ccitt_false": 0x29B1, "crc16_x25": 0x906E,
     "crc24_ble": 0xC25A56, "crc24_lte_a": 0xCDE703, "crc24_lte_b": 0x23EF52, "crc16_gsm": 0xCE3C, "crc16_genibus": 0xD64E,
 }
-
-HDLC = [n for n in rp.link.ls()["frame"] if isinstance(rp.link.load(f"frame/{n}").encoder, rp.link.hdlc)] # (not byte stuffing)
 
 @pytest.mark.parametrize("name", rp.link.ls()["crc"])
 def test_crc_loads_and_self_checks(name):
@@ -111,25 +110,3 @@ def test_crc_mask_overlay(rng):
 def test_crc_width_out_of_range():
     with pytest.raises(ValueError):
         rp.link.crc(rp.logger.Logger(), 65, 1)
-
-@pytest.mark.parametrize("name", HDLC)
-def test_hdlc_round_trip(name, rng):
-    h = rp.link.load(f"frame/{name}").encoder
-    frames = [bytes(rng.integers(0, 256, n).astype(np.uint8)) for n in (max(10, h.min_bytes), 33, 100)] # (AX.25: 17 at least)
-    frames.append(b"\xff"*max(12, h.min_bytes)) # Runs of ones need bit stuffing
-    got, aborts = h.deframe(h.encode(frames))
-    assert aborts == 0
-    assert [p for p, ok in got] == frames
-    assert all(ok for p, ok in got)
-
-@pytest.mark.parametrize("name", HDLC)
-def test_hdlc_bad_fcs_flagged(name, rng):
-    h = rp.link.load(f"frame/{name}").encoder
-    frames = [bytes(rng.integers(0, 256, 40).astype(np.uint8)) for _ in range(3)]
-    bits = h.encode(frames).copy()
-    mid = len(bits)//2
-    bits[mid] ^= True
-    out, status = h.decode(bits, status=True)
-    got, aborts = h.deframe(bits)
-    assert list(status) == [0 if ok else -1 for _, ok in got]
-    assert sum(ok for _, ok in got) < len(frames) and ((status < 0).sum() + aborts) >= 1

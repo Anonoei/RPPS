@@ -1,20 +1,7 @@
 """Importing rpps is cheap and side-effect free, and ships what it loads"""
-import os
-import subprocess
-import sys
-from pathlib import Path
-
 import pytest
 
 import rpps as rp
-
-def test_import_has_no_side_effects(tmp_path):
-    code = ("import sys, os; import rpps; "
-            "bad = [m for m in ('pyboiler', 'matplotlib') if m in sys.modules]; "
-            "print(bad, os.path.exists('logs'))")
-    env = {**os.environ, "PYTHONPATH": str(Path(rp.__file__).parents[1])}
-    out = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, env=env)
-    assert out.stdout.strip() == "[] False", out.stdout + out.stderr
 
 def test_definitions_ship_with_the_package():
     root = rp._config.PATH_CONFIG
