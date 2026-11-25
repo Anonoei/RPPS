@@ -1,7 +1,9 @@
 {
   "base": "frame",
   "type": "bytes",
-  "comment": "SLIP: frames between END bytes (0xC0), END and ESC (0xDB) inside one sent as ESC 0xDC and ESC 0xDD; no check",
+  "comment": [
+    "SLIP: frames between END bytes (0xC0), END and ESC (0xDB) inside one sent as ESC 0xDC and ESC 0xDD; no check"
+  ],
   "ref": "RFC 1055",
   "flag": "0xC0",
   "escape": "0xDB",

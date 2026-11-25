@@ -1,7 +1,10 @@
 {
   "base": "block",
   "type": "product",
-  "comment": "Turbo product code (64,57)^2: extended Hamming rows and columns, rate 0.793, decoded soft by Chase-II over 4 bits with Pyndiah's extrinsic information (Pyndiah 1998); the code of IEEE 802.16 (WiMAX) and IESS-315 TPC modems",
+  "comment": [
+    "Turbo product code (64,57)^2: extended Hamming rows and columns, rate 0.793, decoded soft by Chase-II over 4 bits",
+    "with Pyndiah's extrinsic information (Pyndiah 1998); the code of IEEE 802.16 (WiMAX) and IESS-315 TPC modems"
+  ],
   "rows": "hamming/ext_64_57",
   "cols": "hamming/ext_64_57",
   "chase": 4,

@@ -1,7 +1,10 @@
 {
   "base": "interleave",
   "type": "block",
-  "comment": "CCSDS Reed-Solomon symbol interleaving, depth I: the I codewords of a frame are sent one symbol at a time in turn (symbol k of codeword j at position k*I + j), so a burst of I symbols costs each codeword one",
+  "comment": [
+    "CCSDS Reed-Solomon symbol interleaving, depth I: the I codewords of a frame are sent one symbol at a time in turn",
+    "(symbol k of codeword j at position k*I + j), so a burst of I symbols costs each codeword one"
+  ],
   "ref": "CCSDS 131.0-B-4 4.4",
   "tags": ["ccsds"],
   "params": {"depth": {"default": 5, "comment": "interleaving depth I: 1 to 8 codewords per frame"}},

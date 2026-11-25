@@ -247,13 +247,13 @@ def cmd_tx(args):
 
 def cmd_fmt(args):
     """Rewrite config/**/*.json in the house style; with --check only list the files that would change"""
-    from rpps._config import PATH_CONFIG, format_json
+    from rpps._config import PATH_CONFIG, format_json, join_comments
     root = Path(args.dir) if args.dir else PATH_CONFIG
     changed = []
     for f in sorted(root.rglob("*.json")):
         obj = json.loads(f.read_text())
         text = format_json(obj) + "\n"
-        assert json.loads(text) == obj, f
+        assert join_comments(json.loads(text)) == join_comments(obj), f # (a long comment is cut into lines)
         if text != f.read_text():
             changed.append(f)
             if not args.check:

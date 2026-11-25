@@ -257,6 +257,8 @@ what to use instead.
 - **Definition files put on one line whatever fits in 120 columns** (`python -m rpps fmt`, `rp.save`): a profile's
   steps read one step a line (`{"sync": "carrier", "id": "carrier", "order": 8}`), `{"param": "sps"}` is one line, and
   config/ is a fifth shorter. Lists of numbers stay on one line; table `rows` one row a line.
+- **A definition's `comment` can be a list of lines** (joined by spaces when it is read, at any depth); `fmt` cuts a
+  comment too long for its line at a sentence or clause, so no line of prose runs past 120 columns.
 - **A profile's position maps stay short on a long stream:** a change that keeps a step's rate (every header's) adds
   no anchor, and lookups no longer rebuild a list, so a receiver no longer slows down the longer it runs.
   `lte/downlink` at 15.36 MS/s went from 1.6x real time to 1.1x in one thread over 2 s of signal; the LTE grid and

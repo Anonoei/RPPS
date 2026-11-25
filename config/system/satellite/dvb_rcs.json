@@ -1,6 +1,9 @@
 {
   "base": "system",
-  "comment": "return-link bursts on MF-TDMA: frames of tens to hundreds of ms; seen on the uplink bands and on a transparent satellite's downlink",
+  "comment": [
+    "return-link bursts on MF-TDMA: frames of tens to hundreds of ms;",
+    "seen on the uplink bands and on a transparent satellite's downlink"
+  ],
   "ref": "ETSI EN 301 790, EN 301 545-2",
   "title": "DVB-RCS / RCS2 (MF-TDMA return)",
   "features": {

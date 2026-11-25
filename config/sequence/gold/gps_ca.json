@@ -1,7 +1,10 @@
 {
   "base": "sequence",
   "type": "gold",
-  "comment": "GPS C/A code (IS-GPS-200 3.3.2.3): G1 = 1 + x^3 + x^10 and G2 = 1 + x^2 + x^3 + x^6 + x^8 + x^9 + x^10, both from all ones; G2 is read at the XOR of two stages chosen by the PRN. 1023 chips at 1.023 Mcps; a 1 bit is -1",
+  "comment": [
+    "GPS C/A code (IS-GPS-200 3.3.2.3): G1 = 1 + x^3 + x^10 and G2 = 1 + x^2 + x^3 + x^6 + x^8 + x^9 + x^10, both from",
+    "all ones; G2 is read at the XOR of two stages chosen by the PRN. 1023 chips at 1.023 Mcps; a 1 bit is -1"
+  ],
   "ref": "IS-GPS-200 Table 3-Ia",
   "tags": ["gps"],
   "rate": 1023000.0,

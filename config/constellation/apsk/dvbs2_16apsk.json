@@ -1,6 +1,9 @@
 {
   "base": "constellation",
-  "comment": "DVB-S2 16APSK: rings of 4 + 12 points; the outer radii depend on the code rate (the rate files below give them), the labelling does not",
+  "comment": [
+    "DVB-S2 16APSK: rings of 4 + 12 points; the outer radii depend on the code rate (the rate files below give them),",
+    "the labelling does not"
+  ],
   "ref": "EN 302 307-1 V1.2.1 5.4.3",
   "tags": ["dvb-s2"],
   "params": {

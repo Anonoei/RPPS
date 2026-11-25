@@ -1,7 +1,10 @@
 {
   "base": "crc",
   "type": "checksum",
-  "comment": "The Internet checksum: the ones' complement of the ones' complement sum of the 16-bit big-endian words (IPv4, ICMP, UDP and TCP headers)",
+  "comment": [
+    "The Internet checksum: the ones' complement of the ones' complement sum of the 16-bit big-endian words (IPv4,",
+    "ICMP, UDP and TCP headers)"
+  ],
   "ref": "RFC 1071",
   "algorithm": "internet",
   "width": 16,

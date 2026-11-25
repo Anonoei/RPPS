@@ -1,7 +1,9 @@
 {
   "base": "crc",
   "type": "crc",
-  "comment": "CRC-24 of 5G NR: gCRC24C of 3GPP TS 38.212 5.1 (DCI and BCH, polar coded: the CRC the list decoder checks)",
+  "comment": [
+    "CRC-24 of 5G NR: gCRC24C of 3GPP TS 38.212 5.1 (DCI and BCH, polar coded: the CRC the list decoder checks)"
+  ],
   "tags": ["nr"],
   "width": 24,
   "poly": "0xb2b117",

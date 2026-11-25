@@ -1,6 +1,8 @@
 {
   "base": "system",
-  "comment": "frame lists the SSB burst periods too: a repetition measured on NR is often the SSB period, not the 10 ms frame",
+  "comment": [
+    "frame lists the SSB burst periods too: a repetition measured on NR is often the SSB period, not the 10 ms frame"
+  ],
   "ref": "3GPP TS 38.211",
   "tags": ["nr"],
   "title": "5G NR",

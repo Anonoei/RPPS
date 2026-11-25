@@ -279,10 +279,26 @@ def _deep(a, b):
             out[k] = v
     return out
 
+def join_comments(v, where="definition"):
+    """`v` with every "comment" written as a list of lines made one string (the lines joined by spaces), at any depth"""
+    if isinstance(v, dict):
+        out = {}
+        for k, x in v.items():
+            if k == "comment" and isinstance(x, list):
+                if not all(isinstance(s, str) for s in x):
+                    raise ConfigError(f"{where}: a comment is a string or a list of strings, not {x!r}")
+                out[k] = " ".join(x)
+            else:
+                out[k] = join_comments(x, where)
+        return out
+    if isinstance(v, list):
+        return [join_comments(x, where) for x in v]
+    return v
+
 def expand(path, _chain=()):
-    """The definition in a file with its "extends" chain applied (abstract or not)"""
+    """The definition in a file with its "extends" chain applied (abstract or not), comments one string each"""
     path = Path(path)
-    obj = read_raw(path)
+    obj = join_comments(read_raw(path), str(path))
     ref = obj.get("extends")
     if ref is None:
         return obj
@@ -440,7 +456,7 @@ DEFINITION_KEYS = ("base", "comment", "ref", "extends", "abstract", "tags", "par
 
 def load_obj(domain, name, obj, params=None):
     """Build a definition already read from JSON (or made in code) with the loader of its "base" """
-    obj = resolve(obj, params, f"{domain}/{name}")
+    obj = resolve(join_comments(obj, f"{domain}/{name}"), params, f"{domain}/{name}")
     d = _DOMAINS.get(domain)
     base = str(obj.get("base", "")).lower()
     if d is None or base not in d.loaders:
@@ -672,9 +688,33 @@ def format_json(v, ind=0, used=0, spread=False):
         lines = []
         for k in keys:
             head = f"{pad}  {json.dumps(k)}: "
-            lines.append(head + format_json(v[k], ind + 1, len(head), spread=k == "rows" and isinstance(v[k], list)))
+            x = v[k]
+            if k == "comment" and isinstance(x, (str, list)) and all(isinstance(s, str) for s in x if isinstance(x, list)):
+                lines.append(head + _format_comment(" ".join(x) if isinstance(x, list) else x, pad, len(head)))
+                continue
+            lines.append(head + format_json(x, ind + 1, len(head), spread=k == "rows" and isinstance(x, list)))
         return "{\n" + ",\n".join(lines) + f"\n{pad}}}"
     return "[\n" + ",\n".join(f"{pad}  {format_json(x, ind + 1, len(pad) + 2)}" for x in v) + f"\n{pad}]"
+
+def comment_lines(text, width):
+    """`text` cut at spaces into lines of at most `width` characters as JSON strings (a word longer is a line of its own),
+    each line ending a sentence or clause (". ", "; ", ": ") where one ends in its second half: " ".join gives `text` back"""
+    words, lines, cur = text.split(" "), [], []
+    size = lambda ws: len(json.dumps(" ".join(ws)))
+    for w in words:
+        if cur and size([*cur, w]) > width:
+            cut = next((i + 1 for i in range(len(cur) - 1, len(cur)//2 - 1, -1) if cur[i].endswith((".", ";", ":"))), len(cur))
+            lines.append(" ".join(cur[:cut]))
+            cur = cur[cut:]
+        cur.append(w)
+    return lines + [" ".join(cur)]
+
+def _format_comment(text, pad, used):
+    """A comment on one line when it fits, else a list of lines (`comment_lines`), one a line"""
+    if used + len(json.dumps(text)) + 1 <= WIDTH:
+        return json.dumps(text)
+    lines = comment_lines(text, WIDTH - len(pad) - 4 - 1)
+    return "[\n" + ",\n".join(f"{pad}    {json.dumps(s)}" for s in lines) + f"\n{pad}  ]"
 
 def save(domain, category, ref, obj, dest=None, overwrite=False):
     """Write a definition to <dest>/<domain>/<category>/<ref>.json and return the file

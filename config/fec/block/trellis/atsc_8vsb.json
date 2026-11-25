@@ -1,7 +1,12 @@
 {
   "base": "block",
   "type": "fsm",
-  "comment": "ATSC A/53 8VSB trellis code, one of the 12 interleaved encoders: input (X2, X1); X2 precoded (Z2 = X2 xor the last Z2), X1 through the 4-state rate 1/2 code (Z1 = X1, Z0 = s1; s1' = X1 xor s2, s2' = s1). State = (last Z2, s1, s2); the symbol is level 2(4 Z2 + 2 Z1 + Z0) - 7. Decoded on the amplitudes",
+  "comment": [
+    "ATSC A/53 8VSB trellis code, one of the 12 interleaved encoders: input (X2, X1);",
+    "X2 precoded (Z2 = X2 xor the last Z2), X1 through the 4-state rate 1/2 code (Z1 = X1, Z0 = s1;",
+    "s1' = X1 xor s2, s2' = s1). State = (last Z2, s1, s2); the symbol is level 2(4 Z2 + 2 Z1 + Z0) - 7.",
+    "Decoded on the amplitudes"
+  ],
   "tags": ["atsc"],
   "k": 2,
   "n": 3,

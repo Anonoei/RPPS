@@ -1,6 +1,12 @@
 {
   "base": "profile",
-  "comment": "DVB-S2 multiple input streams (MIS): one demodulator and decoder (the steps of dvbs2/normal through the BBFRAME descrambler), then a branch per input stream, each a BBHEADER that keeps the frames of its ISI (MATYPE-2, with SIS/MIS 0). Each frame's PLS sets the BBFRAME length of every branch's BBHEADER, ahead of it. Out comes {stream: its data fields}. Two streams, `isi_a` and `isi_b`; another is another branch with its own BBHEADER step and a line in the PLS's drive. Transmit with dvbs2/normal, giving each frame's `sis` 0 and `isi`",
+  "comment": [
+    "DVB-S2 multiple input streams (MIS): one demodulator and decoder (the steps of dvbs2/normal through the BBFRAME",
+    "descrambler), then a branch per input stream, each a BBHEADER that keeps the frames of its ISI (MATYPE-2, with",
+    "SIS/MIS 0). Each frame's PLS sets the BBFRAME length of every branch's BBHEADER, ahead of it. Out comes {stream:",
+    "its data fields}. Two streams, `isi_a` and `isi_b`; another is another branch with its own BBHEADER step and a",
+    "line in the PLS's drive. Transmit with dvbs2/normal, giving each frame's `sis` 0 and `isi`"
+  ],
   "ref": "EN 302 307-1 5.1.6",
   "tags": ["dvb-s2"],
   "params": {

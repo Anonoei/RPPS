@@ -1,7 +1,13 @@
 {
   "base": "block",
   "type": "fsm",
-  "comment": "P25 phase 1 rate 1/2 trellis code (TIA-102.BAAA) of data blocks / TSBKs: 4 states (the last input dibit), each input dibit sends a 4-bit constellation word (two dibits); 48 dibits + one zero flush dibit -> 98 dibits. Each word is the dibit pair (Table 9-1 dibit of each symbol) of the constellation point of TIA-102.BAAA-A Table 7-2 (rate 1/2 state transitions) mapped by Table 7-3; checked on air (TSBK CRCs pass)",
+  "comment": [
+    "P25 phase 1 rate 1/2 trellis code (TIA-102.BAAA) of data blocks / TSBKs:",
+    "4 states (the last input dibit), each input dibit sends a 4-bit constellation word (two dibits);",
+    "48 dibits + one zero flush dibit -> 98 dibits. Each word is the dibit pair (Table 9-1 dibit of each symbol) of",
+    "the constellation point of TIA-102.BAAA-A Table 7-2 (rate 1/2 state transitions) mapped by Table 7-3;",
+    "checked on air (TSBK CRCs pass)"
+  ],
   "tags": ["p25"],
   "k": 2,
   "n": 4,

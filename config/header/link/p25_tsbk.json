@@ -1,7 +1,11 @@
 {
   "base": "header",
   "type": "link",
-  "comment": "P25 phase 1 Trunking Signalling Block after its trellis decode: last block flag, protected flag, opcode, manufacturer ID, 8 octets of arguments and a CRC-16 (CRC-CCITT, inverted) over the 10 octets before it, 96 bits a block",
+  "comment": [
+    "P25 phase 1 Trunking Signalling Block after its trellis decode:",
+    "last block flag, protected flag, opcode, manufacturer ID, 8 octets of arguments and a CRC-16 (CRC-CCITT,",
+    "inverted) over the 10 octets before it, 96 bits a block"
+  ],
   "ref": "TIA-102.BAAA-A 7.3; TIA-102.AABB-B 5.2",
   "tags": ["p25"],
   "order": "msb",

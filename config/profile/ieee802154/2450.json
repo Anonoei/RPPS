@@ -1,6 +1,11 @@
 {
   "base": "profile",
-  "comment": "IEEE 802.15.4 2.4 GHz O-QPSK PHY: 4 bits pick one of 16 32-chip sequences, even chips on I and odd on Q, half-sine pulses, Q half a symbol late; octets go least significant bit first (the low nibble's symbol first). 2 Mchip/s. There is no carrier estimator for a staggered signal yet, so the carrier must come off before this profile (or the source)",
+  "comment": [
+    "IEEE 802.15.4 2.4 GHz O-QPSK PHY: 4 bits pick one of 16 32-chip sequences, even chips on I and odd on Q,",
+    "half-sine pulses, Q half a symbol late; octets go least significant bit first (the low nibble's symbol first).",
+    "2 Mchip/s. There is no carrier estimator for a staggered signal yet, so the carrier must come off before this",
+    "profile (or the source)"
+  ],
   "ref": "IEEE 802.15.4-2020 12",
   "tags": ["ieee-802.15.4"],
   "params": {"sps": {"default": 4, "comment": "samples per chip pair (an I and a Q chip), even"}},

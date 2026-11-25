@@ -1,7 +1,11 @@
 {
   "base": "profile",
   "extends": "ax25/afsk1200",
-  "comment": "Demo: AFSK 1200 HDLC frames (FCS-16) whose payload starts with a 3-byte header of its own (address, control, protocol), stripped by a link header step after the frame step: the frame step publishes each good frame's start and length, which drive the header",
+  "comment": [
+    "Demo: AFSK 1200 HDLC frames (FCS-16) whose payload starts with a 3-byte header of its own (address, control,",
+    "protocol), stripped by a link header step after the frame step:",
+    "the frame step publishes each good frame's start and length, which drive the header"
+  ],
   "steps": {
     "frame": null,
     "+end": [{"link": "frame", "id": "frame", "name": "hdlc"}, {"link": "header", "id": "hdr", "name": "demo_hdlc"}]

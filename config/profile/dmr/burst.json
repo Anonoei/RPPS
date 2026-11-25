@@ -1,6 +1,17 @@
 {
   "base": "profile",
-  "comment": "DMR (ETSI TS 102 361) bursts: 4FSK at 4800 symbols a second (h 0.27: +-648, +-1944 Hz). The discriminator's levels are timed and each burst found by the 24-symbol sync in its middle, any of the eight patterns (base station, mobile, direct mode slot 1 or 2; voice or data), matched in phase (a voice pattern is its data pattern inverted, so the sense must be known) and published as `word`; the burst is the 54 symbols before it, the sync, and the 54 after, scaled by the sync's +-3. Every burst's slot type (Golay (20,8), its halves on either side of the sync) gives the colour code and data type; a data burst's 196 information bits (both sides) are deinterleaved and BPTC (196,96) decoded to 12 octets. Out come the slot types and the data bursts' octets as messages; the CACH between bursts and voice payloads are not read. The capture is the channel at `sps` samples a symbol, its carrier taken off",
+  "comment": [
+    "DMR (ETSI TS 102 361) bursts: 4FSK at 4800 symbols a second (h 0.27: +-648, +-1944 Hz).",
+    "The discriminator's levels are timed and each burst found by the 24-symbol sync in its middle, any of the eight",
+    "patterns (base station, mobile, direct mode slot 1 or 2; voice or data), matched in phase (a voice pattern is its",
+    "data pattern inverted, so the sense must be known) and published as `word`;",
+    "the burst is the 54 symbols before it, the sync, and the 54 after, scaled by the sync's +-3.",
+    "Every burst's slot type (Golay (20,8), its halves on either side of the sync) gives the colour code and data",
+    "type; a data burst's 196 information bits (both sides) are deinterleaved and BPTC (196,96) decoded to 12 octets.",
+    "Out come the slot types and the data bursts' octets as messages;",
+    "the CACH between bursts and voice payloads are not read. The capture is the channel at `sps` samples a symbol,",
+    "its carrier taken off"
+  ],
   "ref": "ETSI TS 102 361-1 V2.6.1 9.1, 9.3.6, B.1.1, B.3.1",
   "tags": ["dmr"],
   "params": {"sps": {"default": 10, "type": "int", "min": 2, "comment": "samples a symbol (48 kS/s: 10)"}},
@@ -8,7 +19,10 @@
   "defaults": {
     "timing": {
       "method": "oerder_meyr",
-      "comment": "block estimation over 256-symbol windows (its square-law line is weak at this roll-off: no gate, the phase alone, tracked)",
+      "comment": [
+        "block estimation over 256-symbol windows (its square-law line is weak at this roll-off:",
+        "no gate, the phase alone, tracked)"
+      ],
       "min_symbols": 256,
       "window": 0,
       "clock": false,

@@ -1,7 +1,10 @@
 {
   "base": "header",
   "type": "link",
-  "comment": "P25 phase 1 Network Identifier after its BCH decode (fec block/bch/p25_nid): the Network Access Code and the Data Unit ID, 16 bits a frame",
+  "comment": [
+    "P25 phase 1 Network Identifier after its BCH decode (fec block/bch/p25_nid):",
+    "the Network Access Code and the Data Unit ID, 16 bits a frame"
+  ],
   "ref": "TIA-102.BAAA-A 8.5, Tables 8-3, 8-4",
   "tags": ["p25"],
   "order": "msb",

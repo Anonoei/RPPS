@@ -1,6 +1,11 @@
 {
   "base": "plan",
-  "comment": "Demo MF-TDMA burst time plan (profile/demo/mftdma), in DVB-RCS2's model: a 15 ms superframe of two frames, one of two 250 kBd carriers (BTU 0.6 ms = 150 symbols) and one of a 500 kBd carrier (300 symbols a BTU). Tx types 128 and 129 (one and two LDPC units) on the 250 kBd frame, 130 (three units) on the 500 kBd one; each its own unique word. Times in NCR ticks (27 MHz)",
+  "comment": [
+    "Demo MF-TDMA burst time plan (profile/demo/mftdma), in DVB-RCS2's model: a 15 ms superframe of two frames, one of",
+    "two 250 kBd carriers (BTU 0.6 ms = 150 symbols) and one of a 500 kBd carrier (300 symbols a BTU).",
+    "Tx types 128 and 129 (one and two LDPC units) on the 250 kBd frame, 130 (three units) on the 500 kBd one;",
+    "each its own unique word. Times in NCR ticks (27 MHz)"
+  ],
   "clock": 27000000.0,
   "tx_types": {
     "128": {

@@ -1,6 +1,9 @@
 {
   "base": "linktype",
-  "comment": "AX.25 frames after a one-byte KISS header (port and command: 0x00 data), without flags or FCS (Linux's ARPHRD_AX25)",
+  "comment": [
+    "AX.25 frames after a one-byte KISS header (port and command:",
+    "0x00 data), without flags or FCS (Linux's ARPHRD_AX25)"
+  ],
   "ref": "https://www.tcpdump.org/linktypes.html, Linux include/uapi/linux/if_arp.h",
   "dlt": 202,
   "arphrd": 3,

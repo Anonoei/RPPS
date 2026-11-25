@@ -1,7 +1,10 @@
 {
   "base": "interleave",
   "type": "block",
-  "comment": "DVB-S2 bit interleaver for 32APSK, normal frames: the LDPC codeword written column by column into 5 columns of 12960, read row by row, so each symbol carries one bit of each column",
+  "comment": [
+    "DVB-S2 bit interleaver for 32APSK, normal frames: the LDPC codeword written column by column into 5 columns of",
+    "12960, read row by row, so each symbol carries one bit of each column"
+  ],
   "ref": "EN 302 307-1 5.3.3, table 8",
   "tags": ["dvb-s2"],
   "length": 64800,

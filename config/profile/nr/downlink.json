@@ -1,6 +1,13 @@
 {
   "base": "profile",
-  "comment": "5G NR downlink at 15 kHz subcarriers to SIB1, through the Doppler of a LEO satellite (NTN) or none: cell search over a wide carrier offset on the PSS, then the SS/PBCH block tracked every 20 ms (the offset and its rate, the slot timing and the clock's rate), the grid of every slot, then three branches reading each slot in turn. The PBCH gives the MIB and the SFN, which place CORESET 0 and the Type0 search space; the PDCCH searches them for a DCI 1_0 to the SI-RNTI, whose allocation the PDSCH decodes (LDPC, the transport block's CRC): SIB1 and the other SI messages. The sample rate sets the FFT (7.68 MS/s: 512)",
+  "comment": [
+    "5G NR downlink at 15 kHz subcarriers to SIB1, through the Doppler of a LEO satellite (NTN) or none:",
+    "cell search over a wide carrier offset on the PSS, then the SS/PBCH block tracked every 20 ms (the offset and its",
+    "rate, the slot timing and the clock's rate), the grid of every slot, then three branches reading each slot in",
+    "turn. The PBCH gives the MIB and the SFN, which place CORESET 0 and the Type0 search space;",
+    "the PDCCH searches them for a DCI 1_0 to the SI-RNTI, whose allocation the PDSCH decodes (LDPC, the transport",
+    "block's CRC): SIB1 and the other SI messages. The sample rate sets the FFT (7.68 MS/s: 512)"
+  ],
   "ref": "3GPP TS 38.211 7.3-7.4, 38.212 7.1, 7.3, 38.213 13, 38.214 5.1; TR 38.811 (NTN)",
   "tags": ["nr"],
   "params": {
@@ -15,7 +22,11 @@
     "nfft": {"default": 512, "comment": "the FFT the sample rate gives: 15 kHz x nfft samples a second"},
     "fc": {
       "default": 0.0,
-      "comment": "the SS/PBCH block centre's absolute frequency [Hz], on the synchronization raster: the phase NR's upconversion gives each symbol (38.211 5.4) is reckoned with it, by the cell search (whether the cell applies it) and the PDSCH (it tries its symbols with it taken off and without; 0: never)"
+      "comment": [
+        "the SS/PBCH block centre's absolute frequency [Hz], on the synchronization raster:",
+        "the phase NR's upconversion gives each symbol (38.211 5.4) is reckoned with it, by the cell search (whether",
+        "the cell applies it) and the PDSCH (it tries its symbols with it taken off and without; 0: never)"
+      ]
     }
   },
   "requires": {

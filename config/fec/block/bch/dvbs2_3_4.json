@@ -1,7 +1,9 @@
 {
   "base": "block",
   "extends": "dvbs2_normal",
-  "comment": "DVB-S2 normal frame outer BCH, LDPC rate 3/4 (kldpc=48600); needs the matching LDPC table to decode behind it",
+  "comment": [
+    "DVB-S2 normal frame outer BCH, LDPC rate 3/4 (kldpc=48600); needs the matching LDPC table to decode behind it"
+  ],
   "n": 48600,
   "k": 48408,
   "t": 12

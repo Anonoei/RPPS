@@ -139,3 +139,35 @@ def test_every_variant_of_every_profile_loads():
             name = f"{fam}/{mode}"
             for params in rp.profile.variants(name):
                 assert rp.profile.load(name, **params).rx() is not None, (name, params)
+
+def test_format_is_stable_and_fits():
+    for f in _config.PATH_CONFIG.rglob("*.json"):
+        obj = json.loads(f.read_text())
+        text = _config.format_json(obj) + "\n"
+        assert text == f.read_text(), f"{f}: run python -m rpps fmt"
+        assert _config.format_json(json.loads(text)) + "\n" == text, f
+    obj = {"base": "x", "steps": [{"sync": "timing"}, {"wave": "shape", "sps": {"param": "sps"}}],
+           "rows": [[1, 2], [3, 4]], "taps": list(range(100))}
+    text = _config.format_json(obj)
+    assert '  "steps": [{"sync": "timing"}, {"wave": "shape", "sps": {"param": "sps"}}],' in text
+    assert '    [1, 2],\n    [3, 4]\n' in text # rows: one a line
+    assert f'  "taps": {json.dumps(list(range(100)))}' in text # numbers: one line, however long
+
+def test_comment_lines():
+    long = "One clause about a thing; " * 12 + "the end"
+    text = _config.format_json({"base": "x", "comment": long, "params": {"a": {"default": 1, "comment": long.upper()}}})
+    obj = json.loads(text)
+    assert isinstance(obj["comment"], list) and all(len(json.dumps(s)) <= _config.WIDTH for s in obj["comment"])
+    assert obj["comment"][0].endswith(";") # cut where a clause ends
+    assert _config.join_comments(obj) == {"base": "x", "comment": long,
+                                          "params": {"a": {"default": 1, "comment": long.upper()}}}
+    assert json.loads(_config.format_json({"comment": ["short", "one"]}))["comment"] == "short one" # fits: a string
+    with pytest.raises(ConfigError, match="list of strings"):
+        _config.join_comments({"comment": ["a", 1]})
+
+def test_a_comment_list_loads_as_one_string(tmp_path):
+    d = tmp_path / "sequence" / "word"
+    d.mkdir(parents=True)
+    (d / "w.json").write_text(json.dumps({"base": "sequence", "type": "word", "comment": ["The word,", "MSB first"],
+                                          "word": "0xF3A2", "bits": 16, "order": "msb"}))
+    assert _config.expand(d / "w.json")["comment"] == "The word, MSB first"

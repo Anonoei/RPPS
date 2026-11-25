@@ -1,6 +1,16 @@
 {
   "base": "profile",
-  "comment": "Mode S replies and ADS-B extended squitters at 1090 MHz: pulse position modulation at 1 Mb/s, a bit a pulse in the first (1) or the second (0) half of its microsecond, after a preamble of four pulses. The capture is the channel at 2 MS/s, one sample per half-microsecond chip: the envelope, scaled by the pulses' peak (so each burst sets its own level), is sliced into on/off chips; the preamble delimits a frame (matched exactly: with an error allowed, the tail of a frame passes for one), the chip pairs decode as Manchester (Thomas sense; a pair of two equal chips is no bit and fails its frame, so silence never passes the parity), the downlink format gives the length and the 24-bit parity accepts the frame. Out come the bits between DF and parity of every clean reply. Transmitting: `fields={\"df\": 17}` per frame (default 17), the preamble chips before each",
+  "comment": [
+    "Mode S replies and ADS-B extended squitters at 1090 MHz: pulse position modulation at 1 Mb/s, a bit a pulse in",
+    "the first (1) or the second (0) half of its microsecond, after a preamble of four pulses.",
+    "The capture is the channel at 2 MS/s, one sample per half-microsecond chip:",
+    "the envelope, scaled by the pulses' peak (so each burst sets its own level), is sliced into on/off chips;",
+    "the preamble delimits a frame (matched exactly: with an error allowed, the tail of a frame passes for one), the",
+    "chip pairs decode as Manchester (Thomas sense; a pair of two equal chips is no bit and fails its frame, so",
+    "silence never passes the parity), the downlink format gives the length and the 24-bit parity accepts the frame.",
+    "Out come the bits between DF and parity of every clean reply. Transmitting: `fields={\"df\":",
+    "17}` per frame (default 17), the preamble chips before each"
+  ],
   "ref": "ICAO Annex 10 Vol IV 3.1.2.2, 3.1.2.3",
   "tags": ["adsb"],
   "params": {"sps": {"default": 1, "comment": "samples per chip (half-microsecond): 1 at 2 MS/s"}},

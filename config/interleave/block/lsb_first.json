@@ -1,7 +1,10 @@
 {
   "base": "interleave",
   "type": "block",
-  "comment": "Each octet's bits reversed: bytes sent least significant bit first, between the bits as sent and bytes most significant bit first (RPPS's order). Its own inverse",
+  "comment": [
+    "Each octet's bits reversed: bytes sent least significant bit first, between the bits as sent and bytes most",
+    "significant bit first (RPPS's order). Its own inverse"
+  ],
   "tags": ["ieee-802.15.4"],
   "perm": [7, 6, 5, 4, 3, 2, 1, 0]
 }

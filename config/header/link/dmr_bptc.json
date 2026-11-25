@@ -1,7 +1,10 @@
 {
   "base": "header",
   "type": "link",
-  "comment": "The 96 information bits of a DMR data burst after its BPTC (196,96) decode, as 12 octets: a CSBK, a data header, rate 1/2 data... The data type in the slot type says which, and which CRC mask checks it",
+  "comment": [
+    "The 96 information bits of a DMR data burst after its BPTC (196,96) decode, as 12 octets:",
+    "a CSBK, a data header, rate 1/2 data... The data type in the slot type says which, and which CRC mask checks it"
+  ],
   "ref": "ETSI TS 102 361-1 V2.6.1 B.1.1, 9.3",
   "tags": ["dmr"],
   "order": "msb",

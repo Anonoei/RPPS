@@ -2,7 +2,10 @@
   "base": "block",
   "abstract": true,
   "type": "turbo",
-  "comment": "CCSDS telemetry turbo code: two 16-state recursive encoders, feedback G0 = 1 + D^3 + D^4 (10011), the second fed through the CCSDS permutation, both terminated; k = 1784, 3568, 7136 or 8920",
+  "comment": [
+    "CCSDS telemetry turbo code: two 16-state recursive encoders, feedback G0 = 1 + D^3 + D^4 (10011), the second fed",
+    "through the CCSDS permutation, both terminated; k = 1784, 3568, 7136 or 8920"
+  ],
   "ref": "CCSDS 131.0-B-5 6",
   "tags": ["ccsds"],
   "params": {"k": {"comment": "information block length: 1784, 3568, 7136 or 8920", "default": 1784}},

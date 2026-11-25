@@ -189,7 +189,16 @@ changes. pi/4-DQPSK is `psk/qpsk` after `{"symbol": "differential"}`; 802.11b DQ
 `psk/bpsk`. Bit-level differential coding (NRZ-M, NRZ-I) is `{"code": "line"}`.
 
 ## File header
-Every file starts with `base` (the category, picks the loader), then `extends` and `abstract` where it has them, `type` (the implementation, where there are several), `comment`, and optionally `ref` (the spec) and `tags`. `python -m rpps fmt` puts files in the canonical style (`--check` only lists differences).
+Every file starts with `base` (the category, picks the loader), then `extends` and `abstract` where it has them, `type` (the implementation, where there are several), `comment`, and optionally `ref` (the spec) and `tags`. `python -m rpps fmt` puts files in the canonical style (`--check` only lists differences): whatever fits in 120 columns on one line, so a profile reads one step a line.
+
+A `comment` (any comment, at any depth) too long for its line is a list of lines, joined by spaces when the definition
+is read; `fmt` cuts a long one where a sentence or clause ends:
+```json
+"comment": [
+  "DVB-S2, normal (64800 bits) and short (16200) FECFRAMEs, QPSK, 8PSK, 16APSK and 32APSK, MODCOD by MODCOD (VCM,",
+  "ACM): each PLHEADER's PLS sets the PL scrambling length, pilots, constellation, ..."
+]
+```
 
 ## Keys nothing reads
 A key that nothing reads is reported when the definition or profile loads, as an `rp.errors.ConfigWarning` naming it:

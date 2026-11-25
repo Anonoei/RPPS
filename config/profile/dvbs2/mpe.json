@@ -1,7 +1,14 @@
 {
   "base": "profile",
   "extends": "dvbs2/ts",
-  "comment": "DVB-S2 multiprotocol encapsulation: the transport packets of dvbs2/ts, each one's header read (adaptation field and all), the sections of the `pid` cut out of their payloads by the pointer field (a section may cross packets; each PID its own stream, its continuity counter telling a lost packet; 0xFF stuffing ends a payload), and each MPE datagram section's header read and its CRC-32 checked: the datagram (an IP packet) a message, captured for Wireshark as raw IP. Only MPE sections (table id 0x3E) are kept",
+  "comment": [
+    "DVB-S2 multiprotocol encapsulation: the transport packets of dvbs2/ts, each one's header read (adaptation field",
+    "and all), the sections of the `pid` cut out of their payloads by the pointer field (a section may cross packets;",
+    "each PID its own stream, its continuity counter telling a lost packet;",
+    "0xFF stuffing ends a payload), and each MPE datagram section's header read and its CRC-32 checked:",
+    "the datagram (an IP packet) a message, captured for Wireshark as raw IP.",
+    "Only MPE sections (table id 0x3E) are kept"
+  ],
   "ref": "EN 301 192 7.1, ISO/IEC 13818-1 2.4.4",
   "params": {
     "pid": {"default": -1, "comment": "the PID carrying the MPE sections (the PMT says which); -1: every PID's"}

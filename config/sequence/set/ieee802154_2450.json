@@ -1,7 +1,10 @@
 {
   "base": "sequence",
   "type": "set",
-  "comment": "IEEE 802.15.4 2.4 GHz O-QPSK: each 4-bit symbol (low nibble first) is one of 16 nearly orthogonal 32-chip sequences, 2 Mcps; a 1 chip is +1",
+  "comment": [
+    "IEEE 802.15.4 2.4 GHz O-QPSK: each 4-bit symbol (low nibble first) is one of 16 nearly orthogonal 32-chip",
+    "sequences, 2 Mcps; a 1 chip is +1"
+  ],
   "ref": "IEEE 802.15.4-2020 Table 12-1",
   "tags": ["ieee-802.15.4"],
   "rate": 2000000.0,

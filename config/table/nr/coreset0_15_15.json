@@ -1,6 +1,10 @@
 {
   "base": "table",
-  "comment": "CORESET 0 from the MIB's controlResourceSetZero, SS/PBCH block and PDCCH both at 15 kHz (bands of 5 or 10 MHz minimum bandwidth): multiplexing pattern, resource blocks, symbols, and the offset in RBs from the CORESET's lowest RB to the common RB of the SS/PBCH block's first (15: reserved)",
+  "comment": [
+    "CORESET 0 from the MIB's controlResourceSetZero, SS/PBCH block and PDCCH both at 15 kHz (bands of 5 or 10 MHz",
+    "minimum bandwidth): multiplexing pattern, resource blocks, symbols, and the offset in RBs from the CORESET's",
+    "lowest RB to the common RB of the SS/PBCH block's first (15: reserved)"
+  ],
   "ref": "3GPP TS 38.213 13, Table 13-1",
   "tags": ["nr"],
   "key": "index",

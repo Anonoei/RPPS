@@ -1,7 +1,13 @@
 {
   "base": "profile",
   "extends": "ccsds/tm_rs",
-  "comment": "CCSDS TM space packets: the transfer frames of ccsds/tm_rs, their primary header read, and the space packets of each virtual channel cut out of the frames' data fields by the first header pointer (rpps.link.packets): a packet may cross frames, a frame lost (its virtual channel frame count skips) drops only the packets that crossed it, idle packets (APID 2047) are passed over. Each space packet is a message, captured for Wireshark as exported PDU to its CCSDS dissector",
+  "comment": [
+    "CCSDS TM space packets: the transfer frames of ccsds/tm_rs, their primary header read, and the space packets of",
+    "each virtual channel cut out of the frames' data fields by the first header pointer (rpps.link.packets):",
+    "a packet may cross frames, a frame lost (its virtual channel frame count skips) drops only the packets that",
+    "crossed it, idle packets (APID 2047) are passed over. Each space packet is a message, captured for Wireshark as",
+    "exported PDU to its CCSDS dissector"
+  ],
   "ref": "CCSDS 132.0-B-3 4.1.4.2, CCSDS 133.0-B-2 4.1",
   "steps": {
     "+end": [

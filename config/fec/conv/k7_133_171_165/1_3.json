@@ -1,6 +1,9 @@
 {
   "base": "conv",
   "extends": "k7_133_171_165",
-  "comment": "LTE tail-biting rate 1/3, K=7: G0=133 G1=171 G2=165 octal (PBCH, PDCCH, PUCCH: the register starts with the frame's last 6 bits)",
+  "comment": [
+    "LTE tail-biting rate 1/3, K=7: G0=133 G1=171 G2=165 octal (PBCH, PDCCH, PUCCH:",
+    "the register starts with the frame's last 6 bits)"
+  ],
   "tags": ["lte"]
 }

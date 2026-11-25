@@ -1,7 +1,11 @@
 {
   "base": "header",
   "type": "link",
-  "comment": "Bluetooth LE advertising channel PDU: a 16-bit header (PDU type, RFU, ChSel, TxAdd, RxAdd, then the payload length in bytes), the payload, and a CRC-24 over header and payload, every field least significant bit first. On air the packet is preamble and access address (the ble_adv_aa word, not whitened), then this, whitened",
+  "comment": [
+    "Bluetooth LE advertising channel PDU: a 16-bit header (PDU type, RFU, ChSel, TxAdd, RxAdd, then the payload",
+    "length in bytes), the payload, and a CRC-24 over header and payload, every field least significant bit first.",
+    "On air the packet is preamble and access address (the ble_adv_aa word, not whitened), then this, whitened"
+  ],
   "ref": "Bluetooth Core 6.0 Vol 6 Part B 2.1, 2.3",
   "tags": ["ble"],
   "order": "lsb",
@@ -34,7 +38,10 @@
       "type": "bytes",
       "bytes": 6,
       "reverse": true,
-      "comment": "AdvA (ScanA for a SCAN_REQ, InitA for a CONNECT_IND): sent low octet first, shown as written (most significant first)"
+      "comment": [
+        "AdvA (ScanA for a SCAN_REQ, InitA for a CONNECT_IND):",
+        "sent low octet first, shown as written (most significant first)"
+      ]
     },
     {
       "name": "ad",

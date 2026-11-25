@@ -1,7 +1,12 @@
 {
   "base": "header",
   "type": "link",
-  "comment": "DVB multiprotocol encapsulation (MPE) datagram section: table id 0x3E, the section's length, the receiver's MAC address in two parts (bytes 6 and 5, then 4 to 1), scrambling, the LLC/SNAP flag, the section numbers, then the datagram (an IP packet, or LLC/SNAP with the flag set) and the section's CRC-32 over all of it. Sections with the syntax indicator 0 (a checksum, not a CRC) are not read",
+  "comment": [
+    "DVB multiprotocol encapsulation (MPE) datagram section: table id 0x3E, the section's length, the receiver's MAC",
+    "address in two parts (bytes 6 and 5, then 4 to 1), scrambling, the LLC/SNAP flag, the section numbers, then the",
+    "datagram (an IP packet, or LLC/SNAP with the flag set) and the section's CRC-32 over all of it.",
+    "Sections with the syntax indicator 0 (a checksum, not a CRC) are not read"
+  ],
   "ref": "EN 301 192 7.1",
   "tags": ["mpeg-ts"],
   "order": "msb",

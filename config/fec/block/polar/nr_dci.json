@@ -1,7 +1,11 @@
 {
   "base": "block",
   "type": "nr_polar",
-  "comment": "5G NR DCI: a payload of K - 24 bits and its CRC-24C (computed over 24 ones and the payload; the last 16 CRC bits XORed with the RNTI, `mask`), polar coded with the input interleaver (n_max 9) into the E bits of its PDCCH candidate (108 a CCE)",
+  "comment": [
+    "5G NR DCI: a payload of K - 24 bits and its CRC-24C (computed over 24 ones and the payload;",
+    "the last 16 CRC bits XORed with the RNTI, `mask`), polar coded with the input interleaver (n_max 9) into the E",
+    "bits of its PDCCH candidate (108 a CCE)"
+  ],
   "ref": "3GPP TS 38.212 7.3.2-7.3.4",
   "tags": ["nr"],
   "params": {

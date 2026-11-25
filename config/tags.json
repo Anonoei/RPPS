@@ -1,5 +1,9 @@
 {
-  "comment": "The tags a definition can carry (\"tags\": [...]): the standards and systems that use it. A tag is listed here before it is used (tests check it); `python -m rpps ls --tag <tag>` lists what carries one, `rp.tagged(tag)` in code",
+  "comment": [
+    "The tags a definition can carry (\"tags\": [...]): the standards and systems that use it.",
+    "A tag is listed here before it is used (tests check it);",
+    "`python -m rpps ls --tag <tag>` lists what carries one, `rp.tagged(tag)` in code"
+  ],
   "tags": {
     "3gpp-umts": {"comment": "3GPP UMTS (WCDMA) channel coding", "ref": "3GPP TS 25.212"},
     "adsb": {"comment": "ADS-B / Mode S extended squitter, 1090 MHz", "ref": "ICAO Annex 10 Vol IV, RTCA DO-260"},

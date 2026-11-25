@@ -1,6 +1,8 @@
 {
   "base": "linktype",
-  "comment": "IEEE 802.15.4 MAC frames without their FCS, from the frame control field; no PHR (Linux's ARPHRD_IEEE802154)",
+  "comment": [
+    "IEEE 802.15.4 MAC frames without their FCS, from the frame control field; no PHR (Linux's ARPHRD_IEEE802154)"
+  ],
   "ref": "https://www.tcpdump.org/linktypes.html, Linux include/uapi/linux/if_arp.h",
   "dlt": 230,
   "arphrd": 804,

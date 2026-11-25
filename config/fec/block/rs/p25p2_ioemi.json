@@ -1,7 +1,10 @@
 {
   "base": "block",
   "extends": "p25p2",
-  "comment": "P25 phase 2 I-OEMI (FACCH): (63,35) shortened to (58,30) and punctured by its last 6 parity symbols: 52 hexbits sent, 180 info bits",
+  "comment": [
+    "P25 phase 2 I-OEMI (FACCH): (63,35) shortened to (58,30) and punctured by its last 6 parity symbols:",
+    "52 hexbits sent, 180 info bits"
+  ],
   "n": 58,
   "k": 30,
   "puncture": [-6, -5, -4, -3, -2, -1]

@@ -1,6 +1,9 @@
 {
   "base": "linktype",
-  "comment": "Wireshark's exported PDU: tags (the dissector's name, column texts) then the PDU, for a payload Wireshark has a dissector but no link type for (LTE RRC, GSE)",
+  "comment": [
+    "Wireshark's exported PDU: tags (the dissector's name, column texts) then the PDU, for a payload Wireshark has a",
+    "dissector but no link type for (LTE RRC, GSE)"
+  ],
   "ref": "https://www.tcpdump.org/linktypes.html",
   "dlt": 252,
   "dissector": "exported_pdu"

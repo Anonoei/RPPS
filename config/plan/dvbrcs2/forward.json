@@ -1,6 +1,13 @@
 {
   "base": "builder",
-  "comment": "DVB-RCS2's burst time plan and NCR clock from its forward link (profile/dvbrcs2/forward): the SCT, FCT2 and BCT make the plan (a tx type's burst format the linear modulation data block, its unique word sent as QPSK symbols; the turbo code's parameters written as zeros, the profile receiving the bursts says the code), each TBTP2 a superframe's assignments (format 11 on transmit); each NCR packet (GSE protocol 0x0081) is the NCR of the SOF of the DVB-S2 PL frame two before the one carrying it, paired with the PL headers' positions and fitted. Times in NCR ticks (27 MHz)",
+  "comment": [
+    "DVB-RCS2's burst time plan and NCR clock from its forward link (profile/dvbrcs2/forward):",
+    "the SCT, FCT2 and BCT make the plan (a tx type's burst format the linear modulation data block, its unique word",
+    "sent as QPSK symbols; the turbo code's parameters written as zeros, the profile receiving the bursts says the",
+    "code), each TBTP2 a superframe's assignments (format 11 on transmit);",
+    "each NCR packet (GSE protocol 0x0081) is the NCR of the SOF of the DVB-S2 PL frame two before the one carrying",
+    "it, paired with the PL headers' positions and fitted. Times in NCR ticks (27 MHz)"
+  ],
   "ref": "ETSI EN 301 545-2 V1.2.1 6.2.1.1, 6.4, 7.5",
   "tags": ["dvb-rcs2"],
   "clock": 27000000.0,

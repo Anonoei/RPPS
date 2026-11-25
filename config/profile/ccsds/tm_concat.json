@@ -1,6 +1,12 @@
 {
   "base": "profile",
-  "comment": "CCSDS telemetry, concatenated: Reed-Solomon outer code (each transfer frame `depth` interleaved RS(255,223) codewords, randomized, behind the 32-bit attached sync marker) and the rate 1/2, K=7 convolutional inner code over the whole stream, ASM included (G2 inverted). BPSK. Which symbol pairs make a branch is found by re-encoding (sync puncture); the code is transparent, so a 180 degree carrier ambiguity inverts the decoded bits and the delimiter puts it right by the marker's sense",
+  "comment": [
+    "CCSDS telemetry, concatenated: Reed-Solomon outer code (each transfer frame `depth` interleaved RS(255,223)",
+    "codewords, randomized, behind the 32-bit attached sync marker) and the rate 1/2, K=7 convolutional inner code",
+    "over the whole stream, ASM included (G2 inverted). BPSK. Which symbol pairs make a branch is found by re-encoding",
+    "(sync puncture); the code is transparent, so a 180 degree carrier ambiguity inverts the decoded bits and the",
+    "delimiter puts it right by the marker's sense"
+  ],
   "ref": "CCSDS 131.0-B-5 3, 4, 9, 10",
   "tags": ["ccsds"],
   "params": {
@@ -8,7 +14,9 @@
     "depth": {"default": 5, "comment": "Reed-Solomon interleaving depth I (1 to 8)"},
     "rs": {
       "default": "rs/ccsds_255_223_dual",
-      "comment": "the Reed-Solomon code: rs/ccsds_255_223_dual (the standard's dual basis) or rs/ccsds_255_223 (conventional)"
+      "comment": [
+        "the Reed-Solomon code: rs/ccsds_255_223_dual (the standard's dual basis) or rs/ccsds_255_223 (conventional)"
+      ]
     }
   },
   "requires": {

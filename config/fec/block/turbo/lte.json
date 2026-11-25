@@ -1,7 +1,10 @@
 {
   "base": "block",
   "type": "turbo",
-  "comment": "LTE turbo code (3GPP TS 36.212 5.1.3.2): two 8-state RSC codes g0 = 1 + D^2 + D^3, g1 = 1 + D + D^3, QPP interleaver (Table 5.1.3-3, all 188 sizes), trellis termination; output d0 | d1 | d2, length + 4 bits each",
+  "comment": [
+    "LTE turbo code (3GPP TS 36.212 5.1.3.2): two 8-state RSC codes g0 = 1 + D^2 + D^3, g1 = 1 + D + D^3, QPP",
+    "interleaver (Table 5.1.3-3, all 188 sizes), trellis termination; output d0 | d1 | d2, length + 4 bits each"
+  ],
   "tags": ["lte"],
   "params": {"K": {"comment": "code block size (40 .. 6144, a size of Table 5.1.3-3)", "example": 40}},
   "length": {"param": "K"},

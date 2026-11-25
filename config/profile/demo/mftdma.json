@@ -1,6 +1,15 @@
 {
   "base": "profile",
-  "comment": "Demo MF-TDMA return link (plan/demo/mftdma): QPSK bursts on three carriers at 250 and 500 kBd, each carrier cut into its bursts (rpps.sync.Bursts), each burst decimated to 4 samples a symbol, matched filtered and timed on its own, its type found by its unique word (one of three: the frame sync's `word`), its carrier offset and phase taken off on the word; then the type's LDPC units (802.11n (648,324)), a scrambler running across the burst, and the terminal, sequence number, payload and CRC-16. With the plan each burst is placed in it (superframe, frame, slot, tx type), the plan's origin acquired from the bursts; transmitting, the plan places each burst on its slot. The capture is 8 MS/s around the plan's centre",
+  "comment": [
+    "Demo MF-TDMA return link (plan/demo/mftdma): QPSK bursts on three carriers at 250 and 500 kBd, each carrier cut",
+    "into its bursts (rpps.sync.Bursts), each burst decimated to 4 samples a symbol, matched filtered and timed on its",
+    "own, its type found by its unique word (one of three:",
+    "the frame sync's `word`), its carrier offset and phase taken off on the word;",
+    "then the type's LDPC units (802.11n (648,324)), a scrambler running across the burst, and the terminal, sequence",
+    "number, payload and CRC-16. With the plan each burst is placed in it (superframe, frame, slot, tx type), the",
+    "plan's origin acquired from the bursts; transmitting, the plan places each burst on its slot.",
+    "The capture is 8 MS/s around the plan's centre"
+  ],
   "params": {
     "sps": {"default": 4, "comment": "samples a symbol of every carrier's bursts"},
     "plan": {"default": "demo/mftdma", "comment": "the burst time plan (\"\": none, detection only, with `carriers`)"},

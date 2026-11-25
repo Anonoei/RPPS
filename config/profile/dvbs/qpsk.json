@@ -1,6 +1,10 @@
 {
   "base": "profile",
-  "comment": "DVB-S QPSK: convolutional code K=7 171/133 (the `code` parameter picks the punctured rate), Forney interleaver I=12, RS(204,188), energy dispersal, MPEG-TS out. QPSK carries the code's two outputs on I and Q, I first, a 1 negative",
+  "comment": [
+    "DVB-S QPSK: convolutional code K=7 171/133 (the `code` parameter picks the punctured rate), Forney interleaver",
+    "I=12, RS(204,188), energy dispersal, MPEG-TS out. QPSK carries the code's two outputs on I and Q, I first, a 1",
+    "negative"
+  ],
   "ref": "EN 300 421",
   "tags": ["dvb-s"],
   "params": {

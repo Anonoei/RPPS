@@ -1,7 +1,17 @@
 {
   "base": "profile",
   "extends": "dvbs2/normal",
-  "comment": "DVB-S2 transport stream: BBFRAMEs in TS mode (MATYPE TS) whose data fields carry user packets back to back across frames, cut out by SYNCD and UPL (rpps.link.packets). Each user packet's sync byte was replaced by the CRC-8 of the packet before: it is checked, and 0x47 put back, so the packets come out as MPEG transport stream packets, a message each, captured for Wireshark as MPEG-TS. With null-packet deletion (NPD) each user packet carries the count of null packets deleted before it (DNP), and with ISSYI its ISSY field: both are read (the message's `dnp`, `issy`) and taken off, and the null packets put back, so out comes the transport stream as it went in. Frames in another mode (GSE) are passed over. Transmitting, a stream of transport packets is packed into the frames (TS mode, no NPD): SYNCD per frame, the CRC-8s made. Serial (no parallel region: the BBHEADER drives the packet step after it)",
+  "comment": [
+    "DVB-S2 transport stream: BBFRAMEs in TS mode (MATYPE TS) whose data fields carry user packets back to back across",
+    "frames, cut out by SYNCD and UPL (rpps.link.packets). Each user packet's sync byte was replaced by the CRC-8 of",
+    "the packet before: it is checked, and 0x47 put back, so the packets come out as MPEG transport stream packets, a",
+    "message each, captured for Wireshark as MPEG-TS. With null-packet deletion (NPD) each user packet carries the",
+    "count of null packets deleted before it (DNP), and with ISSYI its ISSY field:",
+    "both are read (the message's `dnp`, `issy`) and taken off, and the null packets put back, so out comes the",
+    "transport stream as it went in. Frames in another mode (GSE) are passed over.",
+    "Transmitting, a stream of transport packets is packed into the frames (TS mode, no NPD):",
+    "SYNCD per frame, the CRC-8s made. Serial (no parallel region: the BBHEADER drives the packet step after it)"
+  ],
   "ref": "EN 302 307-1 5.1.3-5.1.6, annex D.3",
   "steps": {
     "+end": [

@@ -1,7 +1,12 @@
 {
   "base": "block",
   "type": "nr_ldpc",
-  "comment": "5G NR LDPC base graph 2: one code block of K' bits (CRC included) to E bits, lifted by Z (default: the smallest that holds K'), the codeword's first 2Z bits punctured, the rest read from the circular buffer at the redundancy version's k0 and interleaved by the modulation order. graph: each row's [column, V for lifting sets 0-7]",
+  "comment": [
+    "5G NR LDPC base graph 2: one code block of K' bits (CRC included) to E bits, lifted by Z (default:",
+    "the smallest that holds K'), the codeword's first 2Z bits punctured, the rest read from the circular buffer at",
+    "the redundancy version's k0 and interleaved by the modulation order. graph:",
+    "each row's [column, V for lifting sets 0-7]"
+  ],
   "ref": "3GPP TS 38.212 5.2.2, 5.3.2 (Table 5.3.2-3), 5.4.2",
   "tags": ["nr"],
   "params": {

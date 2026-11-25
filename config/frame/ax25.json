@@ -1,7 +1,12 @@
 {
   "base": "frame",
   "extends": "hdlc",
-  "comment": "AX.25 frames in HDLC with the FCS-16: each message's payload read as the destination, source and digipeater addresses (callsign: six ASCII bytes shifted left one bit; the SSID byte: C/H bit, two reserved, the SSID, and an extension bit set on the last address), the control field, and the PID on I and UI frames",
+  "comment": [
+    "AX.25 frames in HDLC with the FCS-16: each message's payload read as the destination, source and digipeater",
+    "addresses (callsign: six ASCII bytes shifted left one bit; the SSID byte:",
+    "C/H bit, two reserved, the SSID, and an extension bit set on the last address), the control field, and the PID on",
+    "I and UI frames"
+  ],
   "ref": "AX.25 v2.2 3.12, 4.2, 6.1",
   "tags": ["ax.25"],
   "min_bytes": 17,

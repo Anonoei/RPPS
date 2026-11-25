@@ -1,7 +1,13 @@
 {
   "base": "profile",
   "extends": "dvbs2/ts",
-  "comment": "DVB-S2 unidirectional lightweight encapsulation: the transport packets of dvbs2/ts, each one's header read, the SNDUs of the `pid` cut out of their payloads by the payload pointer (an SNDU may cross packets; the continuity counter tells a lost packet; the end indicator 0xFFFF ends a payload), and each SNDU's header read and its CRC-32 checked: the PDU a message, captured for Wireshark as raw IP (IPv4 and IPv6 types).. Give the `pid`: read as SNDUs, every other PID's payloads fail their CRC",
+  "comment": [
+    "DVB-S2 unidirectional lightweight encapsulation: the transport packets of dvbs2/ts, each one's header read, the",
+    "SNDUs of the `pid` cut out of their payloads by the payload pointer (an SNDU may cross packets;",
+    "the continuity counter tells a lost packet; the end indicator 0xFFFF ends a payload), and each SNDU's header read",
+    "and its CRC-32 checked: the PDU a message, captured for Wireshark as raw IP (IPv4 and IPv6 types)..",
+    "Give the `pid`: read as SNDUs, every other PID's payloads fail their CRC"
+  ],
   "ref": "RFC 4326, ISO/IEC 13818-1 2.4.3",
   "params": {
     "pid": {"default": -1, "comment": "the PID carrying the ULE stream (the PMT says which); -1: every PID's"}
