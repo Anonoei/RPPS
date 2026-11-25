@@ -105,6 +105,8 @@ what to use instead.
   virtual channel, idle packets and frames passed over; Wireshark's `ccsds` dissector reads them) and `dvbs2/ts` (TS
   mode user packets by SYNCD and UPL, the sync byte checked and put back, captured as MPEG-TS). A framed link header
   takes its frame `length` from the profile, and its `payload` expression sees it.
+- Packets through a radio and back without hardware: pysdrlib's simulated radios share an air (pysdrlib 0.5.1,
+  `Sim(transmit=True, air=...)`); `DeviceSink` on one, `rp.source.Device` on another, in real time.
 - The LTE and NR channels say which check their messages passed (`Message.check`: PBCH and PDCCH CRC-16 or
   CRC-24C, PDSCH CRC-24A, or NR's CRC-16 for small transport blocks). `DeviceSink` takes pysdrlib's sim made with
   `transmit=True` (it asks the device as opened, not its class).

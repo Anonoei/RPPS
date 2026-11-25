@@ -81,3 +81,7 @@ with rp.source.Tun("rpps1", linktype="ieee802_15_4_nofcs") as tun, \
     for pkt in tun.packets():
         enc.packet(pkt) >> radio
 ```
+
+Without a radio, pysdrlib's simulated radios share an air (`pysdrlib.sim.air`): a sim made with `transmit=True, air="lab"`
+under a `DeviceSink` sends into it, and `rp.source.Device(pysdrlib.device("sim", air="lab"), ...)` receives it, in
+this process or another, at its own frequency and rate (the loop `tests/unit/test_encoder.py` runs in real time).
