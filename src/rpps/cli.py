@@ -95,7 +95,9 @@ def cmd_show(args):
     if file is None:
         print(f"{args.ref}: not found", file=sys.stderr)
         return 1
-    print(f"# {file}" + ("  (extends applied)" if "extends" in _config.read_raw(file) else ""))
+    v = _config._variant(file)
+    where = f"a variant in {v[0]}" if v is not None else str(file)
+    print(f"# {where}" + ("  (extends applied)" if "extends" in _config.read_raw(file) else ""))
     print(_config.format_json(_config.expand(file)))
     return 0
 

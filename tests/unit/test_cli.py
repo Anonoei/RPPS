@@ -14,6 +14,8 @@ def test_ls_and_show(capsys):
     assert cli.main(["show", "fec/block/rs/204_188"]) == 0
     out = capsys.readouterr().out
     assert out.startswith("# ") and '"base": "block"' in out
+    assert cli.main(["show", "fec/block/bch/dvbs2_1_2"]) == 0
+    assert capsys.readouterr().out.startswith("# a variant in ") # (a row of bch/dvbs2_normal, not a file)
     assert cli.main(["show", "nope/x"]) == 1
 
 @pytest.mark.slow

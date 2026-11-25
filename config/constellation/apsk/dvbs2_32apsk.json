@@ -27,5 +27,15 @@
       "map": [17, 21, 23, 19, 16, 0, 1, 5, 4, 20, 22, 6, 7, 3, 2, 18, 24, 8, 25, 9, 13, 29, 12, 28, 30, 14, 31, 15, 11, 27, 10, 26],
       "comment": "DVB-S2 32APSK: label (b0b1b2b3b4) of each point, inner ring, middle, outer, by angle"
     }
-  ]
+  ],
+  "variants": {
+    "columns": ["name", "params.gamma1", "params.gamma2", "comment", "ref"],
+    "rows": [
+      ["dvbs2_32apsk_3_4", 2.84, 5.27, "DVB-S2 32APSK for code rate 3/4: gamma1 = 2.84, gamma2 = 5.27", "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10"],
+      ["dvbs2_32apsk_4_5", 2.72, 4.87, "DVB-S2 32APSK for code rate 4/5: gamma1 = 2.72, gamma2 = 4.87", "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10"],
+      ["dvbs2_32apsk_5_6", 2.64, 4.64, "DVB-S2 32APSK for code rate 5/6: gamma1 = 2.64, gamma2 = 4.64", "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10"],
+      ["dvbs2_32apsk_8_9", 2.54, 4.33, "DVB-S2 32APSK for code rate 8/9: gamma1 = 2.54, gamma2 = 4.33", "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10"],
+      ["dvbs2_32apsk_9_10", 2.53, 4.3, "DVB-S2 32APSK for code rate 9/10: gamma1 = 2.53, gamma2 = 4.3", "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10"]
+    ]
+  }
 }

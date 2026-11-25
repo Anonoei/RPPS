@@ -112,3 +112,59 @@ def test_patching_an_id_two_steps_share_is_an_error(layer):
     layer("profile/t/none", {"extends": "t/two", "comment": "c", "steps": {"+after:nope": []}})
     with pytest.raises(ConfigError, match="no step 'nope'"):
         rp.profile.load("t/none")
+
+FAM = {"abstract": True, "type": "rs", "comment": "family", "tags": ["dvb-s"], "m": 8, "poly": 285,
+       "variants": {"columns": ["name", "n", "k", "comment", "tags"],
+                    "rows": [["v_15_11", 15, 11, "short one", ["ccsds"]], ["v_204_188", 204, 188, "DVB-S", []]]}}
+
+def test_variants_load_as_children_of_their_parent(layer):
+    layer("fec/block/rs/vfam", FAM)
+    assert "v_15_11" in _config.ls("fec")["block/rs"] and "vfam" not in _config.ls("fec")["block/rs"]
+    code = rp.code.load("block/rs/v_204_188")
+    assert code.name == "rs/v_204_188" and (code.e_num, code.e_den) == (188, 204)
+    assert rp.code.load("v_15_11").e_den == 15 # (a bare name, as a file's)
+    obj = _config.read(_config.find("fec", "rs/v_15_11", "block"))
+    assert obj["base"] == "block" and obj["comment"] == "short one" and obj["m"] == 8 and "variants" not in obj
+    assert _config.read_raw(_config.find("fec", "rs/v_15_11", "block")) == {"extends": "vfam", "n": 15, "k": 11,
+                                                                              "comment": "short one", "tags": ["ccsds"]}
+    assert "block/rs/v_15_11" in rp.tagged("ccsds")["fec"] and "block/rs/v_204_188" in rp.tagged("dvb-s")["fec"]
+    with pytest.raises(ConfigError, match="abstract"):
+        rp.code.load("block/rs/vfam")
+
+def test_a_file_extends_a_variant_and_a_variant_follows_its_parent(layer):
+    f = layer("fec/block/rs/vfam2", {**FAM, "variants": {"columns": ["name", "n", "k"], "rows": [["w_15_11", 15, 11]]}})
+    layer("fec/block/rs/w_child", {"extends": "rs/w_15_11", "comment": "of a variant", "k": 9})
+    assert (rp.code.load("block/rs/w_child").e_num, rp.code.load("block/rs/w_child").e_den) == (9, 15)
+    import os
+    f.write_text(json.dumps({**FAM, "variants": {"columns": ["name", "n", "k"], "rows": [["w_15_11", 15, 7]]}}))
+    os.utime(f, ns=(f.stat().st_atime_ns, f.stat().st_mtime_ns + 10**9)) # (a later change, however coarse the clock)
+    assert rp.code.load("block/rs/w_15_11").e_num == 7
+
+def test_a_dotted_column_sets_a_key_inside_and_a_loadable_parent_keeps_its_variants(layer):
+    layer("constellation/t/vring", {"comment": "a ring", "rings": [{"n": 4}], "params": {"turn": {"default": 0}},
+                                    "rotate": {"param": "turn"},
+                                    "variants": {"columns": ["name", "params.turn", "comment"],
+                                                 "rows": [["vring_45", 45, "turned"]]}})
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("error") # ("variants" is not a key the loader is left to read)
+        a, b = rp.symbol.load("t/vring"), rp.symbol.load("t/vring_45")
+    assert np.allclose(b.points, a.points*np.exp(1j*np.pi/4))
+
+@pytest.mark.parametrize("variants, match", [
+    ({"columns": ["n", "name"], "rows": []}, "takes"),
+    ({"columns": ["name", "n"], "rows": [["x1", 1, 2]]}, "does not have"),
+    ({"columns": ["name", "n"], "rows": [["x1", 1], ["X1", 2]]}, "twice"),
+    ({"columns": ["name", "extends"], "rows": [["x1", "a"]]}, "not a column"),
+    ({"columns": ["name", "n"], "rows": [["a b", 1]]}, "not a name"),
+])
+def test_bad_variants_are_refused(layer, variants, match):
+    layer("crc/vbad", {"abstract": True, "comment": "x", "variants": variants})
+    with pytest.raises(ConfigError, match=match):
+        _config.ls("crc")
+
+def test_a_variant_that_is_also_a_file_is_refused(layer):
+    layer("crc/vdup_parent", {"abstract": True, "comment": "x", "variants": {"columns": ["name"], "rows": [["vdup"]]}})
+    layer("crc/vdup", {"extends": "crc16_xmodem", "comment": "a file"})
+    with pytest.raises(ConfigError, match="also a file"):
+        _config.ls("crc")

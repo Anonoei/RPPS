@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import functools
 import json
@@ -73,7 +74,7 @@ def ls(domain, path=None, all=False):
     all: also the abstract parents (definitions only children load)"""
     out: dict = {}
     for root in _roots(domain, path):
-        for f in sorted(root.rglob("*.json")):
+        for f in _files(root):
             if not all and _head(f).get("abstract"):
                 continue
             rel = f.parent.relative_to(root).as_posix()
@@ -83,7 +84,15 @@ def ls(domain, path=None, all=False):
 
 
 def _files(base):
-    return sorted(base.rglob("*.json")) if base.is_dir() else []
+    """The definitions below `base`: its files, and the variants their parents hold, each as the file it would be
+    (<the parent's folder>/<name>.json, which `read_raw` knows; see `variants`)"""
+    if not base.is_dir():
+        return []
+    out = []
+    for f in sorted(base.rglob("*.json")):
+        out.append(f)
+        out += [f.parent / f"{n}.json" for n in _head(f).get("variants", ())]
+    return out
 
 _INDEX = {} # str(directory) -> its definitions by path and by name
 _LOCATED: dict = {} # str(resolved file) -> (domain, parts): where `locate` found it, for files below a `path` given to it
@@ -122,7 +131,7 @@ def locate(domain, ref, category=None, path=None):
     for root in _roots(domain, path):
         base = root / category if category and not (category == domain and not (root / category).is_dir()) else root
         hit = _lookup(domain, ref, ref_l, base, False)
-        if hit is None or not hit.exists(): # Not there when the folder was scanned, or gone since
+        if hit is None or not _exists(hit): # Not there when the folder was scanned, or gone since
             hit = _lookup(domain, ref, ref_l, base, True)
         if hit is not None:
             parts = hit.relative_to(root).with_suffix("").parts
@@ -135,8 +144,63 @@ def find(domain, ref, category=None, path=None):
     return locate(domain, ref, category, path)[0]
 
 def read_raw(path):
-    """The definition in a file as written (no "extends" applied): what `fmt` formats and `save` writes"""
+    """The definition in a file as written (no "extends" applied): what `fmt` formats and `save` writes. A variant (a row
+    of its parent's "variants") as the child file it stands for: {"extends": <the parent>, <its columns>}"""
+    v = _variant(path)
+    if v is not None:
+        return json.loads(json.dumps(v[1]))
     return json.loads(Path(path).read_text())
+
+# ---- Variants: a parent's children written as rows of it, each a definition named as a file next to the parent would be
+
+_VARIANTS: dict = {} # str(file a variant stands for, as `_files` made it) -> (its parent's file, the child it is)
+_KIDS: dict = {} # str(parent file) -> the keys of its variants in _VARIANTS
+
+def _variant(f):
+    """(parent file, child) of the variant `f` stands for, its parent read again if it changed; None for any other file"""
+    v = _VARIANTS.get(str(f))
+    if v is None or not v[0].exists():
+        return None
+    _head(v[0])
+    return _VARIANTS.get(str(f))
+
+def _exists(f):
+    """A definition file is there, or the parent holding the variant it stands for is"""
+    return _variant(f) is not None or Path(f).exists()
+
+def variants(f, raw):
+    """{name: child} of a parent file's "variants" as written: one child (what a file extending the parent would hold)
+    a row. "columns" name the keys ("name" first: the variant's file name next to the parent's), a dotted one a key in a
+    dict ("params.gamma"); each row gives their values, as a child file would (null deletes a parent's key)"""
+    v = raw.get("variants")
+    if v is None:
+        return {}
+    if (not isinstance(v, dict) or set(v) - {"columns", "rows", "comment"} or not isinstance(v.get("columns"), list)
+            or not v["columns"] or v["columns"][0] != "name" or not isinstance(v.get("rows"), list)):
+        raise ConfigError(f'{f}: "variants" takes {{"columns": ["name", ...], "rows": [[...], ...]}}')
+    cols, out = v["columns"], {}
+    for c in cols[1:]:
+        if c in ("extends", "abstract", "base", "variants") or not all(c.split(".")):
+            raise ConfigError(f"{f}: variants: {c!r} is not a column a variant can set")
+    for row in v["rows"]:
+        if not isinstance(row, list) or len(row) != len(cols):
+            raise ConfigError(f"{f}: variants: the row {row!r} does not have the {len(cols)} values of {cols}")
+        name = str(row[0]).lower()
+        if not re.fullmatch(r"[a-z0-9_.\-]+", name) or name.startswith("."):
+            raise ConfigError(f"{f}: variants: {row[0]!r} is not a name (lowercase letters, digits, _ - .)")
+        if name in out or name == Path(f).stem.lower():
+            raise ConfigError(f"{f}: variants: {name!r} twice")
+        child = {"extends": Path(f).stem}
+        for c, x in zip(cols[1:], row[1:]):
+            *head, last = c.split(".")
+            at = child
+            for h in head:
+                at = at.setdefault(h, {})
+                if not isinstance(at, dict):
+                    raise ConfigError(f"{f}: variants: {c!r} goes inside {h!r}, which another column sets")
+            at[last] = x
+        out[name] = child
+    return out
 
 def read(path):
     """The definition in a file, its "extends" applied (see `expand`). An abstract definition (a parent only children load) is an error"""
@@ -147,18 +211,33 @@ def read(path):
 
 # ---- Inheritance: a definition that "extends" another is that one with its own keys changed
 
-_NOT_INHERITED = ("comment", "ref", "abstract", "extends")
+_NOT_INHERITED = ("comment", "ref", "abstract", "extends", "variants")
 
 _HEAD: dict = {} # str(file) -> (mtime, the keys `ls` and `tagged` need)
 
 def _head(f):
-    """{"abstract", "tags", "extends"} of a file as written, cached until it changes"""
+    """{"abstract", "tags", "extends", "variants": [names]} of a file as written, cached until it changes (a variant's: of
+    the child it is)"""
     f = Path(f)
-    key, mt = str(f), f.stat().st_mtime_ns
+    key = str(f)
+    if key in _VARIANTS:
+        v = _variant(f)
+        if v is not None:
+            return {k: v[1][k] for k in ("tags", "extends") if k in v[1]}
+    mt = f.stat().st_mtime_ns
     hit = _HEAD.get(key)
     if hit is None or hit[0] != mt:
-        raw = read_raw(f)
-        hit = (mt, {k: raw[k] for k in ("abstract", "tags", "extends") if k in raw})
+        raw = json.loads(f.read_text())
+        kids = variants(f, raw)
+        for k in _KIDS.pop(key, ()):
+            _VARIANTS.pop(k, None)
+        for name, child in kids.items():
+            vf = f.parent / f"{name}.json"
+            if vf.exists():
+                raise ConfigError(f"{f}: the variant {name!r} is also a file, {vf}")
+            _VARIANTS[str(vf)] = (f, child)
+        _KIDS[key] = [str(f.parent / f"{name}.json") for name in kids]
+        hit = (mt, {k: raw[k] for k in ("abstract", "tags", "extends") if k in raw} | ({"variants": list(kids)} if kids else {}))
         _HEAD[key] = hit
     return hit[1]
 
@@ -194,7 +273,11 @@ def file_base(path):
     return base_of(domain, parts)
 
 def _parent(path, ref):
-    """The file a definition at `path` extends: `ref` below the definition's category first (fec/block: "rs/p25"), then below its domain"""
+    """The file a definition at `path` extends: `ref` below the definition's category first (fec/block: "rs/p25"), then below
+    its domain. A variant's is the parent holding it"""
+    v = _variant(path)
+    if v is not None:
+        return v[0]
     domain, parts = place(path)
     if domain is None:
         raise ConfigError(f"{path}: extends {ref!r}, but the file is not in a config folder, so there is nowhere to look")
@@ -371,7 +454,7 @@ def tagged(tag=None, all=False):
         if not root.is_dir():
             continue
         for d in sorted(p for p in root.iterdir() if p.is_dir()):
-            for f in sorted(d.rglob("*.json")):
+            for f in _files(d):
                 if not all and _head(f).get("abstract"):
                     continue
                 ref = f.relative_to(d).with_suffix("").as_posix()
@@ -479,7 +562,7 @@ def warn_unused(obj, where, exempt=(), stacklevel=3):
 
 # What a definition carries for the loaders around it, never read by its own loader ("guess": what a blind tool that
 # found it measured)
-DEFINITION_KEYS = ("base", "comment", "ref", "extends", "abstract", "tags", "params", "examples", "guess")
+DEFINITION_KEYS = ("base", "comment", "ref", "extends", "abstract", "tags", "params", "examples", "guess", "variants")
 
 def load_obj(domain, name, obj, params=None):
     """Build a definition already read from JSON (or made in code) with the loader of its "base" """
@@ -699,7 +782,7 @@ WIDTH = 120 # Columns a line of a definition file fills before what is on it is 
 
 def format_json(v, ind=0, used=0, spread=False):
     """The style of every file in config/: header keys first; whatever fits on its line (`WIDTH`) on one line, a list of
-    numbers always on one; table "rows" one per line.
+    numbers always on one; table and variant "rows" one a line, however long.
     used: columns already taken on the line this value starts on. spread: never on one line"""
     pad = "  " * ind
     if isinstance(v, list) and not any(isinstance(x, (list, dict)) for x in v):
@@ -721,6 +804,8 @@ def format_json(v, ind=0, used=0, spread=False):
                 continue
             lines.append(head + format_json(x, ind + 1, len(head), spread=k == "rows" and isinstance(x, list)))
         return "{\n" + ",\n".join(lines) + f"\n{pad}}}"
+    if spread: # (table rows: one a line, whatever they hold)
+        return "[\n" + ",\n".join(f"{pad}  {json.dumps(x)}" for x in v) + f"\n{pad}]"
     return "[\n" + ",\n".join(f"{pad}  {format_json(x, ind + 1, len(pad) + 2)}" for x in v) + f"\n{pad}]"
 
 def comment_lines(text, width):
@@ -750,7 +835,6 @@ def save(domain, category, ref, obj, dest=None, overwrite=False):
     ref: the name, with any group folders ("taps/my_filter"): lowercase letters, digits, "_", "-" and "." in each part, never absolute or "..".
     dest: a config directory laid out like config/; default the first one added with `add_config_path`. Never the shipped
     config/ by default: pass dest=_config.PATH_CONFIG to write there on purpose. Refuses to replace an existing file unless `overwrite`"""
-    import re
     ref = str(ref).lower()
     if not ref or not all(re.fullmatch(r"[a-z0-9_.\-]+", part) and not part.startswith(".") for part in ref.split("/")):
         raise ValueError(f"{ref!r} is not a definition name: use lowercase letters, digits, _ - . in folders and name")

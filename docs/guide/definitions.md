@@ -79,13 +79,33 @@ child's own category first, so `"extends": "rs/p25"` in fec/block works). The ch
 - `python -m rpps show <resource>/<ref>` prints a definition with its parents applied.
 
 **Param or child?** A choice made when loading (samples per symbol, a cell id, which punctured rate a DVB-S receiver
-runs) is a param; one that changes several steps together is a param with choices (below). A variant a standard or a table names (16APSK for rate 3/4, the code of MODCOD 7) is a child, so the
-name keeps working. A child that overrides most of its parent is probably not one.
+runs) is a param; one that changes several steps together is a param with choices (below). A variant a standard or a
+table names (16APSK for rate 3/4, the code of MODCOD 7) is a child, so the name keeps working. A child that overrides
+most of its parent is probably not one.
 
-Families written this way: `constellation/psk` (QPSK, 8PSK as rings; the DVB-S2 labellings and `qpsk_axes` are children),
-`constellation/apsk` (16/32APSK with the radii as params, one child per code rate), `fec/conv/<mother>.json` (the
-generators; every rate in `<mother>/`, the unpunctured 1/n too, is a child adding its `puncture`), `fec/block/ldpc`, `bch`, `rs/p25*`,
-`interleave/block/dvbs2_8psk_210`, `profile/dvbs/qpsk` (the rate a `code` param, a child per rate).
+### Children as rows
+Children that each change a few values are rows of their parent, `"variants"`: the first column the name (a file next
+to the parent's would have), the others the keys a child file would write, a dotted one a key inside a dict
+(`params.gamma`). Each row loads, lists, tags and is extended exactly as that child file would:
+```json
+"variants": {
+  "columns": ["name", "n", "k", "t", "comment"],
+  "rows": [
+    ["dvbs2_1_2", 32400, 32208, 12, "DVB-S2 normal frame outer BCH, LDPC rate 1/2"],
+    ["dvbs2_1_3", 21600, 21408, 12, "DVB-S2 normal frame outer BCH, LDPC rate 1/3"]
+  ]
+}
+```
+`fec/block/bch/dvbs2_1_2` is a row of `bch/dvbs2_normal.json`; `python -m rpps show` says so. A row's name can't also
+be a file. A child with large values (an LDPC table) or its own standard's `ref`, tags and notes (the punctured rates of
+`fec/conv/<mother>/`) reads better as a file of its own.
+
+Families written this way: `constellation/psk` (QPSK, 8PSK as rings; the DVB-S2 labellings and `qpsk_axes` are child
+files), `constellation/apsk/dvbs2_16apsk` and `dvbs2_32apsk` (the radii as params, a row per code rate),
+`fec/conv/<mother>.json` (the generators; every rate in `<mother>/`, the unpunctured 1/n too, is a child file adding its
+`puncture`), `fec/block/ldpc` (a file per rate), `bch/dvbs2_normal` and `dvbs2_short` (a row per rate),
+`turbo/ccsds`, `rs/p25*`, `interleave/block/dvbs2_8psk_210`, `profile/dvbs/qpsk` (the rate a `code` param, a row per
+rate).
 
 ## Variants: choices and "when"
 A param can list its `"choices"`, each a bundle of fields that one choice sets together; a step names a field as

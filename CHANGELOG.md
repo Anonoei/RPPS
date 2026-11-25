@@ -72,6 +72,11 @@ what to use instead.
 
 ### Added
 
+- **A parent can hold its children as rows, `"variants"`** (`{"columns": ["name", ...], "rows": [...]}`, a dotted
+  column a key inside a dict: `params.gamma`): each row loads, lists, tags and is extended as the child file it stands
+  for, by the same name. The DVB-S2 BCH codes (`bch/dvbs2_normal`, `dvbs2_short`), the CCSDS turbo rates, the DVB-S2
+  16/32APSK radii and the DVB-S punctured-rate profiles are rows now: 41 files fewer, every name as before.
+
 **Packets: Wireshark, interfaces, transmitting**
 - **Decoded frames live in Wireshark.** A profile's `"capture"` rules (`rpps.link.capture`) make each message kind a
   packet of its link type (`config/linktype`, `python -m rpps ls linktype`), taking the frame's parts it names and

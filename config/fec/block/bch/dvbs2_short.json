@@ -6,5 +6,20 @@
   "tags": ["dvb-s2"],
   "m": 14,
   "poly": "0x402B",
-  "t": 12
+  "t": 12,
+  "variants": {
+    "columns": ["name", "n", "k", "comment"],
+    "rows": [
+      ["dvbs2_short_1_2", 7200, 7032, "DVB-S2 short frame outer BCH, LDPC rate 1/2 (kldpc=7200): GF(2^14), g1 = 1+x+x^3+x^5+x^14; needs the matching LDPC table to decode behind it"],
+      ["dvbs2_short_1_3", 5400, 5232, "DVB-S2 short frame outer BCH, LDPC rate 1/3 (kldpc=5400): GF(2^14), g1 = 1+x+x^3+x^5+x^14; needs the matching LDPC table to decode behind it"],
+      ["dvbs2_short_1_4", 3240, 3072, "DVB-S2 short frame outer BCH, LDPC rate 1/4 (kldpc=3240): GF(2^14), g1 = 1+x+x^3+x^5+x^14; needs the matching LDPC table to decode behind it"],
+      ["dvbs2_short_2_3", 10800, 10632, "DVB-S2 short frame outer BCH, LDPC rate 2/3 (kldpc=10800): GF(2^14), g1 = 1+x+x^3+x^5+x^14; needs the matching LDPC table to decode behind it"],
+      ["dvbs2_short_2_5", 6480, 6312, "DVB-S2 short frame outer BCH, LDPC rate 2/5 (kldpc=6480): GF(2^14), g1 = 1+x+x^3+x^5+x^14; needs the matching LDPC table to decode behind it"],
+      ["dvbs2_short_3_4", 11880, 11712, "DVB-S2 short frame outer BCH, LDPC rate 3/4 (kldpc=11880): GF(2^14), g1 = 1+x+x^3+x^5+x^14; needs the matching LDPC table to decode behind it"],
+      ["dvbs2_short_3_5", 9720, 9552, "DVB-S2 short frame outer BCH, LDPC rate 3/5 (kldpc=9720): GF(2^14), g1 = 1+x+x^3+x^5+x^14; needs the matching LDPC table to decode behind it"],
+      ["dvbs2_short_4_5", 12600, 12432, "DVB-S2 short frame outer BCH, LDPC rate 4/5 (kldpc=12600): GF(2^14), g1 = 1+x+x^3+x^5+x^14; needs the matching LDPC table to decode behind it"],
+      ["dvbs2_short_5_6", 13320, 13152, "DVB-S2 short frame outer BCH, LDPC rate 5/6 (kldpc=13320): GF(2^14), g1 = 1+x+x^3+x^5+x^14; needs the matching LDPC table to decode behind it"],
+      ["dvbs2_short_8_9", 14400, 14232, "DVB-S2 short frame outer BCH, LDPC rate 8/9 (kldpc=14400): GF(2^14), g1 = 1+x+x^3+x^5+x^14; needs the matching LDPC table to decode behind it"]
+    ]
+  }
 }
