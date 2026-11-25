@@ -2,14 +2,9 @@
   "base": "table",
   "comment": "5G NR polar input interleaver pattern (K_IL,max = 164): a message of K bits takes the entries at or above 164 - K, less 164 - K, in order",
   "ref": "3GPP TS 38.212 5.3.1.1, Table 5.3.1.1-1",
-  "tags": [
-    "nr"
-  ],
+  "tags": ["nr"],
   "key": "m",
-  "columns": [
-    "m",
-    "pattern"
-  ],
+  "columns": ["m", "pattern"],
   "rows": [
     [0, 0],
     [1, 2],

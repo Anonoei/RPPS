@@ -2,23 +2,9 @@
   "base": "table",
   "comment": "LTE transport block sizes for I_TBS 0-26 and N_PRB 1-10 (the columns a DCI 1A for system information, paging or random access uses: N_PRB^1A is 2 or 3). For those RNTIs I_TBS is the DCI's MCS",
   "ref": "3GPP TS 36.213 7.1.7.2.1, Table 7.1.7.2.1-1",
-  "tags": [
-    "lte"
-  ],
+  "tags": ["lte"],
   "key": "itbs",
-  "columns": [
-    "itbs",
-    "n1",
-    "n2",
-    "n3",
-    "n4",
-    "n5",
-    "n6",
-    "n7",
-    "n8",
-    "n9",
-    "n10"
-  ],
+  "columns": ["itbs", "n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8", "n9", "n10"],
   "rows": [
     [0, 16, 32, 56, 88, 120, 152, 176, 208, 224, 256],
     [1, 24, 56, 88, 144, 176, 208, 224, 256, 328, 344],

@@ -2,9 +2,7 @@
   "base": "crc",
   "type": "crc",
   "comment": "CRC-6 of 5G NR: gCRC6 of 3GPP TS 38.212 5.1 (UCI of 12 to 19 bits)",
-  "tags": [
-    "nr"
-  ],
+  "tags": ["nr"],
   "width": 6,
   "poly": "0x21",
   "init": "0x00",

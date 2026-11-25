@@ -17,7 +17,10 @@
     "rows": ["0xC300CCF00CF3F3F3", "0x3333333333333333", "0x0F0F0F0F0F0F0F0F", "0x00FF00FF00FF00FF", "0x0000FFFF0000FFFF", "0x00000000FFFFFFFF", "0xFFFFFFFFFFFFFFFF", "0x5555555555555555"],
     "scramble": "0x719D83C953422DFA"
   },
-  "turn": {"field": "s2x", "degrees": 90},
+  "turn": {
+    "field": "s2x",
+    "degrees": 90
+  },
   "fields": [
     {"name": "s2x", "bits": 1},
     {"name": "modcod", "bits": 5},

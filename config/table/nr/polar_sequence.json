@@ -2,14 +2,9 @@
   "base": "table",
   "comment": "5G NR polar sequence: the bit indices 0-1023 before polar encoding, in increasing order of reliability (a code of N bits keeps those below N, in the same order)",
   "ref": "3GPP TS 38.212 5.3.1.2, Table 5.3.1.2-1",
-  "tags": [
-    "nr"
-  ],
+  "tags": ["nr"],
   "key": "reliability",
-  "columns": [
-    "reliability",
-    "index"
-  ],
+  "columns": ["reliability", "index"],
   "rows": [
     [0, 0],
     [1, 1],
