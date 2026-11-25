@@ -4,7 +4,7 @@ import pytest
 
 import rpps as rp
 from rpps.analysis.modulation import fsk
-from conftest import cpfsk, shaped
+from support.signals import cpfsk, shaped
 
 FS = 1e6
 

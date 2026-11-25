@@ -5,6 +5,7 @@ import pytest
 import rpps as rp
 from rpps import _accel, _effort
 from rpps.math import interp
+from support.native import kernels
 
 P = np.exp(1j*np.pi/4*(2*np.arange(4) + 1))
 
@@ -37,11 +38,8 @@ def test_fractional_native_matches_numpy():
     x = (rng.standard_normal(1000) + 1j*rng.standard_normal(1000)).astype(np.complex64)
     t = 10 + rng.random(500)*900
     nat = interp.fractional(x, t, 12)
-    saved, _accel.native = _accel.native, None
-    try:
+    with kernels(False):
         ref = interp.fractional(x, t, 12)
-    finally:
-        _accel.native = saved
     np.testing.assert_allclose(nat, ref, atol=1e-5)
 
 def test_doubled_and_edges():
@@ -170,10 +168,7 @@ def test_ldpc_native_matches_numpy(level):
     llr = bpsk_llr(dec.encode(m), 1.5, dec.rate, rng).reshape(16, dec.N)
     with rp.effort(level):
         nat = dec.layered(llr)
-        saved, _accel.native = _accel.native, None
-        try:
+        with kernels(False):
             ref = dec.layered(llr)
-        finally:
-            _accel.native = saved
     np.testing.assert_array_equal(nat[1], ref[1])
     np.testing.assert_array_equal(nat[0][nat[1]], ref[0][ref[1]])

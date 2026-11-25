@@ -9,16 +9,15 @@ from rpps import _config
 from rpps.errors import ConfigError
 
 @pytest.fixture
-def layer(tmp_path):
+def layer(tmp_path, config_layer):
     """A user config layer: write(path, obj) puts a definition in it"""
     def write(rel, obj):
         f = tmp_path / f"{rel}.json"
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(json.dumps(obj))
         return f
-    rp.add_config_path(tmp_path)
-    yield write
-    _config._EXTRA.remove(tmp_path)
+    config_layer(tmp_path)
+    return write
 
 def test_merge_rules():
     parent = {"base": "x", "comment": "p", "ref": "spec", "tags": ["a"], "n": 1, "d": {"k": 1, "j": 2}, "l": [1, 2],

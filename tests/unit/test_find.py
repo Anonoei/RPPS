@@ -5,19 +5,8 @@ import pytest
 import rpps as rp
 from rpps.analysis.spectrum.find import Finder, find, _gamma_isf, _norm_isf, _run_min
 
-from conftest import shaped
-
-def psd_noise(rng, N, Fs, psd):
-    """Complex Gaussian samples whose power spectrum is psd(f) [linear, 1: the noise floor; f in Hz]"""
-    f = np.fft.fftfreq(N, 1/Fs)
-    g = (rng.standard_normal(N) + 1j*rng.standard_normal(N))/np.sqrt(2)
-    return (np.fft.ifft(g*np.sqrt(psd(f)))*np.sqrt(N)).astype(np.complex64)
-
-def rc(f, baud, beta=0.35):
-    """A raised-cosine spectrum, 1 in its flat part"""
-    a = np.abs(f)
-    lo, hi = (1 - beta)*baud/2, (1 + beta)*baud/2
-    return np.where(a <= lo, 1.0, np.where(a <= hi, 0.5*(1 + np.cos(np.pi/(beta*baud)*(a - lo))), 0.0))
+from support.signals import shaped
+from support.signals import psd_noise, rc
 
 def test_statistics():
     assert _norm_isf(0.5) == pytest.approx(0.0, abs=1e-9)

@@ -6,12 +6,9 @@ import pytest
 
 import rpps as rp
 from rpps.base.types import Rep
+from support.signals import hard
 
 KNOWN = {"timing": {"method": "known"}, "carrier": {"method": "none"}}
-
-def hard(d):
-    x = np.asarray(d.data)
-    return x < 0 if x.dtype.kind == "f" else x.astype(bool)
 
 def names(runner):
     return [f"{how}{type(op).__name__}" for how, op in runner]

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from conftest import bits
+from support.signals import bits
 
 ALL = [(k, n) for k, names in rp.code.scram.ls().items() for n in names]
 

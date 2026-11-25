@@ -56,9 +56,7 @@ def test_spread_despread_roundtrip():
     assert np.allclose(code.despread(code.spread(sym)), sym)
 
 def run_stage(x, blocks, native, **kw):
-    saved = _accel.native
-    _accel.native = saved if native else None
-    try:
+    with kernels(native):
         stage = rp.symbol.Despread(rp.sequence.load("barker11"), **kw)
         stream, outs, i = None, [], 0
         for b in blocks:
@@ -67,8 +65,6 @@ def run_stage(x, blocks, native, **kw):
             outs.append((d + stage).data)
             i += b
         return np.concatenate(outs)
-    finally:
-        _accel.native = saved
 
 @pytest.fixture
 def chips44():
@@ -99,13 +95,9 @@ def test_native_matches_python_set():
     rng = np.random.default_rng(2)
     code = rp.sequence.load("ieee802154_2450")
     x = (rng.standard_normal(32*3*20) + 1j*rng.standard_normal(32*3*20)).astype(np.complex64)
-    saved = _accel.native
-    try:
-        nat = rp.symbol.correlate(x, code, 3)
-        _accel.native = None
+    nat = rp.symbol.correlate(x, code, 3)
+    with kernels(False):
         py = rp.symbol.correlate(x, code, 3)
-    finally:
-        _accel.native = saved
     assert nat.shape == (20, 16) and np.allclose(nat, py, atol=1e-5)
 
 def test_set_detection_802154():
@@ -119,6 +111,7 @@ def test_set_detection_802154():
 # ---- the Spread operator, in the chains of the standards
 
 from rpps.symbol import Differential
+from support.native import kernels
 
 def hard(d):
     return np.asarray(d.data) < 0 if d.DT == rp.dtype.LLR else np.asarray(d.data).astype(bool)

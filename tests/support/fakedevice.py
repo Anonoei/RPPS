@@ -1,6 +1,6 @@
 """A pretend GPU array module for tests: numpy underneath, but it refuses host/device mixing the way CuPy does (rpps.parallel)
 
-    import fakedevice as xp
+    from support import fakedevice as xp
     d = xp.asarray(host)          # host -> "device"
     d.get()                       # "device" -> host (rpps.base.kernel.to_host)
     np.asarray(d)                 # TypeError, as CuPy: no implicit conversion

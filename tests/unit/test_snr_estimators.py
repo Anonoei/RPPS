@@ -9,7 +9,7 @@ from rpps import symbol
 from rpps.grid.lte import cell
 from rpps.sync import quality as Q
 
-from conftest import shaped
+from support.signals import shaped
 
 def awgn(rng, n, var):
     return np.sqrt(var/2)*(rng.standard_normal(n) + 1j*rng.standard_normal(n))

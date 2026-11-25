@@ -8,6 +8,8 @@ import pytest
 
 import rpps as rp
 from rpps.base import Stage
+from support.signals import rrc_psk as psk
+from support.lmr import dmr_bursts, fm4
 
 def shaped(n_sym=4000, sps=8, seed=0):
     rng = np.random.default_rng(seed)
@@ -157,7 +159,6 @@ def test_load_reports_each_stage_against_real_time(capture):
 def test_stages_behind_acquire_use_the_detection_their_block_went_through_with(tmp_path):
     """Pipelined, Acquire runs ahead and refines for later blocks: the stages after it must use each block's own detection
     (meta.det) and sps, so the output is the iterated one exactly, whatever the threads' timing"""
-    from test_lock import psk
     x = (psk(80000, 4.0, tau=1.3, cfo=2e-3, esn0_db=18)*0.3).astype(np.complex64)
     path = tmp_path / "q.iq"
     x.tofile(path)
@@ -197,10 +198,9 @@ def test_a_profile_that_branches_gives_its_trunk_and_branches_a_thread_each():
 def test_branches_that_read_part_of_each_frame_pipelined():
     """`take` and `select` (DMR: the slot type across the sync word, the payload of data bursts only) read the trunk's
     control log and positions from the branches' thread: the same messages as one thread"""
-    from test_lmr_profiles import dmr_bursts, _fm
     rng = np.random.default_rng(3)
     levels, _ = dmr_bursts(rng)
-    x = _fm(levels, 0.27, rng)
+    x = fm4(levels, 0.27, rng)
     _, ref = _branched("dmr/burst", x, 3000, False)
     assert any(k == "info" for k, _, _ in ref)
     for _ in range(3):

@@ -38,19 +38,16 @@ def test_checksum_definition_errors():
     with pytest.raises(ConfigError, match="16 or 32"):
         checksum(algorithm="fletcher", width=8)
 
-def test_a_checksum_as_a_composite_part(tmp_path):
+def test_a_checksum_as_a_composite_part(tmp_path, config_layer):
     import json
     (tmp_path/"crc").mkdir()
     (tmp_path/"crc"/"t_xor8.json").write_text(json.dumps({"type": "checksum", "comment": "t",
                                                           "algorithm": "xor"}))
-    rp.add_config_path(tmp_path)
-    try:
-        c = _config.load_obj("crc", "t", {"base": "crc", "type": "composite",
-                                          "parts": [{"crc": "crc8_smbus"}, {"crc": "t_xor8", "input": ["nibble_swap"]}]}).encoder
-        m = b"\x12\x34\x56"
-        assert c.compute(m) == rp.link.load("crc/crc8_smbus").encoder.compute(m) << 8 | (0x21 ^ 0x43 ^ 0x65)
-    finally:
-        _config._EXTRA.remove(tmp_path)
+    config_layer(tmp_path)
+    c = _config.load_obj("crc", "t", {"base": "crc", "type": "composite",
+                                      "parts": [{"crc": "crc8_smbus"}, {"crc": "t_xor8", "input": ["nibble_swap"]}]}).encoder
+    m = b"\x12\x34\x56"
+    assert c.compute(m) == rp.link.load("crc/crc8_smbus").encoder.compute(m) << 8 | (0x21 ^ 0x43 ^ 0x65)
 
 def test_slip_kiss_and_ppp_escape_as_their_rfcs_say():
     data = bytes([0x00, 0xC0, 0xDB, 0x7E, 0x7D, 0x11, 0x41])

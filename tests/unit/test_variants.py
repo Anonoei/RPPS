@@ -4,7 +4,6 @@ import json
 import pytest
 
 import rpps as rp
-from rpps import _config
 from rpps.analysis.identify import match_profile, _named
 
 VARIANT = {
@@ -18,13 +17,11 @@ VARIANT = {
         {"code": "conv", "name": {"expr": "'k7_171_133/' + rate"}}]}
 
 @pytest.fixture
-def layer(tmp_path):
+def layer(tmp_path, config_layer):
     f = tmp_path/"profile"/"test"/"variant.json"
     f.parent.mkdir(parents=True)
     f.write_text(json.dumps(VARIANT))
-    rp.add_config_path(tmp_path)
-    yield
-    _config._EXTRA.remove(tmp_path)
+    config_layer(tmp_path)
 
 def test_variants_defaults_first_blind_false_left_out(layer):
     vs = rp.profile.variants("test/variant")

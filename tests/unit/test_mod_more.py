@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from conftest import awgn
+from support.signals import awgn
 from rpps.symbol import shapes
 
 NAMES = ["bpsk", "qpsk", "8psk", "16psk", "16qam", "32qam", "64qam", "128qam", "256qam", "4ask", "8ask", "ook", "16apsk", "32apsk"]

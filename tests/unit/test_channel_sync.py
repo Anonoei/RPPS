@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 import rpps as rp
+from support.blocks import cuts, run
 
 def shaped_qpsk(rng, n=8000, sps=4, beta=0.35):
     sym = (rng.choice([-1, 1], n) + 1j*rng.choice([-1, 1], n))/np.sqrt(2)
@@ -198,7 +199,6 @@ def _peak_ref(x, target, decay, floor=1e-6):
 
 @pytest.mark.parametrize("decay", [0.999, 0.9995, 1.0])
 def test_peak_agc_is_the_running_peak_for_any_cut(decay, rng):
-    from test_stream import cuts, run
     env = np.where((np.arange(20000)//3000) % 2 == 0, 0.02, 1.5)
     x = (env*(rng.standard_normal(20000) + 1j*rng.standard_normal(20000))).astype(np.complex64)
     want = _peak_ref(x.astype(np.complex128), 1.0, decay)

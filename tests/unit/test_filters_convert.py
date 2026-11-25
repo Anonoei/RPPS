@@ -3,20 +3,14 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from rpps import _config
 from rpps.errors import ConfigError
 from rpps.signal.filters import iir
-from test_iir import lfilter_ref, gain_db
-
-def layer(tmp_path):
-    rp.add_config_path(tmp_path)
-    return tmp_path
+from support.refs import gain_db, lfilter_ref
 
 @pytest.fixture
-def user(tmp_path):
-    rp.add_config_path(tmp_path)
-    yield tmp_path
-    _config._EXTRA.remove(tmp_path)
+def user(tmp_path, config_layer):
+    config_layer(tmp_path)
+    return tmp_path
 
 def put(user, category, ref, obj):
     f = user / ("pulse" if category == "pulse" else "filter") / category / f"{ref}.json"
@@ -258,7 +252,7 @@ def test_builders_validate():
 
 # ---- Writing, and loading what was written
 
-def test_write_then_load(tmp_path):
+def test_write_then_load(tmp_path, config_layer):
     taps = np.array([0.1, 0.4, 0.4, 0.1], dtype=np.float32)
     taps.tofile(tmp_path / "t.f32")
     out = tmp_path / "mine"
@@ -270,13 +264,10 @@ def test_write_then_load(tmp_path):
     np.save(tmp_path / "s.npy", sos)
     g = rp.signal.filters.import_iir(tmp_path / "s.npy", name="my_hp", dest=out)
     assert g == out / "filter" / "iir" / "sos" / "my_hp.json"
-    rp.add_config_path(out)
-    try:
-        assert np.allclose(rp.signal.filters.load("fir/taps/my_lp").taps(), taps)
-        assert np.allclose(rp.signal.filters.load("iir/sos/my_hp").sos(), sos)
-        assert "taps/my_lp" in [f"{k.split('/')[1]}/{n}" for k, v in rp.signal.filters.ls().items() if k.startswith("fir/") for n in v]
-    finally:
-        _config._EXTRA.remove(out)
+    config_layer(out)
+    assert np.allclose(rp.signal.filters.load("fir/taps/my_lp").taps(), taps)
+    assert np.allclose(rp.signal.filters.load("iir/sos/my_hp").sos(), sos)
+    assert "taps/my_lp" in [f"{k.split('/')[1]}/{n}" for k, v in rp.signal.filters.ls().items() if k.startswith("fir/") for n in v]
 
 def test_save_never_replaces_or_escapes(tmp_path):
     (tmp_path / "t.txt").write_text("1 2 3")
@@ -305,7 +296,7 @@ def test_default_destination_is_the_first_added_layer(user, tmp_path):
     assert f == user / "filter" / "fir" / "taps" / "dflt.json"
 
 def test_alist_import_keeps_files(tmp_path):
-    from test_coding import HAMMING_ALIST
+    from support.refs import HAMMING_ALIST
     (tmp_path / "h.alist").write_text(HAMMING_ALIST)
     rp.code.import_alist(tmp_path / "h.alist", "h", dest=tmp_path / "cfg")
     with pytest.raises(FileExistsError):

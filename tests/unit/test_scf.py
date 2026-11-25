@@ -4,7 +4,7 @@ import pytest
 
 import rpps as rp
 from rpps.analysis.spectrum import scf
-from conftest import shaped
+from support.signals import shaped
 
 FS = 1e6
 

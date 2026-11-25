@@ -4,25 +4,7 @@ import pytest
 
 import rpps as rp
 from rpps.sync.time.mat import best_tau, _best_tau_rows
-
-def psk(n, sps, M=4, beta=0.35, tau=0.0, cfo=0.0, esn0_db=20.0, seed=0, sent=False):
-    """n samples of M-PSK through an RRC at a fractional sps, the first symbol at tau, a carrier offset [cycles/sample]
-    sent: also the symbols, as (instants, symbols)"""
-    rng = np.random.default_rng(seed)
-    k = np.arange(-20, int(n/sps) + 20)
-    sym = np.exp(2j*np.pi*rng.integers(0, M, len(k))/M + 1j*np.pi/M*(M == 4))
-    t = np.arange(n)
-    x = np.zeros(n, complex)
-    L = int(np.ceil(10*sps))
-    for kk, s in zip(k, sym):
-        c = tau + kk*sps
-        j0, j1 = int(max(0, np.floor(c - L))), int(min(n, np.ceil(c + L)))
-        if j1 > j0:
-            x[j0:j1] += s*rp.signal.filters.rrc_pulse((t[j0:j1] - c)/sps, beta)
-    x *= np.exp(2j*np.pi*cfo*t)
-    n0 = np.mean(np.abs(x)**2)*sps/10**(esn0_db/10)
-    x = x + np.sqrt(n0/2)*(rng.standard_normal(n) + 1j*rng.standard_normal(n))
-    return (x, (tau + k*sps, sym)) if sent else x
+from support.signals import rrc_psk as psk
 
 @pytest.mark.parametrize("sps", [2.0, 3.37, 7.91])
 def test_best_tau_by_convolution_matches_the_filter_matrix(sps):

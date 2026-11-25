@@ -4,7 +4,7 @@ import pytest
 
 import rpps as rp
 from rpps.analysis.modulation import impairments as I
-from conftest import shaped
+from support.signals import shaped
 
 def noisy(rng, pts, esn0, n=20000):
     pts = np.asarray(pts)/np.sqrt(np.mean(np.abs(np.asarray(pts))**2))

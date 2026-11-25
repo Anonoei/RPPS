@@ -1,10 +1,14 @@
 """The recursive filters with no loop over samples (rpps.signal.filters.iir: one state space system, chunks as matrix
 products, the chunk states by a log-depth scan) against the sample-by-sample recursions they replace"""
+from contextlib import nullcontext
+
 import numpy as np
 import pytest
 
 import rpps as rp
 from rpps import _accel
+from support.blocks import run
+from support.native import kernels
 
 CUTS = ([20000], [1]*40 + [19960], [777]*25 + [20000 - 777*25], [5000, 0, 15000])
 
@@ -60,25 +64,13 @@ def ref_squelch(x, open_db, hyst_db, alpha):
             out[i] = x[i]
     return out
 
-def stream(make, x, blocks, Fs=48e3):
-    stage, s, outs, i = make(), None, [], 0
-    for b in blocks:
-        d = rp.Data(x[i:i + b], stream=s, Fs=Fs)
-        s = d.stream
-        outs.append(np.asarray((d + stage).data))
-        i += b
-    return np.concatenate(outs)
-
 @pytest.fixture(params=["native", "block"])
 def path(request):
     """The C++ kernel (when built) and the block form (numpy; the loops' Python loop) both"""
-    keep = _accel.native
-    if request.param == "native" and keep is None:
+    if request.param == "native" and _accel.native is None:
         pytest.skip("rpps._native is not built")
-    if request.param == "block":
-        _accel.native = None
-    yield request.param
-    _accel.native = keep
+    with nullcontext() if request.param == "native" else kernels(False):
+        yield request.param
 
 @pytest.fixture
 def signals(rng):
@@ -99,7 +91,7 @@ def test_iir_is_the_recursion_for_any_cut(sos, kind, signals, path):
     scale = np.max(np.abs(want))
     assert np.max(np.abs(f.run(x) - want)) <= 1e-11*scale # double in, double out: to rounding
     for cut in CUTS: # a stream (its samples single precision): to single precision
-        got = stream(lambda: rp.signal.filters.IIR(sos), x, cut)
+        got = run(lambda: rp.signal.filters.IIR(sos), x, cut, Fs=48e3)
         want = ref_sos(sos, x.astype(np.complex64 if kind == "complex" else np.float32))
         assert np.max(np.abs(got - want)) <= 1e-6*scale, (path, cut[:2])
 
@@ -119,7 +111,7 @@ def test_first_order_stages_are_their_recursions(kind, signals, path):
     ]
     for make, want in cases:
         for cut in CUTS:
-            got = stream(make, x, cut)
+            got = run(make, x, cut, Fs=48e3)
             assert got.shape == want.shape
             tol = 1e-9 if got.dtype in (np.float64, np.complex128) else 2e-6 # the output's own precision
             assert np.allclose(got, want, rtol=tol, atol=tol), (str(make()), path, cut[:2])
@@ -133,5 +125,5 @@ def test_squelch_gate_holds_between_the_thresholds():
 
 def test_single_precision_in_single_precision_out(signals, path):
     x = signals["complex"].astype(np.complex64)
-    assert stream(lambda: rp.signal.filters.IIR(rp.signal.filters.iir.single_pole(0.1)), x, [20000]).dtype == np.complex64
-    assert stream(lambda: rp.signal.DCBlock(), x, [20000]).dtype == np.complex64
+    assert run(lambda: rp.signal.filters.IIR(rp.signal.filters.iir.single_pole(0.1)), x, [20000], Fs=48e3).dtype == np.complex64
+    assert run(lambda: rp.signal.DCBlock(), x, [20000], Fs=48e3).dtype == np.complex64

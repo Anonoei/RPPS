@@ -5,7 +5,6 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from rpps import _config
 from rpps.base import Stage
 from rpps.errors import ConfigError
 from rpps.profile import steps
@@ -43,7 +42,7 @@ def test_register_step_rejects_a_taken_name():
     with pytest.raises(ValueError):
         steps.register_step("signal", "filter")(lambda *a: None)
 
-def test_generic_stage_step_runs_a_user_class(tmp_path):
+def test_generic_stage_step_runs_a_user_class(tmp_path, config_layer):
     """A profile in a user's config directory names a class by its module path"""
     prof = {"comment": "gain then DC block",
             "steps": [{"signal": "class", "class": "test_registry.Gain", "args": {"k": 2.0}},
@@ -51,15 +50,12 @@ def test_generic_stage_step_runs_a_user_class(tmp_path):
     d = tmp_path / "profile" / "mine"
     d.mkdir(parents=True)
     (d / "gain.json").write_text(json.dumps(prof))
-    rp.add_config_path(tmp_path)
-    try:
-        p = rp.profile.load("mine/gain")
-        rx = p.rx()
-        x = np.ones(64, np.complex64)
-        y = np.asarray(rx(rp.Data(x, Fs=1e3)).data)
-        assert len(y) == 64 and abs(y[0] - 2.0) < 1e-6
-    finally:
-        _config._EXTRA.remove(tmp_path)
+    config_layer(tmp_path)
+    p = rp.profile.load("mine/gain")
+    rx = p.rx()
+    x = np.ones(64, np.complex64)
+    y = np.asarray(rx(rp.Data(x, Fs=1e3)).data)
+    assert len(y) == 64 and abs(y[0] - 2.0) < 1e-6
 
 def test_stage_step_needs_a_stage():
     with pytest.raises(ConfigError, match="not a Stage"):

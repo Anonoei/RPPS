@@ -8,12 +8,10 @@ import pytest
 import rpps as rp
 from rpps.grid import nr
 from rpps.grid.nr import phy
+from support.signals import unhex
 
 FS, NFFT, FC = 7.68e6, 512, 2.185e9
 V = json.loads((Path(__file__).parent/"vectors"/"nr_py3gpp_ssb.json").read_text())
-
-def unhex(h, n):
-    return np.unpackbits(np.frombuffer(bytes.fromhex(h), np.uint8))[:n]
 
 def signs(h, n):
     return 1 - 2.0*unhex(h, n)

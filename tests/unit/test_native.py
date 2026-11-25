@@ -7,23 +7,13 @@ import pytest
 
 import rpps as rp
 from rpps import _accel
+from support.native import kernels
 
 pytestmark = pytest.mark.skipif(not _accel.available(), reason="rpps._native is not built")
 
-class Counting:
-    """rpps._native, counting the kernel calls (a native run that silently fell back to Python would compare equal)"""
-    def __init__(self, mod):
-        self.mod, self.calls = mod, 0
-    def __getattr__(self, name):
-        self.calls += 1
-        return getattr(self.mod, name)
-
 def run(make, x, blocks, native, **rates):
     """x cut into `blocks` through a fresh stage, with the kernels on or off"""
-    saved = _accel.native
-    spy = Counting(saved)
-    _accel.native = spy if native else None
-    try:
+    with kernels(native) as spy:
         stage = make()
         stream, outs, i = None, [], 0
         for b in blocks:
@@ -34,8 +24,6 @@ def run(make, x, blocks, native, **rates):
         if native:
             assert spy.calls > 0, "the native kernel never ran"
         return np.concatenate(outs), stream.states[stage]
-    finally:
-        _accel.native = saved
 
 def psk(rng, n, M, cfo=0.0, snr_db=20.0):
     sym = np.exp(1j*(2*np.pi*rng.integers(0, M, n)/M + (np.pi/4 if M == 4 else 0.0)))
@@ -95,12 +83,8 @@ def test_matrix_mf_matches_python(sps, beta, dtype):
     x = (rng.standard_normal(20000) + 1j*rng.standard_normal(20000)).astype(dtype)
     for t0 in (8*sps + 2, 8*sps + 2.3, 8*sps + 2.5):
         c = centres_in(len(x), t0, sps)
-        saved = _accel.native
-        try:
-            _accel.native = None
+        with kernels(False):
             ref = matrix_mf(x, c, sps, beta)
-        finally:
-            _accel.native = saved
         got = matrix_mf(x, c, sps, beta)
         assert got.dtype == ref.dtype and np.max(np.abs(got - ref)) < 1e-12*np.max(np.abs(ref))
 
@@ -108,14 +92,10 @@ def test_matrix_mf_matches_python(sps, beta, dtype):
 def test_matrix_mf_refuses_a_support_outside_x(native):
     """Both paths raise where numpy's negative indices would wrap round to the end of x"""
     from rpps.sync.time.mat import matrix_mf
-    saved = _accel.native
-    _accel.native = saved if native else None
-    try:
+    with kernels(native):
         for c in (3.0, 990.0):
             with pytest.raises(IndexError):
                 matrix_mf(np.ones(1000, np.complex64), np.array([c]), 2.5, 0.35)
-    finally:
-        _accel.native = saved
 
 def test_mat_timing_matches_python():
     """Acquire + Mat on RRC-shaped QPSK: the same symbols, cut any way"""
@@ -124,9 +104,7 @@ def test_mat_timing_matches_python():
     x = (rp.Data(sym, Fs=1e3, sps=1) + rp.wave.Shape(4, rp.signal.filters.load("pulse/rrc/0p35"))).data
     x = (x + 0.05*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))).astype(np.complex64)
     def symbols(cut, native):
-        saved, spy = _accel.native, Counting(_accel.native)
-        _accel.native = spy if native else None
-        try:
+        with kernels(native) as spy:
             acq, mat, stream, outs, i = rp.sync.Acquire(), rp.sync.time.Mat(), None, [], 0
             for b in cut:
                 d = rp.Data(x[i:i + b], Fs=4e3, stream=stream)
@@ -134,8 +112,6 @@ def test_mat_timing_matches_python():
                 outs.append((d + acq + mat).data)
             assert not native or spy.calls > 0, "the native kernel never ran"
             return np.concatenate(outs)
-        finally:
-            _accel.native = saved
     for cut in ([len(x)], [8192]*2 + [len(x) - 16384], [1]*30 + [len(x) - 30]):
         ref, y = symbols(cut, False), symbols(cut, True)
         assert len(y) == len(ref) > 4000 and np.allclose(y, ref, atol=1e-5)

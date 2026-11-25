@@ -6,7 +6,7 @@ import pytest
 
 import rpps as rp
 from rpps.code.types import Trellis
-from conftest import bits, awgn
+from support.signals import bits, awgn
 
 def modem(name):
     """A definition on its first map, or the map named after it ("psk/8psk dvb-s2")"""

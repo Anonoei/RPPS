@@ -7,10 +7,7 @@ import rpps as rp
 from rpps.base.types import Rep
 from rpps.errors import ConfigError
 from rpps.profile.profile import Profile
-
-def bits_of(d):
-    x = np.asarray(d.data)
-    return x < 0 if x.dtype.kind == "f" else x.astype(bool)
+from support.signals import hard as bits_of
 
 def channel_bits(bits, flush=True, stream=None):
     d = rp.Data(np.asarray(bits, bool), flush=flush, stream=stream)

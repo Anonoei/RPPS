@@ -73,18 +73,15 @@ def test_a_config_without_points_is_an_error():
     with pytest.raises(rp.errors.ConfigError):
         rp.symbol.init("none", {"base": "constellation"})
 
-def test_a_config_file_in_a_user_directory(tmp_path):
+def test_a_config_file_in_a_user_directory(tmp_path, config_layer):
     from rpps._config import format_json
     d = tmp_path / "constellation"
     d.mkdir(parents=True)
     (d / "diamond.json").write_text(format_json({"points": [[1, 0], [0, 1], [-1, 0], [0, -1]],
                                                   "maps": [{"map": [0, 1, 3, 2], "comment": "Grey"}]}))
-    rp.add_config_path(tmp_path)
-    try:
-        c = rp.symbol.load("diamond")
-        assert c.order == 4 and "diamond" in rp.symbol.ls()["constellation"]
-    finally:
-        rp._config._EXTRA.remove(tmp_path)
+    config_layer(tmp_path)
+    c = rp.symbol.load("diamond")
+    assert c.order == 4 and "diamond" in rp.symbol.ls()["constellation"]
 
 def test_shapes_are_generated_and_definitions_loaded():
     assert rp.symbol.generate("16QAM").order == 16 and rp.symbol.generate("OOK").order == 2 and rp.symbol.generate("8PSK").bits_per_symbol == 3
@@ -100,7 +97,7 @@ def test_bpsk_is_on_the_real_axis_however_made():
     for c in (rp.symbol.PSK(2), rp.symbol.generate("BPSK"), rp.symbol.load("psk/bpsk")):
         assert np.allclose(sorted(c.points.real), [-1, 1]) and np.allclose(c.points.imag, 0)
 
-def test_rings_and_rotate_build_points(tmp_path):
+def test_rings_and_rotate_build_points(tmp_path, config_layer):
     from rpps._config import format_json
     d = tmp_path / "constellation" / "x"
     d.mkdir(parents=True)
@@ -109,15 +106,12 @@ def test_rings_and_rotate_build_points(tmp_path):
     (d / "two.json").write_text(format_json({"comment": "4+12", "params": {"gamma": 2.0},
                                               "rings": [{"n": 4, "pha": 45}, {"n": 12, "mag": {"param": "gamma"}, "pha": 15}],
                                               "normalize": False}))
-    rp.add_config_path(tmp_path)
-    try:
-        assert np.allclose(rp.symbol.load("x/ring8").points, rp.symbol.load("psk/8psk").points)
-        assert np.allclose(np.angle(rp.symbol.load("x/ring8_axes").points[:2], deg=True), [0, 45])
-        two = rp.symbol.load("x/two", gamma=3.0)
-        assert np.allclose(np.abs(two.points), [1]*4 + [3]*12)
-        assert np.allclose(np.abs(rp.symbol.load("x/two").points), [1]*4 + [2]*12)
-    finally:
-        rp._config._EXTRA.remove(tmp_path)
+    config_layer(tmp_path)
+    assert np.allclose(rp.symbol.load("x/ring8").points, rp.symbol.load("psk/8psk").points)
+    assert np.allclose(np.angle(rp.symbol.load("x/ring8_axes").points[:2], deg=True), [0, 45])
+    two = rp.symbol.load("x/two", gamma=3.0)
+    assert np.allclose(np.abs(two.points), [1]*4 + [3]*12)
+    assert np.allclose(np.abs(rp.symbol.load("x/two").points), [1]*4 + [2]*12)
 
 def test_a_standards_labelling_is_a_named_map():
     """DVB-S2 QPSK is one of QPSK's turned maps under another name; DVB-S2 8PSK labels 8PSK turned onto k*45 degrees"""

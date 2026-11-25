@@ -3,20 +3,8 @@ import numpy as np
 import pytest
 
 import rpps as rp
-
-def run(make, x, blocks, **rates):
-    """x cut into `blocks`, each as a block of one stream, through a fresh stage"""
-    stage = make()
-    stream, outs, i = None, [], 0
-    for b in blocks:
-        d = rp.Data(x[i:i+b], stream=stream, **rates)
-        stream = d.stream
-        outs.append((d + stage).data)
-        i += b
-    return np.concatenate(outs)
-
-def cuts(n):
-    return ([n], [1000]*(n//1000), [777]*(n//777) + [n % 777], [1]*50 + [n-50])
+from support.blocks import cuts, run
+from support.native import kernels
 
 @pytest.fixture(scope="module")
 def x():
@@ -214,10 +202,7 @@ def test_acquire_fec_does_not_depend_on_block_size():
 @pytest.mark.parametrize("ratio,taps", [(4, 65), (8, 129), (3, 10)])
 def test_interpolate_is_zeros_then_filter(ratio, taps, native):
     """The polyphase interpolator gives Zeros + the filter, however the stream is cut"""
-    from rpps import _accel
-    saved = _accel.native
-    _accel.native = saved if native else None
-    try:
+    with kernels(native):
         rng = np.random.default_rng(ratio)
         syms = (rng.standard_normal(700) + 1j*rng.standard_normal(700)).astype(np.complex64)
         pulse = rp.signal.filters.ShapingRRC(taps, ratio)
@@ -236,8 +221,6 @@ def test_interpolate_is_zeros_then_filter(ratio, taps, native):
             y, d = run([rp.signal.sample.up.Interpolate(ratio, pulse)], cut)
             np.testing.assert_allclose(y, ref, atol=1e-5)
             assert d.Fs == dr.Fs and d.sps == dr.sps and d.delay == pytest.approx(dr.delay)
-    finally:
-        _accel.native = saved
 
 def _tee_run(tee, x, cut, **rates):
     outs, st, i = {}, None, 0

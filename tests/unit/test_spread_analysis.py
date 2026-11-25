@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from rpps.analysis.sequence import spread
-from conftest import shaped
+from support.signals import shaped
 
 def mseq(poly, L):
     st, out = [1]*L, []

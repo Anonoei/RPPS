@@ -83,11 +83,9 @@ def test_bil_round_trip(rng):
 
 from pathlib import Path
 import json
+from support.signals import unhex
 
 VECTORS = json.loads((Path(__file__).parent/"vectors"/"nr_py3gpp.json").read_text())
-
-def unhex(h, n):
-    return np.unpackbits(np.frombuffer(bytes.fromhex(h), np.uint8))[:n]
 
 @pytest.mark.parametrize("v", VECTORS["polar"], ids=lambda v: f"K{v['K']}_E{v['E']}")
 def test_polar_matches_py3gpp(v):

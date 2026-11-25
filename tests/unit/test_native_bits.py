@@ -6,28 +6,9 @@ import pytest
 import rpps as rp
 from rpps import _accel
 from rpps.math import bits
+from support.native import both
 
 pytestmark = pytest.mark.skipif(not _accel.available(), reason="rpps._native is not built")
-
-class Counting:
-    def __init__(self, mod):
-        self.mod, self.calls = mod, 0
-    def __getattr__(self, name):
-        self.calls += 1
-        return getattr(self.mod, name)
-
-def both(fn):
-    saved = _accel.native
-    try:
-        _accel.native = None
-        ref = fn()
-        spy = Counting(saved)
-        _accel.native = spy
-        got = fn()
-        assert spy.calls > 0, "the native kernel never ran"
-    finally:
-        _accel.native = saved
-    return ref, got
 
 @pytest.mark.parametrize("L", [1, 7, 8, 32, 63, 64])
 def test_distance_at_every_position(L):

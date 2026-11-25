@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from conftest import bits
+from support.signals import bits
 
 # --- fsm ------------------------------------------------------------------------------------------------------
 

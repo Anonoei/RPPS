@@ -2,7 +2,7 @@
 import numpy as np
 
 import rpps as rp
-from test_control import KNOWN, FRAMES, bits
+from support.dvbs2 import KNOWN, MIXED_FRAMES as FRAMES, seeded_bits as bits
 
 
 def received(noise, parallel=None):

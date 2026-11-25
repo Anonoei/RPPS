@@ -5,7 +5,8 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from conftest import bits
+from support.signals import bits
+from support.refs import HAMMING_ALIST
 
 BIG = ("dvbs2_",) # DVB-S2 frames (16200+ bits) are tested separately: too slow to sweep
 
@@ -108,41 +109,21 @@ def test_ldpc_corrects_noise(rng):
 def test_registry_lists_all_types():
     assert {"linear", "repeat", "rs", "bch", "ldpc", "conv", "viterbi", "forney"} <= set(rp.code.types.REGISTRY)
 
-# MacKay alist of the Hamming (7,4) parity checks: 7 bits, 3 checks
-HAMMING_ALIST = """7 3
-3 4
-1 1 2 2 1 2 3
-4 4 4
-1 0 0
-2 0 0
-1 2 0
-1 3 0
-3 0 0
-2 3 0
-1 2 3
-1 3 4 7
-2 3 6 7
-4 5 6 7
-"""
-
-def test_import_alist(tmp_path):
+def test_import_alist(tmp_path, config_layer):
     f = tmp_path / "ham.alist"
     f.write_text(HAMMING_ALIST)
     obj = rp.code.import_alist(f)
     assert obj["n"] == 7 and obj["checks"] == [[0, 2, 3, 6], [1, 2, 5, 6], [3, 4, 5, 6]]
     path = rp.code.import_alist(f, "alist_ham", dest=tmp_path / "cfg", comment="test")
     assert Path(path).is_file()
-    rp.add_config_path(tmp_path / "cfg")
-    try:
-        code = rp.code.load("block/ldpc/alist_ham").encoder
-        assert (code.num, code.den) == (4, 7)
-        word = code.encode(np.array([1, 0, 1, 1], dtype=bool))
-        assert not np.any(code.syndrome(word[None, :]))
-        bad = word.copy()
-        bad[2] ^= True
-        assert np.any(code.syndrome(bad[None, :]))
-    finally:
-        rp._config._EXTRA.remove(tmp_path / "cfg")
+    config_layer(tmp_path / "cfg")
+    code = rp.code.load("block/ldpc/alist_ham").encoder
+    assert (code.num, code.den) == (4, 7)
+    word = code.encode(np.array([1, 0, 1, 1], dtype=bool))
+    assert not np.any(code.syndrome(word[None, :]))
+    bad = word.copy()
+    bad[2] ^= True
+    assert np.any(code.syndrome(bad[None, :]))
 
 def test_import_alist_rejects_inconsistent(tmp_path):
     f = tmp_path / "bad.alist"

@@ -4,7 +4,7 @@ import pytest
 
 from rpps.analysis.spectrum import hopping
 from rpps.analysis.modulation import fsk
-from conftest import cpfsk
+from support.signals import cpfsk
 
 FS = 2e6
 

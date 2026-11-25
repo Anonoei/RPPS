@@ -5,12 +5,9 @@ import pytest
 import rpps as rp
 from rpps.base.types import Rep
 from rpps.errors import ConfigError
+from support.signals import hard
 
 KNOWN = {"timing": {"method": "known"}} # loopback: the timing is known, nothing to estimate
-
-def hard(d):
-    x = np.asarray(d.data)
-    return x < 0 if x.dtype.kind == "f" else x.astype(bool)
 
 def names(runner):
     return [f"{how}{type(op).__name__}" for how, op in runner]
@@ -203,21 +200,18 @@ def test_dvbs_finds_the_puncture_phase():
     assert i is not None and len(got) - i >= len(pk) - 16
     assert np.array_equal(got[i:], pk[k:k + len(got) - i])
 
-def test_profile_parameters_reach_the_steps(tmp_path):
+def test_profile_parameters_reach_the_steps(tmp_path, config_layer):
     """What `chain` did with its params: a profile's parameter goes into each step that uses it"""
     from rpps._config import format_json
     d = tmp_path / "profile" / "test"
     d.mkdir(parents=True)
     (d / "ble_whitening.json").write_text(format_json({"params": {"channel": {"default": 37}},
         "steps": [{"code": "scramble", "name": "additive/ble_whiten", "args": {"channel": {"param": "channel"}}}]}))
-    rp.add_config_path(tmp_path)
-    try:
-        p = rp.profile.load("test/ble_whitening", channel=38)
-        s = p.steps[0].obj
-        z = np.zeros(50, bool)
-        assert np.array_equal(s.encode(z), rp.code.scram.load("ble_whiten", channel=38).encode(z))
-    finally:
-        rp._config._EXTRA.remove(tmp_path)
+    config_layer(tmp_path)
+    p = rp.profile.load("test/ble_whitening", channel=38)
+    s = p.steps[0].obj
+    z = np.zeros(50, bool)
+    assert np.array_equal(s.encode(z), rp.code.scram.load("ble_whiten", channel=38).encode(z))
 
 def test_domain_loader_keeps_the_given_parameters():
     """Loaded through the generic config loader, a profile gets the values given, not its defaults"""

@@ -5,7 +5,7 @@ import pytest
 import rpps as rp
 from rpps.analysis.modulation import cancel
 from rpps.analysis.spectrum import cyclic
-from conftest import shaped
+from support.signals import shaped
 
 SPS, FS = 4.37, 1e6
 

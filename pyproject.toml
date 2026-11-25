@@ -84,7 +84,7 @@ test-command = "python -c \"import rpps._native\" && python {project}/tests/run_
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
-pythonpath = ["src"]
+pythonpath = ["src", "tests"]
 markers = [
     "slow: takes more than a few seconds",
     "kernels: over a minute with the C++ kernels off (the no-kernel CI pass leaves it out; it runs in the others)",

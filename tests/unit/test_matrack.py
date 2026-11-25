@@ -6,40 +6,18 @@ import pytest
 
 import rpps as rp
 from rpps import _accel
-from rpps.math.interp import interpolate
 from rpps.sync.time import MatTrack
+from support.dvbs2 import PILOT_FRAMES as FRAMES, pilot_capture, receive
 
 XP, BACKEND = _accel.device()
 GPU = pytest.mark.skipif(BACKEND is None, reason="no GPU (rpps._accel.device())")
-FRAMES = [{"modcod": (4, 12)[i % 2], "pilots": 1} for i in range(4)]
 MAT = {"timing": {"method": "mat"}}
 MAT_DEV = {"timing": {"method": "mat", "device": True}}
 
 @pytest.fixture(scope="module")
 def s2():
     """DVB-S2 frames after a quiet start, received with a clock 20 ppm fast, a phase offset and noise"""
-    p = rp.profile.load("dvbs2/normal")
-    t = rp.profile.table("dvbs2/modcod")
-    dfl = [t.row({**f, "short": 0})["kbch"] - 80 for f in FRAMES]
-    data = np.random.default_rng(1).integers(0, 2, sum(dfl)).astype(bool)
-    o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=FRAMES)
-    x = np.concatenate((np.zeros(3000, np.complex64), o.data, np.zeros(400, np.complex64)))
-    x = interpolate(x, np.arange(int(len(x)/(1 + 20e-6)) - 20)*(1 + 20e-6))
-    rng = np.random.default_rng(2)
-    x = (x*np.exp(0.7j) + 0.05*(rng.normal(size=len(x)) + 1j*rng.normal(size=len(x)))).astype(np.complex64)
-    return x, o, data
-
-def receive(x, o, sync, cut=None, parallel=None):
-    rx = rp.profile.load("dvbs2/normal", sync=sync).rx(parallel=parallel)
-    st, outs = None, []
-    cut = cut or len(x)
-    for a in range(0, len(x), cut):
-        d = rp.Data(x[a:a + cut], Fs=o.Fs, sps=4, delay=o.delay, stream=st, flush=a + cut >= len(x))
-        st = d.stream
-        outs.append(np.asarray(rx(d).data).astype(bool))
-    if parallel is not None:
-        rx.close()
-    return np.concatenate(outs), st
+    return pilot_capture()
 
 def test_the_profile_fuses_its_matched_filter():
     p = rp.profile.load("dvbs2/normal", sync=MAT)

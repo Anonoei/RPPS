@@ -5,7 +5,7 @@ import pytest
 import rpps as rp
 from rpps import _config
 from rpps.errors import ConfigError
-from conftest import bits
+from support.signals import bits
 
 # --- parameters -----------------------------------------------------------------------------------------------
 

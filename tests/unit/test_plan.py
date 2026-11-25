@@ -205,7 +205,7 @@ def test_a_train_is_a_superframe_of_its_bursts():
     starts = [w.start for w in p.windows(0, 2*60000)]
     assert starts == [100*i for i in range(10)] + [60000 + 100*i for i in range(10)]
 
-def test_a_plan_learned_from_detected_bursts(rng, tmp_path):
+def test_a_plan_learned_from_detected_bursts(rng, tmp_path, config_layer):
     """No forward link: the plan learned from the bursts detection finds (its BTU, frame, slots), saved and loaded as a
     definition, then used to place them: the same slot of every frame gets the same name"""
     x, items = _send(rng, superframes=8, per=6)
@@ -216,11 +216,8 @@ def test_a_plan_learned_from_detected_bursts(rng, tmp_path):
     g = rp.analysis.burst.learn_plan(bursts, carriers=C)
     assert g.evidence["btu"] == pytest.approx(BTU/NCR, rel=1e-3) and g.evidence["frame"] == pytest.approx(25*BTU/NCR, rel=1e-3)
     g.save("learned_test", tmp_path/"plan")
-    rp.add_config_path(tmp_path)
-    try:
-        plan = rp.plan.load("guess/learned_test")
-    finally:
-        rp._config._EXTRA.remove(tmp_path) if tmp_path in rp._config._EXTRA else None
+    config_layer(tmp_path)
+    plan = rp.plan.load("guess/learned_test")
     rx = rp.profile.load("demo/mftdma").rx()
     rx.burst.control(plan=plan)
     msgs = []

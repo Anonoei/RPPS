@@ -21,18 +21,18 @@ def run(name, monkeypatch):
     runpy.run_path(path, run_name="__main__")
 
 @pytest.mark.parametrize("name", FAST)
-def test_example(name, monkeypatch):
+def test_example(name, monkeypatch, config_layer): # config_layer: some examples add one
     run(name, monkeypatch)
 
 @pytest.mark.kernels
 @pytest.mark.parametrize("name", KERNELS)
-def test_kernel_example(name, monkeypatch):
+def test_kernel_example(name, monkeypatch, config_layer): # config_layer: some examples add one
     run(name, monkeypatch)
 
 @pytest.mark.slow
 @pytest.mark.kernels
 @pytest.mark.parametrize("name", SLOW)
-def test_slow_example(name, monkeypatch):
+def test_slow_example(name, monkeypatch, config_layer): # config_layer: some examples add one
     run(name, monkeypatch)
 
 def test_every_example_is_run_or_listed():

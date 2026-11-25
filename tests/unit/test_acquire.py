@@ -5,7 +5,7 @@ import pytest
 import rpps as rp
 from rpps import symbol
 
-from conftest import shaped
+from support.signals import shaped
 
 def stream(x, blocks, make):
     """x cut into `blocks` of one stream (the last flushing) through a fresh stage: (samples out, last detection)"""

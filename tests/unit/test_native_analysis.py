@@ -7,28 +7,10 @@ from rpps.analysis.modulation import cpm
 from rpps.analysis.code.block import ldpc
 from rpps.math import gf2
 from rpps import code as coding
+from support.native import both
+from support.native import kernels
 
 pytestmark = pytest.mark.skipif(not _accel.available(), reason="rpps._native is not built")
-
-class Counting:
-    def __init__(self, mod):
-        self.mod, self.calls = mod, 0
-    def __getattr__(self, name):
-        self.calls += 1
-        return getattr(self.mod, name)
-
-def both(fn):
-    saved = _accel.native
-    try:
-        _accel.native = None
-        ref = fn()
-        spy = Counting(saved)
-        _accel.native = spy
-        got = fn()
-        assert spy.calls > 0, "the native kernel never ran"
-    finally:
-        _accel.native = saved
-    return ref, got
 
 @pytest.mark.parametrize("name", ["msk", "gmsk_0.3", "soqpsk_tg"])
 def test_cpm_detector(name):
@@ -73,12 +55,8 @@ def test_rs_count_zeros_matches_python():
     EXP, LOG = R._tables(R.PRIMITIVE[:4])
     for n, Vn, L in ((16, 3, 400), (51, 5, 51*10)):
         V = rng.integers(0, 256, (Vn, L)).astype(np.uint8)
-        saved = _accel.native
-        try:
-            _accel.native = None
+        with kernels(False):
             ref = R._count_zeros(V, n, EXP, LOG, 8)
-        finally:
-            _accel.native = saved
         got = R._count_zeros(V, n, EXP, LOG, 8)
         assert all(np.array_equal(a, b) for a, b in zip(ref, got))
 

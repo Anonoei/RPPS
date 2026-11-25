@@ -4,16 +4,7 @@ import pytest
 
 import rpps as rp
 from rpps.signal.filters import shaping
-
-def stream(x, blocks, stage, **rates):
-    """x cut into `blocks` through one stage in one stream"""
-    outs, s, i = [], None, 0
-    for b in blocks:
-        d = rp.Data(x[i:i + b], stream=s, **rates)
-        s = d.stream
-        outs.append((d + stage).data)
-        i += b
-    return np.concatenate(outs)
+from support.blocks import run
 
 CUTS = lambda n: ([n], [n//3, n//3, n - 2*(n//3)], [1]*20 + [n - 20], [7, 0, n - 7])
 
@@ -53,7 +44,7 @@ def test_gaussian_pulse_holds_a_level(name, bt):
 def test_decimate_offset_across_blocks():
     x = np.arange(100, dtype=np.float32) + 0j
     for cuts in CUTS(100):
-        out = stream(x.astype(np.complex64), cuts, rp.signal.sample.down.Decimate(8, offset=3), Fs=8.0, sps=8)
+        out = run(lambda: rp.signal.sample.down.Decimate(8, offset=3), x.astype(np.complex64), cuts, Fs=8.0, sps=8)
         assert np.array_equal(out.real, x.real[3::8])
 
 # ---- Stagger
@@ -61,29 +52,29 @@ def test_decimate_offset_across_blocks():
 def test_stagger_delays_q_by_half_a_symbol():
     rng = np.random.default_rng(0)
     x = (rng.standard_normal(80) + 1j*rng.standard_normal(80)).astype(np.complex64)
-    out = stream(x, [80], rp.wave.Stagger(), Fs=8.0, sps=8)
+    out = run(rp.wave.Stagger, x, [80], Fs=8.0, sps=8)
     assert np.array_equal(out.real, x.real)
     assert np.array_equal(out.imag[4:], x.imag[:-4]) and np.all(out.imag[:4] == 0)
 
 def test_stagger_rx_realigns():
     rng = np.random.default_rng(1)
     x = (rng.standard_normal(200) + 1j*rng.standard_normal(200)).astype(np.complex64)
-    tx = stream(x, [200], rp.wave.Stagger(), Fs=8.0, sps=8)
-    rx = stream(tx, [200], rp.wave.Stagger(rail="i"), Fs=8.0, sps=8)
+    tx = run(rp.wave.Stagger, x, [200], Fs=8.0, sps=8)
+    rx = run(lambda: rp.wave.Stagger(rail="i"), tx, [200], Fs=8.0, sps=8)
     assert np.array_equal(rx.imag[4:], x.imag[:-4]) and np.array_equal(rx.real[4:], x.real[:-4]) # both rails 4 samples late, aligned
 
 def test_stagger_any_block_cut():
     rng = np.random.default_rng(2)
     x = (rng.standard_normal(97) + 1j*rng.standard_normal(97)).astype(np.complex64)
-    ref = stream(x, [97], rp.wave.Stagger(), Fs=8.0, sps=8)
+    ref = run(rp.wave.Stagger, x, [97], Fs=8.0, sps=8)
     for cuts in CUTS(97):
-        assert np.array_equal(stream(x, cuts, rp.wave.Stagger(), Fs=8.0, sps=8), ref)
+        assert np.array_equal(run(rp.wave.Stagger, x, cuts, Fs=8.0, sps=8), ref)
 
 def test_stagger_needs_whole_samples():
     with pytest.raises(ValueError):
-        stream(np.zeros(16, np.complex64), [16], rp.wave.Stagger(), Fs=7.0, sps=7)
+        run(rp.wave.Stagger, np.zeros(16, np.complex64), [16], Fs=7.0, sps=7)
     with pytest.raises(ValueError):
-        stream(np.zeros(16, np.float32), [16], rp.wave.Stagger(), Fs=8.0, sps=8)
+        run(rp.wave.Stagger, np.zeros(16, np.float32), [16], Fs=8.0, sps=8)
 
 def oqpsk(syms, sps):
     d = rp.Data(syms.astype(np.complex64), Fs=1e6, sps=1)
@@ -119,15 +110,15 @@ def levels_to_fm(levels, sps, h, pulse, step=2.0, blocks=None):
 def test_fm_is_constant_envelope_and_phase_continuous_across_blocks():
     rng = np.random.default_rng(5)
     x = rng.choice([-1.0, 1.0], 160).astype(np.float32)
-    ref = stream(x, [160], rp.wave.FM(0.5), Fs=8.0, sps=8)
+    ref = run(lambda: rp.wave.FM(0.5), x, [160], Fs=8.0, sps=8)
     assert np.allclose(np.abs(ref), 1, atol=1e-6)
     for cuts in CUTS(160):
-        assert np.allclose(stream(x, cuts, rp.wave.FM(0.5), Fs=8.0, sps=8), ref, atol=1e-5)
+        assert np.allclose(run(lambda: rp.wave.FM(0.5), x, cuts, Fs=8.0, sps=8), ref, atol=1e-5)
 
 def test_fm_tone_spacing():
     """A held level a is a tone of a*h/step cycles per symbol: levels +-1 at h = 0.5 are +-0.25 cycles per symbol"""
     sps = 16
-    out = stream(np.ones(160, np.float32), [160], rp.wave.FM(0.5), Fs=float(sps), sps=sps)
+    out = run(lambda: rp.wave.FM(0.5), np.ones(160, np.float32), [160], Fs=float(sps), sps=sps)
     dphi = np.angle(out[1:]*np.conj(out[:-1]))
     assert np.allclose(dphi*sps/(2*np.pi), 0.25, atol=1e-5)
 

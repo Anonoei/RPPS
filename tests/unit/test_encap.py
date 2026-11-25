@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from conftest import bits
+from support.signals import bits
 
 # Catalogue check values for b"123456789"
 CHECK = {

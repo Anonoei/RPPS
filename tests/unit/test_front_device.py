@@ -7,6 +7,7 @@ import rpps as rp
 from rpps import _accel
 from rpps.sync.phase import MPower
 from rpps.sync.time import OerderMeyr
+from support.dvbs2 import pilot_capture, receive
 
 XP, BACKEND = _accel.device()
 GPU = pytest.mark.skipif(BACKEND is None, reason="no GPU (rpps._accel.device())")
@@ -60,16 +61,7 @@ def test_carrier_on_the_device_is_the_hosts(block):
 @GPU
 def test_dvbs2_with_its_front_on_the_device():
     """dvbs2/normal with timing and carrier on the device decodes what the host does"""
-    from test_matrack import FRAMES, receive
-    from rpps.math.interp import interpolate
-    p = rp.profile.load("dvbs2/normal")
-    t = rp.profile.table("dvbs2/modcod")
-    data = np.random.default_rng(1).integers(0, 2, sum(t.row({**f, "short": 0})["kbch"] - 80 for f in FRAMES)).astype(bool)
-    o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=FRAMES)
-    x = np.concatenate((np.zeros(3000, np.complex64), o.data, np.zeros(400, np.complex64)))
-    x = interpolate(x, np.arange(int(len(x)/(1 + 20e-6)) - 20)*(1 + 20e-6))
-    rng = np.random.default_rng(2)
-    x = (x*np.exp(0.7j) + 0.05*(rng.normal(size=len(x)) + 1j*rng.normal(size=len(x)))).astype(np.complex64)
+    x, o, data = pilot_capture()
     sync = {"timing": {"method": "oerder_meyr", "device": True}, "carrier": {"method": "mpower", "device": True}}
     got, st = receive(x, o, sync)
     assert np.array_equal(got, data) and abs(st.est["timing"]["ppm"] - 20) < 1

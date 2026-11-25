@@ -7,7 +7,7 @@ from rpps.analysis import Burst
 from rpps.analysis.spectrum import levels
 from rpps.analysis.spectrum.find import Finder, _Tail, find
 
-from test_find import psd_noise, rc
+from support.signals import psd_noise, rc
 
 def test_a_line_raised_from_the_floor_reads_carriers_a_pedestal_and_a_hump():
     x = np.arange(3000.0)

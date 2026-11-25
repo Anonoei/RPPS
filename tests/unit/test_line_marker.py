@@ -7,10 +7,7 @@ import rpps as rp
 from rpps.base import Mod
 from rpps.base.types import Rep
 from rpps.errors import ConfigError
-
-def hard(d):
-    x = np.asarray(d.data)
-    return x < 0 if x.dtype.kind == "f" else x.astype(bool)
+from support.signals import hard
 
 def as_data_bits(b, rep=Rep.DATA, **kw):
     d = rp.Data(np.asarray(b, dtype=bool), **kw)

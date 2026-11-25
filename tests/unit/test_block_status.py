@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from conftest import bits
+from support.signals import bits
 
 # Received on air (P25 phase 1, 853.575 MHz): the 24 hexbits of an LDU1 (link control: group voice, talkgroup 2813,
 # source 0, service options 0x04) and of an LDU2 (encryption sync: algorithm 0x80, key 0, message indicator 0)

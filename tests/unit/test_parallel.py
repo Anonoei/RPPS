@@ -231,7 +231,7 @@ def test_frame_cut_short_is_reported_and_the_next_frames_decode(s2):
     assert any(r["what"] == "cut short" for r in st.control.reports)
 
 def _devices():
-    import fakedevice
+    from support import fakedevice
     from rpps import _accel
     xp, backend = _accel.device()
     return [fakedevice] + ([xp] if backend else [])
@@ -248,7 +248,7 @@ def test_on_a_device_the_output_is_the_serial_runners(s2, xp):
     assert np.array_equal(got, want)
 
 def test_a_device_plan_moves_the_batch_once_each_way_and_around_host_kernels(s2):
-    import fakedevice
+    from support import fakedevice
     p, x, o, data, dfl = s2
     w = rp.parallel.PlanWorker(lambda: p._build()[p.region.first:], xp=fakedevice)
     f = Frame(0, np.zeros(33192, np.complex64), {"plscram": {"length": 100}}, tags=(rp.Data, rp.Category.UNK, rp.dtype.SYMBOLS,
@@ -265,7 +265,7 @@ def test_a_device_plan_moves_the_batch_once_each_way_and_around_host_kernels(s2)
 
 def test_the_pretend_device_catches_an_implicit_move():
     """A kernel that mixes a numpy array into device work fails on the pretend device (so CI sees it without a GPU)"""
-    import fakedevice
+    from support import fakedevice
     from rpps.base.kernel import Batch, Kernel, Form
     class Leaky(Kernel):
         name = "leaky"
@@ -504,7 +504,7 @@ def test_device_is_numpy_when_asked_or_without_a_gpu(monkeypatch):
     assert (xp is np) == (backend is None) and backend in (None, "cuda", "hip")
 
 def test_a_device_does_not_cross_a_fork():
-    import fakedevice
+    from support import fakedevice
     with pytest.raises(ValueError, match="inline or thread"):
         rp.parallel.Parallel("process", xp=fakedevice)
 

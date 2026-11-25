@@ -7,29 +7,10 @@ import pytest
 
 import rpps as rp
 from rpps import _accel
+from support.native import both
+from support.native import kernels
 
 pytestmark = pytest.mark.skipif(not _accel.available(), reason="rpps._native is not built")
-
-class Counting:
-    def __init__(self, mod):
-        self.mod, self.calls = mod, 0
-    def __getattr__(self, name):
-        self.calls += 1
-        return getattr(self.mod, name)
-
-def both(fn):
-    """fn() with the Python loops, then with the kernels: (python, native)"""
-    saved = _accel.native
-    try:
-        _accel.native = None
-        ref = fn()
-        spy = Counting(saved)
-        _accel.native = spy
-        got = fn()
-        assert spy.calls > 0, "the native kernel never ran"
-    finally:
-        _accel.native = saved
-    return ref, got
 
 def noisy_llr(bits, rng, ebn0=2.0):
     s = 1.0 - 2.0*np.asarray(bits, dtype=np.float64)
@@ -129,12 +110,8 @@ def test_ldpc_batch_is_each_codeword_on_its_own(rng):
             out.append(o)
             conv.append(e[0] >= 0)
         return np.array(out), np.array(conv)
-    saved = _accel.native
-    _accel.native = None
-    try:
+    with kernels(False):
         ref = each()
-    finally:
-        _accel.native = saved
     o, e = code.decoder.decode(llr, status=True)
     got = o.reshape(40, k), e >= 0
     assert np.array_equal(ref[0], got[0]) and np.array_equal(ref[1], got[1]) and got[1].sum() > 30

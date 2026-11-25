@@ -29,30 +29,24 @@ def test_the_folder_says_the_base():
     with pytest.raises(ConfigError, match="one of the folders"):
         _config.base_of("fec", ("ldpc", "x")) # fec has no loader of its own name: block/ or conv/
 
-def test_a_file_that_says_its_base_is_refused(tmp_path):
+def test_a_file_that_says_its_base_is_refused(tmp_path, config_layer):
     d = tmp_path / "crc"
     d.mkdir()
     (d / "said.json").write_text(json.dumps({"base": "crc", "type": "crc", "comment": "x", "width": 8, "poly": "0x07",
                                              "init": "0x00", "refin": False, "refout": False, "xorout": "0x00"}))
-    rp.add_config_path(tmp_path)
-    try:
-        with pytest.raises(ConfigError, match="folder the file is in"):
-            rp.link.load("crc/said")
-    finally:
-        _config._EXTRA.remove(tmp_path)
+    config_layer(tmp_path)
+    with pytest.raises(ConfigError, match="folder the file is in"):
+        rp.link.load("crc/said")
 
-def test_save_leaves_base_to_the_folder(tmp_path):
+def test_save_leaves_base_to_the_folder(tmp_path, config_layer):
     obj = {"base": "constellation", "comment": "two points", "points": [[1, 0], [-1, 0]]}
     f = _config.save("constellation", "constellation", "mine/two", obj, dest=tmp_path)
     assert f == tmp_path / "constellation" / "mine" / "two.json" and "base" not in json.loads(f.read_text())
     with pytest.raises(ConfigError, match="not in a config folder"):
         _config.expand(f) # (outside every layer, nothing says it is a constellation)
-    rp.add_config_path(tmp_path)
-    try:
-        assert _config.expand(f)["base"] == "constellation"
-        assert len(rp.symbol.load("mine/two").points) == 2
-    finally:
-        _config._EXTRA.remove(tmp_path)
+    config_layer(tmp_path)
+    assert _config.expand(f)["base"] == "constellation"
+    assert len(rp.symbol.load("mine/two").points) == 2
     f = _config.save("filter", "fir", "taps/x0.5", {"base": "fir", "type": "taps", "taps": [1]}, dest=tmp_path)
     assert f.name == "x0.5.json"
     with pytest.raises(ConfigError, match="folder says 'fir'"):
@@ -96,7 +90,7 @@ def test_a_loaded_code_is_named_by_its_ref():
     assert type(rp.code.load("block/204_188")).__name__ == "rs/204_188"
     assert rp.code.load("conv/k7_171_133/3_4").name != rp.code.load("conv/k7_171_133/1_2").name
 
-def test_user_layer(tmp_path):
+def test_user_layer(tmp_path, config_layer):
     (tmp_path / "crc").mkdir(parents=True)
     (tmp_path / "fec" / "block" / "rs").mkdir(parents=True)
     src = _config.find("crc", "crc16_arc")
@@ -104,15 +98,12 @@ def test_user_layer(tmp_path):
     (tmp_path / "crc" / "crc16_arc.json").write_text(src.read_text().replace("CRC-16/ARC", "mine"))
     rs = _config.find("fec", "rs/204_188", "block")
     (tmp_path / "fec" / "block" / "rs" / "255_223.json").write_text(rs.read_text().replace("204", "255").replace("188", "223"))
-    rp.add_config_path(tmp_path)
-    try:
-        assert "mycrc" in rp.link.ls()["crc"]
-        assert _config.find("crc", "crc16_arc").parent == tmp_path / "crc"
-        rp.link.load("crc/mycrc")
-        assert "rs/255_223" in rp.code.names("block")
-        assert "rs/204_188" in rp.code.names("block")
-    finally:
-        _config._EXTRA.remove(tmp_path)
+    config_layer(tmp_path)
+    assert "mycrc" in rp.link.ls()["crc"]
+    assert _config.find("crc", "crc16_arc").parent == tmp_path / "crc"
+    rp.link.load("crc/mycrc")
+    assert "rs/255_223" in rp.code.names("block")
+    assert "rs/204_188" in rp.code.names("block")
 
 # ---- Choices and "when"
 VARIANT = {"params": {"modulation": {"default": "qpsk", "choices": {"qpsk": {"shape": "QPSK", "bits": 2},
@@ -200,13 +191,10 @@ def test_comment_lines():
     with pytest.raises(ConfigError, match="list of strings"):
         _config.join_comments({"comment": ["a", 1]})
 
-def test_a_comment_list_loads_as_one_string(tmp_path):
+def test_a_comment_list_loads_as_one_string(tmp_path, config_layer):
     d = tmp_path / "sequence" / "word"
     d.mkdir(parents=True)
     (d / "w.json").write_text(json.dumps({"type": "word", "comment": ["The word,", "MSB first"],
                                           "word": "0xF3A2", "bits": 16, "order": "msb"}))
-    rp.add_config_path(tmp_path)
-    try:
-        assert _config.expand(d / "w.json")["comment"] == "The word, MSB first"
-    finally:
-        _config._EXTRA.remove(tmp_path)
+    config_layer(tmp_path)
+    assert _config.expand(d / "w.json")["comment"] == "The word, MSB first"

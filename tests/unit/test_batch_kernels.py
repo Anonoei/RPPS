@@ -10,7 +10,7 @@ import pytest
 import rpps as rp
 from rpps.base.data import Mod
 from rpps.base.kernel import Form, Batch, to_host
-import fakedevice
+from support import fakedevice
 from rpps.parallel.kernel import LoopKernel, kernel_of
 from rpps.profile.steps import DECODE, ENCODE, STAGE
 

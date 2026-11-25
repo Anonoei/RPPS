@@ -7,7 +7,7 @@ import rpps as rp
 from rpps import symbol
 from rpps.analysis.modulation import cumulants as C
 
-from conftest import shaped
+from support.signals import shaped
 
 # tools/modclass_bench.py (2026-11-23, detect scoring at the in-band Es/N0), 100 trials, Pc >= 0.9 up to 20 dB
 # (cumulants: 4096 symbols; detect: 2048 at 4 sps, rate searched). BLIND QAM and ASK: the family. Left out, as their Pc

@@ -12,23 +12,17 @@ from rpps.base.types import Rep
 from rpps.errors import ConfigError
 from rpps.profile import control, runner as runner_mod
 from rpps._config import format_json
-
-KNOWN = {"timing": {"method": "known"}}
-
-def bits(n, seed):
-    return np.random.default_rng(seed).integers(0, 2, n).astype(bool)
+from support.dvbs2 import KNOWN, MIXED_FRAMES as FRAMES, seeded_bits as bits
 
 def tmp_profile(tmp_path, obj, name="test/p"):
     d = tmp_path / "profile" / name.split("/")[0]
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{name.split('/')[1]}.json").write_text(format_json(obj))
-    rp.add_config_path(tmp_path)
 
 @pytest.fixture
-def config_path(tmp_path):
-    yield tmp_path
-    while tmp_path in rp._config._EXTRA: # (each tmp_profile call adds it again: leave none behind)
-        rp._config._EXTRA.remove(tmp_path)
+def config_path(tmp_path, config_layer):
+    config_layer(tmp_path)
+    return tmp_path
 
 # ---- tables, entries, position maps
 
@@ -271,8 +265,6 @@ def test_80211b_transmit_fields_from_the_schedule():
     assert [f["signal"] for _, f, _ in o.stream.control.fields("plcp") if "bits" in f] == [20] # the caller's
 
 # ---- DVB-S2: the MODCOD frame by frame, announced ahead
-
-FRAMES = [{"modcod": 4, "pilots": 1}, {"modcod": 12, "pilots": 1}, {"modcod": 1, "pilots": 0}]
 
 @pytest.fixture(scope="module")
 def s2_signal():
