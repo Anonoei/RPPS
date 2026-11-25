@@ -8,7 +8,7 @@ import rpps as rp
 
 
 def test_agc_lin_is_linear_agc():
-    a = rp.sync.AGC(2.0, 0.05, log=False)
+    a = rp.sync.AGC(2.0, log=False)
     x = (0.1*np.exp(1j*np.linspace(0, 50, 20000))).astype(np.complex64)
     y = rp.Data(x, Fs=1e6) + a
     assert np.mean(np.abs(y.data[-2000:])) == pytest.approx(2.0, rel=0.05)

@@ -17,7 +17,7 @@ from rpps import _accel
 import _bench
 
 STAGES = {
-    "AGC": (lambda: rp.sync.AGC(1.0, 0.01), dict(Fs=1e6)),
+    "AGC": (lambda: rp.sync.AGC(1.0), dict(Fs=1e6)),
     "Costas (QPSK)": (lambda: rp.sync.Costas.from_bandwidth(0.02, order=4), dict(Fs=1e6, sps=1)),
     "MM (sps 8)": (lambda: rp.sync.time.MM(), dict(Fs=8e6, sps=8)),
     "IIR (butter 6)": (lambda: rp.signal.filters.IIR(rp.signal.filters.iir.design("butter", 6, "lowpass", 0.1)), dict(Fs=1e6)),
@@ -135,7 +135,7 @@ def best_rate(make, x, block, rates, repeat):
 def chain():
     """A receiver after the channel filter: matched filter, AGC, timing, carrier (sps 8 in, symbols out)"""
     taps = rp.signal.filters.designer.designer(129, 0.6e6, fs=8e6)
-    return (rp.signal.filters.filters.ConvFilter(taps) + rp.sync.AGC(1.0, 0.001) + rp.sync.time.MM(alpha=0.1)
+    return (rp.signal.filters.filters.ConvFilter(taps) + rp.sync.AGC(1.0) + rp.sync.time.MM(alpha=0.1)
             + rp.sync.Costas.from_bandwidth(0.02, order=4))
 
 def chain_rate(x, block, how):

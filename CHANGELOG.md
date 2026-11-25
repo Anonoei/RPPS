@@ -7,6 +7,13 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 ## Unreleased
 
 ### Breaking
+- **`rp.sync.AGC` is block estimation, not a loop**: `AGC(target, *, window=1e-4, min_samples, log, min_gain,
+  max_gain, init)`, its arguments after `target` keywords only. Each window's level (the mean of log|x|, or |x|)
+  sets the gain at the window's centre; between centres the gain is a line. `mu` is gone (also in a profile's
+  `{"sync": "agc"}`, which now refuses it and takes `window`). A level step settles within a window with no tail
+  (the loop at mu 0.01 was 4% off for a thousand samples), at 42 MS/s (the loop's kernel 28.5). Latency is a
+  window and a half. The loop is `rp.sync.loops.AGC(target, mu)`, second class, with its `agc` kernel (a profile's
+  `{"sync": "agc", "method": "loop", "mu": ...}`); the loop `PeakAGC` is `rp.sync.loops.PeakAGC`.
 - **`rp.analysis.find_signals` is a new detector** (`rp.analysis.spectrum.find`): thresholds set by a false-alarm rate
   (`pfa`, expected false boxes in a capture of noise), a noise floor fitted per bin, and each signal read off a
   staircase fit of the spectrum (notches and steps split neighbours; a narrower signal on a wider one is its own box,
@@ -249,6 +256,8 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   bits match, and `rp.math.prob.log_binom_half_cdf`.
 
 ### Changed
+- **`rp.sync.PeakAGC` has no loop**: the running peak in closed form, a running maximum in logs. The same output to
+  rounding, about 5-8x faster (7.5 MS/s before, with or without the kernels).
 - **Recursive filters have no loop over samples.** `IIR`'s path without the C++ kernels is one state space system
   for the whole cascade, its chunks filtered by matrix products and the chunk states found by a log-depth scan: exact
   to rounding, 13-39x faster than before, and in a form a GPU can run. `DCBlock`, `Deemphasis`, `AMDemod`'s running

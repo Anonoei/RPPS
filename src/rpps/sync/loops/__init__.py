@@ -7,6 +7,9 @@ its Python loop as the reference.
 
 | Loop | Estimates | First-class counterpart |
 |---|---|---|
+| `AGC` | the gain, sample by sample (`mu`, linear or in logs) | `rpps.sync.AGC` (the level per window) |
+| `PeakAGC` | the peak, followed and decayed sample by sample | `rpps.sync.PeakAGC` (closed form, the same output) |
 | `Squelch` | whether a signal is there, the level followed sample by sample | `rpps.sync.Squelch` (an IIR section, the same output) |
 """
+from .agc import AGC, PeakAGC
 from .squelch import Squelch

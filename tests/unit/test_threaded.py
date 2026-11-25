@@ -24,7 +24,7 @@ def capture(tmp_path):
     return x, path
 
 def chain():
-    return rp.sync.AGC(1.0, 0.01) + rp.sync.time.MM(alpha=0.1) + rp.sync.Costas.from_bandwidth(0.02, order=4)
+    return rp.sync.AGC(1.0) + rp.sync.time.MM(alpha=0.1) + rp.sync.Costas.from_bandwidth(0.02, order=4)
 
 def blocks_of(path):
     return rp.source.File("cf32", path, Fs=8e3, sps=8)(1000)

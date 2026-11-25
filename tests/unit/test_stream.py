@@ -38,7 +38,7 @@ STAGES = {
     "FractionalPolyphase": (lambda: rp.signal.sample.FractionalPolyphase(0.5381, cutoff=3.7e6, shift=-0.5e6), dict(Fs=20e6, sps=2, cf=604e6)),
     "SincUp": (lambda: rp.signal.sample.up.Sinc(4), dict(Fs=25e3, sps=1)),
     "Biphase": (lambda: rp.signal.filters.ShapingBiphase(), dict(Fs=19e3, sps=16)),
-    "AGC": (lambda: rp.sync.AGC(1.0, 0.01), dict(Fs=1e3)),
+    "AGC": (lambda: rp.sync.AGC(1.0, window=0.05), dict(Fs=1e3)),
     "Costas": (lambda: rp.sync.Costas(0.05, 0.001, 4), dict(Fs=1e3, sps=1)),
     "CostasPoints": (lambda: rp.sync.Costas(0.05, 0.001, points=np.exp(2j*np.pi*np.arange(8)/8)*[1, 1, 1, 1, 2, 2, 2, 2]), dict(Fs=1e3, sps=1)),
 }
@@ -164,6 +164,12 @@ MORE = {
     "Squelch": (lambda: rp.sync.Squelch(-3.0), dict(Fs=1e4)),
     "DCBlock": (lambda: rp.signal.DCBlock(), dict(Fs=1e4)),
     "Deemphasis": (lambda: rp.signal.Deemphasis(), dict(Fs=1e4)),
+    "loops.AGC": (lambda: rp.sync.loops.AGC(1.0, 0.01), dict(Fs=1e3)),
+    "loops.PeakAGC": (lambda: rp.sync.loops.PeakAGC(), dict(Fs=1e3)),
+    "loops.AMDemod": (lambda: rp.wave.loops.AMDemod(), dict(Fs=1e4)),
+    "loops.Squelch": (lambda: rp.sync.loops.Squelch(-3.0), dict(Fs=1e4)),
+    "loops.DCBlock": (lambda: rp.signal.loops.DCBlock(), dict(Fs=1e4)),
+    "loops.Deemphasis": (lambda: rp.signal.loops.Deemphasis(), dict(Fs=1e4)),
 }
 
 @pytest.mark.parametrize("name", MORE)

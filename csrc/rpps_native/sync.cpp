@@ -1,6 +1,6 @@
 // Synchronization loops: Costas, AGC, Mueller & Muller / Gardner timing recovery
 //
-// Each mirrors its Python stage (rpps/sync/costas.py, agc.py, time/mm.py) operation for operation, in the precision
+// Each mirrors its Python stage (rpps/sync/costas.py, loops/agc.py, time/mm.py) operation for operation, in the precision
 // the Python code ends up computing in, so the two agree to rounding.
 #include "common.hpp"
 

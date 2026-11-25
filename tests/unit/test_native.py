@@ -73,12 +73,12 @@ def test_costas_with_a_replaced_error_function_runs_in_python():
 
 @pytest.mark.parametrize("log", [True, False])
 @pytest.mark.parametrize("kind", [np.complex64, np.float32, np.complex128])
-def test_agc_matches_python(log, kind):
+def test_agc_loop_matches_python(log, kind):
     rng = np.random.default_rng(1)
     env = np.concatenate((np.full(7000, 0.1), np.full(7000, 3.0), np.full(6000, 0.5)))
     x = env*(rng.standard_normal(20000) + (1j*rng.standard_normal(20000) if np.dtype(kind).kind == "c" else 0))
     x = x.astype(kind)
-    make = lambda: rp.sync.AGC(1.0, 0.005, log=log, max_gain=50.0)
+    make = lambda: rp.sync.loops.AGC(1.0, 0.005, log=log, max_gain=50.0)
     ref, st_ref = run(make, x, [len(x)], native=False, Fs=1e3)
     for cut in CUTS[1:]:
         y, st = run(make, x, cut, native=True, Fs=1e3)

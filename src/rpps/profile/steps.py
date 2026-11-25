@@ -463,8 +463,18 @@ def _pilot_eq(m, ctx):
 
 @register_sync_method("agc", "agc")
 def _agc(m, rep, ctx):
+    """The level by block estimation: "target", "window" (seconds), "log" (rpps.sync.AGC)"""
     from .. import sync
-    return sync.AGC(m.get("target", 1.0), m.get("mu", 0.01))
+    if "mu" in m:
+        raise ConfigError('agc: `mu` is the loop\'s rate; the AGC is block estimation: give `window` (seconds), or name '
+                          'the loop ("method": "loop")')
+    return sync.AGC(m.get("target", 1.0), **_given(m, ("window", "log", "min_gain", "max_gain")))
+
+@register_sync_method("agc", "loop")
+def _agc_loop(m, rep, ctx):
+    """The gain followed sample by sample, second class (rpps.sync.loops.AGC): "target", "mu", "log" """
+    from .. import sync
+    return sync.loops.AGC(m.get("target", 1.0), **_given(m, ("mu", "log", "min_gain", "max_gain")))
 
 @register_sync_method("agc", "peak")
 def _peak_agc(m, rep, ctx):
