@@ -382,12 +382,12 @@ def _ls(m, rep, ctx):
 def _lms(m, rep, ctx):
     from .. import sync, symbol
     pts = symbol.load(m["constellation"]).points if "constellation" in m else None
-    return sync.equalize.LMS(m.get("taps", 11), m.get("mu", 0.01), points=pts)
+    return sync.loops.LMS(m.get("taps", 11), m.get("mu", 0.01), points=pts)
 
 @register_sync_method("equalize", "cma")
 def _cma(m, rep, ctx):
     from .. import sync
-    return sync.equalize.CMA(m.get("taps", 11), m.get("mu", 0.01))
+    return sync.loops.CMA(m.get("taps", 11), m.get("mu", 0.01))
 
 def _sync_one(kind):
     """A sync kind with a single way to do it: make(m, ctx) -> the stage"""

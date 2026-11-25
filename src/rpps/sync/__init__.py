@@ -42,10 +42,9 @@ method; another is chosen by name in `defaults`: `{"timing": {"method": "mat"}}`
 `loops` (`rpps.sync.loops`) holds them, for signals and conditions block estimation does not suit, as references and for
 comparison: `loops.MM` (Mueller & Muller, Gardner), `loops.TLL` (a timing locked loop around a detector from
 `loops.ted`: `ted="zx"` zero crossing, `"el"` early-late), `loops.Costas` (M-PSK, or any constellation's points),
-`loops.AGC`, `loops.PeakAGC`, `loops.Squelch`. Profiles reach them by name (`timing: mm`, `gardner`,
-`timing: {"method": "tll", "ted": "el"}`, `carrier: costas`, `agc: loop`). Their loop filter is `loops.pll.PILoop`
-(gains from a bandwidth: `loops.pll.loop_gains`). Not yet moved there: `equalize.LMS`, `equalize.CMA` (`equalize: lms`,
-`cma`).
+`loops.AGC`, `loops.PeakAGC`, `loops.Squelch`, the adaptive equalizers `loops.LMS` and `loops.CMA`. Profiles reach them
+by name (`timing: mm`, `gardner`, `timing: {"method": "tll", "ted": "el"}`, `carrier: costas`, `agc: loop`,
+`equalize: lms`, `cma`). Their loop filter is `loops.pll.PILoop` (gains from a bandwidth: `loops.pll.loop_gains`).
 
 ## Known, measured, detected
 

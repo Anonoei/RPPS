@@ -158,8 +158,8 @@ def test_channel_stages_do_not_depend_on_block_size(name, x):
 
 MORE = {
     "FractionalSpline cubic": (lambda: rp.signal.sample.down.FractionalSpline(0.73, "cubic"), dict(Fs=1e4, sps=8)),
-    "CMA": (lambda: rp.sync.equalize.CMA(7, 0.003, sps=2), dict(Fs=1e4, sps=2)),
-    "LMS": (lambda: rp.sync.equalize.LMS(5, 0.01, sps=1, points=[1, -1, 1j, -1j]), dict(Fs=1e4, sps=1)),
+    "CMA": (lambda: rp.sync.loops.CMA(7, 0.003, sps=2), dict(Fs=1e4, sps=2)),
+    "LMS": (lambda: rp.sync.loops.LMS(5, 0.01, sps=1, points=[1, -1, 1j, -1j]), dict(Fs=1e4, sps=1)),
     "AMDemod": (lambda: rp.wave.AMDemod(), dict(Fs=1e4)),
     "SSBDemod": (lambda: rp.wave.SSBDemod(2000, "usb", 51), dict(Fs=1e4)),
     "Squelch": (lambda: rp.sync.Squelch(-3.0), dict(Fs=1e4)),

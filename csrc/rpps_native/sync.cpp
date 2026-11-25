@@ -276,7 +276,7 @@ py::array_t<cf64> matrix_mf(carray<std::complex<T>> x_a, carray<double> cen_a, d
     return out;
 }
 
-// ---------------------------------------------------------------- Adaptive equalizer (rpps/equalize.py): CMA and LMS
+// ---------------------------------------------- Adaptive equalizer (rpps/sync/loops/equalize.py): CMA and LMS
 // One output per `sps` inputs: y = w . (buf[n], buf[n-1], ..., buf[n-N+1]), then w += mu*err*conj(x). complex64 throughout,
 // as numpy computes it. mode 0: CMA, err = -y(|y|^2 - R). mode 1: LMS, err = d - y with d the training symbol while
 // there is one, else the nearest of `points` (none: no update).

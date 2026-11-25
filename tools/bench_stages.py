@@ -23,7 +23,7 @@ STAGES = {
     "OerderMeyr (sps 8)": (lambda: rp.sync.time.OerderMeyr(), dict(Fs=8e6, sps=8)),
     "IIR (butter 6)": (lambda: rp.signal.filters.IIR(rp.signal.filters.iir.design("butter", 6, "lowpass", 0.1)), dict(Fs=1e6)),
     "DCBlock": (lambda: rp.signal.DCBlock(), dict(Fs=1e6)),
-    "CMA (11 taps)": (lambda: rp.sync.equalize.CMA(11, 0.002), dict(Fs=1e6, sps=1)),
+    "CMA (11 taps)": (lambda: rp.sync.loops.CMA(11, 0.002), dict(Fs=1e6, sps=1)),
 }
 
 def llr_of(bits, rng, ebn0):

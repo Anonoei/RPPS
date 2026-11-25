@@ -20,6 +20,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   `constellation` and `window`. `demo/mftdma` uses it, and decodes what Costas did at every SNR down to -1 dB (14 seeds,
   bursts decoded: 130/130, 150/150, 160/160, 163/163 of 168). `analysis.burst.demodulate` follows each burst's carrier
   with it. On 16APSK with a drifting, noisy phase it never slipped in 40 runs.
+- **The adaptive equalizers move to `rp.sync.loops`, second class: `loops.LMS`, `loops.CMA`** (with the `equalize`
+  kernel); `rp.sync.equalize.LMS` and `equalize.CMA` are gone. A profile's `equalize: lms` and `cma` build them; the
+  first class is `rp.sync.equalize.BlockLS` (`blind=True` where decisions cannot open the eye).
 - **The timing loops move to `rp.sync.loops`, second class: `loops.MM` (Mueller & Muller, Gardner), `loops.TLL`,
   `loops.ted`, and `loops.pll` (`PILoop`, `loop_gains`; was `rp.sync.pll`)**, with the `mm` kernel; `rp.sync.time.MM`,
   `time.TLL`, `time.ted` and `rp.sync.pll` are gone. A profile's `timing: mm`, `gardner` and `tll` build them. The

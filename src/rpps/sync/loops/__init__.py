@@ -13,6 +13,8 @@ its Python loop as the reference. Their loop filter is `pll.PILoop`, its gains f
 | `AGC` | the gain, sample by sample (`mu`, linear or in logs) | `rpps.sync.AGC` (the level per window) |
 | `PeakAGC` | the peak, followed and decayed sample by sample | `rpps.sync.PeakAGC` (closed form, the same output) |
 | `Squelch` | whether a signal is there, the level followed sample by sample | `rpps.sync.Squelch` (an IIR section, the same output) |
+| `LMS` | equalizer taps, per symbol: least mean squares against training, then decisions | `equalize.BlockLS` |
+| `CMA` | equalizer taps, per symbol: constant modulus, blind | `equalize.BlockLS` (`blind=True`) |
 """
 from . import pll, ted
 from .pll import PILoop, loop_gains
@@ -21,3 +23,4 @@ from .tll import TLL
 from .costas import Costas
 from .agc import AGC, PeakAGC
 from .squelch import Squelch
+from .equalize import LMS, CMA

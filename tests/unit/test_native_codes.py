@@ -226,9 +226,9 @@ def isi_qpsk(rng, n=6000):
 def test_equalizers(which, rng):
     sym, y = isi_qpsk(rng)
     pts = (np.array([1+1j, 1-1j, -1+1j, -1-1j])/np.sqrt(2)).astype(np.complex64)
-    make = {"cma": lambda: rp.sync.equalize.CMA(11, 0.002),
-            "lms-dd": lambda: rp.sync.equalize.LMS(11, 0.005, points=pts),
-            "lms-training": lambda: rp.sync.equalize.LMS(11, 0.005, points=pts, training=np.roll(sym, 5)[:2000])}[which]
+    make = {"cma": lambda: rp.sync.loops.CMA(11, 0.002),
+            "lms-dd": lambda: rp.sync.loops.LMS(11, 0.005, points=pts),
+            "lms-training": lambda: rp.sync.loops.LMS(11, 0.005, points=pts, training=np.roll(sym, 5)[:2000])}[which]
     cut = [1]*10 + [1000, 4990]
     ref, got = both(lambda: stage_run(make, y, cut, Fs=1e3, sps=1))
     assert len(ref) == len(got) > 5900
