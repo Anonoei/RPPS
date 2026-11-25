@@ -79,13 +79,13 @@ def test_bil_round_trip(rng):
     x = c.encode(m)
     assert np.array_equal(c.decode(4*(1 - 2.0*x)), m)
 
-# ---- against py3gpp (tests/unit/vectors/nr_py3gpp.json: what it is in its "source")
+# ---- against py3gpp (tests/vectors/nr_py3gpp.json: what it is in its "source")
 
-from pathlib import Path
 import json
 from support.signals import unhex
+from support.paths import VECTORS as VECTOR_DIR
 
-VECTORS = json.loads((Path(__file__).parent/"vectors"/"nr_py3gpp.json").read_text())
+VECTORS = json.loads((VECTOR_DIR/"nr_py3gpp.json").read_text())
 
 @pytest.mark.parametrize("v", VECTORS["polar"], ids=lambda v: f"K{v['K']}_E{v['E']}")
 def test_polar_matches_py3gpp(v):

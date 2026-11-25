@@ -1,6 +1,5 @@
 """5G NR downlink to SIB1 through LEO Doppler (rpps.grid.nr, profile nr/downlink): synthetic, from rpps.grid.nr.tx"""
 import json
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -9,14 +8,15 @@ import rpps as rp
 from rpps.grid import nr
 from rpps.grid.nr import phy
 from support.signals import unhex
+from support.paths import VECTORS as VECTOR_DIR
 
 FS, NFFT, FC = 7.68e6, 512, 2.185e9
-V = json.loads((Path(__file__).parent/"vectors"/"nr_py3gpp_ssb.json").read_text())
+V = json.loads((VECTOR_DIR/"nr_py3gpp_ssb.json").read_text())
 
 def signs(h, n):
     return 1 - 2.0*unhex(h, n)
 
-# ---- against py3gpp (tests/unit/vectors/nr_py3gpp_ssb.json: what it is in its "source")
+# ---- against py3gpp (tests/vectors/nr_py3gpp_ssb.json: what it is in its "source")
 
 def test_sync_signals_match_py3gpp():
     for n2, h in V["pss"].items():

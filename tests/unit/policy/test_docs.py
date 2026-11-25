@@ -6,12 +6,11 @@ test_examples.py.
 """
 import ast
 import importlib.util
-import pathlib
 import re
 
 import pytest
+from support.paths import ROOT
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs"
 GENERATED = {DOCS / "api", DOCS / "llms.txt", DOCS / "llms-full.txt"}
 

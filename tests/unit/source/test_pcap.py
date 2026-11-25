@@ -4,18 +4,17 @@ import io
 import shutil
 import struct
 import subprocess
-from pathlib import Path
 
-import numpy as np
 import pytest
 
 import rpps as rp
 from rpps import cli
 from rpps.link.capture import Packet, linktype, exported_pdu
+from support.paths import ROOT
 
 TSHARK = shutil.which("tshark")
 needs_tshark = pytest.mark.skipif(TSHARK is None, reason="tshark is not installed")
-LUA = Path(__file__).resolve().parents[2]/"tools"/"wireshark"/"rpps.lua"
+LUA = ROOT/"tools"/"wireshark"/"rpps.lua"
 
 ETH = bytes.fromhex("ffffffffffff020000000001") + b"\x08\x06" + bytes(28) # (an ARP-sized frame)
 

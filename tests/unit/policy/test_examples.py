@@ -3,11 +3,11 @@
 Each one is a script that asserts what it shows; this runs it as `python examples/<name>.py` would. The examples
 that need a capture, a radio or a display (e2e, e2e_mat, e2e_profile, live_profile, window) are not run here."""
 import runpy
-from pathlib import Path
 
 import pytest
+from support.paths import ROOT
 
-EXAMPLES = Path(__file__).resolve().parents[2]/"examples"
+EXAMPLES = ROOT/"examples"
 
 FAST = ["quickstart", "list_definitions", "operators", "soft_decisions", "channel_and_sync", "profile_loopback",
         "own_definitions", "profile_variants", "streaming_io", "integrating", "channel_shm", "zc_modes", "mftdma",

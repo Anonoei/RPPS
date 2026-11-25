@@ -95,8 +95,9 @@ def test_qc_staircase_small_table():
 @pytest.mark.slow
 def test_qc_staircase_dvbs2_normal_half():
     """DVB-S2 normal frame, rate 1/2 (64800, 32400): its address table from about 100 clean frames (k / 360 + 12)"""
-    import json, os
-    path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "fec", "block", "ldpc", "dvbs2_64800_1_2.json")
+    import json
+    import rpps as rp
+    path = rp._config.find("fec", "block/ldpc/dvbs2_64800_1_2")
     obj = json.load(open(path))
     rng = np.random.default_rng(6)
     words = dvbs2_words(rng, obj["table"], 64800, 32400, 110)

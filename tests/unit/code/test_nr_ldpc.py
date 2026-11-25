@@ -63,12 +63,12 @@ def test_decodes_through_noise(bg, kp, e, rv, rng):
     out, err = c.decoder.decode(llr, status=True)
     assert np.array_equal(out, m) and err[0] >= 0
 
-# ---- against py3gpp (tests/unit/vectors/nr_py3gpp.json: what it is in its "source")
+# ---- against py3gpp (tests/vectors/nr_py3gpp.json: what it is in its "source")
 
-from pathlib import Path
 import json
+from support.paths import VECTORS as VECTOR_DIR
 
-VECTORS = json.loads((Path(__file__).parent/"vectors"/"nr_py3gpp.json").read_text())
+VECTORS = json.loads((VECTOR_DIR/"nr_py3gpp.json").read_text())
 
 @pytest.mark.parametrize("v", VECTORS["ldpc"], ids=lambda v: f"bg{v['bg']}_k{v['kp']}_rv{v['rv']}")
 def test_ldpc_matches_py3gpp(v):
