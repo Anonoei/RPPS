@@ -162,7 +162,6 @@ def boxes(c, occ, groups, min_snr=None, state=None):
             wait = refresh or 0
             if rec is None and refresh:
                 wait = refresh//2 + (a*7919) % max(1, refresh//2)
-            lvl = 10*np.log10(max(float(c.Z[a:b].mean()), 1e-30))
         if state is not None:
             kept.append(dict(a=a, b=b, lvl=lvl, sig=sigs, due=now + wait))
         out += _copies(sigs)
