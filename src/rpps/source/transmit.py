@@ -31,7 +31,8 @@ class DeviceSink:
         if not self.sdr.state["open"]:
             self.sdr.open(**open_args)
             self._opened = True
-        if not getattr(self.sdr, "CAN_TRANSMIT", True):
+        caps = getattr(self.sdr, "caps", None) # (what the device can do as opened: a sim made with transmit=True can)
+        if not (caps.channels.get("tx") if caps is not None else getattr(self.sdr, "CAN_TRANSMIT", True)):
             name = getattr(type(self.sdr), "NAME", type(self.sdr).__name__)
             self.close()
             raise ValueError(f"DeviceSink: {name} can't transmit")

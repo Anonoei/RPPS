@@ -73,6 +73,7 @@ class _NrChannel(_Channel):
 
 class PBCH(_NrChannel):
     """The MIB of every SS/PBCH block NrGrid marks (see the module)"""
+    check_name = "crc24_nr_c" # (Message.check: the polar code's CRC-24C)
     def __init__(self, name="pbch"):
         super().__init__(name)
 
@@ -109,6 +110,7 @@ class PBCH(_NrChannel):
 
 class PDCCH(_NrChannel):
     """DCI 1_0 in CORESET 0's Type0 occasions (see the module)"""
+    check_name = "crc24_nr_c" # (Message.check: the polar code's CRC-24C, scrambled with the RNTI)
     CONTROLS = {k: "live" for k in ("sfn", "frame_ref", "coreset0", "ss0", "k_ssb", "i_ssb", "dmrs_pos", "barred")}
 
     def __init__(self, rntis=(phy.SI_RNTI,), name="pdcch"):
@@ -178,6 +180,7 @@ class PDCCH(_NrChannel):
 
 class PDSCH(_NrChannel):
     """The transport block a DCI 1_0 allocated (see the module)"""
+    check_name = None # (Message.check: the transport block's CRC, by its size: set as it is decoded)
     CONTROLS = {k: "live" for k in ("coreset0", "k_ssb", "dmrs_pos", "fdra", "tdra", "vrb", "mcs", "rv", "sii", "rnti",
                                     "aggregation", "cce")}
 
@@ -216,6 +219,7 @@ class PDSCH(_NrChannel):
         tbs = phy.tbs(12*t["l"] - 12*nd, count, qm, rate)
         E = qm*len(data[0])
         crc, ldpc = phy.ldpc_for(tbs, rate, E, int(self.rv), qm)
+        self.check_name = crc
         scr = phy.sign(phy.gold((int(self.rnti) << 15) + pci, E))
         ok, b = False, None
         for turn in list(self.order):

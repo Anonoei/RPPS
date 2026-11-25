@@ -100,6 +100,8 @@ def test_lte_mib_cfi_dci_and_sib1_are_messages():
     assert all(m.fields["rnti"] == 0xFFFF and m.fields["format"] in ("1A", "1C") for m in by["pdcch"])
     sib1 = [m for m in by["pdsch"] if m.crc_ok]
     assert sib1 and all(m.payload == np.packbits(sib).tobytes() and m.bits == 224 for m in sib1)
+    assert {k: {m.check for m in v} for k, v in by.items()} == {"pbch": {"crc16_xmodem"}, "pcfich": {None},
+                                                                "pdcch": {"crc16_xmodem"}, "pdsch": {"crc24_lte_a"}}
     assert [m.sample for m in msgs] == sorted(m.sample for m in msgs) and 0 <= msgs[0].sample and msgs[-1].sample < len(x)
 
 def test_nr_mib_dci_and_sib1_are_messages():
@@ -114,6 +116,7 @@ def test_nr_mib_dci_and_sib1_are_messages():
     assert len(mib) == 5 and all(m.fields["pci"] == 17 and m.fields["k_ssb"] == 2 for m in mib)
     assert len(sib1) == 5 and all(m.payload == np.packbits(sib).tobytes() for m in sib1)
     assert all(m.fields["rnti"] == 0xFFFF for m in msgs if m.kind == "pdcch")
+    assert {m.kind: m.check for m in msgs} == {"pbch": "crc24_nr_c", "pdcch": "crc24_nr_c", "pdsch": "crc16_xmodem"}
 
 KNOWN = {"timing": {"method": "known"}, "carrier": {"method": "none"}}
 

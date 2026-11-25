@@ -152,6 +152,7 @@ class _Channel(Pipe):
 
 class PBCH(_Channel):
     """The MIB of every subframe 0 (see the module)"""
+    check_name = "crc16_xmodem" # (Message.check: the MIB's CRC-16, masked with the antenna ports)
     def __init__(self, name="pbch"):
         super().__init__(name)
 
@@ -215,6 +216,7 @@ class PCFICH(_Channel):
 
 class PDCCH(_Channel):
     """DCIs in the common search space for the RNTIs given (see the module)"""
+    check_name = "crc16_xmodem" # (Message.check: a DCI's CRC-16, masked with the RNTI)
     CONTROLS = {"ports": "live", "cfi": "live", "phich_ng": "live"}
 
     def __init__(self, rntis=(phy.SI_RNTI,), ports=None, cfi=None, phich_ng=None, name="pdcch"):
@@ -275,6 +277,7 @@ class PDCCH(_Channel):
 
 class PDSCH(_Channel):
     """The transport block a DCI 1A allocated in its subframe (see the module)"""
+    check_name = "crc24_lte_a" # (Message.check: the transport block's CRC-24A)
     CONTROLS = {k: "live" for k in ("ports", "cfi", "rnti", "riv", "mcs", "rv", "tpc", "distributed", "flag", "harq", "ndi")}
 
     def __init__(self, ports=None, cfi=None, name="pdsch"):

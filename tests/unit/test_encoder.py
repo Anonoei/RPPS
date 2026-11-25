@@ -102,3 +102,15 @@ def test_80215_4_frames_without_their_fcs():
     (m,) = received(p, y, enc.Fs, 4)
     fcs = struct.pack("<H", rp.link.load("crc/crc16_kermit").encoder.compute(mac))
     assert m.payload == mac + fcs and p.capture.packet(m).data == mac + fcs
+
+def test_device_sink_with_pysdrlib_sim():
+    """pysdrlib's simulated device, made to transmit, keeps what it was given"""
+    pysdrlib = pytest.importorskip("pysdrlib")
+    sdr = pysdrlib.device("sim", transmit=True, realtime=False)
+    enc = rp.profile.Encoder("ax25/afsk1200", rate=1200.0, centre=0, sps=10)
+    o = enc.packet(b"\x82\xa0\xa4\xa6@@`\x9c`\x86\x82\x98\x98a\x03\xf0hi")
+    with rp.source.DeviceSink(sdr, cf=144.39e6, Fs=o.meta.Fs) as sink:
+        o >> sink
+    assert np.allclose(np.concatenate(sdr.transmitted[0]), o.data) and sink.count == len(o)
+    with pytest.raises(ValueError, match="can't transmit"):
+        rp.source.DeviceSink(pysdrlib.device("sim", realtime=False))
