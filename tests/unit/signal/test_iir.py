@@ -164,3 +164,9 @@ def test_designs_match_scipy(kind, pass_, cut, n, x):
     f, H = mine.response(512)
     assert np.abs(H - ss.sosfreqz(ref, worN=2*np.pi*f)[1]).max() < 1e-9
     assert np.abs(mine.run(x) - ss.sosfilt(ref, x)).max() < 1e-8 * max(1, np.abs(ss.sosfilt(ref, x)).max())
+
+def test_sos2zpk_round_trip():
+    sos = rp.signal.filters.iir.design("butter", 4, "lowpass", 0.2)
+    z, p, k = rp.signal.filters.iir.sos2zpk(sos)
+    assert len(p) == 4 and np.all(np.abs(p) < 1)
+    assert k != 0

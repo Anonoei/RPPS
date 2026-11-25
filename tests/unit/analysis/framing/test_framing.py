@@ -1,5 +1,6 @@
 """rpps.analysis.framing.frames: the frame period, the unique word, frames cut and turned on it, frames that repeat"""
 import numpy as np
+from types import SimpleNamespace
 
 import rpps as rp
 from rpps.analysis.framing import frames as FR
@@ -125,3 +126,16 @@ def test_cut_puts_the_payload_on_the_grid_whatever_the_first_frame():
     f = FR.cut(y, fr)
     a = np.degrees(np.angle(f[1:, fr.uw_length:])) % 90
     assert np.median(np.abs(a - 45)) < 8 # On the QPSK diagonals
+
+def test_find_sync_and_decode_conv():
+    rng = np.random.default_rng(1)
+    B = rng.integers(0, 256, 204*8, dtype=np.uint8)
+    B[::204] = 0x47
+    bits = np.concatenate((rng.integers(0, 2, 3, dtype=np.uint8), np.unpackbits(B)))
+    frac, off, phase = rp.analysis.framing.bits.find_sync(bits)
+    assert frac == 1.0 and off == 3 and phase == 0
+    code = rp.code.load("conv/k7_133_171/1_2")
+    msg = rng.integers(0, 2, 400).astype(bool)
+    hyp = SimpleNamespace(coding=("conv", "k7_133_171/1_2"), params={"offset": 0})
+    out = rp.analysis.code.conv.mother.decode_conv(code.encoder.encode(msg).astype(np.uint8), hyp)
+    assert (np.asarray(out[:300]).astype(bool) == msg[:300]).all()

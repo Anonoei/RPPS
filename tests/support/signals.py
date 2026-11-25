@@ -2,6 +2,8 @@
 import numpy as np
 
 import rpps as rp
+from rpps.base.types import Rep
+from rpps.base import Mod
 
 def bits(rng, n):
     return rng.integers(0, 2, n).astype(bool)
@@ -90,3 +92,19 @@ def hard(d):
 
 def unhex(h, n):
     return np.unpackbits(np.frombuffer(bytes.fromhex(h), np.uint8))[:n]
+
+def as_data_bits(b, rep=Rep.DATA, **kw):
+    d = rp.Data(np.asarray(b, dtype=bool), **kw)
+    return d.derive(np.asarray(b, dtype=bool), rp.Category.CODE, rp.dtype.BITS, rep=rep)
+
+def as_llr(d, scale=3.0):
+    """Sure LLRs with the hard decisions of d"""
+    return d.derive((1 - 2*np.asarray(d.data).astype(np.float32))*scale, rp.Category.SYMBOL, rp.dtype.LLR, Mod, rep=Rep.CHANNEL)
+
+def two_bands(rng, N, Fs, f1, f2, bw):
+    f = np.fft.fftfreq(N, 1/Fs)
+    x = 0
+    for fc in (f1, f2):
+        spec = np.where(np.abs(f - fc) < bw/2, rng.normal(size=N) + 1j*rng.normal(size=N), 0)
+        x = x + np.fft.ifft(spec)*np.sqrt(N)*0.5
+    return (x + (rng.normal(size=N) + 1j*rng.normal(size=N))*0.05).astype(np.complex64)

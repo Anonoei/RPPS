@@ -132,3 +132,21 @@ def test_rs_decoding_is_fast(rng):
     t0 = time.time()
     rs.decode(bad.reshape(-1), symbols=True)
     assert time.time() - t0 < 5 # The vectorised Chien search: about 0.3 s here, the scalar loop took 7 s
+
+def test_bits_base2_base10_round_trip():
+    rows = rp.math.bits.to_base2(4)
+    assert rows.shape == (16, 4)
+    assert (rp.math.bits.to_base10(rows) == np.arange(16)).all()
+
+def test_hamming_dist():
+    assert rp.math.bits.hamming(np.array([1, 0, 1, 1]), np.array([0, 0, 1, 0])) == 2
+
+def test_parity_block_round_trip():
+    P = np.array([[1, 1, 0], [0, 1, 1], [1, 1, 1], [1, 0, 1]])
+    G, H = rp.math.gf2.parity_to_gh(7, 4, P)
+    assert (rp.math.gf2.gh_to_parity(7, 4, G=G) == P).all()
+    assert (rp.math.gf2.gh_to_parity(7, 4, H=H) == P).all()
+
+def test_entropy():
+    assert rp.math.bits.entropy(np.array([0, 1, 1, 0])) == pytest.approx(1.0)
+    assert rp.math.bits.entropy(np.zeros(10, dtype=int)) == 0.0

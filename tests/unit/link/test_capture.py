@@ -4,13 +4,12 @@ import shutil
 import struct
 import subprocess
 import zlib
-
 import numpy as np
 import pytest
 
 import rpps as rp
 from rpps.errors import ConfigError
-from rpps.link.capture import Capture, Captures, Packet, linktype, find, exported_pdu, unexported_pdu
+from rpps.link.capture import Capture, Captures, linktype, find, exported_pdu, unexported_pdu
 from rpps.profile.message import Message
 
 TSHARK = shutil.which("tshark")

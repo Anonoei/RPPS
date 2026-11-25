@@ -11,6 +11,7 @@ import pytest
 import rpps as rp
 
 ch = rp.signal.channel
+
 RRC = "rrc/0p35"
 
 def qpsk_wave(n, seed=0, ppm=0.0, delay=1.3, cfo=0.0, noise=0.05):
@@ -207,3 +208,10 @@ def test_80211b_from_raw_samples():
     assert [f["signal"] for _, f, _ in st.control.fields("plcp") if "bits" in f] == [20, 10, 20]
     got2, _ = receive(p, x, o.Fs, [9973]*(len(x)//9973) + [len(x) % 9973])
     assert np.array_equal(got2, got)
+
+def test_find_rate():
+    rng = np.random.default_rng(0)
+    sps = 8
+    syms = np.exp(1j*np.pi/4*(2*rng.integers(0, 4, 4000) + 1))
+    x = np.convolve(np.repeat(syms, sps), np.hanning(sps), "same")
+    assert rp.sync.find_rate(x) == pytest.approx(1/sps, rel=0.01)
