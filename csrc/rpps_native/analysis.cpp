@@ -245,6 +245,70 @@ py::tuple rs_count_zeros(carray<uint8_t> V_a, long long n, carray<uint8_t> M1_a,
 
 } // namespace
 
+
+// rpps.analysis.spectrum.find._pelt: the optimal partition of y into flat segments (weights w), each change costing beta,
+// no segment under lmin points (PELT, Killick et al. 2012). Same order of candidates and ties as the Python loop.
+// Returns the segment bounds [0, ..., n].
+py::array_t<int64_t> pelt(carray<double> y, carray<double> w, double beta, int lmin) {
+    const long long n = static_cast<long long>(y.size());
+    if (static_cast<long long>(w.size()) != n) throw std::invalid_argument("pelt: y and w differ in length");
+    if (lmin < 1) throw std::invalid_argument("pelt: lmin >= 1");
+    std::vector<long long> bounds;
+    {
+        py::gil_scoped_release nogil;
+        const double *yp = y.data(), *wp = w.data();
+        std::vector<double> S0(n + 1, 0.0), S1(n + 1, 0.0), S2(n + 1, 0.0);
+        for (long long i = 0; i < n; i++) {
+            S0[i + 1] = S0[i] + wp[i];
+            S1[i + 1] = S1[i] + wp[i]*yp[i];
+            S2[i + 1] = S2[i] + wp[i]*yp[i]*yp[i];
+        }
+        std::vector<double> F(n + 1, INFINITY);
+        std::vector<long long> last(n + 1, 0);
+        F[0] = -beta;
+        std::vector<long long> R{0}, Rn, keep;
+        std::vector<double> vals;
+        for (long long t = lmin; t <= n; t++) {
+            // candidates far enough back, in R's order; the rest wait
+            Rn.clear();
+            keep.clear();
+            vals.clear();
+            for (long long s : R) {
+                if (t - s >= lmin) {
+                    const double d0 = S0[t] - S0[s], d1 = S1[t] - S1[s];
+                    vals.push_back(F[s] + (S2[t] - S2[s]) - d1*d1/d0);
+                    keep.push_back(s);
+                } else {
+                    Rn.push_back(s);
+                }
+            }
+            if (keep.empty()) {
+                R.push_back(t);
+                continue;
+            }
+            std::size_t k = 0;
+            for (std::size_t i = 1; i < vals.size(); i++)
+                if (vals[i] < vals[k]) k = i;
+            F[t] = vals[k] + beta;
+            last[t] = keep[k];
+            for (std::size_t i = 0; i < keep.size(); i++)
+                if (vals[i] <= F[t]) Rn.push_back(keep[i]);
+            Rn.push_back(t);
+            R.swap(Rn);
+        }
+        long long t = n;
+        bounds.push_back(n);
+        while (t > 0) {
+            t = last[t];
+            bounds.push_back(t);
+        }
+        std::reverse(bounds.begin(), bounds.end());
+    }
+    auto out = empty<int64_t>(bounds.size());
+    std::copy(bounds.begin(), bounds.end(), out.mutable_data());
+    return out;
+}
+
 void register_analysis(py::module_ &m) {
     m.def("cpm_psp", &cpm_psp, "cpm_psp(r, Q (L, ns), atab (2, 8), S, parity, k1, k2) -> (bits, metric)",
           py::arg("r"), py::arg("Q"), py::arg("atab"), py::arg("S"), py::arg("parity"), py::arg("k1"), py::arg("k2"));
@@ -252,6 +316,8 @@ void register_analysis(py::module_ &m) {
           py::arg("A"), py::arg("ncols"), py::arg("threads") = 0);
     m.def("rs_count_zeros", &rs_count_zeros, "rs_count_zeros(V (Vn, L) uint8, n, M1, MN (P*255*256) uint8, Q (P, 255) uint8, words, threads) -> (z0, z1) (n, Vn, P, 255) int16",
           py::arg("V"), py::arg("n"), py::arg("M1"), py::arg("MN"), py::arg("Q"), py::arg("words"), py::arg("threads") = 0);
+    m.def("pelt", &pelt, "pelt(y, w, beta, lmin) -> segment bounds [0, ..., n]: optimal flat segments, each change costing beta",
+          py::arg("y"), py::arg("w"), py::arg("beta"), py::arg("lmin") = 2);
 }
 
 } // namespace rpps

@@ -7,6 +7,14 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 ## Unreleased
 
 ### Breaking
+- **`rp.analysis.find_signals` is a new detector** (`rp.analysis.spectrum.find`): thresholds set by a false-alarm rate
+  (`pfa`, expected false boxes in a capture of noise), a noise floor fitted per bin, and each signal read off a
+  staircase fit of the spectrum (notches and steps split neighbours; a narrower signal on a wider one is its own box,
+  `over` it). Signals get time extents (`t0`, `t1`, `bursts`), `score`, `edge`, `rough`, and `lines` for a comb (one box
+  for the whole comb). Its arguments after `nfft` are now `cf, pfa, edge, split_db, drop_db, min_bins, min_across,
+  nested`; pass them by name. `min_snr_db`, `gap`, `occupied`, `min_band_snr_db`, `edges` and `edge_db` do nothing and
+  warn (DeprecationWarning) for this release, then go. Defaults: `edge` 0.005 (was 0.02: carriers by the band edge are
+  found), `split_db` 4 dB, `min_bins` 1. `measure_band`'s `edge` default is 0.005 too.
 - **`rp.analysis.catalogue.SYSTEMS` is gone: the systems are `config/system` definitions**, one file each
   (`extends`, `abstract`, tags and user config layers work as for any definition); `catalogue.systems()` loads them.
   `match` now reports systems the features can't tell apart as `tied` (ambiguous) instead of ordering them by name,
@@ -28,6 +36,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   stream decoded as one trellis sequence is `decode_batch` on a row.
 
 ### Added
+- **`rp.analysis.spectrum.find`**: `find` (one capture), `fit_floor`, and `Finder`, a streaming finder for displays
+  (`f.step(block)` gives a Survey, ids kept; independent of how the stream is cut). Effort levels choose its frames and
+  scales (`fast` for a display block, a few ms for 64k samples). The staircase fit runs in C++ (`rpps._native.pelt`),
+  the Python loop the reference. `tools/finder_bench.py` scores it on synthetic scenes with known signals.
 - **Burst time plans** (`rpps.plan`, a new `plan` resource): TDMA / MF-TDMA plans in DVB-RCS2's model (superframe
   sequences, frames, a BTU grid of carriers and timeslots, burst types, assignments), with frequency hopping (`hop`: an
   expression of the superframe and frame, or an algorithm: `ble_csa1`) and trains (`repeat`, `every`). From a definition,

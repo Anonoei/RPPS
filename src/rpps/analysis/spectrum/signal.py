@@ -20,7 +20,10 @@ class Signal:
     resolved: there were enough bins across it to trust the edges. False means read more samples
     clipped: it runs into the edge of the capture's band, so its width and centre are only what is inside
     baud_est / baud_strength: symbol rate from the |x|^2 line of the channelized signal (None: no clear line)
-    holds: how many other signals lie inside it (a band that holds some is a raised floor, a transponder's, not a signal)
+    holds: how many other signals stand on it (a transponder's pedestal, or a carrier with a narrower signal on it: which
+        one, the spectrum can't tell; its own symbol-rate line can). over: the one it stands on, when it stands on one
+    lines: a comb (lines side by side at one spacing, one box): how many. t0/t1, bursts: when it is on
+    score: dB over the threshold that found it; edge, rough: its shape (see rpps.analysis.spectrum.find)
     id: its number, kept from survey to survey by `Survey.match`
     Fs, cf, bin_hz: the capture's rates and the spectrum's resolution
     """
@@ -43,6 +46,13 @@ class Signal:
         self.baud_strength = 0.0
         self.holds = 0
         self.id = None
+        self.t0 = self.t1 = None # when it is on [s from the capture's start]; bursts: [(t0, t1)], None when steady
+        self.bursts = None
+        self.over = None         # the signal it stands on (a pedestal, a carrier it jams), or None
+        self.lines = 0           # a comb: how many lines it holds
+        self.score = None        # dB over the threshold that found it
+        self.edge = None         # its edges' 25-75% rise over its width, the wider side
+        self.rough = None        # its top's roughness beyond the noise's [dB]
 
     @property
     def freq(self):
@@ -105,6 +115,10 @@ class Signal:
             bits.append("cut by band edge")
         if self.holds:
             bits.append(f"holds {self.holds} other signal{'s' if self.holds > 1 else ''}")
+        if self.lines:
+            bits.append(f"a comb of {self.lines} lines")
+        if self.over is not None:
+            bits.append(f"on the {self.over.width/1e3:.0f} kHz signal at {self.over.freq/1e6:+.4f} MHz")
         return ", ".join(bits)
 
     def __repr__(self):
@@ -254,330 +268,72 @@ def noise_floor(db, iters=4, margin=3.0, start=None):
 
 
 
-def _quiet_level(db, mass=0.04, step=0.5):
-    """The level [dB] of the lowest plateau of a (smoothed) spectrum that holds at least `mass` of its bins
-
-    A band can be mostly signal, so neither the median nor a percentile finds the noise. The lowest hump of the level
-    histogram that is not a few stray dips is the quiet part between and beside the signals.
-    """
-    edges = np.arange(db.min(), db.max() + 2*step, step)
-    h = np.convolve(np.histogram(db, edges)[0], np.ones(5)/5, mode="same")
-    for i in range(1, len(h) - 1):
-        if h[i] >= h[i-1] and h[i] > h[i+1] and h[max(0, i-3):i+4].sum()*5/5 >= mass*len(db):
-            return float(edges[i] + step/2)
-    return float(np.median(db))
-
-def _split(sm, lo, hi, depth):
-    """Split the run lo..hi (inclusive) of the smoothed spectrum `sm` [dB] at valleys at least `depth` dB below the peaks
-    on both sides. Returns [(lo, hi), ...], neighbours sharing their valley bin"""
-    seg = sm[lo:hi+1]
-    cuts = []
-    pk, vmin, vi = seg[0], None, 0
-    for i, v in enumerate(seg):
-        if vmin is None:
-            if v > pk:
-                pk = v
-            elif v < pk - depth:
-                vmin, vi = v, i
-        elif v < vmin:
-            vmin, vi = v, i
-        elif v > vmin + depth: # Back up the other side of a valley
-            cuts.append(lo + vi)
-            pk, vmin = v, None
-    edges = [lo] + cuts + [hi]
-    return [(edges[i], edges[i+1]) for i in range(len(edges) - 1)]
-
-MARGIN = 1.5
-
-EDGE_DB = 1.0 # A signal's edge: the level changes this much across 1% of the band
-STRONG_DB = 6.0 # Above both neighbours by this much, a level is a signal whatever its edges look like
-
-def _edge_at(y, p, w, sgn):
-    """Where the step found at p (the largest difference across +-w bins) actually is: where y crosses halfway between
-    its levels w bins either side. The difference peaks anywhere the window straddles the step, so for a signal narrower
-    than w it sits up to w outside the signal's edge, out in its neighbour's skirt"""
-    lo, hi = max(0, p - w), min(len(y) - 1, p + w)
-    mid = 0.5*(y[lo] + y[hi])
-    seg = y[lo:hi + 1]
-    if sgn > 0: # Rising: the last bin under the midpoint before it stays above
-        above = np.flatnonzero(seg < mid)
-        return int(lo + above[-1] + 1) if len(above) and above[-1] + 1 < len(seg) else p
-    below = np.flatnonzero(seg < mid) # Falling: the first bin under the midpoint
-    return int(lo + below[0]) if len(below) else p
-
-def _displaced(y, q, p, w, shrink=0.7):
-    """A box a few w wide whose edges, each moved to where the level crosses halfway (_edge_at, inward only), leave
-    under `shrink` of it: the steps were found up to w outside a signal narrower than w, out in its neighbours' skirts
-    (two neighbours' fall and rise make a box around it). Too narrow for a box's checks: the runs above the floor find it.
-    Only moved once paired: before, a rise could pass the next fall and pair with a far one"""
-    if p - q > 4*w:
-        return False
-    q2, p2 = max(q, _edge_at(y, q, w, 1)), min(p, _edge_at(y, p, w, -1))
-    return p2 - q2 < shrink*(p - q)
-
-def _edge_boxes(pw, nfft, K=31, inner=0.06, T=EDGE_DB, w_frac=0.005, min_w=2.0, flat_db=3.0):
-    """Signals as boxes: a steep rise then a steep fall, standing above what is right outside them
-
-    Receiver passband curvature, bleed-over and slow humps are smooth; a signal's edges are steps. A rise and the
-    next fall (nested pairs allowed, so a carrier on a transponder is its own box) bound a box when its level
-    is above both outsides and stays about level across it. A steep rise (or fall) with no partner inside the
-    band's usable part is a signal cut by the band edge. Returns [(lo, hi, clipped)] in bins.
-    """
-    w = max(2, int(round(w_frac*nfft)))
-    k = max(3, (w//3) | 1)
-    T = max(T, 6*np.sqrt(2)*4.34*np.sqrt(1.5/(K*k))) # Never an edge the estimate's own scatter could make
-    y = 10*np.log10(np.convolve(pw, np.ones(k)/k, mode="same") + 1e-30)
-    E = np.zeros(nfft)
-    E[w:-w] = y[2*w:] - y[:-2*w]
-    a, b = int(inner*nfft), nfft - int(inner*nfft)
-    edges = []
-    for sgn in (1, -1):
-        m = sgn*E > T
-        m[:a] = m[b:] = False
-        idx = np.flatnonzero(m)
-        if len(idx):
-            for r in np.split(idx, np.flatnonzero(np.diff(idx) > w) + 1):
-                p = int(r[np.argmax(sgn*E[r])])
-                edges.append((p, sgn, float(sgn*E[p])))
-    edges.sort()
-    merged = [] # Two steps of one sign close together are one edge (a ramp with a shoulder): the steeper
-    for e in edges:
-        if merged and e[1] == merged[-1][1] and e[0] - merged[-1][0] <= 8*w:
-            merged[-1] = max(merged[-1], e, key=lambda t: t[2])
-        else:
-            merged.append(e)
-    edges = merged
-    stack, pairs, lone_falls = [], [], []
-    for p, sgn, st in edges:
-        if sgn > 0:
-            stack.append((p, st))
-        elif stack:
-            q, sq = stack.pop()
-            if p - q >= min_w*w and not _displaced(y, q, p, w):
-                pairs.append((q, p, min(sq, st), False))
-        else:
-            lone_falls.append((p, st))
-    lone_rises = stack
-    cands = list(pairs)
-    cands += [(q, b - 1, st, True) for q, st in lone_rises if st >= 1.5*T and q <= b - 2*w and b - 1 - q >= 8*w]
-    cands += [(a, p, st, True) for p, st in lone_falls if st >= 1.5*T and p >= a + 2*w and p - a >= 8*w] # Not the roll-off itself
-    good = []
-    for q, p, st, clipped in sorted(cands, key=lambda c: c[1] - c[0]):
-        inside = np.ones(max(p - q - 2*w, 1), bool)
-        for g0, g1, _, _ in good: # Not what nested boxes already account for
-            lo_, hi_ = max(g0, q + w) - (q + w), min(g1, p - w) - (q + w)
-            if hi_ > lo_:
-                inside[max(lo_, 0):hi_] = False
-        seg = y[q+w:max(p-w, q+w+1)]
-        lvl = np.median(seg[inside[:len(seg)]] if inside[:len(seg)].any() else seg)
-        # Outside: the bottom of the gap beside each edge. A mean over the same span would reach into a louder neighbour
-        # a gap away and make a quieter signal beside it flicker in and out
-        left = y[max(0, q - 3*w):max(1, q - w)].min() if q - w > 0 else -np.inf
-        right = y[min(nfft - 1, p + w):p + 3*w].min() if not clipped or p < b - 1 else -np.inf
-        if clipped and q <= a:
-            left = -np.inf
-        n4 = max(1, (p - q)//4)
-        ends = abs(np.median(y[q+w:q+w+n4]) - np.median(y[max(p-w-n4, q+w):max(p-w, q+w+1)]))
-        # Each end at the box's own level too (nested boxes set aside): a "box" from one carrier's fall to the next
-        # one's rise, with a narrower carrier between, has both ends low and its middle high
-        msk = inside[:len(seg)]
-        q4 = max(1, len(seg)//4)
-        sag = max((lvl - np.median(e[m]) for e, m in ((seg[:q4], msk[:q4]), (seg[-q4:], msk[-q4:])) if m.any()),
-                  default=0.0)
-        outside = max(left, right)
-        if (lvl - outside >= 0.6*T and ends <= (flat_db/2 if clipped else flat_db) and sag <= flat_db
-                and np.isfinite(outside)): # Cut ones are held to flat tops
-            good.append((q, p, st, clipped))
-    out = []
-    for q, p, st, clipped in sorted(good, key=lambda c: -c[2]): # Near-duplicates (edges of one ramp): the steepest
-        if all(min(p, p2) - max(q, q2) <= 0.7*max(p - q, p2 - q2) for q2, p2, _ in out):
-            out.append((q, p, clipped))
-    return sorted(out)
-
-HOLD_DB = 10.0 # dB: a signal inside a wider band holds it up (a raised floor) only standing this far above its own floor
-
-def _spectrum(samps, Fs, nfft, edge):
-    """The averaged spectrum and its noise floor, as find_signals and measure_band see them.
-    Returns (nfft, averages K, power per bin, per-segment power, dB, floor dB)"""
-    samps = np.asarray(samps)
-    N = len(samps)
-    if nfft is None:
-        nfft = 1 << int(np.clip(np.floor(np.log2(max(N//16, 64))), 6, 16))
-    seg, wp = _segments(samps, nfft, 0.5)
-    K = len(seg)
-    pw = np.fft.fftshift(seg.sum(axis=0)/(K*wp*Fs))
-    segs = np.fft.fftshift(seg/(wp*Fs), axes=1)
-    db = 10*np.log10(pw + 1e-30)
-    inner = slice(int(max(edge, 0.05)*nfft), nfft - int(max(edge, 0.05)*nfft)) # Not the receiver filter's roll-off
-    kf = max(3, nfft//128)
-    low = 10*np.log10(np.convolve(pw[inner], np.ones(kf)/kf, mode="same") + 1e-30)[kf:-kf]
-    floor = _quiet_level(low) # Start from the quiet part: signals can fill the band
-    for _ in range(3): # The smoothed spectrum is steady, so a tight band above the start holds just the noise
-        floor = float(np.median(low[low < floor + 1.0]))
-    return nfft, K, pw, segs, db, floor
-
-def _duty(segs, e0, e1, noise_p):
-    """Fraction of the time a band is on (find_signals' Signal.duty), None when too weak or narrow to tell"""
-    on = segs[:, e0:e1+1].sum(axis=1) # Band power in each time segment, against the noise in the same band
-    mean_p = on.mean()
-    # Bursty if the band power swings between noise and a level above it. Halfway between noise and the average
-    # is the dividing line; a continuous signal stays above it, so a weak one isn't mistaken for bursts. Too few
-    # bins or too weak to tell the swing from the estimate's own scatter: no answer
-    scatter = mean_p*np.sqrt(2/(e1 - e0 + 1))
-    return float(np.mean(on > (noise_p + mean_p)/2)) if mean_p - noise_p > 4*scatter else None
-
-def measure_band(samps, Fs, freq, bw, cf=0.0, nfft=None, edge=0.02):
+def measure_band(samps, Fs, freq, bw, cf=0.0, nfft=None, edge=0.005):
     """A band given by hand (a channel plan, a band a user typed) measured as find_signals measures what it finds: a
     Signal with power, SNR, height, peak and duty filled in, so typed and found signals compare alike
 
     freq: the band's centre [Hz, absolute: cf + offset], bw: its width [Hz], cf: the capture's centre frequency.
-    The noise is the capture's floor (the band may be all signal); the band is cut to the capture's edges (clipped)."""
-    nfft, K, pw, segs, db, floor = _spectrum(samps, Fs, nfft, edge)
+    The noise is the capture's floor (find's, per bin); the band is cut to the capture's edges (clipped)."""
+    from .find import _nfft_for, fit_floor, spectrogram
+    samps = np.asarray(samps)
+    nfft = _nfft_for(len(samps)) if nfft is None else int(nfft)
+    P, hop = spectrogram(samps, Fs, nfft, 0.5)
+    fit = fit_floor(P, hop, edge)
+    A = P.mean(axis=0, dtype=np.float64)
     bin_hz = Fs/nfft
     mid = freq - cf
     e0 = int(np.clip(np.floor((mid - bw/2)/bin_hz + nfft/2), 0, nfft - 1))
     e1 = int(np.clip(np.ceil((mid + bw/2)/bin_hz + nfft/2) - 1, e0, nfft - 1))
     clipped = mid - bw/2 < -Fs/2 or mid + bw/2 > Fs/2
-    band = pw[e0:e1+1]
-    local = 10**(floor/10)
+    z = A[e0:e1+1]/fit.floor[e0:e1+1]
     n = e1 - e0 + 1
-    snr = 10*np.log10(max(np.sum(band - local), 1e-30)/(local*n))
-    sig = Signal(((e0 + e1 + 1)/2 - nfft/2)*bin_hz, n*bin_hz, floor, float(db[e0:e1+1].max() - floor), float(snr),
-                 lo=(e0 - nfft/2)*bin_hz, hi=(e1 + 1 - nfft/2)*bin_hz, power=float(10*np.log10(band.sum()*bin_hz + 1e-30)),
-                 peak_freq=float((e0 + int(np.argmax(band)) - nfft/2)*bin_hz), duty=_duty(segs, e0, e1, local*n),
-                 resolved=n >= 8, clipped=clipped, Fs=Fs, cf=cf, bin_hz=bin_hz)
-    return sig
+    snr = 10*np.log10(max(float(np.sum(z - 1.0)), 1e-30)/n)
+    # Duty: the band's power frame by frame over the noise; halfway from the noise to its mean divides on from off. Too
+    # weak or narrow to tell the swing from the estimate's own scatter: no answer
+    on = (P[:, e0:e1+1]/fit.floor[None, e0:e1+1]).mean(axis=1)
+    mean_p = float(on.mean())
+    duty = float(np.mean(on > (1.0 + mean_p)/2)) if mean_p - 1.0 > 4*mean_p*np.sqrt(2/n) else None
+    band = A[e0:e1+1]
+    return Signal(((e0 + e1 + 1)/2 - nfft/2)*bin_hz, n*bin_hz, float(np.median(10*np.log10(fit.floor[e0:e1+1]))),
+                  float(10*np.log10(max(float(z.max()), 1e-30))), float(snr), lo=(e0 - nfft/2)*bin_hz,
+                  hi=(e1 + 1 - nfft/2)*bin_hz, power=float(10*np.log10(band.sum()*bin_hz + 1e-30)),
+                  peak_freq=float((e0 + int(np.argmax(band)) - nfft/2)*bin_hz), duty=duty, resolved=n >= 8,
+                  clipped=clipped, Fs=Fs, cf=cf, bin_hz=bin_hz)
 
-def find_signals(samps, Fs: float = 1, nfft=None, min_snr_db=None, gap=None, occupied=0.99, min_bins=4, edge=0.02,
-                 cf=0.0, split_db=3.0, min_across=8, min_band_snr_db=None, edges=True, edge_db=EDGE_DB, nested=True):
-    """Find signals in a spectrum
+_RETIRED = ("min_snr_db", "gap", "occupied", "min_band_snr_db", "edges", "edge_db")
 
-    Averages periodograms (more samples means a finer, quieter spectrum), finds the noise floor, and takes every
-    run of bins above floor + threshold as a signal. The threshold is a few standard deviations of the averaged
-    estimate, so long captures can see weaker and narrower signals. A run with a valley between peaks is split into
-    the signals either side of it.
+def find_signals(samps, Fs: float = 1, nfft=None, cf=0.0, pfa=1e-3, edge=0.005, split_db=4.0, drop_db=10.0, min_bins=1,
+                 min_across=8, nested=True, **retired):
+    """The signals in a capture: rpps.analysis.spectrum.find.find (how it works is there), as a Survey of Signal sorted
+    by frequency, ids 0, 1... in that order
 
-    nfft: FFT size [largest power of two giving at least ~16 averages, up to 65536]
-    min_snr_db: detection threshold above the floor [4 sigma of the smoothed spectrum, at least MARGIN (1.5 dB)]
-    gap: bins of dip tolerated inside one signal [nfft/256]
-    occupied: fraction of the signal's power that defines its width (edges are found from the cumulative power)
-    min_bins: narrowest signal reported
-    edge: fraction of the band at each end that is receiver filter roll-off. A signal reaching into it is cut there
-        (Signal.clipped), one wholly inside it is ignored
-    cf: the capture's centre frequency [Hz], for Signal.freq
-    split_db: depth of a valley that separates two signals [dB]
-    min_across: bins across a signal below which its edges are not trusted (Signal.resolved False)
-    edges: look at a signal's edges: a wide, weak level above the floor that has no steep edges is passband shape or
-        bleed-over, not a signal (False: every level above the floor is one)
-    edge_db: how steep an edge is [dB per 1% of the band]
-    min_band_snr_db: weakest in-band SNR reported [dB] (None: no limit. A wide signal can be well above the noise in
-        every bin and still have an in-band SNR under 0 dB, so the detection threshold is the better gate)
-    nested: keep the bands that hold other signals (Signal.holds, a transponder's pedestal). False: only the signals
-    Returns a Survey (a list of Signal sorted by frequency, ids 0, 1... in that order).
-    """
-    nfft, K, pw, segs, db, floor = _spectrum(samps, Fs, nfft, edge)
-    k = max(3, nfft//1024*2 + 1)
-    smooth_sigma = 4.34*np.sqrt(1.5/(K*k)) # Of the spectrum smoothed over k bins (neighbouring bins are correlated)
-    thr = floor + (min_snr_db if min_snr_db is not None else max(4*smooth_sigma, MARGIN))
-    bin_hz = Fs/nfft
-    freq = (np.arange(nfft) - nfft/2)*bin_hz
-
-    # Light smoothing so noise peaks inside a signal don't split it
-    sm = 10*np.log10(np.convolve(pw, np.ones(k)/k, mode="same") + 1e-30)
-    above = sm > thr
-    gap = max(2, nfft//256) if gap is None else gap
-    idx = np.nonzero(above)[0]
-    runs = []
-    for i in idx:
-        if runs and i - runs[-1][1] <= gap:
-            runs[-1][1] = i
-        else:
-            runs.append([i, i])
-
-    # Valleys are looked for in a spectrum smoothed a little more, so ripple doesn't split a signal
-    kv = max(5, nfft//512*2 + 1)
-    sv = 10*np.log10(np.convolve(pw, np.ones(kv)/kv, mode="same") + 1e-30)
-    depth = max(split_db, 4*4.34/np.sqrt(K*kv))
-    parts = []
-    for lo, hi in runs:
-        parts.extend(_split(sv, lo, hi, depth) if hi - lo + 1 >= 3*kv else [(lo, hi)])
-    parts = [(lo, hi, False) for lo, hi in parts]
-    if edges:
-        # Wide, weak and smooth is passband shape or bleed-over: keep a level above the floor only if it is strong, or
-        # too narrow for edges to be read. The signals with steep edges come from the edge boxes
-        narrow = 4*max(2, int(round(0.005*nfft)))
-        boxes = _edge_boxes(pw, nfft, K, inner=max(edge, 0.06), T=edge_db)
-        w3 = 3*max(2, int(round(0.005*nfft)))
-        def stands_out(lo, hi, by): # Above both neighbours, not just above a floor that may be the bottom of a notch
-            beside = [sm[max(0, lo - w3):lo].mean() if lo > 0 else -np.inf, sm[hi+1:hi+1+w3].mean() if hi + 1 < nfft else -np.inf]
-            return sm[lo:hi+1].max() - max(beside) >= by
-        keep = [(lo, hi, c) for lo, hi, c in parts if stands_out(lo, hi, STRONG_DB) or (hi - lo + 1 <= narrow and stands_out(lo, hi, 2*MARGIN))]
-        def inside(lo, hi):
-            return any(min(hi, b1) - max(lo, b0) > 0.5*(hi - lo) for b0, b1, _ in boxes)
-        parts = sorted([p for p in keep if not inside(p[0], p[1])] + boxes)
-
-    floor_lin = 10**(floor/10)
-    quiet = ~above
-    psm = 10**(sm/10)
-    out = []
-    for lo, hi, box_clipped in parts:
-        if hi - lo + 1 < min_bins:
-            continue
-        # Widen a little: the smoothed edge sits inside the skirts
-        lo, hi = max(0, lo - k//2), min(nfft-1, hi + k//2)
-        w = hi - lo + 1
-        flank = np.concatenate((pw[max(0, lo - w):lo][quiet[max(0, lo - w):lo]], pw[hi+1:hi+1+w][quiet[hi+1:hi+1+w]]))
-        if len(flank) >= 8:
-            local = np.median(flank) # The noise right beside this signal
-        else:
-            # Nothing beside it is down at the floor: it sits on a raised one (a satellite transponder's noise and
-            # intermodulation, under all its carriers). That floor is the bottom of the valleys beside it
-            near = np.concatenate((psm[max(0, lo - w):lo], psm[hi+1:hi+1+w]))
-            local = max(floor_lin, float(np.percentile(near, 20))) if len(near) >= 8 else floor_lin
-        excess = np.clip(pw[lo:hi+1] - local, 0, None)
-        if excess.sum() <= 0:
-            continue
-        c = np.cumsum(excess)/excess.sum()
-        e0 = lo + int(np.searchsorted(c, (1-occupied)/2))
-        e1 = lo + int(np.searchsorted(c, 1-(1-occupied)/2))
-        if e1 < edge*nfft or e0 > (1-edge)*nfft: # Wholly in the roll-off
-            continue
-        clipped = box_clipped or e0 < edge*nfft or e1 > (1-edge)*nfft
-        if clipped:
-            e0, e1 = max(e0, int(np.ceil(edge*nfft))), min(e1, int((1-edge)*nfft))
-            if e1 < e0 or excess[e0 - lo:e1 - lo + 1].sum() < 0.5*excess.sum():
-                continue # Most of it is in the roll-off: the filter's skirt reaching past the cut, not a signal
-            if e1 - e0 + 1 < min_bins:
-                continue
-        n = max(e1 - e0 + 1, 1)
-        band = pw[e0:e1+1]
-        snr = 10*np.log10(max(np.sum(band - local), 1e-30)/(local*len(band)))
-        duty = _duty(segs, e0, e1, local*len(band))
-        if min_band_snr_db is not None and snr < min_band_snr_db:
-            continue
-        out.append(Signal(
-            ((e0 + e1)/2 - nfft/2)*bin_hz, n*bin_hz, floor, float(db[lo:hi+1].max() - floor), float(snr),
-            lo=(e0 - nfft/2)*bin_hz, hi=(e1 + 1 - nfft/2)*bin_hz, power=float(10*np.log10(band.sum()*bin_hz + 1e-30)),
-            peak_freq=float(freq[e0 + int(np.argmax(band))]), duty=duty, resolved=n >= min_across, clipped=clipped,
-            Fs=Fs, cf=cf, bin_hz=bin_hz))
-    # One signal found twice (an edge box and a run over the same carrier): keep the one with more SNR
-    out.sort(key=lambda a: -a.snr)
-    kept = []
-    for a in out:
-        if not any(abs(a.mid - b.mid) < 0.25*min(a.width, b.width) and 0.7 < a.width/b.width < 1/0.7 for b in kept):
-            kept.append(a)
-    out = sorted(kept, key=lambda a: a.mid)
-    # A weak narrow detection at the centre of a wider one is that signal's own peak found again: not a signal
-    out = [b for b in out if not any(a is not b and a.width > 2*b.width and abs(b.mid - a.mid) < 0.1*a.width
-                                     and b.snr < HOLD_DB for a in out)]
-    for a in out: # A band holding other signals (a transponder's noise pedestal under its carriers) is not one signal: they
-        # stand well above it (a carrier's own peak, or ripple on it, doesn't)
-        a.holds = sum(1 for b in out if b is not a and a.lo <= b.mid <= a.hi and b.width < 0.5*a.width and b.snr >= HOLD_DB)
+    pfa: expected false boxes in a capture of pure noise; nfft: FFT size [N/16, up to 65536]; cf: the capture's centre
+    frequency [Hz], for Signal.freq; edge: fraction of the band at each end not looked at (the receiver's roll-off is
+    also found); split_db: least notch or step between two signals side by side [dB, 3/4 of it for a step]; drop_db: a
+    carrier's edges are this far under its level; min_bins: narrowest signal; min_across: bins across under which its
+    edges aren't trusted (Signal.resolved); nested: keep the boxes that hold other signals (a pedestal, a carrier a
+    narrower one jams: Signal.holds). False: only what stands on them
+    The thresholds of the rules this replaced (min_snr_db, gap, occupied, min_band_snr_db, edges, edge_db) are taken
+    for one release with a DeprecationWarning, and do nothing: `pfa` sets what the detection lets through."""
+    import warnings
+    from .find import find
+    bad = [k for k in retired if k not in _RETIRED]
+    if bad:
+        raise TypeError(f"find_signals() got unexpected keyword arguments {bad}")
+    if retired:
+        warnings.warn(f"find_signals: {sorted(retired)} no longer do anything (the finder's thresholds come from pfa); "
+                      "they go in the next release", DeprecationWarning, stacklevel=2)
+    sv = find(samps, Fs, cf=cf, nfft=nfft, pfa=pfa, edge=edge, split_db=split_db, drop_db=drop_db, min_bins=min_bins,
+              min_across=min_across)
     if not nested:
-        out = [a for a in out if not a.holds]
-    for i, a in enumerate(out):
-        a.id = i
-    return Survey(out, Fs, cf, nfft, K, freq, db, float(floor))
+        kept = [s for s in sv if not s.holds]
+        for t in kept:
+            if t.over is not None and t.over.holds:
+                t.over = None
+        sv[:] = kept
+        for i, s in enumerate(sv):
+            s.id = i
+    return sv
 
 def survey(source, Fs=None, cf=None, samples=2**17, more=2**20, baud=True, **kw):
     """Look at a source (rp.source.File, Device) or an array, and find the signals in it
@@ -586,7 +342,7 @@ def survey(source, Fs=None, cf=None, samples=2**17, more=2**20, baud=True, **kw)
         are right, whatever block size the receive chain will use later
     more: if some signal is too narrow for its bins, read up to this many (once) and look again
     baud: also estimate each signal's symbol rate (Signal.baud_est)
-    The rest (min_snr_db, occupied, ...) is for find_signals. Returns a Survey; Survey.head is what was read.
+    The rest (pfa, split_db, ...) is for find_signals. Returns a Survey; Survey.head is what was read.
     """
     if hasattr(source, "peek"):
         Fs = source.Fs if Fs is None else Fs

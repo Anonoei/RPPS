@@ -1,10 +1,11 @@
 r"""Analysis: blind estimation and measurement at any representation, outside the data path. The tree follows what is
 analysed, the way config/ and the implementation packages do:
 
- - spectrum: what is in a capture and at what rate. signal (the survey: find_signals, Survey), psd, cyclic (symbol
-   rate and carrier lines with a calibrated false alarm, the SCF), scf (every cycle frequency, FRESH), pencil
-   (matrix-pencil lines), waveform (tones, OFDM and which system, bursts, envelope), ofdm_pilots (an OFDM grid and its
-   pilots), burst (TDMA bursts on a shared preamble), separate (two co-channel signals), hopping (frequency hopping)
+ - spectrum: what is in a capture and at what rate. find (the signals' boxes at a false-alarm rate, the streaming
+   Finder), signal (the survey: find_signals, Survey), psd, cyclic (symbol rate and carrier lines with a calibrated
+   false alarm, the SCF), scf (every cycle frequency, FRESH), pencil (matrix-pencil lines), waveform (tones, OFDM and
+   which system, bursts, envelope), ofdm_pilots (an OFDM grid and its pilots), burst (TDMA bursts on a shared preamble),
+   separate (two co-channel signals), hopping (frequency hopping)
  - modulation: what carries the symbols (rate, timing, modulation, offset and phase are rp.sync.detect). cumulants (the constellation's
    family, blind to noise), fsk (FSK / MSK / GMSK), cpm (GMSK and SOQPSK by a per-survivor detector), pm (residual-carrier
    PM and its subcarriers), quality (a gate on hard decisions; Es/N0 is rp.sync.quality), impairments (compression, IQ imbalance,

@@ -123,7 +123,7 @@ def test_find_signals_cut_by_band_edge(rng):
     found = rp.analysis.find_signals(x, Fs)
     assert len(found) == 2
     assert not found[0].clipped and found[1].clipped
-    assert found[1].hi == pytest.approx(0.48*Fs, abs=1e3) # edge=2% of the band at each end
+    assert found[1].hi == pytest.approx(0.495*Fs, abs=2e3) # edge=0.5% of the band at each end
     assert "cut by band edge" in found[1].describe()
 
 def test_duty_weak_continuous_is_not_bursty(rng):
@@ -164,7 +164,8 @@ def test_a_smooth_hill_is_not_a_signal(rng):
     Fs = 100e6 # Passband curvature and bleed-over: 4 dB high, tens of MHz across, no steep edges
     x = shaped_psd(rng, 1 << 20, Fs, lambda f: 4*np.exp(-(f/15e6)**2))
     assert rp.analysis.find_signals(x, Fs) == []
-    assert len(rp.analysis.find_signals(x, Fs, edges=False)) >= 1 # By level alone it would be one
+    with pytest.warns(DeprecationWarning): # The old rules' thresholds: taken for a release, doing nothing
+        assert rp.analysis.find_signals(x, Fs, edges=False) == []
 
 def test_square_edged_boxes_are_signals_and_neighbours_stay_apart(rng):
     Fs = 100e6 # Two 3 dB boxes 2 MHz apart, as on a transponder pair
@@ -202,7 +203,8 @@ def test_survey_match_keeps_ids_frame_to_frame(rng):
     nxt = rp.analysis.find_signals(x, Fs).match(first)
     by = {round(s.mid/1e4): s.id for s in nxt}
     near = lambda f: min(nxt, key=lambda s: abs(s.mid - f))
-    assert near(-195e3).id == 7 and near(155e3).id == 3 and near(-20e3).id == 8 # New ones count on from the highest
+    assert near(-195e3).id == 7 and near(155e3).id == 3
+    assert {near(-20e3).id, near(400e3).id} == {8, 9} # New ones count on from the highest
     assert len({s.id for s in nxt}) == len(nxt), by
 
 def test_survey_ids_are_stable_through_a_dropout_and_a_new_signal(rng):
