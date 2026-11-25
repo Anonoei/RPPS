@@ -70,7 +70,8 @@ What is in each part of RPPS, and what is not yet.
     - [X] Byte-stuffed framing: SLIP, KISS, asynchronous PPP; checksums (sum, Internet, Fletcher, Adler, XOR); composite checks
     - [X] Fields as definitions: conditional, repeated, expression-sized, signed, scaled, enums, text (AX.25 addresses, BLE AD structures, TS adaptation fields)
     - [X] GSE (PDUs in DVB-S2 data fields)
-    - [ ] MPEG-TS packets, CCSDS transfer frames and space packets, FX.25
+    - [X] Packets that cross frames: MPEG-TS in DVB-S2 (null-packet deletion), MPE and ULE sections, CCSDS space packets
+    - [ ] FX.25
 - [ ] [Profiles](https://github.com/Anonoei/RPPS/tree/main/config/profile)
     - [X] DVB-S, DVB-S2 (normal and short frames, APSK), IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
     - [X] CCSDS concatenated (convolutional + Reed-Solomon)
@@ -110,7 +111,7 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
 - **Links, sources, profiles:** MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
-  block-coded headers; audio devices; transmitting packets that cross frames; DVB-S2 null packet deletion; MPE/ULE sections in transport streams; profiles for DMR voice, P25 phase 2 and voice, 802.11a/g/n, ATSC, GPS C/A,
+  block-coded headers; audio devices; transmitting packets that cross frames with a pointer inside the data (CCSDS space packets, MPE/ULE sections), DVB-S2 with null-packet deletion or ISSY; profiles for DMR voice, P25 phase 2 and voice, 802.11a/g/n, ATSC, GPS C/A,
   DAB, UMTS, CCSDS turbo (and `projects/` using the BLE, ADS-B and 802.11b profiles that exist); `dvbs2/normal` dummy frames;
   positions and gaps in the parallel runner's output; MPower and Oerder & Meyr on a GPU a group of windows a launch (each window is a launch and a wait now: slower than the
   host); an FPGA backend.

@@ -1,0 +1,27 @@
+{
+  "base": "header",
+  "type": "link",
+  "comment": "DVB multiprotocol encapsulation (MPE) datagram section: table id 0x3E, the section's length, the receiver's MAC address in two parts (bytes 6 and 5, then 4 to 1), scrambling, the LLC/SNAP flag, the section numbers, then the datagram (an IP packet, or LLC/SNAP with the flag set) and the section's CRC-32 over all of it. Sections with the syntax indicator 0 (a checksum, not a CRC) are not read",
+  "ref": "EN 301 192 7.1",
+  "tags": ["mpeg-ts"],
+  "order": "msb",
+  "fields": [
+    {"name": "table_id", "bits": 8, "default": 62},
+    {"name": "ssi", "bits": 1, "default": 1},
+    {"name": "private", "bits": 1},
+    {"name": "reserved", "bits": 2, "default": 3},
+    {"name": "section_length", "bits": 12, "tx": "bits//8 + 13"},
+    {"name": "mac_6", "bits": 8},
+    {"name": "mac_5", "bits": 8},
+    {"name": "reserved2", "bits": 2, "default": 3},
+    {"name": "payload_scrambling", "bits": 2},
+    {"name": "address_scrambling", "bits": 2},
+    {"name": "llc_snap", "bits": 1},
+    {"name": "current_next", "bits": 1, "default": 1},
+    {"name": "section_number", "bits": 8},
+    {"name": "last_section_number", "bits": 8},
+    {"name": "mac_4_1", "bits": 32}
+  ],
+  "fcs": "crc32_mpeg2",
+  "payload": "8*(section_length - 13)"
+}

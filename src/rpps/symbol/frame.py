@@ -226,6 +226,8 @@ class Header(_Frame):
     def encode(self, data):
         ctx = dict(data.ctx)
         x = np.asarray(data.data)
+        if not len(x) and not data.flush: # Nothing of the frame yet: its header waits for it (else a frame start applied
+            return self._out(data, x, ctx) # when the payload comes would send a second one)
         start = self._start
         self._state(ctx, True)
         if start:

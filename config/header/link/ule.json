@@ -1,0 +1,16 @@
+{
+  "base": "header",
+  "type": "link",
+  "comment": "Unidirectional Lightweight Encapsulation (ULE) SNDU: the destination address absent flag (D), the length from after the type field to the end of the CRC, the type (an EtherType: 0x0800 IPv4, 0x86DD IPv6), the receiver's address (6 bytes, when D is 0), the PDU, and a CRC-32 (MPEG-2) over the whole SNDU",
+  "ref": "RFC 4326 4",
+  "tags": ["mpeg-ts"],
+  "order": "msb",
+  "fields": [
+    {"name": "d", "bits": 1, "default": 1},
+    {"name": "sndu_length", "bits": 15, "tx": "bits//8 + 4 + 6*(d == 0)"},
+    {"name": "type", "bits": 16, "default": 2048},
+    {"name": "dest", "type": "bytes", "bytes": 6, "if": "d == 0"}
+  ],
+  "fcs": "crc32_mpeg2",
+  "payload": "8*(sndu_length - 4) - 48*(d == 0)"
+}

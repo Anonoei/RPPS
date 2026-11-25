@@ -28,7 +28,9 @@ The shipped profiles' rules:
 | `ieee802154/frames` | `phr` | `ieee802_15_4` (195) | the PSDU with its FCS, which Wireshark checks |
 | `ieee80211b/long` | `plcp` | `ieee802_11_radiotap` (127) | radiotap: rate (from SIGNAL), channel, FCS at the end |
 | `dvbs/*` | `packet` | `mpeg2_ts` (243) | transport stream packets |
-| `dvbs2/ts` | `ts` | `mpeg2_ts` (243) | user packets cut across BBFRAMEs (SYNCD, UPL), CRC-8 checked, sync byte put back |
+| `dvbs2/ts` | `ts` | `mpeg2_ts` (243) | user packets cut across BBFRAMEs (SYNCD, UPL), CRC-8 checked, sync byte put back, deleted null packets put back |
+| `dvbs2/mpe` | `mpe` | `raw` (101) | the IP datagrams of MPE sections cut across the transport packets of a `pid` (pointer field), CRC-32 checked |
+| `dvbs2/ule` | `ule` | `raw` (101) | the IPv4 and IPv6 PDUs of ULE SNDUs cut across the transport packets of a `pid`, CRC-32 checked |
 | `ccsds/tm_packets` | `space` | exported PDU, `ccsds` | space packets cut across transfer frames per virtual channel (first header pointer) |
 | `dvbs2/*`, `dvbrcs2/forward` | `bbheader` | exported PDU, `dvb-s2_modeadapt` | the BBFRAME, header and data field: Wireshark reads GSE and what it carries |
 | `lte/downlink`, `nr/downlink` | `pbch`, `pdsch` | exported PDU, `lte_rrc.*` / `nr-rrc.*` | the MIB, the SIB1 transport block |
@@ -81,6 +83,10 @@ with rp.source.Tun("rpps1", linktype="ieee802_15_4_nofcs") as tun, \
     for pkt in tun.packets():
         enc.packet(pkt) >> radio
 ```
+
+Packets that cross frames go as a stream: `dvbs2/ts` transmits transport packets given back to back
+(`p.tx()(rp.Data(bits, ...))`), packing them into TS-mode BBFRAMEs itself (SYNCD per frame, each sync byte the CRC-8 of
+the packet before), however the stream is cut.
 
 Without a radio, pysdrlib's simulated radios share an air (`pysdrlib.sim.air`): a sim made with `transmit=True, air="lab"`
 under a `DeviceSink` sends into it, and `rp.source.Device(pysdrlib.device("sim", air="lab"), ...)` receives it, in

@@ -42,7 +42,8 @@ The profile side (`"controls"` in a profile, keyed by the header step's id):
               "reach": 64,                                        how far back (header input items) a field can apply
               "on": "tx",                                         this entry drives only when transmitting ("rx", "both": default)
               "drive": {"map": {"name": "constellation"},         step id -> {parameter: source}: a field, a column of
-                        "ldpc": {"name": "ldpc"},                   the key's row, or {"calc": ...} over both
+                        "ldpc": {"name": "ldpc"},                   the key's row, or {"calc": ...} over both (with
+                                                                    "on": "tx" or "rx", in that direction only)
                         "plscram": {"length": {"calc": "slots*90 + pilots*((slots - 1)//16)*36"}}}}}
 
 A "calc" is an expression (as `{"expr": ...}` takes) worked out when the fields arrive; an "expr" or a "param" in a profile
@@ -144,13 +145,16 @@ class Entry:
         row = self.table.row(fields) if self.table is not None else None
         return {**(row or {}), **fields}, row
 
-    def values(self, fields):
+    def values(self, fields, direction=None):
         """{step id: {parameter: value}} these fields set, and the row they picked (None: none). A parameter whose source
-        the fields don't give is left alone, so a change that carries only some fields changes only what they drive"""
+        the fields don't give is left alone, so a change that carries only some fields changes only what they drive; so is
+        one whose source drives only the other direction ({"calc": ..., "on": "tx"})"""
         names, row = self.names(fields)
         out = {}
         for sid, ps in self.drive.items():
             for p, src in ps.items():
+                if direction is not None and isinstance(src, dict) and src.get("on", "both") not in ("both", direction):
+                    continue
                 v = self._value(src, names, fields)
                 if v is not _NA:
                     out.setdefault(sid, {})[p] = v

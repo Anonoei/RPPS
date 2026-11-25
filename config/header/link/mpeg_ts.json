@@ -1,0 +1,21 @@
+{
+  "base": "header",
+  "type": "link",
+  "comment": "MPEG-2 transport packet header: sync byte, transport error, payload unit start (PUSI: a section or PES packet starts in this payload, after a pointer field for sections), priority, PID, scrambling, adaptation field control (1 payload only, 2 adaptation field only, 3 both) and the continuity counter, then the adaptation field when there is one (its length, its bytes). The payload runs to the packet's end: the frame length a profile gives (188 bytes, from the step that cut the packets)",
+  "ref": "ISO/IEC 13818-1 2.4.3.2, 2.4.3.4",
+  "tags": ["mpeg-ts"],
+  "order": "msb",
+  "fields": [
+    {"name": "sync", "bits": 8, "default": 71},
+    {"name": "tei", "bits": 1},
+    {"name": "pusi", "bits": 1},
+    {"name": "priority", "bits": 1},
+    {"name": "pid", "bits": 13},
+    {"name": "scrambling", "bits": 2},
+    {"name": "afc", "bits": 2, "default": 1},
+    {"name": "cc", "bits": 4},
+    {"name": "af_length", "bits": 8, "if": "afc >= 2"},
+    {"name": "adaptation", "type": "bytes", "bytes": "af_length", "if": "afc >= 2"}
+  ],
+  "payload": "length - 32 if afc < 2 else length - 40 - 8*af_length"
+}

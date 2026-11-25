@@ -105,6 +105,18 @@ what to use instead.
   virtual channel, idle packets and frames passed over; Wireshark's `ccsds` dissector reads them) and `dvbs2/ts` (TS
   mode user packets by SYNCD and UPL, the sync byte checked and put back, captured as MPEG-TS). A framed link header
   takes its frame `length` from the profile, and its `payload` expression sees it.
+- **Transmitting packets that cross frames**: `dvbs2/ts` transmits a transport stream given back to back, packing it
+  into TS-mode BBFRAMEs itself (SYNCD per frame, each sync byte the CRC-8 of the packet before), the same however the
+  stream is cut. A packets step's `tx` names the fields it publishes for the header after it at each frame start.
+- **DVB-S2 null-packet deletion** (EN 302 307-1 annex D.3): `dvbs2/ts` reads NPD (and ISSY) frames, taking the DNP
+  byte off each user packet and putting the deleted null packets back, so the transport stream comes out as it went in.
+  A packets step's `keep`, `trailer` and `insert`.
+- **IP in transport streams**: `header/link/mpeg_ts` (the transport packet header, adaptation field and all),
+  `dvbs2/mpe` (MPE datagram sections, `header/link/dvb_mpe`) and `dvbs2/ule` (ULE SNDUs, `header/link/ule`) of a `pid`:
+  sections and SNDUs cut across transport packets by the pointer field, per PID with its continuity counter, CRC-32
+  checked, the datagrams captured as raw IP (Wireshark reads them).
+- A profile's controls can drive a parameter in one direction only (`{"calc": ..., "on": "tx"}`).
+- Fixed: a DVB-S2 transmitter given a first block too short for a frame sent its PL header twice.
 - Packets through a radio and back without hardware: pysdrlib's simulated radios share an air (pysdrlib 0.5.1,
   `Sim(transmit=True, air=...)`); `DeviceSink` on one, `rp.source.Device` on another, in real time.
 - The LTE and NR channels say which check their messages passed (`Message.check`: PBCH and PDCCH CRC-16 or

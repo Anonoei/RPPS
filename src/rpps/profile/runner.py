@@ -128,7 +128,9 @@ class Runner:
         if direction == "rx":
             for e in self.entries.values():
                 h = self._header_slot(e)
-                for sid in e.drive:
+                for sid, ps in e.drive.items():
+                    if all(isinstance(v, dict) and v.get("on", "both") == "tx" for v in ps.values()):
+                        continue # (it drives that step only transmitting)
                     for i in self._step_slots.get(sid, []):
                         if i < h:
                             self.span = i if self.span is None else min(self.span, i)
@@ -350,7 +352,7 @@ class Runner:
         if key in self._keys:
             return
         self._keys.add(key)
-        values, _ = entry.values(fields)
+        values, _ = entry.values(fields, self.direction)
         params = {i: dict(ps) for sid, ps in values.items() for i in self._step_slots.get(sid, [])}
         if not params:
             return
@@ -452,7 +454,7 @@ class Runner:
                 self._place(ch)
 
     def _make(self, entry, origin, fields, at, out, key, group):
-        values, row = entry.values(fields)
+        values, row = entry.values(fields, self.direction)
         if entry.table is not None and row is None and all(fields.get(k) is not None for k in entry.table.key):
             self._report("no row", step=entry.header, fields=dict(fields), table=entry.table.name, at=at)
         h = self._header_slot(entry)
