@@ -39,14 +39,15 @@ STAGES = {
     "SincUp": (lambda: rp.signal.sample.up.Sinc(4), dict(Fs=25e3, sps=1)),
     "Biphase": (lambda: rp.signal.filters.ShapingBiphase(), dict(Fs=19e3, sps=16)),
     "AGC": (lambda: rp.sync.AGC(1.0, window=0.05), dict(Fs=1e3)),
-    "Costas": (lambda: rp.sync.Costas(0.05, 0.001, 4), dict(Fs=1e3, sps=1)),
-    "CostasPoints": (lambda: rp.sync.Costas(0.05, 0.001, points=np.exp(2j*np.pi*np.arange(8)/8)*[1, 1, 1, 1, 2, 2, 2, 2]), dict(Fs=1e3, sps=1)),
+    "DDCarrier": (lambda: rp.sync.phase.DDCarrier(np.exp(2j*np.pi*np.arange(8)/8)*[1, 1, 1, 1, 2, 2, 2, 2], window=32), dict(Fs=1e3, sps=1)),
+    "loops.Costas": (lambda: rp.sync.loops.Costas(0.05, 0.001, 4), dict(Fs=1e3, sps=1)),
+    "loops.CostasPoints": (lambda: rp.sync.loops.Costas(0.05, 0.001, points=np.exp(2j*np.pi*np.arange(8)/8)*[1, 1, 1, 1, 2, 2, 2, 2]), dict(Fs=1e3, sps=1)),
 }
 
 @pytest.mark.parametrize("name", STAGES)
 def test_output_does_not_depend_on_block_size(name, x):
     make, rates = STAGES[name]
-    x = x[:4000] if name.startswith("Costas") else x # A per-sample Python loop
+    x = x[:4000] if name.startswith("loops.Costas") else x # A per-sample Python loop
     ref = run(make, x, [len(x)], **rates)
     for sp in cuts(len(x))[1:]:
         y = run(make, x, sp, **rates)

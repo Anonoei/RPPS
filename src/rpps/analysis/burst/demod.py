@@ -201,12 +201,11 @@ def _word_carrier(y, word, first, period, M=4):
     gain = float(np.sqrt(np.mean(np.abs(y)**2)/np.mean(np.abs(word)**2))) # (the burst's power: the words' sums are noisy)
     return y/max(gain, 1e-12), w + w0, float(ph[0]), gain, first
 
-def _follow(y, points, k1=0.05, k2=0.002):
-    """What is left of the carrier in corrected symbols y (one a symbol) followed by a second-order decision-directed
-    loop (rpps.sync.Costas on the constellation's points): the symbols with it taken off"""
-    from ...sync.costas import Costas
-    loop = Costas(k1, k2, points=points)
-    return loop.step(y, loop.new_state(None), None)
+def _follow(y, points, window=32):
+    """What is left of the carrier in corrected symbols y (one a symbol), from decisions on the constellation's points
+    by block estimation tracked across windows (rpps.sync.phase.decided): the symbols with it taken off"""
+    from ...sync.phase.decided import follow
+    return follow(y, points, window)
 
 def demodulate(x, Fs, mod=None, baud=None, beta=None, preamble=None, offset=0, frame=None, slot_tol=16, min_score=0.5,
                min_shared=16, **kw):

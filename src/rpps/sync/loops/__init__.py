@@ -9,6 +9,7 @@ its Python loop as the reference. Their loop filter is `pll.PILoop`, its gains f
 |---|---|---|
 | `MM` | symbol timing: Mueller & Muller (`ted="mm"`, decisions) or Gardner (`"gardner"`), interpolated per symbol | `time.OerderMeyr`, `time.MatTrack` |
 | `TLL` | symbol timing: a PI loop (`pll.PILoop`) around a detector from `ted` (zero crossing, early-late) | `time.OerderMeyr`, `time.MatTrack` |
+| `Costas` | carrier phase and frequency, per symbol: M-PSK, or decisions on any constellation's `points` | `phase.MPower`, `phase.DDCarrier` |
 | `AGC` | the gain, sample by sample (`mu`, linear or in logs) | `rpps.sync.AGC` (the level per window) |
 | `PeakAGC` | the peak, followed and decayed sample by sample | `rpps.sync.PeakAGC` (closed form, the same output) |
 | `Squelch` | whether a signal is there, the level followed sample by sample | `rpps.sync.Squelch` (an IIR section, the same output) |
@@ -17,5 +18,6 @@ from . import pll, ted
 from .pll import PILoop, loop_gains
 from .mm import MM
 from .tll import TLL
+from .costas import Costas
 from .agc import AGC, PeakAGC
 from .squelch import Squelch

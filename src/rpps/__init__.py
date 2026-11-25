@@ -12,9 +12,9 @@ Packages follow the categories of `rpps.base`; data goes samples -> symbols -> c
 | Package | What is in it |
 |---|---|
 | `rpps.source` | files and their formats, WAV, SigMF, sockets, radios through pysdrlib (imported only when used); sinks |
-| `rpps.signal` | `filters` (FIR, IIR, windows, pulses, fractional delay, polyphase channelizer), `sample` (resampling), `channelize`, `DCBlock`, `Deemphasis`, `Conjugate`, `channel` (the simulated medium) |
-| `rpps.sync` | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `Lock`, `AcquireFEC`, `acquire_code`, `Squelch`, `AGC`, `PeakAGC`, `Burst`, `BurstTx`, `Bursts` (many carriers, a burst time plan), `PlanTx`, `Preamble`, `ToneLock`. Being replaced: `Costas`, `equalize.LMS`, `CMA` |
-| `rpps.wave` | `Shape`/`Matched`, `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod`, `demod` |
+| `rpps.signal` | `filters` (FIR, IIR, windows, pulses, fractional delay, polyphase channelizer), `sample` (resampling), `channelize`, `DCBlock`, `Deemphasis`, `Conjugate`, `channel` (the simulated medium); `loops` (the per-sample DCBlock, Deemphasis) |
+| `rpps.sync` | first class: `time.OerderMeyr`, `phase.MPower`, `phase.DDCarrier`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `Lock`, `AcquireFEC`, `acquire_code`, `Squelch`, `AGC`, `PeakAGC`, `Burst`, `BurstTx`, `Bursts` (many carriers, a burst time plan), `PlanTx`, `Preamble`, `ToneLock`. Second class: `loops` (`MM` (Gardner), `TLL`, `Costas`, `AGC`, `PeakAGC`, `Squelch`, `pll`), `equalize.LMS`, `CMA` |
+| `rpps.wave` | `Shape`/`Matched`, `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod`, `demod`; `loops` (the per-sample AMDemod) |
 | `rpps.symbol` | `Constellation` (PSK, QAM, APSK, ASK), `Differential`, `Spread`/`Despread`, `Carriers`, `Header`, `Pilots`, `PhaseScramble` |
 | `rpps.code` | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), `Line`, `Marker`, `Uncoded` |
 | `rpps.link` | CRCs, HDLC, `Header` (fields, CRC, payload length) |

@@ -56,7 +56,7 @@ CUTS = ([20000], [4096]*4 + [20000 - 4*4096], [1]*30 + [20000 - 30])
 @pytest.mark.parametrize("cut", range(len(CUTS)))
 def test_costas_matches_python(order, cut):
     x = psk(np.random.default_rng(order), 20000, order, cfo=2e-3)
-    make = lambda: rp.sync.Costas.from_bandwidth(0.02, order=order)
+    make = lambda: rp.sync.loops.Costas.from_bandwidth(0.02, order=order)
     ref, st_ref = run(make, x, [len(x)], native=False, Fs=1e3, sps=1)
     y, st = run(make, x, CUTS[cut], native=True, Fs=1e3, sps=1)
     assert y.dtype == ref.dtype == np.complex64
@@ -66,7 +66,7 @@ def test_costas_matches_python(order, cut):
 
 def test_costas_with_a_replaced_error_function_runs_in_python():
     x = psk(np.random.default_rng(0), 500, 2)
-    c = rp.sync.Costas(0.05, 0.001, 2)
+    c = rp.sync.loops.Costas(0.05, 0.001, 2)
     c.err_func = lambda s: 0.0 # an open loop: the phase never moves
     y = (rp.Data(x, Fs=1e3, sps=1) + c).data
     assert np.allclose(y, x)
@@ -158,7 +158,9 @@ def test_kernels_release_the_gil():
     keeps a large share even with every core busy (pytest -n), so the bound is 5%: no wall-clock race between threads"""
     import sys, threading, time
     x = psk(np.random.default_rng(2), 2_000_000, 4)
-    work = lambda: _accel.native.costas(x, 0.0, 0.0, 0.01, 1e-4, 4, 0.0)
+    X = np.ascontiguousarray(np.stack([x.real, x.imag], axis=1).astype(np.float64))
+    sos = np.ascontiguousarray(rp.signal.filters.iir.design("butter", 8, "lowpass", 0.1))
+    work = lambda: _accel.native.sos_filter(X, sos, np.zeros((len(sos), 2, 2)))
     def count(until):
         n = 0
         while not until():

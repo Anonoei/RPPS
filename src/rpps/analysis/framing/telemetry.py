@@ -11,7 +11,7 @@ apart from the others. Per subcarrier:
   1. its rate: the cyclic line at baseband (rpps.analysis.spectrum.cyclic), twice the spacing of its line pair (idle 1010 shows
      as lines at +-rate/2), and twice those (Manchester chips): the one whose integrate-and-dump symbols split cleanest,
      of those whose symbols don't come in equal pairs (twice the real rate)
-  2. BPSK symbols: the subcarrier's phase from its square (a Costas reference smoothed over 20 ms), integrated over
+  2. BPSK symbols: the subcarrier's phase from its square (a squared-carrier reference smoothed over 20 ms), integrated over
      each symbol from the boundary that splits them best
   3. the line code: Manchester (biphase-L: every pair of chips opposite) halves the rate; differential (NRZ-M/S) shows as
      frames that only line up after XOR with the previous bit
@@ -22,7 +22,7 @@ import numpy as np
 
 from ..modulation import pm as _pm
 
-SMOOTH = 0.02    # s: the Costas reference's smoothing
+SMOOTH = 0.02    # s: the squared reference's smoothing
 SPLIT = 2.5      # |mean|/std of |soft symbol| for symbols that split into two levels (noise alone gives about 1.3)
 MANCHESTER = 0.9 # Fraction of chip pairs opposite for Manchester
 FRAME_R = 0.1    # Autocorrelation peak for a frame period

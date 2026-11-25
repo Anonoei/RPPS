@@ -7,6 +7,13 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 ## Unreleased
 
 ### Breaking
+- **The Costas loop moves to `rp.sync.loops.Costas`, second class** (with `points=`, `from_bandwidth` and the `costas`
+  kernel); `rp.sync.Costas` is gone. A profile's `carrier: costas` builds it. The new `rp.sync.phase.DDCarrier` follows
+  a carrier from decisions on any constellation (APSK and QAM too: block estimation tracked across 32-symbol windows,
+  after a preamble or word has taken the carrier off; `decided.follow` for a whole array); `carrier: dd` takes
+  `constellation` and `window`. `demo/mftdma` uses it, and decodes what Costas did at every SNR down to -1 dB (14 seeds,
+  bursts decoded: 130/130, 150/150, 160/160, 163/163 of 168). `analysis.burst.demodulate` follows each burst's carrier
+  with it. On 16APSK with a drifting, noisy phase it never slipped in 40 runs.
 - **The timing loops move to `rp.sync.loops`, second class: `loops.MM` (Mueller & Muller, Gardner), `loops.TLL`,
   `loops.ted`, and `loops.pll` (`PILoop`, `loop_gains`; was `rp.sync.pll`)**, with the `mm` kernel; `rp.sync.time.MM`,
   `time.TLL`, `time.ted` and `rp.sync.pll` are gone. A profile's `timing: mm`, `gardner` and `tll` build them. The

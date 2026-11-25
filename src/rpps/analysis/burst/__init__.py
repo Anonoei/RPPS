@@ -25,7 +25,7 @@ timing, and is too short to train loops on: so each is acquired on its own, data
   4. The burst's symbols, from the preamble to the end of the gate, are taken at that timing and corrected. A burst of
      several `window`s has its symbol clock followed (`retime`): the matched filter's energy peak in each window
      (rpps.sync.time.mat.best_tau), a line through them anchored on the preamble (the clock offset, `clock`). A second-
-     order decision-directed loop (rpps.sync.Costas on the constellation's points) follows what is left of the carrier
+     phase from decisions on the constellation's points, tracked across 32-symbol windows (rpps.sync.phase.decided), follows what is left of the carrier
      through the data; decisions give bits, the soft demapper LLRs (`llr`, noise from the burst's own symbols), and the error vector magnitude.
   5. The TDMA structure: the period of the bursts' starts (rpps.analysis.spectrum.waveform.on_off, else `frame`) and the slots,
      clusters of the starts within a frame (to within `slot_tol` symbols): each burst's frame and slot.

@@ -71,9 +71,10 @@
     {
       "sync": "carrier",
       "id": "track",
-      "method": "costas",
-      "bw": 0.01,
-      "order": 4
+      "method": "dd",
+      "comment": "what the word left of the carrier, from decisions: block estimation tracked across 32-symbol windows",
+      "constellation": "psk/qpsk",
+      "window": 32
     },
     {
       "symbol": "constellation",

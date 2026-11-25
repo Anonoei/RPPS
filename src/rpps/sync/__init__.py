@@ -41,10 +41,11 @@ method; another is chosen by name in `defaults`: `{"timing": {"method": "mat"}}`
 
 `loops` (`rpps.sync.loops`) holds them, for signals and conditions block estimation does not suit, as references and for
 comparison: `loops.MM` (Mueller & Muller, Gardner), `loops.TLL` (a timing locked loop around a detector from
-`loops.ted`: `ted="zx"` zero crossing, `"el"` early-late), `loops.AGC`, `loops.PeakAGC`, `loops.Squelch`. Profiles reach
-them by name (`timing: mm`, `gardner`, `timing: {"method": "tll", "ted": "el"}`, `agc: loop`). Their loop filter is
-`loops.pll.PILoop` (gains from a bandwidth: `loops.pll.loop_gains`). Not yet moved there: `Costas` (`carrier: costas`),
-`equalize.LMS`, `equalize.CMA` (`equalize: lms`, `cma`).
+`loops.ted`: `ted="zx"` zero crossing, `"el"` early-late), `loops.Costas` (M-PSK, or any constellation's points),
+`loops.AGC`, `loops.PeakAGC`, `loops.Squelch`. Profiles reach them by name (`timing: mm`, `gardner`,
+`timing: {"method": "tll", "ted": "el"}`, `carrier: costas`, `agc: loop`). Their loop filter is `loops.pll.PILoop`
+(gains from a bandwidth: `loops.pll.loop_gains`). Not yet moved there: `equalize.LMS`, `equalize.CMA` (`equalize: lms`,
+`cma`).
 
 ## Known, measured, detected
 
@@ -69,7 +70,6 @@ definition fits; what they find is a `Guess`, a definition that decodes once sav
 from .. import _config
 
 
-from .costas import Costas
 from .acquire import Acquire, Detection, Lock, detect, track_timing
 from .time.mat import best_tau, matrix_mf, centres_in
 from . import rate, quality

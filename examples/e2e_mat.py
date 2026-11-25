@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # From https://pysdr.org/content/rds.html
 # The same RDS receiver as e2e.py, with no loops: rp.sync.Acquire finds the symbol rate, timing, modulation and frequency
 # from the stream, rp.sync.time.Mat takes the symbols with a matrix matched filter (no MM), and rp.sync.phase.FFCarrier
-# corrects frequency and phase feed-forward (no Costas).
+# corrects frequency and phase feed-forward.
 # RDS is biphase: Acquire finds the 2375 Hz chip rate (twice the 1187.5 bit rate), so the output is BPSK chips, two per bit.
 
 def main():

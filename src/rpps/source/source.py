@@ -9,7 +9,7 @@ Threads: `.threaded()` puts everything before it in its own thread, and `.pipeli
 pipeline its own, connected by bounded queues. Stages overlap where they release the GIL (numpy, the rpps._native
 kernels), and a radio is drained while the stages work:
 
-    src(16384).threaded(drop=True).pipelined(agc + costas + mm) >> sink
+    src(16384).threaded(drop=True).pipelined(agc + timing + carrier) >> sink
 """
 import queue
 import threading

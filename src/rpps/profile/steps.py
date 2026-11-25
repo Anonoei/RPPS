@@ -344,8 +344,17 @@ def _mpower(m, rep, ctx):
 
 @register_sync_method("carrier", "costas")
 def _costas(m, rep, ctx):
+    """The Costas loop, per symbol (second class, rpps.sync.loops.Costas): "bw" (of the symbol rate), "order" """
     from .. import sync
-    return sync.Costas.from_bandwidth(m.get("bw", 0.01), order=m.get("order", 4))
+    return sync.loops.Costas.from_bandwidth(m.get("bw", 0.01), order=m.get("order", 4))
+
+@register_sync_method("carrier", "dd")
+def _dd(m, rep, ctx):
+    """From decisions on a constellation, block estimation (rpps.sync.phase.DDCarrier): "constellation" (a name),
+    "window" (symbols)"""
+    from .. import sync, symbol
+    _need(m, "constellation", "carrier dd")
+    return sync.phase.DDCarrier(symbol.load(m["constellation"]).points, m.get("window", 32), m.get("bw", 0.25), m.get("name", "carrier"))
 
 @register_sync_method("carrier", "ff")
 def _ff(m, rep, ctx):

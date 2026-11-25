@@ -1,9 +1,10 @@
+"""The Costas loop: carrier phase and frequency followed per symbol (rpps.sync.loops)"""
 from types import SimpleNamespace
 
 import numpy as np
 
-from .. import _accel
-from ..base import Meta, Stage
+from ... import _accel
+from ...base import Meta, Stage
 
 def _o2(sym):
     return np.real(sym) * np.imag(sym) / (np.real(sym)**2 + np.imag(sym)**2 + 1e-12)
@@ -29,7 +30,7 @@ def _oPoints(points):
     return err
 
 class Costas(Stage):
-    """Costas loop. Settings live here, `freq` and `pha` live in `meta.state_of(costas)`
+    """Costas loop: `symbols + rp.sync.loops.Costas.from_bandwidth(0.02, order=4)`. Settings live here, `freq` and `pha` live in `meta.state_of(costas)`
 
     The error is normalized by the symbol amplitude, so alpha/beta don't depend on signal level
     """
@@ -62,7 +63,7 @@ class Costas(Stage):
     @classmethod
     def from_bandwidth(cls, bw, order=2, damping=0.7071, offset=0.0, points=None):
         """Loop gains from a noise bandwidth normalised to the symbol rate (0.01-0.05 typical)"""
-        from .loops.pll import loop_gains
+        from .pll import loop_gains
         return cls(*loop_gains(bw, damping), order=order, offset=offset, points=points)
 
     def new_state(self, meta: Meta):

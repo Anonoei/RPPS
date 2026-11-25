@@ -96,11 +96,11 @@ def test_a_child_patches_single_steps(layer):
                                        {"symbol": "constellation", "id": "map", "name": "bpsk"}]})
     layer("profile/t/child", {"base": "profile", "extends": "t/base", "comment": "child",
                               "steps": {"shape": {"pulse": "rrc/0p20"}, "carrier": None,
-                                        "+after:timing": [{"sync": "carrier", "id": "loop", "method": "costas", "order": 2}],
+                                        "+after:timing": [{"sync": "carrier", "id": "loop", "method": "mpower", "order": 2}],
                                         "map": {"mapping": "R180"}}})
     got = rp.profile.load("t/child").obj["steps"]
     assert got == [{"wave": "shape", "pulse": "rrc/0p20", "sps": 4}, {"sync": "timing"},
-                   {"sync": "carrier", "id": "loop", "method": "costas", "order": 2},
+                   {"sync": "carrier", "id": "loop", "method": "mpower", "order": 2},
                    {"symbol": "constellation", "id": "map", "name": "bpsk", "mapping": "R180"}]
     assert [s.id for s in rp.profile.load("t/child").steps] == ["shape", "timing", "loop", "map"]
 
