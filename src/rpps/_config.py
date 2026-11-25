@@ -5,7 +5,7 @@ import json
 import logging
 from pathlib import Path
 
-from .errors import ConfigError
+from .errors import ConfigError, ConfigWarning
 
 BYTE_ORDER = ">" if sys.byteorder == "big" else "<"
 
@@ -365,6 +365,79 @@ def load_ref(ref, **params):
         raise ConfigError(f"{ref}: name a definition below {domain}/, have {ls(domain)}")
     return load(domain, rest, params=params)
 
+# ---- Keys nothing read: a definition's or a step's settings, checked after it is built
+
+class Keys(dict):
+    """A dict that records which keys were asked for (`read`), so the keys nothing used can be reported. Going over it
+    (iterating, items(), copying) counts as using every key: whatever took the whole dict decides. `read` can be one set
+    shared by several Keys (a sync step and the settings merged into its method)"""
+    def __init__(self, *args, read=None, **kw):
+        super().__init__(*args, **kw)
+        self.read = set() if read is None else read
+        self.whole = False
+
+    def __getitem__(self, k):
+        self.read.add(k)
+        return super().__getitem__(k)
+
+    def get(self, k, default=None):
+        self.read.add(k)
+        return super().get(k, default)
+
+    def __contains__(self, k):
+        self.read.add(k)
+        return super().__contains__(k)
+
+    def pop(self, k, *default):
+        self.read.add(k)
+        return super().pop(k, *default)
+
+    def setdefault(self, k, default=None):
+        self.read.add(k)
+        return super().setdefault(k, default)
+
+    def _all(self):
+        self.whole = True
+
+    def __iter__(self):
+        self._all()
+        return super().__iter__()
+
+    def keys(self):
+        self._all()
+        return super().keys()
+
+    def items(self):
+        self._all()
+        return super().items()
+
+    def values(self):
+        self._all()
+        return super().values()
+
+    def copy(self):
+        self._all()
+        return dict(super().items())
+
+def unused(obj, exempt=()):
+    """The keys of a `Keys` nothing read (none when it was gone over whole, or is a plain dict)"""
+    if not isinstance(obj, Keys) or obj.whole:
+        return []
+    return sorted(k for k in dict.keys(obj) if k not in obj.read and k not in exempt)
+
+def warn_unused(obj, where, exempt=(), stacklevel=3):
+    """A ConfigWarning naming the keys of `obj` nothing read"""
+    import warnings
+    keys = unused(obj, exempt)
+    if keys:
+        warnings.warn(f"{where}: {', '.join(repr(k) for k in keys)} not used (misspelt, or not a setting of what it names)",
+                      ConfigWarning, stacklevel=stacklevel)
+    return keys
+
+# What a definition carries for the loaders around it, never read by its own loader ("guess": what a blind tool that
+# found it measured)
+DEFINITION_KEYS = ("base", "comment", "ref", "extends", "abstract", "tags", "params", "examples", "guess")
+
 def load_obj(domain, name, obj, params=None):
     """Build a definition already read from JSON (or made in code) with the loader of its "base" """
     obj = resolve(obj, params, f"{domain}/{name}")
@@ -372,7 +445,12 @@ def load_obj(domain, name, obj, params=None):
     base = str(obj.get("base", "")).lower()
     if d is None or base not in d.loaders:
         raise ConfigError(f"No {domain} loader for base {obj.get('base')!r} in {name}, have {sorted(d.loaders) if d else []}")
-    return d.loaders[base](name, obj)
+    if domain == "profile": # (a profile checks its own keys and its steps': rpps.profile.Profile)
+        return d.loaders[base](name, obj)
+    obj = Keys(obj)
+    out = d.loaders[base](name, obj)
+    warn_unused(obj, f"{domain}/{name}", DEFINITION_KEYS)
+    return out
 
 # ---- Parameters given when a definition is loaded
 

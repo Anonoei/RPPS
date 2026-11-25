@@ -9,6 +9,9 @@ class StreamError(RPPSError):
 class ConfigError(RPPSError, LookupError):
     """A definition (modulation, code, scrambler...) does not exist or is malformed"""
 
+class ConfigWarning(UserWarning):
+    """A definition or profile step has a key nothing read: a misspelling, or a setting the method it names does not take"""
+
 class NoLock(RPPSError):
     """No signal to lock to (`rpps.sync.Lock`): reason says why, line is the symbol-rate line's strength when one was measured"""
     def __init__(self, reason, line=None):

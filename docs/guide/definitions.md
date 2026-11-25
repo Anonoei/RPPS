@@ -190,10 +190,18 @@ changes. pi/4-DQPSK is `psk/qpsk` after `{"symbol": "differential"}`; 802.11b DQ
 ## File header
 Every file starts with `base` (the category, picks the loader), then `extends` and `abstract` where it has them, `type` (the implementation, where there are several), `comment`, and optionally `ref` (the spec) and `tags`. `python -m rpps fmt` puts files in the canonical style (`--check` only lists differences).
 
+## Keys nothing reads
+A key that nothing reads is reported when the definition or profile loads, as an `rp.errors.ConfigWarning` naming it:
+a misspelling (`"cutof"`), or a setting the method it names does not take (a loop's `"alpha"` on a block estimator).
+For a profile that covers its own keys, every step's, its `defaults` (a kind with no step to take them is reported
+too) and the `sync` settings given to `rp.profile.load`. When `sync` replaces a step's method, that step's own settings
+were for the method it named, and are not reported. A loader that designs something later (a filter once the stream's
+rate is known) takes the keys it will use when it loads, so they count. The tests turn the warning into an error.
+
 ## Adding
 - **A definition**: drop a JSON in the right folder. A variant of one that exists: a child that `extends` it. A tag it needs: add it to [tags.json](https://github.com/Anonoei/RPPS/blob/main/config/tags.json).
 - **Your own**: keep a folder laid out like this one and call `rp.add_config_path(dir)` or set `$RPPS_CONFIG`. It is searched first, so it can also override shipped definitions.
-- **A category**: add the folder and `_config.register_domain("<domain>").register("<category>", loader)`, where `loader(name, obj)` builds the object.
+- **A category**: add the folder and `_config.register_domain("<domain>").register("<category>", loader)`, where `loader(name, obj)` builds the object (reading, through `obj`, every key it uses: what it never reads is reported).
 - **A resource**: `_config.register_domain("<name>", {"<base>": loader})`; `_config.ls / find / load` then work on it. [link/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/link/serial.py) is the smallest example.
 
 ## Bringing in existing data

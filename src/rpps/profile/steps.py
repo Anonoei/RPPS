@@ -239,8 +239,8 @@ def _designed_fir(kind, spec, rep, ctx):
     """A windowed FIR designed in Hz from the stream's sample rate: {"signal": "lowpass", "cutoff": 100e3, "taps": 101} or
     {"signal": "bandpass", "cutoff": [50e3, 150e3], "transition": 20e3, "atten_db": 60} (a Kaiser window meeting that)"""
     from ..signal.filters.serial import _windowed, Designed
-    obj = {k: v for k, v in spec.items() if k != "signal"}
-    obj["pass"], obj["units"] = kind, "hz"
+    obj = _config.Keys({k: v for k, v in dict.items(spec) if k != "signal"}, read=getattr(spec, "read", None)) # (what the
+    obj["pass"], obj["units"] = kind, "hz"                                                                         # design reads is the step's)
     _need(obj, "cutoff", f"signal {kind}")
     return [(STAGE, Designed(kind, _windowed(kind, obj)))], [], rep
 
@@ -253,9 +253,15 @@ for _cat in ("signal", "sync", "wave", "symbol", "code", "link"):
 # ---- sync (receive only)
 
 def _sync_method(kind, spec, ctx):
-    """The method for a sync step: the step's own, else the load-time override, else the profile's defaults, else ours"""
-    chosen = {**_SYNC_DEFAULTS.get(kind, {}), **ctx["defaults"].get(kind, {}), **ctx["overrides"].get(kind, {})}
-    chosen.update({k: v for k, v in spec.items() if k not in ("sync",)})
+    """The method for a sync step: the step's own, else the load-time override, else the profile's defaults, else ours.
+    What its builder reads is recorded on the step's own read set and under ctx["method_reads"][kind], so settings
+    nothing took (a misspelling, a key another method takes) are reported (rpps._config.Keys)"""
+    read = spec.read if isinstance(spec, _config.Keys) else None
+    chosen = _config.Keys(read=read)
+    for src in (_SYNC_DEFAULTS.get(kind, {}), ctx["defaults"].get(kind, {}), ctx["overrides"].get(kind, {})):
+        dict.update(chosen, dict(dict.items(src)))
+    dict.update(chosen, {k: v for k, v in dict.items(spec) if k != "sync"})
+    ctx.setdefault("method_reads", {}).setdefault(kind, []).append(chosen.read)
     return chosen
 
 _SYNC_DEFAULTS = {
@@ -443,7 +449,7 @@ def _preamble(kind, spec, rep, ctx):
     "attach": true transmits it (Preamble.attach_tx) before every stream (burst): for a preamble no later step sends
     (a marker step sends a word of its own)"""
     from .. import sync
-    m = dict(spec)
+    m = spec
     named = "sequence" in m or "word" in m
     if not named and "repeat" not in m:
         raise ConfigError("sync preamble: needs a `sequence` (or `word` and `bits`) or a `repeat`")
@@ -823,7 +829,7 @@ for _cat, _fn, _kinds in (("wave", _wave, ("shape", "stagger", "fm", "am", "ssb"
 
 def build(spec, rep, ctx):
     """Build one step that receives `rep`. ctx: params, defaults, overrides and objects built so far (see `context`)"""
-    cats = [k for k in spec if k in REGISTRY]
+    cats = [k for k in dict.keys(spec) if k in REGISTRY] # (the keys as written: not every key read, see rpps._config.Keys)
     if len(cats) != 1:
         raise ConfigError(f"a profile step names one category of {sorted(REGISTRY)}, got {spec}")
     cat = cats[0]

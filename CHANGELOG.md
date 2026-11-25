@@ -68,6 +68,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   carrier is followed by `rp.sync.Costas(..., points=)`.
 
 ### Added
+- **Keys nothing reads are reported** (`rp.errors.ConfigWarning`): a definition's when it loads; a profile's own,
+  every step's, its `defaults` and the `sync` given to `load`, once it is built. A misspelling, or a setting the method
+  does not take, no longer passes silently. The filter and pulse designs made when a stream starts take their keys at load.
+  The tests make the warning an error.
 - **`rp.sync.Costas(..., points=)`**: a decision-directed loop on any constellation's points (APSK, QAM), the error
   the angle to the nearest one (Python; the C++ kernel stays M-PSK).
 - **Bit kernels** (`rpps.math.bits.distance`, `find`, `unstuff`; C++ in `csrc/rpps_native/bits.cpp`): the Hamming

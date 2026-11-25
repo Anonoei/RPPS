@@ -90,3 +90,5 @@ markers = [
     "kernels: over a minute with the C++ kernels off (the no-kernel CI pass leaves it out; it runs in the others)",
     "oracle: compares against scipy (pytest.importorskip); CI runs these again with scipy installed",
 ]
+# A definition or step with a key nothing reads is an error in the tests (rpps.errors.ConfigWarning)
+filterwarnings = ["error::rpps.errors.ConfigWarning"]
