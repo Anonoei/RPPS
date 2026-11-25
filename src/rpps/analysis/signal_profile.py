@@ -377,7 +377,8 @@ class _Chain:
         `edge` dB under its top (the channel filter's skirts aren't valleys); each piece the span of its bins over
         halfway from its top to the valleys bounding it, pieces under `min_frac` of the box dropped. Signals of the
         capture, two or more, else [] (the survey's own spectrum is too coarse and too short to see notches between
-        carriers a few tens of kHz apart). On a hand-reviewed pool: 65 of 73 boxes reviewers said held several signals
+        carriers a few tens of kHz apart). Under 8 rows over the percentile (a short capture, bursts): [] (a spectrum
+        that rough has notches on its noise). On a hand-reviewed pool: 65 of 73 boxes reviewers said held several signals
         split, 6 of 325 they said held one"""
         import copy
         if not self.near or not self.sig.width:
@@ -388,6 +389,8 @@ class _Chain:
         if len(x) < 8*n:
             return []
         seg = x[:len(x)//n*n].reshape(-1, n)[:256]
+        if len(seg)*(1 - q/100) < 8: # (the percentile from a row or two: a bin's spread is +-5 dB, notches on noise)
+            return []
         P = np.abs(np.fft.fftshift(np.fft.fft(seg*np.hanning(n), axis=1), axes=1))**2
         f = np.fft.fftshift(np.fft.fftfreq(n, 1/Fs))
         inb = np.abs(f) <= self.sig.width/2 # (the channel is centred on the box)

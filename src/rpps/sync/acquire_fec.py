@@ -7,6 +7,8 @@ from ..base import Stage
 from ..symbol.mapping import hard_bits
 from ..code.coding import mismatch, cached
 
+REDECIDED = 0.01 # A rate this far (a fraction) from the one the held symbols were taken at is another lock
+
 class AcquireFEC(Stage):
     """Identify the code the symbols carry, then turn them to the map its decoder uses
 
@@ -23,7 +25,9 @@ class AcquireFEC(Stage):
     (at absolute positions, so the result is the same however the stream was cut). While more symbols could tell more
     (a window shorter than the scans use, or Reed-Solomon behind a Viterbi, which needs ~100 codewords) the window doubles,
     up to `max_wait` symbols. A stream that ends first (meta.flush) is decided on every symbol held past `skip`, blind
-    tools included, so a short capture gets the same look a long one does. Then what was held is released from the window on (from a codeword start for a block code;
+    tools included, so a short capture gets the same look a long one does. Acquire can decide again before it settles
+    (another modulation, or a rate more than REDECIDED off): what was held, taken at the old one, is dropped and the
+    acquisition starts over from that block, `skip` again. Then what was held is released from the window on (from a codeword start for a block code;
     the `skip` symbols before it, where the sync before this was settling, are dropped).
     Tracking (convolutional codes): every `check` symbols the output is re-encoded through the code on the decoder's map.
     A mismatch above `relock` times the one at acquisition means a slip: the carrier by a turn, or the symbol timing by a
@@ -50,7 +54,7 @@ class AcquireFEC(Stage):
 
     def new_state(self, meta):
         return SimpleNamespace(held=[], count=0, length=self.window, done=False, fec=None, c=None, code=None, out=0,
-                               drop=0, buf=[], buffered=0, shift=0, prior=None)
+                               drop=0, buf=[], buffered=0, shift=0, prior=None, at=None)
 
     def step(self, y, st, meta):
         det = meta.det
@@ -58,6 +62,13 @@ class AcquireFEC(Stage):
             return y
         if st.done:
             return self._emit(y, st) if len(y) else y
+        at = (det.mod, det.baud)
+        if st.at is not None and (at[0] != st.at[0] or abs(at[1] - st.at[1]) > REDECIDED*abs(at[1])):
+            # (Acquire decided again: the symbols held are another lock's, junk at this one)
+            st.held, st.count, st.length, st.prior = [], 0, self.window, None
+            if self.name in meta.stream.est:
+                del meta.stream.est[self.name]
+        st.at = at
         if len(y) == 0 and not (meta.flush and st.count): # (an empty last block still ends the acquisition)
             return y
         st.held.append(y)

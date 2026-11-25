@@ -89,6 +89,23 @@ def test_a_stream_that_ends_early_is_decided_on_what_it_holds(dvbs):
         assert f.complete and f.found and f.name == "k7_171_133/3_4" and f.n == 30000 - 2048
         assert [h.name for h in f.inner] == [h.name for h in ref.inner]
 
+@pytest.mark.kernels
+def test_symbols_held_from_a_rate_acquire_decided_again_are_dropped(dvbs):
+    """Acquire first takes a wrong rate (on a stretch with no transitions: neighbours alike, which read as a stream
+    repeating every symbol), then decides again: what was held at the first rate is not looked in for the code, whatever the cut"""
+    rng = np.random.default_rng(5)
+    junk = noisy(np.exp(1j*(np.pi/4 + 2e-3*np.arange(12000))), rng) # (one point turning slowly: no symbols at all)
+    x = np.concatenate((junk, slipped(dvbs[0])[:60000]))
+    for blocks in (1000, 4000):
+        stage, stream = rp.sync.AcquireFEC(), None
+        for i in range(0, len(x), blocks):
+            d = rp.Data(x[i:i + blocks], Fs=1e6, sps=1, stream=stream)
+            stream = d.meta.stream
+            stream.det = Detection(mod="qpsk", baud=3e6 if i < len(junk) else 1e6, sps=1.0)
+            d + stage
+        f = stream.est["fec"]
+        assert f.repeat is None and f.found and f.name == "k7_171_133/3_4"
+
 def test_an_empty_last_block_still_ends_the_acquisition():
     rng = np.random.default_rng(4)
     x = noisy(np.exp(1j*np.pi/4*(2*rng.integers(0, 4, 6000) + 1)), rng)

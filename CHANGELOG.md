@@ -493,6 +493,12 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   inside) don't. A rate given (a hint, the cyclic spectrum's second pass) has no line and is always searched.
 
 ### Fixed
+- `sync.AcquireFEC` kept the symbols it held when Acquire decided again (another rate or modulation before it
+  settled): its window was the old lock's junk, which read as a stream repeating every symbol, and the stage stopped
+  there. It now starts over at the new lock.
+- `rp.analysis.profile` split a carrier into pieces on a short capture: `_Chain.carriers` took the notches of a
+  spectrum from a row or two (±5 dB noise) for gaps between carriers. Under 8 rows over its percentile it splits
+  nothing.
 - `learn_plan` found no frame period in captures of more than a few thousand BTUs: its BTU, right to 1e-4 of
   itself, slipped the later bursts' BTU counts. It is now made exact over the whole capture (the least-squares
   slope of the starts on their counts, over a span doubling from the first burst).
