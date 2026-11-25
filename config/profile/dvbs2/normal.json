@@ -169,5 +169,13 @@
         }
       }
     }
+  },
+  "capture": {
+    "bbheader": {
+      "linktype": "upper_pdu",
+      "dissector": "dvb-s2_modeadapt",
+      "include": ["header", "payload"],
+      "fields": ["ts_gs", "sis", "ccm", "dfl", "syncd"]
+    }
   }
 }

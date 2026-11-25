@@ -4,11 +4,11 @@ What is in each part of RPPS, and what is not yet.
 
 - [ ] [Source](https://github.com/Anonoei/RPPS/tree/main/src/rpps/source)
     - [X] File, memory, radios (pysdrlib), WAV out
-    - [ ] (Linux only) tun/tap
+    - [X] tun/tap (Linux), pcapng for Wireshark live (any OS), packets back out (`rp.profile.Encoder`)
     - [X] Socket (UDP, TCP)
     - [X] SigMF (capture metadata in and out), WAV in
     - [X] `rpps tx`: a profile's transmission to a file
-    - [ ] Transmit to a radio
+    - [X] Transmit to a radio (`rp.source.DeviceSink`, `rpps tx --device`)
 - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/filters)
     - [X] Pulse Shaping (rrc, rc, halfsine, gaussian, rect)
     - [X] Window functions
@@ -110,7 +110,7 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
 - **Links, sources, profiles:** MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
-  block-coded headers; tun/tap, audio devices, transmitting to a radio; profiles for DMR voice, P25 phase 2 and voice, 802.11a/g/n, ATSC, GPS C/A,
+  block-coded headers; audio devices; packets that cross frames (CCSDS M_PDU, DVB-S2 TS mode SYNCD and UPL sync bytes, MPE/ULE); profiles for DMR voice, P25 phase 2 and voice, 802.11a/g/n, ATSC, GPS C/A,
   DAB, UMTS, CCSDS turbo (and `projects/` using the BLE, ADS-B and 802.11b profiles that exist); `dvbs2/normal` dummy frames;
   positions and gaps in the parallel runner's output; MPower and Oerder & Meyr on a GPU a group of windows a launch (each window is a launch and a wait now: slower than the
   host); an FPGA backend.

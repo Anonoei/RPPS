@@ -97,6 +97,7 @@ class GSE(Pipe):
     CATEGORY = Category.LINK
     CONTROLS = {"frame": "live"} # A data field starts here (a BBHEADER's): what is left of the last is padding
     EMITS = True
+    check_name = "crc32_mpeg2" # A fragmented PDU's CRC-32 (whole PDUs have none: crc_ok then says it was reassembled)
 
     def __init__(self, protocols=None, name="gse"):
         self.protocols = None if protocols is None else {int(p) for p in protocols}

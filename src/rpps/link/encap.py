@@ -85,9 +85,15 @@ class Frame(Encap):
     `fcs`, from config/crc
 
     As an operator: `packet * frame` gives one frame's bits (flags, stuffing, FCS) per call; `bits / frame` the payload bits of
-    the frames whose FCS checks out, however the stream is cut (an open frame waits for its closing flag in the next block)"""
+    the frames whose FCS checks out, however the stream is cut (an open frame waits for its closing flag in the next block)
+
+    Receiving, each good frame's payload starts with a publication, {"frame": where the frame starts, "frame_bits": its
+    payload's bits}, at its place in the output, and an anchor there: a step after it (a link header that strips the
+    frame's own header, `{"link": "header"}` driven by `"frame"` and `"length": "frame_bits"`) reads frame by frame.
+    Every frame's message carries the whole frame as received, payload then FCS (`Message.frame`, `parts`)"""
     EMITS = True # Every frame, good or not, is a message (rpps.profile.message)
     payload_schema = None # "payload_fields": what a good frame's payload says, in its message (rpps.link.fields)
+    check_name = None # The FCS's definition (Message.check)
 
     def _block(self, enc):
         return 8 if enc else 1
@@ -107,19 +113,21 @@ class Frame(Encap):
             out = np.concatenate((out, rest))
             if len(held):
                 skip = len(prev) + len(x) - len(held)
-                frames += [(s + skip, p, ok) for s, p, ok in coder.frames_at(held)[0]]
+                frames += [(s + skip, p, ok, fcs) for s, p, ok, fcs in coder.frames_at(held)[0]]
         else:
             ctx[key] = held
-        ctx[(self, "frames")] = [(s - base, p, ok) for s, p, ok in frames] # For decode, which emits them
+        ctx[(self, "frames")] = [(s - base, p, ok, fcs) for s, p, ok, fcs in frames] # For decode, which emits them
         return out, None # (only the frames whose FCS checks out come out)
 
     def decode(self, data):
         """`bits / frame`: the good frames' payloads; every frame, good or not, also emitted as a message from its opening
         flag (rpps.profile.message: bytes, crc_ok the FCS's verdict)"""
         out = super().decode(data)
-        from ..base.control import emit
-        for s, p, ok in out.ctx.pop((self, "frames"), []):
+        from ..base.control import emit, publish, anchor
+        n_out = 0 # Where each good frame's payload starts in the output (they come out in order)
+        for s, p, ok, fcs in out.ctx.pop((self, "frames"), []):
             bits = np.unpackbits(np.frombuffer(p, np.uint8)).astype(bool)
+            at = data.meta.pos + s
             fields = {"bytes": len(p)}
             if ok and self.payload_schema is not None: # What the payload says ("payload_fields": rpps.link.fields)
                 from .fields import Short
@@ -127,7 +135,15 @@ class Frame(Encap):
                     fields["payload"] = self.payload_schema.parse(bits)[0]
                 except (Short, ValueError, ConfigError):
                     pass
-            emit(data.meta, self, None, fields, bits, bool(ok), data.meta.pos + s)
+            whole = np.unpackbits(np.frombuffer(p + fcs, np.uint8)).astype(bool)
+            parts = {"payload": (0, len(bits))}
+            if fcs:
+                parts["fcs"] = (len(bits), 8*len(fcs))
+            emit(data.meta, self, None, fields, bits, bool(ok), at, frame=whole, parts=parts)
+            if ok:
+                publish(data.meta, self, {"frame": at, "frame_bits": len(bits)}, at=at, out=n_out, group=at)
+                anchor(data.meta, self, at, n_out)
+                n_out += len(bits)
         return out
 
     @staticmethod
@@ -148,6 +164,7 @@ class Frame(Encap):
                                 obj.get("min_bytes", 4))
         impl = type(name, (Frame,), dict())
         impl.name = name
+        impl.check_name = obj.get("fcs")
         if obj.get("payload_fields"):
             from .fields import Schema
             impl.payload_schema = Schema(obj["payload_fields"], "msb", f"frame {name} payload")

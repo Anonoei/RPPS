@@ -29,6 +29,7 @@ receive and transmit is in `rpps.wave`.
 | Parallel region | `"parallel": "<step id>"`: the per-frame rest of the chain on threads or processes | `rpps.parallel`, `rpps.profile.parallel` |
 | Messages | every frame is also a `Message` (kind, fields, payload, `crc_ok`, where it starts), from `runner.take_messages()` | `rpps.profile.message` |
 | Only some kinds | `profile.kinds()`, `profile.rx(kinds={"pbch"})`: hands out only those and builds only the steps they need (`profile.needed`) | `rpps.profile.profile` |
+| Captures | `"capture"`: each message kind as a packet of a link type, for Wireshark (pcapng) and interfaces, and back to transmit (`Encoder`) | `rpps.link.capture`, `rpps.source.pcap`, `rpps.source.tun`, `rpps.profile.encoder` |
 | Requirements | `"requires"`: `baud`, `Fs`, `bw`, `min_samples`, `input`, `from_cf` as expressions, evaluated when asked | `rpps.profile.catalogue` (`fits`, `candidates`: what a measured signal can be), `rpps.profile.Decoder` |
 
 **Sources that start later in the chain:** the runner skips every receive step before what the source gives
@@ -50,6 +51,7 @@ from .profile import Profile, load, ls
 from .message import Message
 from .catalogue import ProfileInfo, info, catalogue, variants, fits, candidates
 from .decoder import Decoder
+from .encoder import Encoder
 from .runner import Runner
 from .parallel import Region
 from .steps import Step

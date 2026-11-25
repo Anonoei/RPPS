@@ -7,6 +7,8 @@ what to use instead.
 ## Unreleased
 
 ### Breaking
+- **`hdlc.frames_at` and `bytestuff.frames_at` give `(start, payload, ok, fcs)`**: the FCS bytes as received are the
+  fourth (b"" without one), for a message's whole frame. `deframe` still gives `(payload, ok)`.
 - **`rpps.profile.steps`, `rpps.analysis.identify` and `rpps.analysis.signal_profile` are packages** (each split into
   private modules); every name they defined is where it was. Names they only imported are gone from them:
   `rpps.analysis.identify.Guess` (and `Hypothesis`, `Report`, `pick`) is `rpps.analysis.result.Guess`.
@@ -64,6 +66,38 @@ what to use instead.
   no longer passes silently; a user definition that relied on that now warns.
 
 ### Added
+
+**Packets: Wireshark, interfaces, transmitting**
+- **Decoded frames live in Wireshark.** A profile's `"capture"` rules (`rpps.link.capture`) make each message kind a
+  packet of its link type (`config/linktype`, `python -m rpps ls linktype`), taking the frame's parts it names and
+  restoring what the link type expects: Bluetooth LE with its pseudo-header (channel, CRC checked and valid), AX.25,
+  802.15.4 with its FCS, 802.11b with radiotap (rate, channel, FCS), DVB-S transport packets, DVB-S2 BBFRAMEs
+  (Wireshark reads GSE inside), LTE and NR MIB and SIB1 (Wireshark's RRC dissectors); other kinds as exported PDU data.
+  Each was checked against tshark 4.7's dissectors (BLE and 802.15.4 CRCs, 802.11 FCS verified by Wireshark).
+- **`rp.source.PcapSink`**: pcapng to a file, a FIFO, stdout or a Windows named pipe (`pipe:NAME`), live: an interface
+  per profile and kind, a comment per packet (check and verdict, frequency, quality, fields), the CRC-error flag on a
+  failed check. `rp.source.Pcap` reads pcapng and pcap back. `rpps rx --pcap TARGET` (`--pcap - | wireshark -k -i -`),
+  and `rpps rx --device` receives from a radio.
+- **`tools/wireshark/rpps.lua`**: with `PcapSink(..., rpps=True)` (`--pcap-rpps`) each packet carries RPPS's header,
+  shown as fields to filter on (`rpps.crc_ok == 0`, `rpps.profile`, `rpps.field == "type.name=ADV_IND"`) before its
+  link type's dissector.
+- **`rp.source.Tun`** (Linux): TUN/TAP both ways. Raw IP, Ethernet, or a TUN set to another link type (802.11,
+  802.15.4, AX.25: `TUNSETLINK`, with packet information so the kernel takes non-IP packets); a link type made from the
+  interface's (`"from"`: 802.15.4 with its FCS) is converted. `rpps rx --tun NAME[:LINKTYPE]`, `--tap NAME`. Tested in
+  a user network namespace (`unshare -rn`), where Wireshark sees `link/ieee802.15.4`.
+- **Transmitting packets**: `rp.profile.Encoder` undoes a capture rule (a header part gives the frame's fields, an FCS
+  is made again) and sends each packet as a frame or burst; `rp.source.DeviceSink` transmits with a pysdrlib radio.
+  `rpps tx --from-tun / --from-tap / --from-pcap` and `--device --cf --gain`. A packet captured, sent and received again
+  is the same bytes (BLE, AX.25, the demo below).
+- **A header inside a frame**: `Frame` publishes each good frame's start and length and anchors it, and a link header
+  reads packets, so `{"link": "frame"}` then `{"link": "header"}` strips and reads a frame's own header
+  (`demo/hdlc_header`). Messages carry the whole frame as received and its parts (`Message.frame`, `parts`) and the
+  check behind `crc_ok` (`Message.check`).
+- **`ieee802154/frames`**: the 2450 PHY with its SHR found and taken off and the PHR read: each PSDU a message.
+- **Finding a link type after an unknown header** (`"linktype": "find"`): offsets scored by the link types'
+  signatures (IPv4 length and header checksum, an EtherType and the IPv4 inside it). Found behind 0-64 random bytes in
+  every one of 1000 frames; random bytes match at score 2 never in 500, at score 1 in 0.8%.
+- `config/crc/internet16` (the Internet checksum); expressions take `in` and `not in`.
 
 **Sync and signal**
 - **`rp.sync.phase.DDCarrier`**: follows a carrier from decisions on any constellation (APSK, QAM too) by block

@@ -187,5 +187,19 @@
         }
       }
     }
+  },
+  "capture": {
+    "bb_a": {
+      "linktype": "upper_pdu",
+      "dissector": "dvb-s2_modeadapt",
+      "include": ["header", "payload"],
+      "fields": ["isi", "ts_gs", "dfl", "syncd"]
+    },
+    "bb_b": {
+      "linktype": "upper_pdu",
+      "dissector": "dvb-s2_modeadapt",
+      "include": ["header", "payload"],
+      "fields": ["isi", "ts_gs", "dfl", "syncd"]
+    }
   }
 }

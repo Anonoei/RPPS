@@ -1,0 +1,8 @@
+{
+  "base": "linktype",
+  "comment": "Bluetooth LE link layer packets after a 10-byte pseudo-header: RF channel, signal and noise power, access address offenses, reference access address, flags (dewhitened, signal and noise valid, CRC checked, CRC valid), then as ble_ll",
+  "ref": "https://www.tcpdump.org/linktypes.html",
+  "dlt": 256,
+  "dissector": "btle_rf",
+  "fcs": "required"
+}

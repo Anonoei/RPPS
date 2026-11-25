@@ -263,8 +263,8 @@ class Runner:
         if ctl is not None and ctl.messages:
             mine = [m for m in ctl.messages if m[0] is op]
             ctl.messages = [m for m in ctl.messages if m[0] is not op]
-            for _, kind, fields, bits, ok, at in mine:
-                self._message(slot, kind, fields, bits, ok, at)
+            for op_, kind, fields, bits, ok, at, frame in mine:
+                self._message(slot, kind, fields, bits, ok, at, getattr(op_, "check_name", None), frame)
         if ctl is not None and (ctl.anchors or ctl.published):
             mine = [a for a in ctl.anchors if a[0] is op]
             ctl.anchors = [a for a in ctl.anchors if a[0] is not op]
@@ -280,17 +280,19 @@ class Runner:
 
     # ---- messages
 
-    def _message(self, slot, kind, fields, bits, ok, at):
-        """A frame a slot's op emitted, at position `at` of its input: placed in the runner's input, kept until taken"""
+    def _message(self, slot, kind, fields, bits, ok, at, check=None, frame=None):
+        """A frame a slot's op emitted, at position `at` of its input: placed in the runner's input, kept until taken.
+        check: the definition behind ok; frame: (the whole frame's bits, {part: (first bit, bits)}) when the op gave it"""
         from .message import Message
         sample = int(round(self._back(at, slot.index, 0)))
         kind = kind or slot.step.id
         Fs, cf = self._input
         t0 = self._stream.t0
         payload, n = Message.payload_of(bits)
+        whole, nw = Message.payload_of(frame[0]) if frame is not None else (None, 0)
         q = self._stream.est.get("quality")
         m = Message(self.profile, kind, fields, payload, n, ok, sample, (t0 or 0.0) + sample/Fs, cf or None,
-                    copy.copy(q) if q is not None else None)
+                    copy.copy(q) if q is not None else None, check, whole, nw, frame[1] if frame is not None else None)
         self.messages.append((self._mseq, slot.index, (slot.index, sample, kind), m))
         self._mseq += 1
 
@@ -312,7 +314,9 @@ class Runner:
             fields = self._unit_fields(slot, spec, bits)
             at = slot.map.back(u[0]) # Where it starts, in the slot's input
             # crc_ok: the failed mask's verdict; none at all after a checking decoder ("check": an RS) is all good
-            self._message(slot, spec.get("kind"), fields, bits, (not bad.any()) if u[3] or spec.get("check") else None, at)
+            chk = spec.get("check")
+            self._message(slot, spec.get("kind"), fields, bits, (not bad.any()) if u[3] or chk else None, at,
+                          chk if isinstance(chk, str) else None)
             u = [u[0] + n, u[1][n:], u[2][n:], u[3]]
         self._units[slot.index][1] = u
 

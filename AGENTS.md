@@ -51,7 +51,7 @@ Full design: the `rpps.base` docstring (model, rule, categories, contracts, grey
 |---|---|
 | `src/rpps/<pkg>/` | one package per category: source, signal, sync, wave, symbol, code, link, grid, profile, parallel, sequence, plan, analysis, base, math, utils, viz |
 | `src/rpps/<pkg>/__init__.py` | **the package's documentation** (its docstring), rendered in the API reference |
-| `config/<resource>/` | JSON definitions: constellation, pulse, filter, sequence, scramble, fec, interleave, crc, frame, header, table, plan, profile; `tags.json` |
+| `config/<resource>/` | JSON definitions: constellation, pulse, filter, sequence, scramble, fec, interleave, crc, frame, header, linktype, table, plan, profile; `tags.json` |
 | `csrc/rpps_native/` | C++17 kernels (pybind11); the Python loop in the calling stage is the reference |
 | `docs/` | the site: guides (`docs/guide/`), examples index, contributing, roadmap; `docs/api/` and `docs/llms*.txt` are generated |
 | `tools/` | `builder.py` (setup, kernels, tests, docs, release), `gen_docs.py` (API pages, llms files), benchmarks (`*_bench.py`, `tpc_ber.py`) |

@@ -1,0 +1,14 @@
+{
+  "base": "header",
+  "type": "link",
+  "comment": "IEEE 802.15.4 PHY header: the PSDU's length in octets (7 bits) and a reserved bit, then the PSDU (the MAC frame, its 2-octet FCS included), every octet least significant bit first. The FCS is the MAC's, inside the PSDU: a capture hands it to Wireshark (LINKTYPE_IEEE802_15_4_WITHFCS), which checks it",
+  "ref": "IEEE 802.15.4-2020 12.1.3",
+  "tags": ["ieee-802.15.4"],
+  "order": "lsb",
+  "payload_order": "lsb",
+  "fields": [
+    {"name": "frame_length", "bits": 7, "tx": "bits//8"},
+    {"name": "reserved", "bits": 1}
+  ],
+  "payload": "frame_length*8"
+}

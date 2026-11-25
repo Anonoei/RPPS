@@ -73,5 +73,12 @@
       "link": "frame",
       "name": "ax25"
     }
-  ]
+  ],
+  "capture": {
+    "frame": {
+      "linktype": "ax25",
+      "include": ["payload"],
+      "fields": true
+    }
+  }
 }

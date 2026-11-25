@@ -74,4 +74,4 @@ def test_hdlc_frames_the_same_either_way(name):
     x = np.concatenate((noise, b, noise))
     (f0, a0), (f1, a1) = both(lambda: h.frames_at(x))
     assert f0 == f1 and a0 == a1
-    assert sum(ok for _, _, ok in f1) >= 20
+    assert sum(ok for _, _, ok, _ in f1) >= 20

@@ -33,6 +33,8 @@ CATEGORIES = {
     "table": ('Tables  (rp.profile.table("<family>/<name>"))', lambda rp: rp._config.ls("table")),
     "profile": ('Profiles  (rp.profile.load("<family>/<mode>"))', lambda rp: rp.profile.ls()),
     "plan": ('Burst time plans  (rp.plan.load("<family>/<name>"); builders, "base": "builder": rp.plan.builder("<family>/<name>"))', lambda rp: rp.plan.ls()),
+    "linktype": ("Link types  (rp.link.linktype(<name>): packets for Wireshark and interfaces, a profile's \"capture\")",
+                 lambda rp: rp._config.ls("linktype")),
     "system": ('Systems  (rp.analysis.catalogue.systems(): what catalogue.match scores against)', lambda rp: rp._config.ls("system")),
     "windows": ("Built-in Windows  (rp.signal.filters.Window.get(<name>))", lambda rp: {"windows": rp.signal.filters.Window.s()}),
 }
@@ -99,8 +101,10 @@ def cmd_show(args):
 
 
 def cmd_rx(args):
-    """Receive a capture with a profile: the data bits out, as bytes (most significant bit first) to --out; --messages:
-    every frame decoded, one JSON line each (rp.profile.Message)"""
+    """Receive a capture (or a radio, --device) with a profile: the data bits out, as bytes (most significant bit first)
+    to --out; --messages: every frame decoded, one JSON line each (rp.profile.Message); --pcap: every frame as a packet of
+    its link type (the profile's capture rules), pcapng to a file, a FIFO, "-" (stdout: `| wireshark -k -i -`) or
+    pipe:NAME (a Windows named pipe); --tun / --tap: onto a Linux interface"""
     import numpy as np
     import rpps as rp
     params = _params(args.param)
@@ -108,34 +112,66 @@ def cmd_rx(args):
     for kv in args.sync:
         kind, method = kv.split("=", 1)
         sync[kind] = {"method": method}
+    if (args.file is None) == (args.device is None):
+        raise SystemExit("rx: a capture file or --device, one of them")
+    if args.messages and args.pcap == "-":
+        raise SystemExit("rx: --messages and --pcap - both write to stdout")
     rp.set_effort(args.effort)
     p = rp.profile.load(args.profile, sync=sync or None, **params)
     rx = p.rx(kinds=args.kinds.split(",") if args.kinds else None)
-    src = rp.source.File(args.fmt, args.file, Fs=args.fs, cf=args.cf, sps=args.sps or p.params.get("sps", 0.0))
+    sps = args.sps or p.params.get("sps", 0.0)
+    if args.device:
+        src = rp.source.Device(args.device, cf=args.cf, Fs=args.fs, rx_gain=args.gain, sps=sps)
+    else:
+        src = rp.source.File(args.fmt, args.file, Fs=args.fs, cf=args.cf, sps=sps)
+    sinks = []
+    if args.pcap:
+        sinks.append(rp.source.PcapSink(args.pcap, rpps=args.pcap_rpps, clock=args.pcap_clock))
+    for spec, mode in [(t, "tun") for t in args.tun] + [(t, "tap") for t in args.tap]:
+        name, _, lt = spec.partition(":")
+        sinks.append(rp.source.Tun(name, mode=mode, linktype=lt or None))
+    report = sys.stderr if args.pcap == "-" else sys.stdout
     bits = []
     n_msgs = 0
-    for block in src(args.block):
-        out = rx(block)
-        if args.messages:
-            for m in rx.take_messages():
-                print(json.dumps(m.to_dict()))
-                n_msgs += 1
-        if isinstance(out, dict): # A profile that branches: one branch's output
-            name = args.branch or list(out)[-1]
-            if name not in out:
-                raise SystemExit(f"{args.profile} has no branch {name!r} (has {', '.join(out)})")
-            out = out[name]
-        for o in out if isinstance(out, list) else [out]: # (a profile with a burst step: one output per burst)
-            x = np.asarray(o.data)
-            bits.append(x < 0 if x.dtype.kind == "f" else x.astype(bool))
+    try:
+        for block in src(args.block):
+            out = rx(block)
+            if args.messages or sinks:
+                msgs = rx.take_messages()
+                n_msgs += len(msgs)
+                if args.messages:
+                    for m in msgs:
+                        print(json.dumps(m.to_dict()))
+                if sinks:
+                    packets = p.capture.packets(msgs)
+                    for s in sinks:
+                        packets >> s
+            if isinstance(out, dict): # A profile that branches: one branch's output
+                name = args.branch or list(out)[-1]
+                if name not in out:
+                    raise SystemExit(f"{args.profile} has no branch {name!r} (has {', '.join(out)})")
+                out = out[name]
+            for o in out if isinstance(out, list) else [out]: # (a profile with a burst step: one output per burst)
+                x = np.asarray(o.data)
+                bits.append(x < 0 if x.dtype.kind == "f" else x.astype(bool))
+    except BrokenPipeError: # The reader (Wireshark) went away
+        print("rx: the packet reader closed its end", file=sys.stderr)
+    finally:
+        for s in sinks:
+            s.close()
     bits = np.concatenate(bits) if bits else np.zeros(0, bool)
+    what = args.file or args.device
     if args.messages:
-        print(f"{args.file}: {n_msgs} messages, {len(bits)} bits out of {args.profile}", file=sys.stderr)
+        print(f"{what}: {n_msgs} messages, {len(bits)} bits out of {args.profile}", file=sys.stderr)
     else:
-        print(f"{args.file}: {len(bits)} bits out of {args.profile}" + (f" ({args.branch})" if args.branch else ""))
+        print(f"{what}: {len(bits)} bits out of {args.profile}" + (f" ({args.branch})" if args.branch else "")
+              + (f", {n_msgs} messages" if sinks else ""), file=report)
+    for s in sinks:
+        if isinstance(s, rp.source.Tun) and s.skipped:
+            print(f"{s.name}: packets of other link types not written: {s.skipped}", file=report)
     if args.out:
         Path(args.out).write_bytes(np.packbits(bits).tobytes())
-        print(f"wrote {args.out}")
+        print(f"wrote {args.out}", file=report)
     return 0
 
 
@@ -151,7 +187,8 @@ def _params(pairs):
     return out
 
 def cmd_tx(args):
-    """Transmit with a profile: data (a file's bytes, or random) through its transforms to samples in a file
+    """Transmit with a profile: data (a file's bytes, or random) or packets (from a Linux TUN/TAP interface or a pcap, each
+    undone by the profile's capture rule) through its transforms to samples, in a file or out of a radio (--device)
 
     --packet N splits the data into packets of N bytes, each sent as a burst of its own (its pulses complete), --gap
     seconds apart; otherwise it is one stream. A profile with a burst step places the bursts itself (rpps.sync.BurstTx):
@@ -159,45 +196,53 @@ def cmd_tx(args):
     NAME=VALUE sets the fields of every frame's header (the profile's schedule or defaults otherwise)."""
     import numpy as np
     import rpps as rp
+    if (args.out is None) == (args.device is None):
+        raise SystemExit("tx: a sample file or --device, one of them")
     p = rp.profile.load(args.profile, **_params(args.param))
-    if args.input:
-        data = np.frombuffer(Path(args.input).read_bytes(), np.uint8)
-    else:
-        data = np.random.default_rng(args.seed).integers(0, 256, args.random, dtype=np.uint8)
-    bits = np.unpackbits(data).astype(bool)
-    size = 8*args.packet if args.packet else len(bits)
-    fields = _params(args.field) or None
-    tx, stream, n_out, Fs = p.tx(), None, 0, None
-    from rpps.profile.burst import BurstTxRunner
-    bursts = isinstance(tx, BurstTxRunner)
-    if bursts:
-        bt = tx.burst_tx
-        if args.gap is not None:
-            bt.gap_s = args.gap
-        if args.hop:
-            bt.hop = [float(f) for f in args.hop.split(",")]
-        if args.rate_out:
-            bt.Fs = args.rate_out
-        bt.reset()
-    elif args.hop or args.rate_out:
-        raise SystemExit(f"{args.profile} has no burst step: --hop and --rate-out place bursts")
-    starts = list(range(0, len(bits), max(size, 1)))
-    with rp.source.Sink(args.fmt, args.out) as sink:
-        for k, a in enumerate(starts):
-            last = k == len(starts) - 1
-            if bursts:
-                o = tx(rp.Data(bits[a:a + size], Fs=args.rate, sps=1), fields=fields, flush=last)
-                x = np.asarray(o.data, dtype=np.complex64)
+    packets = args.from_tun or args.from_tap or args.from_pcap
+    from_lt = (args.from_tun or "").partition(":")[2] or ("raw" if args.from_tun else "ethernet" if args.from_tap else None)
+    enc = rp.profile.Encoder(p, args.rate, kind=args.kind, fields=_params(args.field) or None, gap=args.gap,
+                             hop=[float(f) for f in args.hop.split(",")] if args.hop else None, rate_out=args.rate_out,
+                             linktype=from_lt)
+    if not enc.bursts and not (args.packet or packets):
+        enc.gap = None # (one stream: no silence after it)
+    sink, n_out, n_in = None, 0, 0
+    def put(o):
+        nonlocal sink, n_out
+        if sink is None:
+            sink = (rp.source.DeviceSink(args.device, cf=args.cf, Fs=o.meta.Fs, tx_gain=args.gain) if args.device
+                    else rp.source.Sink(args.fmt, args.out))
+        sink.write(o)
+        n_out += len(o)
+    try:
+        if packets:
+            if args.from_pcap: # (each packet of its own link type: one the rule's converts from, or the rule's)
+                from rpps.link.capture import by_dlt
+                items = ((r.data, by_dlt(r.dlt)) for r in rp.source.Pcap(args.from_pcap))
             else:
-                d = rp.Data(bits[a:a + size], Fs=args.rate, sps=1, stream=stream, flush=True)
-                stream = d.stream
-                o = tx(d, fields=fields)
-                x = np.asarray(o.data, dtype=np.complex64)
-                if args.packet and args.gap:
-                    x = np.concatenate((x, np.zeros(int(round(args.gap*o.Fs)), np.complex64)))
-            sink.write(x)
-            n_out, Fs = n_out + len(x), o.Fs
-    print(f"{args.out}: {n_out} samples at {Fs:g} Hz ({len(data)} bytes through {args.profile})")
+                name, _, lt = (args.from_tun or args.from_tap).partition(":")
+                tun = rp.source.Tun(name, mode="tun" if args.from_tun else "tap", linktype=lt or None)
+                items = ((pkt, None) for pkt in tun.packets(timeout=args.timeout))
+            for pkt, lt in items:
+                put(enc.packet(pkt, linktype=lt))
+                n_in += len(pkt)
+            put(enc.flush())
+        else:
+            if args.input:
+                data = np.frombuffer(Path(args.input).read_bytes(), np.uint8)
+            else:
+                data = np.random.default_rng(args.seed).integers(0, 256, args.random, dtype=np.uint8)
+            bits = np.unpackbits(data).astype(bool)
+            size = 8*args.packet if args.packet else len(bits)
+            starts = list(range(0, len(bits), max(size, 1)))
+            for k, a in enumerate(starts):
+                put(enc.bits(bits[a:a + size], last=k == len(starts) - 1))
+            n_in = len(data)
+    finally:
+        if sink is not None:
+            sink.close()
+    print(f"{args.out or args.device}: {n_out} samples at {enc.Fs:g} Hz ({n_in} bytes"
+          + (f" in {enc.count} packets" if packets else "") + f" through {args.profile})")
     return 0
 
 def cmd_fmt(args):
@@ -371,7 +416,9 @@ def main(argv=None):
 
     p_rx = sub.add_parser("rx", help="receive a capture file with a profile")
     p_rx.add_argument("profile", help="profile, e.g. dvbs2/normal")
-    p_rx.add_argument("file", help="capture file")
+    p_rx.add_argument("file", nargs="?", help="capture file (or --device)")
+    p_rx.add_argument("--device", help="receive from a radio instead: a pysdrlib driver or target (hackrf, hackrf@SERIAL)")
+    p_rx.add_argument("--gain", type=float, default=None, help="--device: receive gain, a fraction 0-1 of its range")
     p_rx.add_argument("--fs", type=float, required=True, help="sample rate [Hz]")
     p_rx.add_argument("--fmt", default="cf32", help="sample format (default: cf32)")
     p_rx.add_argument("--cf", type=float, default=0.0, help="centre frequency [Hz]")
@@ -386,16 +433,32 @@ def main(argv=None):
     p_rx.add_argument("--messages", action="store_true", help="print every frame decoded, one JSON line each (to stdout)")
     p_rx.add_argument("--kinds", metavar="KIND,...", help="only these message kinds, and only the steps they need "
                       "(default: all; rp.profile.info(name).kinds lists them)")
+    p_rx.add_argument("--pcap", metavar="TARGET", help="every frame as a packet (the profile's capture rules), pcapng to a "
+                      "file, a FIFO, - (stdout: | wireshark -k -i -) or pipe:NAME (Windows: wireshark -k -i \\\\.\\pipe\\NAME)")
+    p_rx.add_argument("--pcap-rpps", action="store_true", help="--pcap: every packet in RPPS's header for tools/wireshark/rpps.lua")
+    p_rx.add_argument("--pcap-clock", default="message", choices=("message", "wall"),
+                      help="--pcap: stamp packets with their message's time (default) or the time they are written")
+    p_rx.add_argument("--tun", action="append", default=[], metavar="NAME[:LINKTYPE]",
+                      help="write packets of this link type (default raw IP) onto a Linux TUN interface (repeatable)")
+    p_rx.add_argument("--tap", action="append", default=[], metavar="NAME", help="write Ethernet packets onto a Linux TAP interface")
     p_rx.set_defaults(fn=cmd_rx)
 
-    p_tx = sub.add_parser("tx", help="transmit data with a profile into a sample file")
+    p_tx = sub.add_parser("tx", help="transmit data or packets with a profile into a sample file or out of a radio")
     p_tx.add_argument("profile", help="profile, e.g. ble/adv")
-    p_tx.add_argument("out", help="sample file to write")
+    p_tx.add_argument("out", nargs="?", help="sample file to write (or --device)")
+    p_tx.add_argument("--device", help="transmit with a radio instead: a pysdrlib driver or target")
+    p_tx.add_argument("--cf", type=float, default=None, help="--device: transmit frequency [Hz]")
+    p_tx.add_argument("--gain", type=float, default=None, help="--device: transmit gain, a fraction 0-1 of its range")
     p_tx.add_argument("--rate", type=float, required=True, help="rate of the data at the profile's first step (bits or symbols a second)")
     p_tx.add_argument("--fmt", default="cf32", help="sample format (default: cf32)")
     src = p_tx.add_mutually_exclusive_group(required=True)
     src.add_argument("--in", dest="input", help="the data: this file's bytes")
     src.add_argument("--random", type=int, help="the data: this many random bytes")
+    src.add_argument("--from-tun", metavar="NAME[:LINKTYPE]", help="packets the system sends on a Linux TUN interface")
+    src.add_argument("--from-tap", metavar="NAME", help="Ethernet frames the system sends on a Linux TAP interface")
+    src.add_argument("--from-pcap", metavar="FILE", help="the packets of a pcap or pcapng capture (a FIFO is read as written)")
+    p_tx.add_argument("--kind", help="packets: the message kind whose capture rule they follow (default: the profile's one)")
+    p_tx.add_argument("--timeout", type=float, default=None, help="--from-tun/tap: stop after this many seconds with no packet")
     p_tx.add_argument("--seed", type=int, default=0, help="seed of --random")
     p_tx.add_argument("--packet", type=int, default=0, help="bytes a packet, each sent as a burst of its own")
     p_tx.add_argument("--gap", type=float, default=None, help="seconds between packets (a burst profile: its gap_s otherwise)")

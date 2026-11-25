@@ -17,6 +17,7 @@ nav = [
     "guide/definitions.md",
     "guide/unknown-signals.md",
     "guide/real-time.md",
+    "guide/wireshark.md",
     "guide/integrating.md",
   ] },
   { "Examples" = "examples.md" },

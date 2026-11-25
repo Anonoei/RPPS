@@ -131,5 +131,16 @@
         }
       }
     }
+  },
+  "capture": {
+    "pdu": {
+      "linktype": "ble_ll_phdr",
+      "include": ["header", "payload", "fcs"],
+      "transform": [
+        {"prefix": "0x8E89BED6", "bytes": 4, "order": "little"},
+        {"header": "ble_phdr", "channel": "channel"}
+      ],
+      "fields": ["type.name", "txadd", "rxadd", "length"]
+    }
   }
 }

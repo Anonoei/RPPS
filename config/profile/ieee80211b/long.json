@@ -97,5 +97,15 @@
         }
       }
     }
+  },
+  "capture": {
+    "plcp": {
+      "linktype": "ieee802_11_radiotap",
+      "include": ["payload"],
+      "transform": [
+        {"header": "radiotap", "rate": "signal//5"}
+      ],
+      "fields": ["signal", "service", "length"]
+    }
   }
 }

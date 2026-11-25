@@ -591,7 +591,8 @@ def evaluate(expr, values, name="expression"):
     import operator as op
     bins = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul, ast.FloorDiv: op.floordiv, ast.Mod: op.mod, ast.Pow: op.pow,
             ast.LShift: op.lshift, ast.RShift: op.rshift, ast.BitAnd: op.and_, ast.BitOr: op.or_, ast.BitXor: op.xor, ast.Div: op.truediv}
-    cmps = {ast.Eq: op.eq, ast.NotEq: op.ne, ast.Lt: op.lt, ast.LtE: op.le, ast.Gt: op.gt, ast.GtE: op.ge}
+    cmps = {ast.Eq: op.eq, ast.NotEq: op.ne, ast.Lt: op.lt, ast.LtE: op.le, ast.Gt: op.gt, ast.GtE: op.ge,
+            ast.In: lambda a, b: a in b, ast.NotIn: lambda a, b: a not in b}
     def ev(n):
         if isinstance(n, ast.Expression):
             return ev(n.body)

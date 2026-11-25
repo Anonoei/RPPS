@@ -86,10 +86,10 @@ def test_a_bad_fcs_and_a_bad_escape():
     raw = bytearray(ppp._bytes(ppp.encode([good, bad])))
     raw[-3] ^= 0x01 # in the second frame's FCS (no byte there needs escaping)
     frames, aborts = ppp.frames_at(ppp._bits(bytes(raw)))
-    assert [(p, ok) for _, p, ok in frames] == [(good, True), (bad, False)] and aborts == 0
+    assert [(p, ok) for _, p, ok, _ in frames] == [(good, True), (bad, False)] and aborts == 0
     slip = rp.link.load("frame/slip").encoder
     frames, aborts = slip.frames_at(slip._bits(bytes.fromhex("c00102dbffc0c00304c0")))
-    assert [p for _, p, _ in frames] == [b"\x03\x04"] and aborts == 1 # ESC before a byte it doesn't escape
+    assert [p for _, p, _, _ in frames] == [b"\x03\x04"] and aborts == 1 # ESC before a byte it doesn't escape
 
 def test_uart_bit_order():
     c = _config.load_obj("frame", "t", {"base": "frame", "type": "bytes", "flag": "0xC0", "escape": "0xDB",

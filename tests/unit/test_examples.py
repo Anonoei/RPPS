@@ -11,7 +11,7 @@ EXAMPLES = Path(__file__).resolve().parents[2]/"examples"
 
 FAST = ["quickstart", "list_definitions", "operators", "soft_decisions", "channel_and_sync", "profile_loopback",
         "own_definitions", "profile_variants", "streaming_io", "integrating", "channel_shm", "zc_modes", "mftdma",
-        "finding_signals"]
+        "finding_signals", "wireshark_packets"]
 KERNELS = ["parallel_rx"] # seconds with the C++ kernels, minutes without
 SLOW = ["unknown_signal"] # tens of seconds even with them
 

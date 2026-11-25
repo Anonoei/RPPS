@@ -112,5 +112,15 @@
         }
       }
     }
+  },
+  "capture": {
+    "pbch": {
+      "linktype": "upper_pdu",
+      "dissector": "nr-rrc.bcch.bch"
+    },
+    "pdsch": {
+      "linktype": "upper_pdu",
+      "dissector": "nr-rrc.bcch.dl.sch"
+    }
   }
 }

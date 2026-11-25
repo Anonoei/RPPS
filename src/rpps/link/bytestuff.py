@@ -55,7 +55,8 @@ class bytestuff(_code):
         return np.nonzero(np.frombuffer(raw, np.uint8) == self.flag)[0]
 
     def frames_at(self, bits):
-        """Frames as (index of the opening flag in `bits`, payload bytes, fcs ok), and the number of aborted frames"""
+        """Frames as (index of the opening flag in `bits`, payload bytes, fcs ok, the FCS bytes received: b"" without an
+        FCS), and the number of aborted frames"""
         b = np.asarray(bits, dtype=np.uint8)
         raw = self._bytes(b[:len(b)//8*8])
         flags = self._flags(raw)
@@ -81,21 +82,21 @@ class bytestuff(_code):
             if len(out) < self.min_bytes:
                 continue
             if self.fcs is None:
-                frames.append((int(s)*8, bytes(out), True))
+                frames.append((int(s)*8, bytes(out), True, b""))
                 continue
             n = self.fcs.width//8
             if len(out) <= n:
                 aborts += 1
                 continue
             ok = self.fcs.to_bytes(self.fcs.compute(bytes(out[:-n]))) == bytes(out[-n:])
-            frames.append((int(s)*8, bytes(out[:-n]), ok))
+            frames.append((int(s)*8, bytes(out[:-n]), ok, bytes(out[-n:])))
         return frames, aborts
 
     def _decode(self, bits):
         frames, _ = self.frames_at(bits)
-        good = [p for _, p, ok in frames if ok]
+        good = [p for _, p, ok, _ in frames if ok]
         out = np.unpackbits(np.frombuffer(b"".join(good), np.uint8)).astype(bool) if good else np.zeros(0, bool)
-        return out, np.array([0 if ok else -1 for _, _, ok in frames], dtype=int)
+        return out, np.array([0 if ok else -1 for _, _, ok, _ in frames], dtype=int)
 
     MAX_FRAME_BYTES = 1 << 13 # Bytes after a flag before the wait for a closing flag is given up
 

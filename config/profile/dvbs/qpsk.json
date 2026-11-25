@@ -123,5 +123,12 @@
         ]
       }
     }
-  ]
+  ],
+  "capture": {
+    "packet": {
+      "linktype": "mpeg2_ts",
+      "include": ["payload"],
+      "fields": ["pid", "tei"]
+    }
+  }
 }

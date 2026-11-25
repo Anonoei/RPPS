@@ -47,10 +47,11 @@ class hdlc(_code):
     def deframe(self, bits):
         """Frames as (payload bytes, fcs ok) in the bit stream, and the number of aborted frames"""
         frames, aborts = self.frames_at(bits)
-        return [(p, ok) for _, p, ok in frames], aborts
+        return [(p, ok) for _, p, ok, _ in frames], aborts
 
     def frames_at(self, bits):
-        """Frames as (index of the opening flag in `bits`, payload bytes, fcs ok), and the number of aborted frames"""
+        """Frames as (index of the opening flag in `bits`, payload bytes, fcs ok, the FCS bytes received), and the number of
+        aborted frames"""
         b = np.asarray(bits, dtype=np.uint8)
         if self.nrzi:
             b = np.concatenate(([0], (b[1:] == b[:-1]).astype(np.uint8)))
@@ -68,7 +69,7 @@ class hdlc(_code):
             if len(raw) < self.min_bytes:
                 continue
             ok = self.fcs.to_bytes(self.fcs.compute(raw[:-n_fcs])) == raw[-n_fcs:]
-            frames.append((s, raw[:-n_fcs], ok))
+            frames.append((s, raw[:-n_fcs], ok, raw[-n_fcs:]))
         return frames, aborts
 
     def _decode(self, bits):

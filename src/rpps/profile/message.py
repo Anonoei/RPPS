@@ -28,14 +28,26 @@ class Message:
     time: seconds: the source's time of that sample when it has one (a radio's timestamp), else sample/Fs
     freq: the signal's centre frequency [Hz] when known (the stream's cf, a Decoder's cf + offset), else None
     quality: the profile's measure of its symbols when it has one (`stream.est["quality"]`: Es/N0, EVM), else None
+    check: the definition behind crc_ok ("crc16_x25", a header's "crc24_ble"), None when unknown or without a check
+    frame: the whole frame as received, as bytes (header, payload, FCS), when the step has more of it than the payload;
+        None: the payload is the frame. frame_bits: its length in bits
+    parts: where each part of `frame` is, {"header" | "payload" | "fcs" | ...: (first bit, bits)}; {} when frame is None
     """
-    __slots__ = ("profile", "kind", "fields", "payload", "bits", "crc_ok", "sample", "time", "freq", "quality")
+    __slots__ = ("profile", "kind", "fields", "payload", "bits", "crc_ok", "sample", "time", "freq", "quality", "check",
+                 "frame", "frame_bits", "parts")
 
     def __init__(self, profile, kind, fields=None, payload=None, bits=0, crc_ok=None, sample=0, time=None, freq=None,
-                 quality=None):
+                 quality=None, check=None, frame=None, frame_bits=0, parts=None):
         self.profile, self.kind, self.fields = profile, kind, dict(fields or {})
         self.payload, self.bits, self.crc_ok = payload, int(bits), crc_ok
         self.sample, self.time, self.freq, self.quality = int(sample), time, freq, quality
+        self.check, self.frame, self.frame_bits, self.parts = check, frame, int(frame_bits), dict(parts or {})
+
+    def whole(self):
+        """(bytes, bits, parts) of the frame: `frame` when the step gave it, else the payload as the one part"""
+        if self.frame is not None:
+            return self.frame, self.frame_bits, self.parts
+        return (self.payload or b""), self.bits, ({"payload": (0, self.bits)} if self.payload is not None else {})
 
     @staticmethod
     def payload_of(bits):
@@ -55,7 +67,9 @@ class Message:
             q = {k: getattr(q, k) for k in getattr(q, "__slots__", ()) if isinstance(getattr(q, k), (int, float))}
         return {"profile": self.profile, "kind": self.kind, "fields": {k: _plain(v) for k, v in self.fields.items()},
                 "payload": None if self.payload is None else self.payload.hex(), "bits": self.bits,
-                "crc_ok": self.crc_ok, "sample": self.sample, "time": self.time, "freq": self.freq, "quality": q}
+                "crc_ok": self.crc_ok, "check": self.check, "sample": self.sample, "time": self.time, "freq": self.freq,
+                "quality": q, "frame": None if self.frame is None else self.frame.hex(), "frame_bits": self.frame_bits,
+                "parts": {k: list(v) for k, v in self.parts.items()}}
 
     def copy(self):
         return copy.copy(self)
@@ -70,7 +84,7 @@ class Message:
         return m
 
     def __repr__(self):
-        ok = {True: "ok", False: "FAILED", None: "-"}[self.crc_ok]
+        ok = {True: "ok", False: "FAILED", None: "-"}[self.crc_ok] + (f" ({self.check})" if self.check else "")
         f = ", ".join(f"{k}={v}" for k, v in self.fields.items())
         return f"<Message {self.profile} {self.kind} @{self.sample} {ok}: {f}{f' + {self.bits} bits' if self.bits else ''}>"
 

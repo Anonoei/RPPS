@@ -67,6 +67,7 @@ class Header(Pipe):
         self.crc = None if crc is None else _crc(crc)
         self.fcs = None if fcs is None else _crc(fcs)
         self.fcs_bits = 0 if self.fcs is None else self.fcs.width
+        self.check_name = fcs or crc # The check behind a message's crc_ok (Message.check)
         self.payload = payload
         self.framed = bool(framed)
         self.crc_bits = self.crc.width if self.crc is not None else 0
@@ -87,7 +88,8 @@ class Header(Pipe):
         return f"Header:{self.name}"
 
     def takes(self, encode):
-        return {Rep.DATA, Rep.PACKETS} if encode else {Rep.DATA}
+        # Receiving packets too: a header inside a frame's payload (an HDLC frame's own header, after `{"link": "frame"}`)
+        return {Rep.DATA, Rep.PACKETS}
 
     def pos_rate(self, decode):
         if decode or not self.framed or not self.length:
@@ -161,9 +163,28 @@ class Header(Pipe):
         except (Short, ValueError, ConfigError):
             return None
 
-    def _emit(self, meta, fields, body, ok, at):
+    def _emit(self, meta, fields, body, ok, at, held=None, tail=None):
+        """A frame's message: its payload (bytes most significant bit first), and the whole frame as on the wire, its
+        header's and FCS's bits each byte in the order sent (`order`, `payload_order`)"""
         vals = self.payload_values(body, fields) if ok is not False else None
-        emit(meta, self, None, fields if vals is None else {**fields, "payload": vals}, body, ok, at)
+        frame = parts = None
+        if held is not None:
+            h = self._wire(held, self.order == "lsb")
+            t = self._wire(tail, self.payload_lsb) if tail is not None and len(tail) else np.zeros(0, bool)
+            frame = np.concatenate((h, np.asarray(body, bool), t))
+            parts = {"header": (0, len(h)), "payload": (len(h), len(body))}
+            if len(t):
+                parts["fcs"] = (len(h) + len(body), len(t))
+        emit(meta, self, None, fields if vals is None else {**fields, "payload": vals}, body, ok, at, frame=frame, parts=parts)
+
+    @staticmethod
+    def _wire(bits, lsb):
+        """Bits sent least significant first in each byte, as bytes most significant bit first (a last part byte kept)"""
+        bits = np.asarray(bits).astype(bool)
+        if not lsb:
+            return bits
+        whole = len(bits)//8*8
+        return np.concatenate((bits[:whole].reshape(-1, 8)[:, ::-1].reshape(-1), bits[whole:]))
 
     def build(self, values):
         """A header's bits for these field values"""
@@ -264,7 +285,8 @@ class Header(Pipe):
                 st.mode, st.left, st.body, st.fields, st.part = "payload", n, np.zeros(0, bool), fields, np.zeros(0, bool)
                 if n == 0 and self.fcs is None: # A header that is the whole frame: done now, not when more bits come
                     st.mode = "skip"
-                    self._emit(data.meta, st.fields, self._bytes_order(st.body), True if self.crc is not None else None, st.start)
+                    self._emit(data.meta, st.fields, self._bytes_order(st.body), True if self.crc is not None else None, st.start,
+                               st.held)
             elif st.mode == "payload":
                 take = min(st.left, len(x) - i)
                 if self.fcs is None: # (with an FCS: held until it says the frame is good)
@@ -282,7 +304,7 @@ class Header(Pipe):
                     st.tail = np.zeros(0, bool)
                     if self.fcs is None:
                         body = self._bytes_order(st.body)
-                        self._emit(data.meta, st.fields, body, True if self.crc is not None else None, st.start)
+                        self._emit(data.meta, st.fields, body, True if self.crc is not None else None, st.start, st.held)
             elif st.mode == "fcs": # The frame check sequence over header and payload
                 take = min(self.fcs_bits - len(st.tail), len(x) - i)
                 st.tail = np.concatenate((st.tail, x[i:i + take]))
@@ -298,7 +320,7 @@ class Header(Pipe):
                     est["frames"] += 1
                 else:
                     est["fcs_failed"] += 1
-                self._emit(data.meta, st.fields, body, bool(good), st.start)
+                self._emit(data.meta, st.fields, body, bool(good), st.start, st.held, st.tail)
                 st.mode = "skip"
             elif st.mode == "drop": # A failed frame's payload: used up, not given out
                 take = min(st.left, len(x) - i)

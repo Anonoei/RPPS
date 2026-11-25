@@ -27,6 +27,8 @@ def test_crc_catalogue_values(name, value):
 @pytest.mark.parametrize("n", [8*40, 37, 1])
 def test_crc_append_and_detect(name, n, rng):
     crc = rp.link.load(f"crc/{name}").encoder
+    if isinstance(crc, rp.link.checksum) and n % 8:
+        pytest.skip("a checksum is over whole bytes")
     msg = bits(rng, n)
     coded = crc.encode(msg)
     assert len(coded) == len(msg) + crc.width

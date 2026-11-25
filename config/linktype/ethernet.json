@@ -1,0 +1,25 @@
+{
+  "base": "linktype",
+  "comment": "Ethernet II / IEEE 802.3 frames from the destination address, without preamble or FCS (a TAP carries these)",
+  "ref": "https://www.tcpdump.org/linktypes.html, Linux include/uapi/linux/if_arp.h",
+  "dlt": 1,
+  "arphrd": 1,
+  "dissector": "eth_withoutfcs",
+  "signature": {
+    "min": 14,
+    "valid": "ethertype in (0x0800, 0x86DD, 0x0806, 0x8100, 0x88A8, 0x8847, 0x88CC, 0x88B5) or ethertype == size - 14",
+    "fields": [
+      {"name": "dst", "bits": 48},
+      {"name": "src", "bits": 48},
+      {"name": "ethertype", "bits": 16}
+    ],
+    "next": {
+      "field": "ethertype",
+      "at": 14,
+      "linktypes": {
+        "0x0800": "ipv4",
+        "0x86DD": "ipv6"
+      }
+    }
+  }
+}

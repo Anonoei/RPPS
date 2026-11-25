@@ -49,7 +49,18 @@ class Profile:
         if self.steps[-1].category == "branch" and obj.get("parallel"):
             raise ConfigError(f"profile {name}: a parallel region and branches together are not supported")
         self.region = _parallel.plan(obj.get("parallel"), self.steps, self.controls, f"profile {name}")
+        self.capture = self._captures(obj.get("capture"))
         self._check_keys()
+
+    def _captures(self, spec):
+        """The capture rules ("capture": rpps.link.capture): one per message kind the profile gives"""
+        from ..link.capture import Captures
+        spec = dict(spec or {})
+        unknown = set(spec) - set(self.kinds()) - set(self.kinds(parallel=True))
+        if unknown:
+            raise ConfigError(f"profile {self.name}: capture rules for kinds it doesn't give: {sorted(unknown)} "
+                              f"(gives {sorted(self.kinds())})")
+        return Captures(spec, f"profile {self.name}: capture", self.params)
 
     # A profile's keys others read: what it needs to run (rpps.profile.info, the catalogue)
     READ_ELSEWHERE = ("requires",)

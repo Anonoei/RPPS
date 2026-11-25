@@ -109,7 +109,8 @@ LINKS = [(d, c, n) for d in ("crc", "frame") for c, n in defs(d)] + [("header", 
 def test_link_contract(domain, cat, name):
     link = load(domain, cat, name)
     assert link.CATEGORY == Category.LINK
-    assert link.takes(False) == {Rep.DATA} # channel bits must be decoded first
+    # channel bits must be decoded first; a link header reads packets too (a header inside a frame's payload)
+    assert link.takes(False) == ({Rep.DATA, Rep.PACKETS} if isinstance(link, rp.link.Header) else {Rep.DATA})
     llr = symbols() / rp.symbol.load("QPSK")
     with pytest.raises(StreamError):
         llr / link

@@ -98,5 +98,15 @@
         }
       }
     }
+  },
+  "capture": {
+    "pbch": {
+      "linktype": "upper_pdu",
+      "dissector": "lte_rrc.bcch_bch"
+    },
+    "pdsch": {
+      "linktype": "upper_pdu",
+      "dissector": "lte_rrc.bcch_dl_sch"
+    }
   }
 }
