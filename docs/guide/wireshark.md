@@ -28,6 +28,8 @@ The shipped profiles' rules:
 | `ieee802154/frames` | `phr` | `ieee802_15_4` (195) | the PSDU with its FCS, which Wireshark checks |
 | `ieee80211b/long` | `plcp` | `ieee802_11_radiotap` (127) | radiotap: rate (from SIGNAL), channel, FCS at the end |
 | `dvbs/*` | `packet` | `mpeg2_ts` (243) | transport stream packets |
+| `dvbs2/ts` | `ts` | `mpeg2_ts` (243) | user packets cut across BBFRAMEs (SYNCD, UPL), CRC-8 checked, sync byte put back |
+| `ccsds/tm_packets` | `space` | exported PDU, `ccsds` | space packets cut across transfer frames per virtual channel (first header pointer) |
 | `dvbs2/*`, `dvbrcs2/forward` | `bbheader` | exported PDU, `dvb-s2_modeadapt` | the BBFRAME, header and data field: Wireshark reads GSE and what it carries |
 | `lte/downlink`, `nr/downlink` | `pbch`, `pdsch` | exported PDU, `lte_rrc.*` / `nr-rrc.*` | the MIB, the SIB1 transport block |
 

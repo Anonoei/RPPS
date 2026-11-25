@@ -1,0 +1,62 @@
+{
+  "base": "profile",
+  "extends": "ccsds/tm_rs",
+  "comment": "CCSDS TM space packets: the transfer frames of ccsds/tm_rs, their primary header read, and the space packets of each virtual channel cut out of the frames' data fields by the first header pointer (rpps.link.packets): a packet may cross frames, a frame lost (its virtual channel frame count skips) drops only the packets that crossed it, idle packets (APID 2047) are passed over. Each space packet is a message, captured for Wireshark as exported PDU to its CCSDS dissector",
+  "ref": "CCSDS 132.0-B-3 4.1.4.2, CCSDS 133.0-B-2 4.1",
+  "steps": {
+    "+end": [
+      {
+        "link": "header",
+        "id": "tm",
+        "name": "ccsds_tm",
+        "length": {
+          "expr": "8*223*depth"
+        }
+      },
+      {
+        "link": "packets",
+        "id": "space",
+        "params": ["fhp", "vcid", "vc_count"],
+        "starts": "fhp != 2047",
+        "idle_frame": "fhp == 2046",
+        "pointer": "8*fhp",
+        "channel": "vcid",
+        "count": "vc_count",
+        "modulo": 256,
+        "fields": [
+          {"name": "version", "bits": 3},
+          {"name": "type", "bits": 1},
+          {"name": "sec_hdr", "bits": 1},
+          {"name": "apid", "bits": 11},
+          {"name": "seq_flags", "bits": 2},
+          {"name": "seq_count", "bits": 14},
+          {"name": "length", "bits": 16}
+        ],
+        "length": "8*(length + 7)",
+        "idle": "apid == 2047"
+      }
+    ]
+  },
+  "controls": {
+    "tm": {
+      "on": "rx",
+      "drive": {
+        "space": {
+          "frame": "mc_count",
+          "length": "bits",
+          "fhp": "fhp",
+          "vcid": "vcid",
+          "vc_count": "vc_count"
+        }
+      }
+    }
+  },
+  "capture": {
+    "space": {
+      "linktype": "upper_pdu",
+      "dissector": "ccsds",
+      "include": ["header", "payload"],
+      "fields": ["channel", "apid", "seq_count"]
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "base": "profile",
+  "extends": "dvbs2/normal",
+  "comment": "DVB-S2 transport stream: BBFRAMEs in TS mode (MATYPE TS, no null packet deletion) whose data fields carry 188-byte user packets back to back across frames, cut out by SYNCD and UPL (rpps.link.packets). Each user packet's sync byte was replaced by the CRC-8 of the packet before: it is checked, and 0x47 put back, so the packets come out as MPEG transport stream packets, a message each, captured for Wireshark as MPEG-TS. Frames in another mode (GSE) are passed over; null packet deletion (NPD) is not read yet. Serial (no parallel region: the BBHEADER drives the packet step after it)",
+  "ref": "EN 302 307-1 5.1.4, 5.1.5, 5.1.6",
+  "steps": {
+    "+end": [
+      {
+        "link": "packets",
+        "id": "ts",
+        "params": ["ts_gs", "npd", "upl", "syncd"],
+        "active": "ts_gs == 3 and npd == 0",
+        "starts": "syncd != 65535",
+        "pointer": "syncd",
+        "length": "upl",
+        "fields": [
+          {"name": "crc", "bits": 8},
+          {"name": "tei", "bits": 1},
+          {"name": "pusi", "bits": 1},
+          {"name": "priority", "bits": 1},
+          {"name": "pid", "bits": 13},
+          {"name": "scrambling", "bits": 2},
+          {"name": "afc", "bits": 2},
+          {"name": "cc", "bits": 4}
+        ],
+        "carried_check": {
+          "crc": "crc8_dvbs2",
+          "bits": 8,
+          "restore": "0x47"
+        }
+      }
+    ]
+  },
+  "controls": {
+    "bbheader": {
+      "on": "rx",
+      "drive": {
+        "ts": {
+          "frame": "dfl",
+          "length": "bits",
+          "ts_gs": "ts_gs",
+          "npd": "npd",
+          "upl": "upl",
+          "syncd": "syncd"
+        }
+      }
+    }
+  },
+  "capture": {
+    "ts": {
+      "linktype": "mpeg2_ts",
+      "include": ["header", "payload"],
+      "fields": ["pid", "pusi", "cc"]
+    }
+  },
+  "parallel": null
+}

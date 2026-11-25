@@ -98,6 +98,13 @@ what to use instead.
   signatures (IPv4 length and header checksum, an EtherType and the IPv4 inside it). Found behind 0-64 random bytes in
   every one of 1000 frames; random bytes match at score 2 never in 500, at score 1 in 0.8%.
 - `config/crc/internet16` (the Internet checksum); expressions take `in` and `not in`.
+- **Packets that cross frames** (`{"link": "packets"}`, `rpps.link.packets`): a stream of packets in fixed frames' data
+  fields cut back out by a pointer and each packet's length, per channel with its frame count, a lost frame dropping only
+  the packets that crossed it; a check a packet carries for the one before (DVB-S2's CRC-8 in the sync byte).
+  `ccsds/tm_packets` (TM transfer frame header `header/link/ccsds_tm`, space packets by the first header pointer per
+  virtual channel, idle packets and frames passed over; Wireshark's `ccsds` dissector reads them) and `dvbs2/ts` (TS
+  mode user packets by SYNCD and UPL, the sync byte checked and put back, captured as MPEG-TS). A framed link header
+  takes its frame `length` from the profile, and its `payload` expression sees it.
 - The LTE and NR channels say which check their messages passed (`Message.check`: PBCH and PDCCH CRC-16 or
   CRC-24C, PDSCH CRC-24A, or NR's CRC-16 for small transport blocks). `DeviceSink` takes pysdrlib's sim made with
   `transmit=True` (it asks the device as opened, not its class).

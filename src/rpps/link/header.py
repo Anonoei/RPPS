@@ -17,7 +17,8 @@ A definition, config/header/link/<name>.json, `rp.link.load("header/ieee80211b_p
                                                               else the controlled value, its "default", or 0
      "crc": "crc16_genibus",                              a crc definition over the field bits, sent after them
      "fcs": "crc24_ble",                                  a crc definition over header and payload, sent after the payload
-     "payload": "length*signal//10",                      receive: payload bits after the header, from the fields
+     "payload": "length*signal//10",                      receive: payload bits after the header, from the fields (and
+                                                          `length`, a framed header's frame length: "length - 48 - 32*ocf")
      "preamble": {"ones": 128, "word": "0xF3A0", "bits": 16},   transmit: sent before the header (in `order`)
      "framed": true,                                      frames of `length` bits (a controlled parameter: DVB-S2 Kbch),
                                                           the payload padded to fill them
@@ -210,9 +211,11 @@ class Header(Pipe):
         return v
 
     def payload_bits(self, fields):
+        """The payload's bits: the `payload` expression over the fields (and `length`, a framed header's frame length)"""
         if self.payload is None:
             return None
-        return int(_config.evaluate(self.payload, fields, f"header {self.name}"))
+        scope = {**fields, "length": self.length} if self.length is not None else fields
+        return int(_config.evaluate(self.payload, scope, f"header {self.name}"))
 
     # ---- receive
 

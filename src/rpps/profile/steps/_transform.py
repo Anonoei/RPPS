@@ -136,18 +136,26 @@ def _link(kind, spec, rep, ctx):
         from ...link.gse import GSE
         make = lambda: GSE(spec.get("protocols"), spec.get("id", "gse"))
         return _pair(make(), make(), Rep.PACKETS)
+    if kind == "packets": # Packets that cross frames: rpps.link.packets
+        from ...link.packets import Packets
+        make = lambda: Packets({k: v for k, v in spec.items() if k != "link"}, spec.get("id", "packets"))
+        return _pair(make(), make(), Rep.PACKETS)
     if kind in ("crc", "frame", "header"):
         name = _need(spec, "name", f"link {kind}")
         def make():
             op = link.load(f"{kind}/{name}")
             if kind == "header" and spec.get("select"): # {"select": {"isi": 1}}: only the frames with those field values
                 op.select = dict(spec["select"])
+            if kind == "header" and spec.get("length") is not None: # A framed header's frame length, from the profile
+                if not op.framed:
+                    raise ConfigError(f"link header {name}: `length` is a framed header's frame length")
+                op.length = int(spec["length"])
             return op
         return _pair(make(), make(), Rep.PACKETS)
 
 for _cat, _fn, _kinds in (("wave", _wave, ("shape", "stagger", "fm", "am", "ssb", "ofdm")),
                           ("symbol", _symbol, ("constellation", "differential", "spread", "carriers", "header", "pilots", "scramble", "marker", "puncture")),
                           ("code", _code, ("block", "conv", "interleave", "scramble", "uncoded", "line", "marker")),
-                          ("link", _link, ("crc", "frame", "header", "gse"))):
+                          ("link", _link, ("crc", "frame", "header", "gse", "packets"))):
     for _k in _kinds:
         register_step(_cat, _k)(_fn)
