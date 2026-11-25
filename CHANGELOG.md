@@ -2,530 +2,234 @@
 
 RPPS is 0.x: a minor version may rename or remove things, and old names are not kept as aliases (except the stable API
 in the Building on RPPS guide, which warns for one release). Every release lists what breaks under **Breaking**, with
-what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.md).
+what to use instead.
 
 ## Unreleased
 
 ### Breaking
-- **`analysis.spectrum.find.Finder` holds what it stops finding**: a signal not found again stays in the Survey with
-  `stale=True` (and `seen`, when it was last found) for the new `hold` [s] (-1, the default: for good; 0: dropped at
-  once, as before). The Finder keeps no raw samples: a stream's bursts are timed by the frames (`find` still times
-  them finer). Frames are held in ring buffers, so `frames` can be a second's worth: each region keeps its reading
-  while its span and level hold (measured again each update) and an update costs about 5 ms at 8192 bins (`track`:
-  keep readings; `full` is gone).
-- **The Costas loop moves to `rp.sync.loops.Costas`, second class** (with `points=`, `from_bandwidth` and the `costas`
-  kernel); `rp.sync.Costas` is gone. A profile's `carrier: costas` builds it. The new `rp.sync.phase.DDCarrier` follows
-  a carrier from decisions on any constellation (APSK and QAM too: block estimation tracked across 32-symbol windows,
-  after a preamble or word has taken the carrier off; `decided.follow` for a whole array); `carrier: dd` takes
-  `constellation` and `window`. `demo/mftdma` uses it, and decodes what Costas did at every SNR down to -1 dB (14 seeds,
-  bursts decoded: 130/130, 150/150, 160/160, 163/163 of 168). `analysis.burst.demodulate` follows each burst's carrier
-  with it. On 16APSK with a drifting, noisy phase it never slipped in 40 runs.
-- **The adaptive equalizers move to `rp.sync.loops`, second class: `loops.LMS`, `loops.CMA`** (with the `equalize`
-  kernel); `rp.sync.equalize.LMS` and `equalize.CMA` are gone. A profile's `equalize: lms` and `cma` build them; the
-  first class is `rp.sync.equalize.BlockLS` (`blind=True` where decisions cannot open the eye).
-- **The timing loops move to `rp.sync.loops`, second class: `loops.MM` (Mueller & Muller, Gardner), `loops.TLL`,
-  `loops.ted`, and `loops.pll` (`PILoop`, `loop_gains`; was `rp.sync.pll`)**, with the `mm` kernel; `rp.sync.time.MM`,
-  `time.TLL`, `time.ted` and `rp.sync.pll` are gone. A profile's `timing: mm`, `gardner` and `tll` build them. The
-  shipped profiles and examples time with `rp.sync.time.OerderMeyr` (block estimation, tracked across windows):
-  `ax25/afsk1200`, `p25/tsdu` and `dmr/burst` time
-  with it over 256-symbol windows (`"min_symbols": 256, "window": 0, "clock": false, "gate": 0`: the square-law line
-  of their matched filter's output is weak, so it is not gated), and decode more than Gardner did at every noise level
-  but the cleanest (frames decoded, 20 seeds each; Gardner / Oerder & Meyr): P25 TSBKs 287/295, 214/266, 89/178, 15/58
-  of 300; DMR slot types 317/320, 294/316, 249/298, 204/256 of 320; AX.25 packets 56/60, 53/59, 22/33 of 60. At the
-  cleanest point P25 has 298 of 300 against 300: one seed's data happens to match the frame sync word (0.83 against
-  the profile's 0.8 threshold), which the cleaner symbols now find. The RDS examples (`e2e.py`, `e2e_profile.py`) and
-  `projects/fm_radio` use `OerderMeyr` and `MPower(order=2)`; on the pysdr.org capture 182 RDS blocks are in sync
-  (the loops: 180), Es/N0 20.1 dB (19.9). `viz.eye.sync_phase` takes OerderMeyr's state (with the block's `pos` and `sps`).
-- **`rp.sync.AGC` is block estimation, not a loop**: `AGC(target, *, window=1e-4, min_samples, log, min_gain,
-  max_gain, init)`, its arguments after `target` keywords only. Each window's level (the mean of log|x|, or |x|)
-  sets the gain at the window's centre; between centres the gain is a line. `mu` is gone (also in a profile's
-  `{"sync": "agc"}`, which now refuses it and takes `window`). A level step settles within a window with no tail
-  (the loop at mu 0.01 was 4% off for a thousand samples), at 42 MS/s (the loop's kernel 28.5). Latency is a
-  window and a half. The loop is `rp.sync.loops.AGC(target, mu)`, second class, with its `agc` kernel (a profile's
-  `{"sync": "agc", "method": "loop", "mu": ...}`); the loop `PeakAGC` is `rp.sync.loops.PeakAGC`.
+- **The per-sample sync loops are second class, in `rp.sync.loops`; the first-class stages estimate in blocks.**
+  - `rp.sync.Costas` is `rp.sync.loops.Costas` (now with `points=`: decision directed on any constellation, and
+    `from_bandwidth`). The first-class carrier follower is the new `rp.sync.phase.DDCarrier` (below). A profile's
+    `carrier: costas` still builds the loop.
+  - `rp.sync.time.MM`, `time.TLL`, `time.ted` and `rp.sync.pll` (`PILoop`, `loop_gains`) are `rp.sync.loops.MM`
+    (Mueller & Muller, Gardner), `loops.TLL`, `loops.ted` and `loops.pll`. A profile's `timing: mm`, `gardner` and `tll`
+    still build them. The shipped profiles and examples time with `rp.sync.time.OerderMeyr`: `ax25/afsk1200`, `p25/tsdu`
+    and `dmr/burst` over 256-symbol windows, ungated, and they decode more than Gardner did at every noise level but the
+    cleanest (P25 TSBKs 287/295, 214/266, 89/178, 15/58 of 300; DMR slot types 317/320, 294/316, 249/298, 204/256 of
+    320; AX.25 packets 56/60, 53/59, 22/33 of 60; Gardner / Oerder & Meyr, 20 seeds each). The RDS examples and
+    `projects/fm_radio` use `OerderMeyr` and `MPower(order=2)`. `viz.eye.sync_phase` takes OerderMeyr's state.
+  - **`rp.sync.AGC` is block estimation**: `AGC(target, *, window=1e-4, min_samples, log, min_gain, max_gain, init)`,
+    keywords only after `target`. Each window's level sets the gain at its centre, a line between centres: a level
+    step settles within a window, with no tail. `mu` is gone (a profile's `{"sync": "agc"}` refuses it and takes
+    `window`). The loop is `rp.sync.loops.AGC(target, mu)` (`{"sync": "agc", "method": "loop", "mu": ...}`).
+  - The adaptive equalizers `rp.sync.equalize.LMS` and `equalize.CMA` are `rp.sync.loops.LMS` and `loops.CMA` (with
+    the `equalize` kernel). A profile's `equalize: lms` and `cma` still build them; the first class is
+    `rp.sync.equalize.BlockLS` (`blind=True` where decisions cannot open the eye).
+  - The per-sample loops that `DCBlock`, `Deemphasis`, `AMDemod`, `Squelch` and `PeakAGC` replaced (below) are
+    `rp.signal.loops.DCBlock`, `rp.signal.loops.Deemphasis`, `rp.wave.loops.AMDemod`, `rp.sync.loops.Squelch` and
+    `rp.sync.loops.PeakAGC`, with their kernels; the same output to rounding.
 - **`rp.analysis.find_signals` is a new detector** (`rp.analysis.spectrum.find`): thresholds set by a false-alarm rate
-  (`pfa`, expected false boxes in a capture of noise), a noise floor fitted per bin, and each signal read by level
-  (`rp.analysis.spectrum.levels`): a line raised from the floor in steps of a few noise deviations, a signal what comes
-  up and holds its sides; one coming up out of a wider one stands on it (`over`; the wider `holds` it: a pedestal, a
-  carrier under a jammer); a hump's sides never hold. Lines (tones, spurs) and what is under 3 dB SNR are no signals
-  (nothing to process). Its boxes don't change with noise 80 dB down. Signals get time extents (`t0`, `t1`, `bursts`;
-  one with bursts is a `Burst`) and `score`. Its arguments after `nfft` are now `cf, pfa, edge, drop_db, min_bins,
-  min_across, nested`; pass them by name. `min_snr_db`, `gap`, `occupied`, `min_band_snr_db`, `edges`, `edge_db` and
-  `split_db` do nothing and warn (DeprecationWarning) for this release, then go. Defaults: `edge` 0.005 (was 0.02:
-  carriers by the band edge are found), `min_bins` 1. `measure_band`'s `edge` default is 0.005 too.
-- **`rp.analysis.catalogue.SYSTEMS` is gone: the systems are `config/system` definitions**, one file each
-  (`extends`, `abstract`, tags and user config layers work as for any definition); `catalogue.systems()` loads them.
-  `match` now reports systems the features can't tell apart as `tied` (ambiguous) instead of ordering them by name,
-  and gives no positive score on weak evidence (a frequency alone, a modulation alone): two agreeing features, or one
-  strong one (baud, chip_rate, scs, code_length, profile, subcarrier, or an unmodulated carrier).
-- **`{"signal": "stage"}` is `{"signal": "class"}`**, and every category takes a `class` step: your own operator by
-  module path (`"class"`, `"args"`), a Stage for signal, sync and wave (`"tx_class"` for the transmit side), a Pipe for
-  symbol, code and link (decoding on receive, encoding on transmit). A class whose CATEGORY is another category's is
-  refused.
-- **BLE, IEEE 802.11b and 802.15.4 payload bytes are in the standards' bit order.** Those standards send each octet
-  least significant bit first; `ble/adv` and `ieee80211b/long` sent (and read) their payloads most significant bit first,
-  so a real packet's payload came out bit-reversed per byte (its CRC still passed: it is over the bits as sent), and
-  `ieee802154/2450` sent each octet's high nibble first. Bytes in and out are unchanged in meaning: what is on air now
-  matches the standards. A link header's new `"payload_order": "lsb"` does it for `ble_adv` and `ieee80211b_plcp`; the
-  `interleave/block/lsb_first` definition (each octet's bits reversed) is the last step of `ieee802154/2450`, whose
-  receive output is now data bits (Rep.DATA), not channel bits.
+  (`pfa`: expected false boxes in a capture of noise), a noise floor fitted per bin, and each signal read by level
+  (`rp.analysis.spectrum.levels`): a line raised from the floor in steps of a few noise deviations; a signal is what
+  comes up and holds its sides, and one coming up out of a wider one stands on it (`over`; the wider `holds` it). Lines
+  (tones, spurs) and anything under 3 dB SNR are not signals. Signals get time extents (`t0`, `t1`, `bursts`; one with
+  bursts is a `Burst`) and `score`. Its arguments after `nfft` are `cf, pfa, edge, drop_db, min_bins, min_across,
+  nested`: pass them by name. `min_snr_db`, `gap`, `occupied`, `min_band_snr_db`, `edges`, `edge_db` and `split_db` do
+  nothing and warn for this release, then go. `edge` defaults to 0.005 (was 0.02), also in `measure_band`.
+- **Burst analysis is `rp.analysis.burst`** (was `rp.analysis.spectrum.burst`), a package: `preamble` (what the bursts
+  share), `demod` (each burst demodulated), `plan` (`units`, `learn_plan`, `check_plan`); every public name is also at
+  the package level. `rp.analysis.spectrum.burst.demodulate` (stable API) warns for this release, then goes; the rest
+  of the old module is gone, its `track` loop too (each burst's carrier is followed by block estimation).
+- **`rp.analysis.catalogue.SYSTEMS` is gone**: the systems are `config/system` definitions, one file each (`extends`,
+  `abstract`, tags and user layers work as for any definition); `catalogue.systems()` loads them. `match` reports
+  systems the features can't tell apart as `tied` instead of ordering them by name, and gives no positive score on weak
+  evidence: it needs two agreeing features, or one strong one (baud, chip_rate, scs, code_length, profile, subcarrier,
+  or an unmodulated carrier).
+- **`{"signal": "stage"}` is `{"signal": "class"}`**, and every category takes a `class` step: your own operator by module
+  path (`"class"`, `"args"`), a Stage for signal, sync and wave (`"tx_class"` for transmit), a Pipe for symbol, code and
+  link. A class whose CATEGORY is another category's is refused.
+- **BLE, IEEE 802.11b and 802.15.4 payload bytes are in the standards' bit order** (each octet least significant bit
+  first). `ble/adv` and `ieee80211b/long` sent and read payloads most significant bit first, so a real packet's payload
+  came out bit-reversed per byte (its CRC still passed), and `ieee802154/2450` sent each octet's high nibble first. A
+  link header's new `"payload_order": "lsb"` does it for `ble_adv` and `ieee80211b_plcp`; `interleave/block/lsb_first`
+  is the last step of `ieee802154/2450`, whose receive output is now data bits (Rep.DATA), not channel bits.
 - **`fec/block/trellis/p25_1_2` is one codeword per 96 bits** (its new `length`): encode and decode take whole
-  codewords, each started and flushed on its own (96 bits to 196), so it works as a profile's block step. A whole
-  stream decoded as one trellis sequence is `decode_batch` on a row.
-- **Burst analysis is `rp.analysis.burst`** (was `rp.analysis.spectrum.burst`), a package of its own: `preamble` (what
-  the bursts share), `demod` (each burst demodulated; the frame and slots), `plan` (`units`, `learn_plan`,
-  `check_plan`); every public name is also at the package level. `rp.analysis.spectrum.burst.demodulate` (stable API)
-  warns for this release, then goes; the rest of the old module is gone. Its `track` loop is gone too: the bursts'
-  carrier is followed by `rp.sync.Costas(..., points=)`.
+  codewords, each started and flushed on its own, so it works as a profile's block step. A whole stream decoded as one
+  trellis sequence is `decode_batch` on a row.
+- **Keys nothing reads are reported** (`rp.errors.ConfigWarning`): a definition's when it loads; a profile's own, every
+  step's, its `defaults` and the `sync` given to `load`, once built. A misspelling or a setting the method doesn't take
+  no longer passes silently; a user definition that relied on that now warns.
 
 ### Added
-- **`rp.analysis.Burst`**: a `Signal` on part of the time (`find` gives one for anything with bursts), with `duty`,
-  `last` (the latest burst) and `period`.
-- The finder's detector runs in C++ when `rpps._native` is built (`find_detect`; 1.1 to 0.16 ms on 8192 bins), and
-  its spectrogram's FFT in double precision (faster in numpy 2.3).
-- **`rp.sync.equalize.BlockLS(..., blind=True)`**: a window whose decisions fail the gate is solved without them, by
-  block least squares constant modulus (LS-CMA: the targets the outputs pushed onto the constellation's modulus, the
-  same normal equations), the taps turned by the constellation's M-th power phase and to the rotation nearest the
-  last; once the eye is open (decisions within dmin/4 pass the gate) it refines decision directed. On a channel that
-  closes the eye it opened every one of 20 seeds of QPSK and 16QAM (decisions alone failed 8 and 20). A profile's
-  `equalize: ls` takes `"blind": true`. `rp.sync.equalize.symmetry(points)`: a constellation's rotational symmetry.
-- **Keys nothing reads are reported** (`rp.errors.ConfigWarning`): a definition's when it loads; a profile's own,
-  every step's, its `defaults` and the `sync` given to `load`, once it is built. A misspelling, or a setting the method
-  does not take, no longer passes silently. The filter and pulse designs made when a stream starts take their keys at load.
-  The tests make the warning an error.
-- **`rp.sync.Costas(..., points=)`**: a decision-directed loop on any constellation's points (APSK, QAM), the error
-  the angle to the nearest one (Python; the C++ kernel stays M-PSK).
-- **Bit kernels** (`rpps.math.bits.distance`, `find`, `unstuff`; C++ in `csrc/rpps_native/bits.cpp`): the Hamming
-  distance to a word of up to 64 bits at every position of a hard-bit stream (a shift register and a popcount a
-  bit), and bit destuffing over many spans in one call. HDLC deframing, `analysis.framing.bits.scan_hdlc` and
-  FrameSync's word search on hard bits use them (`scan_hdlc` about 6x faster).
-- **`rp.analysis.spectrum.find`**: `find` (one capture), `fit_floor`, and `Finder`, a streaming finder for displays
-  (`f.step(block)` gives a Survey, ids kept; independent of how the stream is cut). Effort levels choose its frames and
-  scales (`fast` for a display block, a few ms for 64k samples). The staircase fit runs in C++ (`rpps._native.pelt`),
-  the Python loop the reference. `tools/finder_bench.py` scores it on synthetic scenes with known signals.
-- **Burst time plans** (`rpps.plan`, a new `plan` resource): TDMA / MF-TDMA plans in DVB-RCS2's model (superframe
-  sequences, frames, a BTU grid of carriers and timeslots, burst types, assignments), with frequency hopping (`hop`: an
-  expression of the superframe and frame, or an algorithm: `ble_csa1`) and trains (`repeat`, `every`). From a definition,
-  from a forward link (`rp.plan.builder("dvbrcs2/forward")`: SCT, FCT2, BCT, TBTP2 and the NCR clock, read by the new
-  `profile/dvbrcs2/forward`; `b.tables(plan)` and `b.reference(ncr)` write them), or learned from detected bursts
-  (`rp.analysis.spectrum.burst.learn_plan`, saved as a definition). A builder is a definition too (`"base": "builder"`,
-  `rpps.plan.air`): the tables' fields mapped onto the plan model both ways, and the clock reference packets paired with
-  the frame starts they refer to.
-- **Field schemas** (`rpps.link.fields`): a sized group (`"bytes"` on a group: exactly that many bytes), `"align"`
-  stuffing, a field's `"tx"` on build (a loop count from `len(list)`), an enum field given by name on build, and a uint
-  given as its bits. `header/link/rcs2_table` uses them: Hz and Bd, the BCT's linear modulation burst format read whole,
-  loop counts written for you.
-- **Whether a burst time plan explains the bursts** (`rp.analysis.spectrum.burst.check_plan`): each detected burst
-  put in the slot of its carrier nearest its start and judged (in a slot of its kind, another kind's, overrunning it,
-  in none; its own kind's slot before an untyped one), the plan's origin voted for and its clock fitted to the
-  bursts. `rp.viz.bursts` draws it along the capture (over a spectrogram) or as a raster of superframes, one a row,
-  where a right plan keeps the bursts in its slots' columns (each column's use over it).
-- **Burst views** (`rp.viz`): `burst_timing` (each burst's start error against time, by carrier, slot or tx type),
-  `burst_stack` (the bursts of a kind lined up on their known symbols, phase or magnitude, and how far they agree
-  at each symbol: preambles, repeated words, constant runs), `burst_terminals` (the bursts' carrier offset, gain,
-  clock or EVM against each other: a cluster per transmitter), `plan_evidence` (learn_plan's BTU score and each
-  frame period's purity and why it was passed over, from its Guess's `scores` or the `NoPlan` error it raises).
+
+**Sync and signal**
+- **`rp.sync.phase.DDCarrier`**: follows a carrier from decisions on any constellation (APSK, QAM too) by block
+  estimation tracked across 32-symbol windows, after a preamble or word has taken the carrier off; `decided.follow` for
+  a whole array. A profile's `carrier: dd` (`constellation`, `window`). `demo/mftdma` decodes with it what Costas did at
+  every SNR down to -1 dB, and on 16APSK with a drifting, noisy phase it never slipped in 40 runs.
+- **`rp.sync.equalize.BlockLS(..., blind=True)`**: a window whose decisions fail the gate is solved by block least
+  squares constant modulus, then decision directed once the eye is open. On a channel that closes the eye it opened all
+  20 seeds of QPSK and 16QAM (decisions alone failed 8 and 20). A profile's `equalize: ls` takes `"blind": true`.
+  `rp.sync.equalize.symmetry(points)`.
+- **`timing: mat`, the matched filter and timing in one** (`rp.sync.time.MatTrack`): the filter evaluated only at the
+  symbol instants, its energy maximum tracked across windows; follows a clock 20 ppm off on DVB-S2 like `oerder_meyr`.
+  `"device": true` runs it a group of windows a launch on a GPU, as `FrameSync(device=True)` does frame sync's metric.
+- **SNR before lock** (`rp.sync.quality`): `m2m4(y, points)` from the symbols' moments, `from_sequence(y, ref)` from a
+  known sequence (CAZAC: any shift, phase and multipath), `cyclic(x, sps)` from the spectral correlation at the symbol
+  rate (any noise colour outside the band), `blind(x, sps)` from the empty band's eigenvalues.
+- **`detect(esn0=, min_evidence=)` and `Lock.find(esn0=, min_evidence=)`**: an answer only when sure
+  (`Detection.evidence`, `Detection.over_noise`), else `mod` is None and `Lock.find` raises NoLock.
+- **Frame sync by named words** (`rp.sync.FrameSync`, `{"sync": "frame"}`): alternatives (`sequences`: {name: word};
+  `zc`: Zadoff-Chu roots and shifts), the one found published as `word` with its fields; a word mid-burst (`before`,
+  `length`); real levels kept real (`polarity`, `scale`); `segments` for a carrier that turns across a long word (by
+  default a profile correlates a word in 16-symbol parts, at most 4); each match's `scale`, `cfo`, `esn0` published with
+  its frame, `classify` naming the constellation; `count=` frames to find. `controls` drive later steps from these
+  fields. A frame step takes a word (`sequence`, or `word` + `bits`) instead of a header, mapped through the profile's
+  own steps, so a unique word sent after the FEC is found under any rotation.
+- **Words of any width**: a `sequence` word may be longer than 64 bits; `rp.sync.Delimiter` matches it by FFT
+  correlation. `rp.sync.word_errors(n_bits, false_alarm, positions)`: the most bit errors a delimit step may allow.
 - **Bursts on many carriers** (`rp.sync.Bursts`; `{"sync": "burst", "carriers": [...] | "plan": ...}`): each carrier
-  channelized (to `sps` samples a symbol), its neighbours filtered out, cut at absolute positions; with a plan each burst
-  is placed (superframe, frame, slot, tx type, assignment), the plan's origin acquired from the bursts and tracked from
-  their unique words, `gate: "plan"` cutting slots energy cannot see. A burst's fields drive the steps after it and ride
-  on its messages (`fields["burst"]`). `rp.sync.PlanTx` places bursts by a plan; a profile's transmitter does it from
-  each burst's fields.
-- **GSE** (`{"link": "gse"}`, `rp.link.gse.pack`): PDUs in DVB-S2 data fields, fragmented and reassembled (CRC-32),
-  each PDU a frame of its own for the steps after it.
-- `profile/demo/mftdma` (three carriers, two rates, three burst types, LDPC units) and `examples/mftdma.py`: a network
-  whose return link is decoded with the plan its forward link gives. Definitions: `header/link/rcs2_table`,
-  `sequence/word/demo_uw1..3`, `table/demo/mftdma_types`, `plan/demo/mftdma`; tag `dvb-rcs2`.
-- `rp.sync.Bursts` takes a capture at any rate: each carrier decimated by a whole factor, the rest resampled
-  (`FractionalPolyphase`) to `sps` samples a symbol. A profile's frame step on a word correlates it in parts by default
-  (`segments: "auto"`, one a 16 symbols, at most 4), so a burst's own carrier offset does not hide a long unique word.
-- `FrameSync(count=)`: frames to find in a stream (a burst's one); `{"sync": "timing", "method": "oerder_meyr",
-  "clock": false}`: the phase only (a burst a few windows long); the code marker's `sequence` is a controlled parameter.
-- **Codes bit by bit:** any block code takes `append` (check bits after the codeword, each the XOR of the codeword bits
-  listed), `extend` (an overall parity bit, now for any block code), `layout` (where each codeword bit is sent, or
-  `{"message": [...], "parity": "rest"}`) and `xor` (a pattern on the sent word), decoded in reverse, soft or hard
-  (`rpps.code.types.layout`). A `linear` code takes its parity bits as equations (`"parity": [[0, 1, 3], ...]`), and the
-  new `expr` type each codeword bit as an expression of the message bits: loaded as a linear code in its own layout when
-  it is affine, decoded from its codebook otherwise. `fsm` trellis codes take a codeword `length`. New:
-  `bch/p25_nid` (BCH (63,16) and its DUID bit, checked against TIA-102.BAAA-A's generator matrix), which
-  `projects/p25_dmr/p25_sync.py` now loads.
-- **Frame sync by named words, among symbols** (`{"sync": "frame"}`, `rp.sync.FrameSync`): alternatives (`sequences`:
-  {name: word}; `zc`: a set of Zadoff-Chu roots and shifts), the one found published as `word` with its fields; a word
-  mid-burst (`before`, `length`, controlled); real levels kept real, a polarity rather than a phase (`polarity`, `scale`);
-  `segments` for a carrier that turns across a long word; and what each match measured published with its frame (`scale`,
-  `cfo`, `esn0`), `cfo` taken off the frame when asked, `classify` naming the constellation from the frame's symbols.
-  `controls` drive later steps from these fields through a table, as from a header's. A `zc` sequence definition.
-- **`{"symbol": "marker"}`** (known symbols before each frame: a sequence with symbols, or a Zadoff-Chu root and shift a
-  control sets per frame) and **`{"symbol": "puncture"}`** (symbols at fixed places of every period dropped, and inserted
-  on transmit: P25's status symbols).
-- **Branches that read part of a frame:** `take` gives a branch item ranges of each frame (an end may be null: to the
-  frame's end; `unit` keeps whole groups) and `select` only the frames whose fields (published by a trunk step) an
-  expression accepts. Frames are a fixed `frame` length, or start where a trunk control drives the branch step's `frame`
-  (frames of any length) (`rpps.profile.branch`).
-- **Profiles `p25/tsdu` and `dmr/burst`:** P25 phase 1 control channel TSDUs of one to three TSBKs, each read to the next
-  frame sync (NID and TSBKs, CRC-checked) and DMR bursts
-  (every slot type; the data bursts' BPTC payloads), with the definitions they use (`constellation/ask/4level`,
-  `pulse/rc/0p20_frequency`, `sequence/word/p25_fs` and the eight `dmr_*` sync patterns, link headers `p25_nid`,
-  `p25_tsbk`, `dmr_slot_type`, `dmr_bptc`). A framed link header takes a default `length`.
-- `examples/zc_modes.py`: a Zadoff-Chu preamble whose root picks each frame's modulation and code.
-- **Bursts from real captures** (`rp.analysis.spectrum.burst`, `framing.frames`): the gate takes its levels over 64
-  symbols and averages longer as the contrast falls, so it no longer fires on noise (default `contrast` 2.5 on those
-  levels); `split` scales its windows and guard times with the occupied bandwidth and looks for guards only 10 dB
-  over the floor; each burst's rate is searched within 0.7 to 1.4 times its occupied bandwidth (a long 1100 preamble
-  locked it at 2x or 4x); a shared run tolerates single decision errors; long bursts of frames are acquired on the
-  unique word they repeat at their own phase (`periodic_word`, `Bursts.period`); slots join within `slot_tol` (now
-  16 symbols) by single linkage, and the frame period is learn_plan's or on_off's, whichever the starts' slots fit
-  (clustering times occupancy: a divisor of the frame leaves cells empty). The profile's header step tries every bit
-  map. A burst acquired on a repeating word takes its carrier from every word (the M-th power's offset over the
-  burst, then each word's phase as an anchor) and its timing from the whole burst; a shared run allows one burst in
-  four or more to disagree (its length then set against chance for the steps' alphabet); `retime` skips windows over
-  known symbols and fits its line by Theil-Sen. The frame period: learn_plan's or on_off's, reduced to the shortest
-  divisor the starts cluster at (else their own spacing), then multiplied where the slots fill only some residues of
-  the frame index (a divisor of the frame), not where terminals come and go. Each burst's blind timing is the best
-  of four quarter-symbol steps, and its carrier the better of the estimate and a quarter of the rate either side (a
-  long 1100 preamble is a pair of tones at +-baud/4: it held the timing half a symbol out and the carrier on a line;
-  not tried where a quarter turn a symbol is the constellation's symmetry, QPSK), or the middle of such a tone pair
-  (`frames.tone_pair`), the blind estimate, or the burst's spectral centroid (`frames.centroid`: a burst cut far off
-  the centre, past the blind search or its alias), each taken off before the matched filter; a burst taken at another
-  carrier is detected again there, and its symbols taken again with that detection's timing and roll-off.
-  `Bursts.frame` is None when the starts fall on no slot grid, and `Bursts.plan_frame` is learn_plan's frame: half
-  of `frame` where terminals get slots in alternate frames of the plan.
+  channelized from a capture at any rate, its neighbours filtered out, cut at absolute positions; with a plan each burst
+  is placed (superframe, frame, slot, tx type, assignment), the plan's origin acquired and tracked from the unique words,
+  `gate: "plan"` cutting slots energy can't see. A burst's fields drive later steps and ride on its messages
+  (`fields["burst"]`). `rp.sync.PlanTx` places bursts by a plan on transmit.
+- `{"sync": "timing", "method": "oerder_meyr", "clock": false}`: the phase only (a burst a few windows long).
+- **`rp.signal.FFTBank`**: many channels of a capture from one FFT a hop, each at its own width, rate and exact centre,
+  the same output however the input is cut.
+- `rp.math.runs(mask)` and `rp.signal.filters.correlate(x, t)` (a template slid along a signal, by FFT blocks when long).
+- `rp.sequence.zadoff_chu(u, N, shift)`.
+
+**Codes, links and definitions**
+- **Codes bit by bit**: any block code takes `append` (check bits after the codeword), `extend` (an overall parity
+  bit), `layout` (where each codeword bit is sent) and `xor` (a pattern on the sent word), decoded in reverse, soft or
+  hard. A `linear` code takes its parity bits as equations; the new `expr` type gives each codeword bit as an expression
+  of the message bits. `fsm` trellis codes take a `length`. New: `bch/p25_nid` (BCH (63,16) and its DUID bit).
+- **`{"symbol": "marker"}`** (known symbols before each frame: a sequence, or a Zadoff-Chu root and shift a control
+  sets per frame) and **`{"symbol": "puncture"}`** (symbols at fixed places dropped, inserted on transmit: P25's status
+  symbols).
+- **Fields as definitions** (`rpps.link.fields`): signed, scaled, per-field `order`, `enum` names, `bytes` and `text`,
+  sizes as expressions, `"if"`, `"from"`, groups (`"bytes"` sized, `"align"`), `"repeat"` and `"until"`, a field's
+  `"tx"` on build. Link headers take them; headers and frames take `"payload_fields"`. `frame/ax25` reads addresses,
+  control and PID; `header/ble_adv` reads PDU types, AdvA and AD structures; `dvbs/qpsk` reads the TS adaptation field.
+- **Checksums** (`config/crc` `"type": "checksum"`: sum, Internet, Fletcher, Adler, XOR; `rp.link.checksum`) and
+  **composite checks** (`"type": "composite"`: CRC parts over transformed views of the message, concatenated or XORed;
+  `rp.link.check.register`), wherever a CRC goes.
+- **Byte-stuffed framing** (`config/frame` `"type": "bytes"`): `frame/slip`, `frame/kiss`, `frame/ppp_async`, any
+  block cut.
+- **GSE** (`{"link": "gse"}`, `rp.link.gse.pack`): PDUs in DVB-S2 data fields, fragmented and reassembled.
+- **The DVB-S2 PLHEADER reads DVB-S2X MODCODs**: `dvbs2_pl`'s first field `s2x`; a header definition can turn a field's
+  code words (`"turn"`), and a table can apply only where fields have given values (`"only"`).
+- **Bit kernels** (`rpps.math.bits.distance`, `find`, `unstuff`; C++ in `bits.cpp`): Hamming distance to a word at every
+  position, bit destuffing over many spans. HDLC, `scan_hdlc` (6x) and FrameSync's hard-bit search use them.
+
+**Profiles**
+- **`p25/tsdu` and `dmr/burst`**: P25 phase 1 control channel TSDUs (NID and TSBKs, CRC-checked) and DMR bursts (every
+  slot type; the data bursts' BPTC payloads), with their definitions.
+- **Burst time plans** (`rpps.plan`, a `plan` resource): TDMA / MF-TDMA plans in DVB-RCS2's model, with frequency
+  hopping (`hop`: an expression, or `ble_csa1`) and trains. From a definition, from a forward link
+  (`rp.plan.builder("dvbrcs2/forward")`, read by the new `dvbrcs2/forward` profile), or learned from bursts. A builder is
+  a definition too (`"base": "builder"`, `rpps.plan.air`).
+- `demo/mftdma` (three carriers, two rates, three burst types, LDPC units), `examples/mftdma.py`,
+  `examples/zc_modes.py`, `examples/profile_variants.py`.
+- **Branches that read part of a frame**: `take` (item ranges of each frame) and `select` (only frames whose fields
+  an expression accepts); frames of any length where a trunk control drives the branch's `frame`.
+- **Params take `"choices"`** (each optionally a bundle of fields), **`"type"`, `"min"`, `"max"`**, checked at load.
+  `rp.profile.variants(name)` lists a profile's combinations; `rp.profile.info` shows them.
+- **`"when"` on a list item** (a step, any definition's list) and string literals, `ceil`, `floor`, `round`, `log2` in
+  expressions; `and` / `or` short-circuit.
+- **A child profile patches single steps**: `"steps"` as a dict by step id (merge, `null` to remove, `"+before:<id>"`,
+  `"+after:<id>"`, `"+start"`, `"+end"`).
+- **`requires` narrows a search**: `rp.profile.fits(name, baud=, bw=, Fs=, seconds=, input=)` says why a signal can't be
+  that profile, `rp.profile.candidates(...)` lists the variants that may. `requires` is checked at load.
+- The `mpower` carrier step takes a generated `"shape"`.
+- A region's frame whose header CRC fails is dropped (`crc_ok` False) instead of failing the batch.
+
+**Analysis**
+- **`rp.analysis.spectrum.find`**: `find`, `fit_floor`, and `Finder`, a streaming finder for displays (`f.step(block)`
+  gives a Survey with ids kept, independent of how the stream is cut, about 5 ms an update at 8192 bins). A signal not
+  found again stays with `stale=True` (and `seen`) for `hold` seconds (-1, the default: for good). The detector runs in
+  C++ when built (`find_detect`). `rp.analysis.Burst`: a `Signal` on part of the time (`duty`, `last`, `period`).
+- **Burst analysis from real captures** (`rp.analysis.burst`): weak, slow, long and framed bursts; bursts that touch cut
+  apart (`framing.frames.split`); known symbols anywhere or none (`shared_segments`, `Bursts.blind`); each burst's
+  carrier from its preamble, tone pair or spectral centroid; long bursts follow their symbol clock (`retime`) and give
+  LLRs; the TDMA frame from slot clustering. `learn_plan` learns a plan from detected bursts, `check_plan` judges one
+  against them, `units(lengths)` splits burst lengths into overhead and code-block units.
+- **Burst views** (`rp.viz`): `bursts` (a plan over a spectrogram, or a raster of superframes), `burst_timing`,
+  `burst_stack`, `burst_terminals`, `plan_evidence`.
+- **Blind CRC search** (`rp.analysis.framing.crc.search`): generator, init, xorout and coverage from frames.
+- **What each header bit is** (`rp.analysis.framing.fields.map`): constants, counters, terminal ids, lengths, enums,
+  saved as a link header definition.
 - **Block codes from soft values** (`rp.analysis.code.block.linear.soft_dual`, `soft_find_length`, `soft_score`):
-  parity checks from words too noisy for the rank, drawing subsets from the likeliest clean words and keeping checks
-  on the tanh-product syndrome. `solve_block(llr=)` uses it when the hard dual comes out short, and finds the length
-  from soft values with `soft_length=True`; BCH(63,51) is named blind to 5 dB Eb/N0 (hard bits: above 6 dB).
-- **The profile of TDMA bursts notes their units and header** (`rp.analysis.profile`): the code-block unit from the
-  bursts' lengths (`burst.units`) and the fields at the start of their payloads (`fields.map`).
-- **What each header bit is** (`rp.analysis.framing.fields.map(frames, groups=, lengths=)`): constants, counters (any
-  step, either bit order, counted per terminal), terminal ids, length fields, enums and random runs, saved as a link
-  header definition (`m.guess.save(name)`: config/header/link/guess). **`rp.analysis.spectrum.burst.units(lengths)`**:
-  burst lengths as overhead + n code-block units (MF-TDMA slots of one, two, three blocks), the unit with its error.
-- **Bursts with known symbols anywhere, or none** (`rp.analysis.spectrum.burst`): a mid-amble or postamble the bursts
-  share (`shared_segments`) is found and each burst acquired on it at its offset (`Bursts.offsets`,
-  `BurstResult.known`, `.payload`); bursts that share nothing come back each acquired blind (`Bursts.blind`) instead of
-  raising. The gate's smoothing and hang now scale with the occupied bandwidth (`frames.occupied`), so slow bursts are
-  no longer cut by their own envelope dips.
-- **Bursts that touch are cut apart** (`rp.analysis.framing.frames.split`, run by `gate` unless `touching=False`): at a
-  guard time shorter than the gate's hang (a dip longer than the bursts' own envelope dips) or at a power step
-  between transmitters, so `burst.demodulate` acquires each one instead of one merged span.
-- **TDMA bursts follow their symbol clock and give LLRs** (`rp.analysis.spectrum.burst.demodulate`): a burst of a few
-  hundred symbols or more has its clock offset measured (`clock`) and taken out (`burst.retime`), so long bursts no
-  longer drift off their timing; each burst's `llr`, and `Bursts.llrs()` for the soft code searches.
-- **Blind CRC search** (`rp.analysis.framing.crc.search(frames)`): the generator, init, xorout and where the CRC
-  sits (bits it covers, fill after it) from error-free frames as sent, by GCDs of frame differences (RevEng's method on
-  bit streams; an uncovered header that varies is cancelled first). Two frame lengths separate init from xorout;
-  shipped `config/crc` definitions that fit are named, else `fit.guess.save(name)` writes `config/crc/guess/<name>.json`.
-- **A parallel region on a GPU, CUDA or ROCm/HIP alike** (`Parallel("thread", xp=xp)` with `xp, _ =
-  rp._accel.device()`): layered min-sum LDPC (`rp.code.kernels.LdpcDecode`), BCH (`BchDecode`: syndromes on the device,
-  only words with errors located on the host) and soft demapping (`Demap`) run hand-written device kernels, portable CUDA C
-  that NVRTC and hiprtc compile as it is (`rpps.base.kernel.device_functions`); a block interleaver that is a permutation
-  gathers (`Permute`), a code a frame switches off passes (`Identity`), and a framed header of fixed size is read in a
-  batch (`rp.link.kernels.HeaderDecode`), so the DVB-S2 region stays on the device from one upload to one download. On
-  numpy each is the host decoder as before. On an AMD Radeon 860M against 16 CPU threads: the DVB-S2 region 1.9x faster,
-  the receiver 1.35x (LDPC 2.1-2.6x, BCH 2.7-3.8x, demap 4.5-7.9x at 16-64 frames a batch); bit for bit with the serial
-  runner. Measure with the new `tools/device_bench.py` and `tools/parallel_bench.py --device --batch N`. Building CuPy
-  for ROCm and running the GPU tests: Contributing, "Device kernels (GPU)".
-- **`timing: mat`, the matched filter and timing in one (`rp.sync.time.MatTrack`)**: a profile fuses its matched filter
-  into it, evaluated only at the symbol instants; the timing is the filter's energy maximum (as `Mat`, MatRRC) tracked
-  across windows, measured a group of windows at a time so a GPU does one launch a group (`"device": true`). It follows a
-  clock 20 ppm off on DVB-S2 like `oerder_meyr`, and any block cut gives the same symbols. With `{"frame": {"device":
-  true}}` frame sync's metric runs on the GPU too (`FrameSync(device=True)`); `tools/parallel_bench.py --timing mat
-  --device` measures the receiver with both.
-- **A region's frame that its header's CRC fails is dropped** (`crc_ok` False) instead of failing the batch.
-- **A profile's `requires` narrows a search:** `rp.profile.fits(name, baud=, bw=, Fs=, seconds=, input=)` says why a
-  measured signal can't be that profile (None when it may), and `rp.profile.candidates(...)` lists the variants that may.
-  `rp.analysis.profile`'s framed search tries only profiles whose rate admits the acquired one, and `identify(baud=)`
-  (passed by `AcquireFEC`) names only a profile at that rate. `requires` is checked: an unknown key, an `input` other
-  than baseband or audio, or a `from_cf` that isn't a param is a ConfigError.
-- **Benchmarks keep their results per machine**: `bench_stages`, `effort_bench`, `parallel_bench`, `resample_bench`
-  and `tpc_ber` take `--save`, `--update-baseline`, `--check` (exit 1 on a regression) and `--compare FILE`
-  (`tools/_bench.py`), writing to the git-ignored `.benchmarks/<bench>/`. `parallel_bench.py` and `resample_bench.py`
-  take their positional arguments through argparse now.
-- **`tools/modclass_bench.py`: the Es/N0 at which modulation detection works**, per constellation, for
-  `cumulants.classify` (blind and SNR-aided) and `rp.sync.detect` (rate searched or given): the lowest Es/N0 from
-  which Pc >= 0.9 holds up to 20 dB over fixed trials, the Pc curve (`--sweep`), or what each modulation and noise
-  alone are named with each name's false-discovery rate (`--confusion`, `--frontend` for noise a front-end filter has
-  shaped); `--save`/`--check` like the other benchmarks. `tests/unit/test_modclass_threshold.py` keeps the thresholds.
-- **SNR before lock, with no noise floor measured apart** (`rp.sync.quality`): `m2m4(y, points)` from the symbols'
-  moments under a constellation, `from_sequence(y, ref)` from a known sequence (a CAZAC one: signal and noise from one
-  circular correlation, any shift, phase and multipath; else least squares), `cyclic(x, sps)` from the signal's
-  spectral correlation at the symbol rate (in band, any pulse: noise outside the signal's band, of any colour, changes
-  nothing; the roll-off comes with it), and `blind(x, sps)` from the eigenvalues of the empty band (white noise only:
-  None where it can tell it isn't). Measured accuracy in the module.
-- **`rp.sequence.zadoff_chu(u, N, shift)`**: Zadoff-Chu (CAZAC) roots; LTE's PSS is made from it.
-- **`detect(esn0=, min_evidence=)` and `Lock.find(esn0=, min_evidence=)`**: a known Es/N0 (from a known sequence) to
-  score at, and an answer only when sure: `min_evidence` nats of total lead over the runner-up (`Detection.evidence`)
-  and 10 over Gaussian noise of the same power (`Detection.over_noise`), else `mod` is None (`best` the leader) and
-  `Lock.find` raises NoLock.
-- **Catalogue systems and features**: SCPC (IESS-308/309), DVB-RCS/RCS2 return bursts, DVB-S2X (small roll-offs),
-  an unmodulated carrier / beacon (`modulation="cw"`), PM TT&C in the C and Ku bands; features `burst` (bursty or
-  continuous), `profile` (the profile that decoded it), `sync` (LTE PSS/SSS, NR SSB), `ssb_period`, `subcarrier` and
-  `subcarrier_baud`. `python -m rpps ls system` lists them.
-- **Definition params take `"choices"`**: the values a param takes, each optionally a bundle of fields one choice sets
-  together (`{"param": "modulation.shape"}`, `modulation.bits` in an expression). A value that is not a choice is an error.
-  `rp.profile.info` lists them and evaluates `requires` with the chosen bundle.
-- **`"when"` on a list item** (a profile's step, any definition's list): kept only where its expression holds.
-  Expressions take string literals (`modulation == '16qam'`).
-- **Composite checks**: a `config/crc` definition of `"type": "composite"`, CRC parts over transformed views of the
-  message (`nibble_swap`, `reverse_bits`, `reverse_bytes`, `invert`, `xor`, `skip`, `take`, or one registered with
-  `rp.link.check.register`), concatenated or XORed. It goes wherever a CRC does (an HDLC `fcs`, a link header's `crc`).
-- **Blind analysis tries a profile's variants**: `rp.profile.variants(name)` lists the combinations of its params'
-  choices (defaults first; a param with `"blind": false` stays at its default), and `identify` (`match_profile`), the
-  survey's framed profiles and `rpps solve` try each; a match carries `profile_params` beside `profile_name`.
-  `match_profile` returns (name, steps, params).
-- **A child profile patches single steps**: `"steps"` as a dict, by step id (`"id"`, else the kind): a dict merges
-  into the step, `null` takes it out, `"+before:<id>"` / `"+after:<id>"` / `"+start"` / `"+end"` put steps in
-  (`_config.patch_steps`). A list still replaces every step.
-- **Checksums**: `config/crc` `"type": "checksum"`, `algorithm` sum, internet (RFC 1071), fletcher (16 / 32), adler
-  (Adler-32) or xor (LRC), with word size, endianness, negation, xorout, bit and byte order; it goes wherever a CRC
-  does, a composite check's parts too (`rp.link.checksum`).
-- **Byte-stuffed framing**: `config/frame` `"type": "bytes"` (flag, escape, escape map or XOR, optional FCS, LSB-first
-  bytes), streaming any block cut as HDLC does: `frame/slip`, `frame/kiss`, `frame/ppp_async` (RFC 1662, FCS-16).
-- **Fields as definitions** (`rpps.link.fields`): signed, scaled (`scale`, `offset`), per-field `order`, `enum` names,
-  `bytes` and `text`, sizes as expressions, `"if"` (per frame, over the fields before), `"from"` positions, groups,
-  `"repeat"` (a count, an expression, `"*"`) and `"until"`. Link header `"fields"` take them (a header with conditional
-  fields is read as it comes); headers and frames take `"payload_fields"` (in a message's `fields["payload"]`); a
-  step's `"message"` fields are a schema. `frame/ax25` reads AX.25 addresses, control and PID (`ax25/afsk1200` uses it);
-  `header/ble_adv` names PDU types and reads AdvA and AD structures; `dvbs/qpsk` reads the TS adaptation field and PCR.
-- Expressions short-circuit `and` / `or`, as Python does, and take `ceil`, `floor`, `round` and `log2`.
-- **Params take `"type"`** (int, float, str, bool), **`"min"` and `"max"`**, checked when a definition loads (and by
-  `rp.profile.info`).
-- The `mpower` carrier step takes a generated `"shape"` (`"16QAM"`) as the constellation step does.
-- `examples/profile_variants.py`.
-- **Words of any width**: a `sequence` word (and `word` + `bits` on a step) may be longer than 64 bits; a 100-byte
-  unique word is 200 hex digits. `rp.sync.Delimiter` matches a word over 64 bits by FFT correlation.
-- **`{"sync": "frame"}` takes a word** (`sequence`, or `word` + `bits`) instead of a `header`: the profile maps it to
-  symbols through its own steps, and the frame sync measures its phase, so a unique word sent after the FEC is found
-  under any rotation of the constellation (a bit delimiter only corrects an inversion).
-- `rp.sync.word_errors(n_bits, false_alarm, positions)`: the most bit errors a delimit step may allow before random
-  bits match, and `rp.math.prob.log_binom_half_cdf`.
+  BCH(63,51) named blind to 5 dB Eb/N0 (hard bits: above 6). `linear.frame_units`: a block code laid out in each frame's
+  payload, found from few frames.
+- **`rp.analysis.framing.randomness`**: NIST SP 800-22 tests and byte entropy, to tell encrypted from compressed or
+  structured data; a code carrying random-looking bits says so (`fec.payload`).
+- **`identify` sees a payload that repeats** (`repeat_period`, `CodeDetection.repeat`).
+- **`rp.analysis.profile`**: `progress=`, `jobs=` (signals in forked processes), `hint=` (what an earlier look found),
+  `symbols=` / `max_blocks` (reads on until a signal has symbols enough); TDMA bursts demodulated burst by burst; survey
+  boxes refitted to their signals, carriers a notch separates or that sit side by side profiled each on their own; the
+  carrier offset of framed profiles from their preamble; a profile's variants tried (`profile_params`).
+- **Catalogue**: SCPC, DVB-RCS/RCS2 bursts, DVB-S2X, an unmodulated carrier, PM TT&C; features `burst`, `profile`,
+  `sync`, `ssb_period`, `subcarrier`, `subcarrier_baud`. `python -m rpps ls system`.
+
+**GPU and tools**
+- **A parallel region on a GPU, CUDA or ROCm/HIP alike** (`Parallel("thread", xp=xp)`): LDPC, BCH and soft demapping
+  run device kernels, with permutation, identity and header kernels so the DVB-S2 region stays on the device; bit for bit
+  with the serial runner. On a Radeon 860M against 16 CPU threads the DVB-S2 region is 1.9x faster. `tools/device_bench.py`;
+  Contributing, "Device kernels (GPU)".
+- **Benchmarks keep results per machine** (`--save`, `--update-baseline`, `--check`, `--compare`; `.benchmarks/`).
+  New: `tools/finder_bench.py`, `tools/modclass_bench.py` (the Es/N0 modulation detection works from),
+  `tools/blind_bench.py` (what the blind code tools break, from how many symbols).
 
 ### Changed
-- **Self-synchronizing scramblers and the Bi-phase/Miller line codes have no loop over the bits.**
-  `rp.code.scram.Feedthrough` finds its register's delays once (a 1 sent into a cleared register) and its start
-  state's part of the keystream (zeros in, gone after L bits); descrambling is then a FIR over GF(2) and scrambling a
-  recursion (`rp.math.gf2.fir`, `rp.math.gf2.recur`: y = u/g(x) as u g(x) g(x^2) .. / g(x^(2^k)), a chunk of bits at a
-  time). The same bits as the register a bit at a time, every shipped definition, any cut; v35 scrambles at 195 Mb/s
-  (was 0.7) and descrambles at 1.9 Gb/s (0.85 Mb/s). Recurrence sequences (`rpps.sequence`, what additive scramblers
-  XOR in) extend by `gf2.recur` too, whatever their taps. `Line("biphase_m" | "biphase_s" | "miller")` encodes the
-  level as a running parity of its transitions (76 Mb/s).
-- **`rp.sync.PeakAGC` has no loop**: the running peak in closed form, a running maximum in logs. The same output to
-  rounding, about 5-8x faster (7.5 MS/s before, with or without the kernels).
-- **Recursive filters have no loop over samples.** `IIR`'s path without the C++ kernels is one state space system
-  for the whole cascade, its chunks filtered by matrix products and the chunk states found by a log-depth scan: exact
-  to rounding, 13-39x faster than before, and in a form a GPU can run. `DCBlock`, `Deemphasis`, `AMDemod`'s running
-  mean and `Squelch`'s level are now `IIR` sections (`rpps.signal.filters.iir.RunningMean` for a mean that starts at
-  the first sample), and the squelch's hysteresis is a forward fill. With the kernels they run through `sos_filter`,
-  Squelch faster (95 MS/s, was 68) and DCBlock, AMDemod and Deemphasis slower (135, 220, 130 MS/s, were 193, 399, 309:
-  still far above real time).
-- The per-sample loops these replaced stay, second class, under `loops`: `rp.signal.loops.DCBlock`,
-  `rp.signal.loops.Deemphasis`, `rp.wave.loops.AMDemod`, `rp.sync.loops.Squelch`, with their kernels (`dc_block`,
-  `one_pole`, `am_demod`, `squelch`); the same output to rounding. Their Python loops now run in double, as the kernels.
-- `rp.math.runs(mask)` (the True runs of a mask) and `rp.signal.filters.correlate(x, t)` (a template slid along a
-  signal, by FFT blocks when long) replace private copies in the finder, framing, burst analysis, FrameSync and the
-  LTE/NR cell searches.
-- **The blind puncture search decodes a mother code's patterns together** (`analysis.code.conv.puncture.search`): every
-  pattern of a mother decodes on the mother's trellis with erasures where it punctures, so a mother's periods, patterns,
-  streams and offsets go through in a batch per length (`puncture.mismatches`, row for row what each punctured code's
-  `mismatch_batch` gives): 72 Viterbi calls where there were 1764, the search about 1.5x faster. Its random baselines are
-  seeded by the mother, pattern and length, so they no longer depend on what was tried before: the same hypotheses and
-  picks, z values within a few tenths of before.
-- **`rp.sync.detect` scores each candidate at its own Es/N0 from the symbols' moments** (`quality.m2m4`, the
-  quasi-hybrid likelihood test) instead of letting each fit its own noise, which at low SNR named the densest candidate
-  (QPSK at 4 dB was 64QAM 19 times in 20, noise alone 32APSK); where the fit's own winner reads over 12.5 dB, the fit,
-  as before. It needs only the symbols (no pulse, rate or band assumed) and costs the same. `Detection.how` says
-  which was used.
-- **`rp.sync.Acquire` decides at fixed stream positions** (min_samples, then doubling, each on the stream's first P
-  samples), re-searching modulation and roll-off until two in a row agree, and at the stream's end: its detection no
-  longer depends on how the stream is cut into blocks (it decided on whatever had arrived and kept that modulation).
-- **`frames.find` sees a short unique word from fewer frames:** its candidate periods sum the correlation over every
-  multiple of a lag (`frames.comb_lags`), not the lag alone. A 16-symbol word every 2000 QPSK symbols at 5 dB is found
-  from 40 frames (it took 80), and random symbols still give none. A multiple of the period found must be much
-  stronger to replace it. `frames.periods` gives `(lag, z)`.
-- **`payload.fixed_word` finds a unique word among demodulated bits with bit errors**: the same candidate search, a
-  position constant when `agree` (75%) of frames hold its bit, and the word the stretch where they gather, taken when
-  chance could not have made it. It gives the word (`word`, `bits`), the bits each frame's copy differs by
-  (`mismatches`), and an `errors` to start a delimit step from. A 100-byte word with 10% bit errors is found from 12
-  to 20 frames.
-- **`matrix_mf` (rpps.sync.time.mat) runs in C++** (`rp._native.matrix_mf`): each row of RRC weights is computed and
-  applied in one vectorised pass, never stored, 9-10x the numpy path and equal to it to rounding; `Mat` timing gains the
-  most. Both paths now raise IndexError when a symbol's support runs outside x, where numpy's negative indices used to
-  wrap round to the end of the block: `Mat`'s +-0.25-sample timing probes use only the symbols whose shifted support
-  is in the buffer (`mat.fits`).
-- **`signal_profile.framed` reads profiles that end in branches** (`dvbs2/mis`): it read `.stream` off the result,
-  which is `{branch: output}` there, and the AttributeError ended the framed pass for every profile. The trunk's
-  headers come from the input's stream, each branch's from its own.
-- **`AcquireFEC` decides at the end of a stream**: a stream that ends (`flush`) before the window reaches `max_wait`
-  is identified on every symbol held past `skip`, blind tools included, where it used to stay "still acquiring" and the
-  blind tools never ran. `rp.analysis.profile` sends its last block as the end of the stream, so a short capture gets
-  the same look as a long one.
-- **`rp.analysis.profile` reads by symbols** (`symbols=2**18`, `max_blocks`): a signal whose code is not decided yet
-  and that has fewer than `symbols` symbols keeps reading past `blocks`, up to `max_blocks` (8 x blocks), so a narrow
-  signal gets symbols enough for the code scans and the layers inside a code instead of a fixed stretch of the
-  capture; a decided one stops costing anything.
-- **The layers inside a convolutional code are looked for on nearly all of the window**: `identify.decode_tail`
-  skips the first half of the window or the first `settle` (16384) bits, whichever is less, where it skipped the half.
-  A DVB-S window of 40k symbols now shows its RS(204,188) behind the Forney interleaver (it took about 64k).
-- **`rp.signal.FFTBank`: many channels of a capture from one FFT a hop**, each at its own width and rate (decimated by a
-  power of two that keeps 4x its width), at exactly its centre (the bin grid's rounding turned back with a phase ramp
-  continuous across hops), zero phase, the same output however the input is cut. `rp.analysis.profile` brings every
-  signal to baseband with one bank where each signal's chain shifted and decimated the whole capture itself.
-- **`tools/blind_bench.py`: what the blind coding tools break, from how many symbols**: synthetic QPSK streams
-  (configured and unconfigured convolutional codes, puncturing, RS behind a Viterbi, scramblers in cascade and with
-  three taps, BCH) at several Es/N0, the fewest symbols `identify(blind=True)` names each at, and the seconds it
-  takes; `--save`/`--check` like the other benchmarks.
-- **Blind identification names an unknown convolutional code and an odd-length block code right**: the convolutional
-  scan runs before the block search (a K=6 code was named an LDPC (112,62) code) and, once it finds the generators,
-  decodes with them and looks for the layers inside; and the block search keeps the shortest code any bit map shows
-  (BCH(63,51) on QPSK came out as a (126,103) code from a map that swaps a symbol's bits).
-- **The blind Reed-Solomon search runs in C++** (`rp._native.rs_count_zeros`: the sliding transform's zero counts at
-  every phase, bit offset, field and root, the numpy loop the reference), 2.8x on one thread and more on several; it
-  was 43% of a 25-signal capture's survey. `identify.scan_rs` loads the configured codes and interleavers once a
-  process (they were loaded on every call: 97 s of that survey).
-- **`rp.analysis.profile(progress=)`**: called as `progress(stage, done, total, left)` as the work goes (blocks read of
-  the stretch planned and the chains still reading, then the profiles built), for a percent and an estimate.
-- **A code that carries random-looking bits says so**: when nothing is found inside a convolutional code, `identify`
-  keeps `rp.analysis.framing.payload.verdict` of the bits as `fec.payload`, and the profile's payload step reads "the
-  bits it carries are random-looking" (keyed or compressed data: no layer to find) instead of only what was not found.
-- **`payload.signatures` no longer finds a periodic word in random bits**: a word at a fixed offset (MPEG-TS's 0x47) is
-  scored by the binomial deviance and past what the best of the period's columns reaches by chance; 2 hits in 15
-  frames where 0.06 were expected read as z 8 (MPEG-TS) and made random payloads "structured".
-- **`rp.analysis.framing.randomness`: is a bit stream as random as a cipher's output?** The NIST SP 800-22 rev. 1a
-  frequency, block frequency, runs, serial, approximate entropy and cumulative sums tests (each checked against the
-  standard's worked examples), a byte chi-square and the bytes' entropy: "random" (encrypted or keyed, or a strong
-  compressor's output), "high entropy" (near-uniform bytes that fail some test: compressed, a weak cipher) or "low
-  entropy". Entropy alone cannot tell encrypted from compressed data; these tests can for most compressors.
-  `payload.verdict` runs them on a random-looking payload (`.randomness`) and says which it is. `rp.math.prob.igamc`,
-  the chi-square tail, comes with it.
-- **The configured convolutional scan stops trying other rates once one fits overwhelmingly**
-  (`scan_defined_conv(decisive=20)`): codes of the same rate are still tried (an equivalent, the generators the other
-  way round, must be seen), the rest are not. A K=7 rate 1/2 stream is identified 4x faster.
-- **`rp.analysis.profile(jobs=)`** profiles the signals of a capture in that many forked processes (each its share
-  of the signals and its own reading of the source from where the profile starts), with the same result: two
-  carriers, 31.9 s -> 17.2 s on 2.
-- **A profile with a guessed convolutional code no longer fails to build**: `Guess`'s text read an old definition
-  layout (`"encode"`); a guess from the generators or from a mother code's puncture now prints, and is a "fec" step.
-- **`rp.analysis.profile(hint=)`**: `hint(signal)` gives what an earlier look at the same signal found (its symbol
-  rate, the convolutional definitions to try, whether to run the blind tools), so a survey of many captures of the same
-  carriers does not search for them again.
-- **Equivalent convolutional codes tie exactly in the configured scan**: the error rate a wrong code gets is measured
-  once per code shape and shared, where each code drew its own random bits off one generator in turn; which of two
-  equivalent codes won (the generators the other way round, an output inverted) depended on the codes tried before.
-- **`Mat` keeps a refined timing's first symbol inside its buffer**: moving to a refined detection's lattice could put
-  the next symbol's matched-filter support before the samples kept, which now raises (numpy used to wrap round to the
-  end of the block); it goes on to the first symbol whose support is there.
-- **TDMA bursts in `rp.analysis.profile`**: a bursty signal the continuous chain cannot lock to is demodulated burst by
-  burst on its preamble (`spectrum.burst.demodulate`), and the code in each burst kind's payload found where it is laid
-  out from the payload's start: `code.block.linear.frame_units(rows)`, the shortest length whose words at 0, n, 2n... of
-  every frame are short of rank, on every bit map (one unknown rotation is common to the bursts); then `solve_block`
-  names it (BCH, LDPC checks, cyclic...), or the payload's randomness is reported.
-- **Survey boxes are fitted to their signals before profiling**: `rp.analysis.profile` reads a stretch of the capture
-  once (`source.peek`), takes a fine spectrum of it (the 95th percentile over time), and moves each box's edges to
-  where its signal falls 10 dB under its top, or halfway down to the floor around a weak one
-  (`signal_profile._refit`), so the channel is cut around the signal, not around the survey's coarse box beside,
-  inside or over it. A box holding more than one signal, one whose fit runs into something wider, one under 6 dB over
-  the floor, or one already within 8% of the fit is kept; a refitted one says so in a "box" step. On a hand-reviewed
-  pool, box width over symbol rate went from 0.98-1.35 to 1.15-1.19 (10-90%), and 3 of 325 boxes reviewers said were
-  right moved far.
-- **Carriers a notch separates are each profiled**: the survey's spectrum (a few ms, valleys smoothed over a fixed share
-  of the band) runs narrow neighbours together into one box. `rp.analysis.profile` now looks at each box in a fine
-  spectrum of its own channel samples (the 95th percentile over time, about 400 bins across the box) and, at each
-  valley 4 dB under the lower of the peaks either side (more on a noisy spectrum), profiles each part on its own and
-  lists every one (`_Chain.carriers`); the box itself is dropped unless it solved as one signal and no part did. On
-  reviewed captures this splits 64 of 73 boxes holding several carriers and 6 of 325 holding one.
-- **The DVB-S2 PLHEADER reads DVB-S2X MODCODs**: `dvbs2_pl` has a first field `s2x` (EN 302 307-2 5.5.2: b0 = 1 for
-  a DVB-S2X MODCOD, coded with one more row and sent a quarter turn on from the SOF); with `s2x` 0 it is DVB-S2's
-  header as before. A header definition can turn a field's code words (`"turn": {"field": ..., "degrees": ...}`), and a
-  table can apply only where fields have given values (`"only": {"s2x": 0}`, a field not given counting as that value):
-  `dvbs2/modcod` has no row for a DVB-S2X header, so its frames are read but not decoded as DVB-S2 ones.
-- **`signal_profile.framed` ranks a profile whose payload decoded first**, then by headers: DVB-S2 normal and MIS
-  share the PL header, and the one with more headers read could be the one whose payload never decodes.
-- **The blind convolutional scan skips generator pairs with a common factor** (`analysis.code.conv.mother.scan_conv`):
-  equal generators held on any two equal bit streams, so a BPSK carrier read as QPSK (or fill with I = Q) was found
-  as a rate 1/2 code and called solved. Such a pair is a catastrophic code, not one anybody sends.
-- **`identify` sees a payload that repeats** (`rpps.analysis.identify.repeat_period`, `CodeDetection.repeat`): fill or a
-  test pattern sent again and again made every copy count as evidence, so code tests held on what was only copying.
-  A code found on such a stream now stands only if one period shows it too, and `rp.analysis.profile` says the
-  symbols repeat (and how often) where no code fits.
-- **A burst profile is not solved on its demodulation alone**: `rp.analysis.profile` adds an unsolved payload step
-  when no kind of burst has four demodulated to look for a code in (it called 3 of 295 noise "bursts" solved).
-  A frame found with under 64 payload symbols in all is not looked into (it raised "Need at least 8 symbols" and
-  lost the signal's profile).
-- **A framed profile whose frames' payload never decodes is not solved**: `rp.analysis.profile` adds an unsolved
-  payload step when none of the profile's last headers (DVB-S2's BBHEADER, a branch point's headers together) decoded,
-  where it called a signal solved on its first headers alone. `signal_profile.framed` returns the profile's header ids
-  as a sixth item.
-- **Framed profiles take the carrier offset from their preamble**: `rp.analysis.profile` ran the framed profiles
-  (DVB-S2 and the like) on the chain's symbols with the chain's carrier offset taken off, an M-th power's, which on a
-  constellation that isn't M-fold symmetric (16/32APSK) can be off by a good part of the rate: no header decoded, and a
-  DVB-S2 APSK carrier stopped as a doubtful 8PSK. The rest of the offset now comes from the preamble's own phase steps
-  (`signal_profile.preamble_offset`) before the profile runs, when it stands 3 standard errors clear of the
-  preambles' own spread (a noise estimate, applied, drifts a long frame's phase by radians: a 7 dB DVB-S2 carrier's
-  BBHEADERs stopped decoding).
-- **A block code laid out in each frame is found from few frames**: where the profile finds frames (a unique word) and no
-  code fits, the payloads were tried only as one codeword a frame, which needs more frames than the payload has bits.
-  Now words laid end to end from each payload's start are looked for too (`linear.frame_units`), and the code is then
-  solved on them, a product code's columns included: the fec step is that guess. The payload's start (up to 3 symbols
-  back into the unique word, where a payload's first symbols are the same in every frame) and the bit map (the frames'
-  common rotation is unknown, and a wrong one makes the code affine, a check short) are the ones where the words are
-  shortest of rank. `linear.product` takes several
-  columns from each block when there are fewer blocks than the rank needs (`per_block`), and `solve_block` looks for
-  columns as long as the bits allow instead of skipping the product test below 128.
-- **A survey box that holds carriers side by side is split**: when the cyclic spectrum's rate needs well under the box
-  (the chain could not lock to it), the box's own channel samples are surveyed again and each carrier in it profiled on
-  its own ("signal 16.1", "signal 16.2"...), its rate acquired alone in its channel; the one that gets furthest stands
-  for the box, and the others are listed when they solved or got further than the box did. A piece of the finer survey
-  is a carrier only if it is wide enough for the rate and not a lump inside a wider one (or the box itself, found
-  again), and a box with more pieces than carriers at the rate could fit is left whole. A box well wider than the rate
-  its chain locked to is narrowed to the one carrier in it the same way.
-- **Soft decisions in the configured convolutional scan**: `identify` passes the LLRs of each bit map, and a code the
-  hard re-encoding test leaves short is scored by the share of |LLR| it disagrees on (`mother.soft_mismatch_batch`,
-  decoded from the LLRs), against what random signs on the same reliabilities give. K=7 rate 1/2 on QPSK is identified
-  down to Es/N0 2 dB (it was 6).
-- **Faster code scans**: `scan_block` screens each word alignment on 24 words before checking all of them (the
-  configured block scans 5-6x faster); `scan_defined_conv` screens every code, map and alignment on a fifth of its bits
-  (hard, and soft where there are LLRs) before the full Viterbi decode (2.5-4x); `puncture.search` skips a stream that
-  is another's bits inverted for mother codes whose generators are of odd weight (an inverted codeword is a codeword).
-- **`identify(prior=)`: AcquireFEC's growing window doesn't rescan what it already scanned.** The configured scans look
-  at the first 2^15 symbols only, the same in every window from there: a convolutional code found is only decoded
-  again for what is inside it, and with nothing configured found the blind pass goes straight to the blind tools (a
-  DVB-S stream 4.8 s -> 3.4 s).
-- **`AcquireFEC(min_line=5.0)`: no blind tools on a rate Acquire only guessed.** When the rate came from no
-  symbol-rate line at least `min_line` over its floor (taken anyway), the symbols are at a wrong rate and no code fits:
-  the configured scans still run, the blind ones (the puncture search, block and convolutional searches, the layers
-  inside) don't. A rate given (a hint, the cyclic spectrum's second pass) has no line and is always searched.
+- **No loop over samples or bits where a closed form or block form exists**, the same output to rounding at any block
+  cut:
+  - self-synchronizing scramblers are a FIR / recursion over GF(2) (`rp.math.gf2.fir`, `recur`): V.35 scrambles at
+    195 Mb/s (was 0.7) and descrambles at 1.9 Gb/s; `Line("biphase_m" | "biphase_s" | "miller")` at 76 Mb/s;
+  - `IIR` without the kernels is one state-space system filtered by chunks (13-39x faster); `DCBlock`, `Deemphasis`,
+    `AMDemod` and `Squelch` are `IIR` sections (`rpps.signal.filters.iir.RunningMean`);
+  - `rp.sync.PeakAGC` is a running maximum in logs (5-8x faster).
+- **`rp.sync.detect` scores each candidate at its own Es/N0 from the symbols' moments** instead of letting each fit its
+  own noise, which at low SNR named the densest candidate (QPSK at 4 dB was 64QAM 19 times in 20). `Detection.how`.
+- **`rp.sync.Acquire` decides at fixed stream positions**, re-searching until two decisions agree: its detection no
+  longer depends on how the stream is cut.
+- **`AcquireFEC` decides at the end of a stream**, reuses the scans it already made as its window grows
+  (`identify(prior=)`), and runs no blind tools on a rate Acquire only guessed (`min_line=5.0`).
+- **Blind code identification**: soft decisions in the configured convolutional scan (K=7 1/2 down to Es/N0 2 dB, was
+  6); convolutional before block codes, and the shortest block code of every bit map; the puncture search decodes a
+  mother's patterns together (72 Viterbi calls where there were 1764); screens before full block and Viterbi scans
+  (2.5-6x); the configured scan stops at an overwhelming fit (`decisive=20`); the blind Reed-Solomon search in C++
+  (2.8x); `decode_tail` keeps nearly all of the window (DVB-S's RS(204,188) from 40k symbols, was 64k).
+- **`frames.find` sees a short unique word from fewer frames** (40 where it took 80; `frames.comb_lags`);
+  `frames.periods` gives `(lag, z)`. **`payload.fixed_word`** finds a word with bit errors (`word`, `bits`,
+  `mismatches`, `errors`).
+- **`matrix_mf` runs in C++** (9-10x). It and the numpy path raise IndexError when a symbol's support runs outside x,
+  where numpy used to wrap round.
+- `analysis.profile` channelizes every signal with one `FFTBank`; `signal_profile.framed` returns the profile's header
+  ids as a sixth item and ranks a profile whose payload decoded first; `match_profile` returns (name, steps, params).
+- `parallel_bench.py` and `resample_bench.py` take their positional arguments through argparse.
 
 ### Fixed
-- `sync.AcquireFEC` kept the symbols it held when Acquire decided again (another rate or modulation before it
-  settled): its window was the old lock's junk, which read as a stream repeating every symbol, and the stage stopped
-  there. It now starts over at the new lock.
-- `rp.analysis.profile` split a carrier into pieces on a short capture: `_Chain.carriers` took the notches of a
-  spectrum from a row or two (±5 dB noise) for gaps between carriers. Under 8 rows over its percentile it splits
-  nothing.
-- `learn_plan` found no frame period in captures of more than a few thousand BTUs: its BTU, right to 1e-4 of
-  itself, slipped the later bursts' BTU counts. It is now made exact over the whole capture (the least-squares
-  slope of the starts on their counts, over a span doubling from the first burst).
-- `learn_plan` found no BTU when bursts are sparse (a few % of the slots): their nearby starts sit hundreds of BTUs
-  apart and the score's peaks were narrower than its fixed grid. q now steps evenly in 1/q, finely enough for the
-  longest differences, from the longest q down to the first passing.
-- `spectrum.burst.demodulate` found only one of two burst kinds on a carrier when the gate opened late on the
-  first bursts of a length group (`shared_preamble` took its references from the first 8 only): the references
-  are now the longest bursts, the first and some spread over the list.
-- `learn_plan` took a BTU the start differences only nearly fit (a carrier of one burst type, slots of 2.4 ms read
-  as 2.5, and a 5 ms frame for 15): each candidate BTU is now made exact over the capture and taken only where
-  90% of the starts sit on its grid, else the search goes on past its peak.
-- A profile's change for a step that had not run yet was placed as if positions started at 0: in a stream that starts
-  elsewhere (every burst of a burst profile, at its place in the capture) it landed at the wrong item. An empty position
-  map now scales by its step's rate.
-- `rp.sync.Burst`'s noise floor stopped at a handful of unusually quiet windows (a narrow channel's windows hold few
-  independent samples), and called a whole capture one burst; the floor's cluster must now hold 1% of the windows.
-- `BurstTx` takes a burst that starts a little before the last one, within its `lag` (bursts on several carriers at once).
-- A block definition's `decoder` that cannot be built from its code (a trellis for a non-linear `expr` code, a code type
-  that is not a decoder) is a ConfigError saying why, not an AttributeError.
-- A framed link header whose fields are the whole frame (no payload) was restarted before it was read, so no frame came
-  out; and a header whose last bit ended a block was read only when more data came, so a stream's last header was lost.
-- A profile's output joined frames decoded to bits with frames passed on as LLRs (a code a header switched off) as one
-  array, so the bits read as LLRs; such outputs are all LLRs now, a decided bit as sure as the surest soft one.
+- `Mat` could put a refined timing's first symbol's support before its buffer (numpy wrapped round to the block's end).
+- `signal_profile.framed` failed on profiles that end in branches (`dvbs2/mis`), ending the framed pass for every
+  profile.
+- A profile with a guessed convolutional code failed to build (`Guess` read an old definition layout).
+- `payload.signatures` found a periodic word in random bits (2 hits in 15 frames read as z 8) and called them structured.
+- The blind convolutional scan found equal generators on any two equal bit streams (a BPSK carrier read as QPSK) and
+  called the signal solved; pairs with a common factor are skipped.
+- Which of two equivalent convolutional codes won the configured scan depended on the codes tried before.
+- `analysis.profile` called a framed signal solved on its first headers alone, and a burst signal on demodulation
+  alone; a frame with under 64 payload symbols raised and lost the signal's profile.
+- `spectrum.burst.demodulate` found only one of two burst kinds on a carrier when the gate opened late on the first
+  bursts.
+- A profile's change for a step that had not run yet was placed as if positions started at 0 (every burst of a burst
+  profile).
+- `rp.sync.Burst`'s noise floor stopped at a handful of unusually quiet windows and called a whole capture one burst.
+- `BurstTx` refused a burst that starts a little before the last one, within its `lag`.
+- A block definition's `decoder` that can't be built from its code raised AttributeError; it is a ConfigError saying why.
+- A framed link header with no payload gave no frames, and a header whose last bit ended a block was lost at the end
+  of a stream.
+- A profile's output joined decoded bits and passed-on LLRs as one array (the bits read as LLRs); it is all LLRs now.
 
 ## 0.6.0 (2026-11-22)
 

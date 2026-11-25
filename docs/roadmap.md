@@ -16,11 +16,13 @@ What is in each part of RPPS, and what is not yet.
 - [X] [Sample](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/sample)
 - [ ] [Sync](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sync)
     - [X] Frequency
-    - [X] Phase (M-th power, Costas, pilots)
-    - [X] Time (Oerder & Meyr, Mueller & Muller, Gardner, timing locked loop)
-    - [X] Frames: preambles among symbols, delimiter words among bits (fixed or header-driven length, polarity), repeating markers
-    - [X] Equalizers: block least squares, LMS, CMA; OFDM pilots and cyclic prefix
-    - [X] Per-burst acquisition (`sync.Burst`: each burst a stream of its own), preambles (`sync.Preamble`: known waveform or Schmidl-Cox, carrier offset)
+    - [X] Phase (M-th power, decision directed on any constellation, pilots), by block estimation tracked across windows
+    - [X] Time (Oerder & Meyr; the matched filter and an energy-maximum timing in one, `timing: mat`), AGC by block estimation
+    - [X] Per-sample loops, second class (`sync.loops`: Costas, Mueller & Muller, Gardner, timing locked loop, AGC, LMS, CMA)
+    - [X] SNR before lock (`sync.quality`: from moments, a known sequence, the cyclic spectrum, the empty band)
+    - [X] Frames: preambles among symbols, named words and Zadoff-Chu roots (any width, any rotation), delimiter words among bits (fixed or header-driven length, polarity), repeating markers
+    - [X] Equalizers: block least squares (decision directed or blind), OFDM pilots and cyclic prefix; LMS and CMA as loops
+    - [X] Per-burst acquisition (`sync.Burst`: each burst a stream of its own; `sync.Bursts`: many carriers, placed by a time plan), preambles (`sync.Preamble`: known waveform or Schmidl-Cox, carrier offset)
     - [X] Tone / pilot PLL (`sync.ToneLock`: FM stereo, ATSC pilot)
     - [X] LTE cell search and resource grid (`grid.lte`: PSS/SSS, sample-clock tracking, channel of each antenna port)
     - [X] NR cell search and SS/PBCH tracking through LEO Doppler and Doppler rate (`grid.nr`)
@@ -35,6 +37,7 @@ What is in each part of RPPS, and what is not yet.
     - [ ] Block
         - [X] Repetition
         - [X] Hamming (decoded on its syndrome trellis)
+        - [X] Any code bit by bit: parity equations, expressions of the message bits, appended checks, layouts
         - [X] BCH
         - [X] Reed-Solomon
         - [X] LDPC (layered or flooding min-sum; DVB-S2 tables, quasi-cyclic matrices: IEEE 802.11n)
@@ -61,11 +64,12 @@ What is in each part of RPPS, and what is not yet.
     - [X] Line codes: Bi-phi-M/S and delay modulation (IRIG-106)
     - [ ] Line codes: 4B5B, 8b/10b
 - [ ] [Link](https://github.com/Anonoei/RPPS/tree/main/src/rpps/link)
-    - [X] CRC
+    - [X] CRC, checksums, composite checks
     - [X] HDLC (streaming, any block cut)
     - [X] Headers: fields, a CRC over them or a frame check sequence over header and payload, header-driven lengths
     - [X] Byte-stuffed framing: SLIP, KISS, asynchronous PPP; checksums (sum, Internet, Fletcher, Adler, XOR); composite checks
     - [X] Fields as definitions: conditional, repeated, expression-sized, signed, scaled, enums, text (AX.25 addresses, BLE AD structures, TS adaptation fields)
+    - [X] GSE (PDUs in DVB-S2 data fields)
     - [ ] MPEG-TS packets, CCSDS transfer frames and space packets, FX.25
 - [ ] [Profiles](https://github.com/Anonoei/RPPS/tree/main/config/profile)
     - [X] DVB-S, DVB-S2 (normal and short frames, APSK), IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
@@ -74,16 +78,20 @@ What is in each part of RPPS, and what is not yet.
     - [X] 5G NR downlink to SIB1 at 15 kHz, through LEO satellite Doppler (`nr/downlink`: SS/PBCH, MIB, CORESET 0, DCI 1_0, PDSCH)
     - [X] DVB-S2 multiple input streams (`dvbs2/mis`)
     - [X] Bursts (`{"sync": "burst"}`, preambles) received and transmitted (placed, ramped, hopping); branches driving one another
+    - [X] P25 phase 1 control channel (`p25/tsdu`), DMR bursts (`dmr/burst`)
+    - [X] MF-TDMA by burst time plan (`rpps.plan`: DVB-RCS2's model, from a definition, the forward link's tables, or learned); `dvbrcs2/forward`
+    - [X] Params with choices, variants, `when` on steps, children patching single steps
     - [X] Decoded messages (`Message`), only the kinds wanted, what each profile needs (`requires`), `profile.Decoder` from a selected band
-    - [ ] From definitions already shipped: CCSDS turbo, P25, DMR, IEEE 802.11a/g, 802.11n, ATSC 8VSB, GPS C/A, DAB
+    - [ ] From definitions already shipped: CCSDS turbo, IEEE 802.11a/g, 802.11n, ATSC 8VSB, GPS C/A, DAB
 - [X] [Parallel](https://github.com/Anonoei/RPPS/tree/main/src/rpps/parallel): a profile's per-frame work on threads or processes, batch kernels
-    - [ ] GPU and FPGA backends
+    - [X] GPU (CUDA or ROCm/HIP through CuPy): LDPC, BCH, demapping, the DVB-S2 region end to end
+    - [ ] FPGA backend
 - [X] [Analysis](https://github.com/Anonoei/RPPS/tree/main/src/rpps/analysis): blind survey and identification of unknown signals
-    - [X] Signals in a capture (`survey`, `find_signals`, `measure_band`), symbol rate, modulation (PSK/QAM/APSK, FSK index, CPM/SOQPSK offline), OFDM and its pilots, TDMA bursts and their kinds
-    - [X] Codes: convolutional (mother code, puncturing, RSC and turbo, TCM), linear block, Reed-Solomon, polar, quasi-cyclic LDPC (generator and sparse checks); scramblers, interleavers, frame markers
-    - [X] CRCs: generator, init, xorout and coverage from frames (`framing.crc`)
+    - [X] Signals in a capture (`survey`, `find_signals` read by level, a streaming `Finder`, `measure_band`), symbol rate, modulation (PSK/QAM/APSK, FSK index, CPM/SOQPSK offline), OFDM and its pilots, TDMA bursts, their kinds and their time plan
+    - [X] Codes (hard or soft): convolutional (mother code, puncturing, RSC and turbo, TCM), linear block, Reed-Solomon, polar, quasi-cyclic LDPC (generator and sparse checks); scramblers, interleavers, frame markers
+    - [X] CRCs: generator, init, xorout and coverage from frames (`framing.crc`); header fields (`framing.fields`); randomness (NIST SP 800-22)
     - [X] Step by step through a receive chain to a profile, or what is still unsolved (`analysis.profile`, `rpps solve`)
-- [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey
+- [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey, bursts and plans
 
 ## Not yet built
 
@@ -101,6 +109,6 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
 - **Links, sources, profiles:** MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
-  block-coded headers; tun/tap, audio devices, transmitting to a radio; profiles for DMR, P25, 802.11a/g/n, ATSC, GPS C/A,
+  block-coded headers; tun/tap, audio devices, transmitting to a radio; profiles for DMR voice, P25 phase 2 and voice, 802.11a/g/n, ATSC, GPS C/A,
   DAB, UMTS, CCSDS turbo (and `projects/` using the BLE, ADS-B and 802.11b profiles that exist); `dvbs2/normal` dummy frames;
-  positions and gaps in the parallel runner's output; GPU and FPGA backends.
+  positions and gaps in the parallel runner's output; MPower and Oerder & Meyr on a GPU; an FPGA backend.
