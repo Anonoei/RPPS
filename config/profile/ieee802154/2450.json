@@ -3,12 +3,7 @@
   "comment": "IEEE 802.15.4 2.4 GHz O-QPSK PHY: 4 bits pick one of 16 32-chip sequences, even chips on I and odd on Q, half-sine pulses, Q half a symbol late; octets go least significant bit first (the low nibble's symbol first). 2 Mchip/s. There is no carrier estimator for a staggered signal yet, so the carrier must come off before this profile (or the source)",
   "ref": "IEEE 802.15.4-2020 12",
   "tags": ["ieee-802.15.4"],
-  "params": {
-    "sps": {
-      "default": 4,
-      "comment": "samples per chip pair (an I and a Q chip), even"
-    }
-  },
+  "params": {"sps": {"default": 4, "comment": "samples per chip pair (an I and a Q chip), even"}},
   "requires": {
     "baud": "1e6",
     "Fs": "baud*sps",
@@ -16,37 +11,13 @@
     "min_samples": "Fs*1e-3",
     "comment": "chip pairs (an I and a Q chip) at 1 MHz: 2 Mchip/s"
   },
-  "defaults": {
-    "carrier": {
-      "method": "none"
-    }
-  },
+  "defaults": {"carrier": {"method": "none"}},
   "steps": [
-    {
-      "sync": "carrier"
-    },
-    {
-      "wave": "stagger",
-      "delay": 0.5
-    },
-    {
-      "wave": "shape",
-      "pulse": "halfsine/halfsine",
-      "sps": {
-        "param": "sps"
-      }
-    },
-    {
-      "sync": "timing"
-    },
-    {
-      "symbol": "spread",
-      "sequence": "ieee802154_2450",
-      "pair": true
-    },
-    {
-      "code": "interleave",
-      "name": "block/lsb_first"
-    }
+    {"sync": "carrier"},
+    {"wave": "stagger", "delay": 0.5},
+    {"wave": "shape", "pulse": "halfsine/halfsine", "sps": {"param": "sps"}},
+    {"sync": "timing"},
+    {"symbol": "spread", "sequence": "ieee802154_2450", "pair": true},
+    {"code": "interleave", "name": "block/lsb_first"}
   ]
 }

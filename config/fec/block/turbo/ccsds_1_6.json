@@ -2,7 +2,5 @@
   "base": "block",
   "extends": "ccsds",
   "comment": "CCSDS turbo code, rate 1/6",
-  "outputs": [
-    ["0a", "1a", "2a", "3a", "1b", "3b"]
-  ]
+  "outputs": [["0a", "1a", "2a", "3a", "1b", "3b"]]
 }

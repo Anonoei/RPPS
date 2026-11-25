@@ -9,10 +9,7 @@
         "link": "packets",
         "id": "ts",
         "params": ["ts_gs", "npd", "issyi", "upl", "syncd"],
-        "defaults": {
-          "ts_gs": 3,
-          "upl": 1504
-        },
+        "defaults": {"ts_gs": 3, "upl": 1504},
         "active": "ts_gs == 3",
         "starts": "syncd != 65535",
         "pointer": "syncd",
@@ -27,22 +24,13 @@
           {"name": "afc", "bits": 2},
           {"name": "cc", "bits": 4}
         ],
-        "carried_check": {
-          "crc": "crc8_dvbs2",
-          "bits": 8,
-          "restore": "0x47"
-        },
+        "carried_check": {"crc": "crc8_dvbs2", "bits": 8, "restore": "0x47"},
         "keep": "1504",
         "trailer": [
           {"name": "issy", "bits": "upl - 1504 - 8*npd", "if": "issyi"},
           {"name": "dnp", "bits": 8, "if": "npd"}
         ],
-        "insert": {
-          "count": "dnp if npd else 0",
-          "bits": 1504,
-          "head": "0x471FFF10",
-          "fill": 255
-        },
+        "insert": {"count": "dnp if npd else 0", "bits": 1504, "head": "0x471FFF10", "fill": 255},
         "tx": {
           "ts_gs": "ts_gs",
           "npd": "npd",
@@ -55,16 +43,7 @@
     ]
   },
   "controls": {
-    "pls": {
-      "drive": {
-        "ts": {
-          "length": {
-            "calc": "kbch - 80",
-            "on": "tx"
-          }
-        }
-      }
-    },
+    "pls": {"drive": {"ts": {"length": {"calc": "kbch - 80", "on": "tx"}}}},
     "bbheader": {
       "on": "rx",
       "drive": {
@@ -82,40 +61,16 @@
     "ts": {
       "drive": {
         "bbheader": {
-          "ts_gs": {
-            "calc": "ts_gs",
-            "on": "tx"
-          },
-          "npd": {
-            "calc": "npd",
-            "on": "tx"
-          },
-          "issyi": {
-            "calc": "issyi",
-            "on": "tx"
-          },
-          "upl": {
-            "calc": "upl",
-            "on": "tx"
-          },
-          "sync": {
-            "calc": "sync",
-            "on": "tx"
-          },
-          "syncd": {
-            "calc": "syncd",
-            "on": "tx"
-          }
+          "ts_gs": {"calc": "ts_gs", "on": "tx"},
+          "npd": {"calc": "npd", "on": "tx"},
+          "issyi": {"calc": "issyi", "on": "tx"},
+          "upl": {"calc": "upl", "on": "tx"},
+          "sync": {"calc": "sync", "on": "tx"},
+          "syncd": {"calc": "syncd", "on": "tx"}
         }
       }
     }
   },
-  "capture": {
-    "ts": {
-      "linktype": "mpeg2_ts",
-      "include": ["header", "payload"],
-      "fields": ["pid", "pusi", "cc"]
-    }
-  },
+  "capture": {"ts": {"linktype": "mpeg2_ts", "include": ["header", "payload"], "fields": ["pid", "pusi", "cc"]}},
   "parallel": null
 }

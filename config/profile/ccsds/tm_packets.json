@@ -5,14 +5,7 @@
   "ref": "CCSDS 132.0-B-3 4.1.4.2, CCSDS 133.0-B-2 4.1",
   "steps": {
     "+end": [
-      {
-        "link": "header",
-        "id": "tm",
-        "name": "ccsds_tm",
-        "length": {
-          "expr": "8*223*depth"
-        }
-      },
+      {"link": "header", "id": "tm", "name": "ccsds_tm", "length": {"expr": "8*223*depth"}},
       {
         "link": "packets",
         "id": "space",
@@ -40,15 +33,7 @@
   "controls": {
     "tm": {
       "on": "rx",
-      "drive": {
-        "space": {
-          "frame": "mc_count",
-          "length": "bits",
-          "fhp": "fhp",
-          "vcid": "vcid",
-          "vc_count": "vc_count"
-        }
-      }
+      "drive": {"space": {"frame": "mc_count", "length": "bits", "fhp": "fhp", "vcid": "vcid", "vc_count": "vc_count"}}
     }
   },
   "capture": {

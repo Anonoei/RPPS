@@ -2,7 +2,5 @@
   "base": "window",
   "type": "tukey",
   "comment": "Tukey (tapered cosine) window, a quarter of it tapered",
-  "params": {
-    "a": 0.25
-  }
+  "params": {"a": 0.25}
 }

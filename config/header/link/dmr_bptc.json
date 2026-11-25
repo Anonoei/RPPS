@@ -5,9 +5,7 @@
   "ref": "ETSI TS 102 361-1 V2.6.1 B.1.1, 9.3",
   "tags": ["dmr"],
   "order": "msb",
-  "fields": [
-    {"name": "info", "type": "bytes", "bytes": 12}
-  ],
+  "fields": [{"name": "info", "type": "bytes", "bytes": 12}],
   "payload": "0",
   "framed": true,
   "length": 96

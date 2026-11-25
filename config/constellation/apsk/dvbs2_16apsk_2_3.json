@@ -3,7 +3,5 @@
   "extends": "apsk/dvbs2_16apsk",
   "comment": "DVB-S2 16APSK for code rate 2/3: gamma = 3.15",
   "ref": "EN 302 307-1 V1.2.1 5.4.3, figure 11, table 9",
-  "params": {
-    "gamma": 3.15
-  }
+  "params": {"gamma": 3.15}
 }

@@ -4,7 +4,5 @@
   "comment": "Hamming (3,1), a 3x repetition code",
   "n": 3,
   "k": 1,
-  "p": [
-    [1, 1]
-  ]
+  "p": [[1, 1]]
 }

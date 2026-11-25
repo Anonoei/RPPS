@@ -17,20 +17,12 @@
         {"name": "ext", "bits": 1}
       ]
     },
-    {
-      "name": "control",
-      "bits": 8
-    },
+    {"name": "control", "bits": 8},
     {
       "name": "pid",
       "bits": 8,
       "if": "(control & 1) == 0 or (control & 0xEF) == 3",
-      "enum": {
-        "240": "no layer 3",
-        "204": "IP",
-        "205": "ARP",
-        "207": "NET/ROM"
-      }
+      "enum": {"240": "no layer 3", "204": "IP", "205": "ARP", "207": "NET/ROM"}
     }
   ]
 }

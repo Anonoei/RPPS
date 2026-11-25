@@ -5,9 +5,6 @@
   "ref": "RFC 1055",
   "flag": "0xC0",
   "escape": "0xDB",
-  "escapes": {
-    "0xC0": "0xDC",
-    "0xDB": "0xDD"
-  },
+  "escapes": {"0xC0": "0xDC", "0xDB": "0xDD"},
   "min_bytes": 1
 }

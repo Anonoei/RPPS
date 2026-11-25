@@ -13,9 +13,5 @@
   ],
   "crc": "crc16_genibus",
   "payload": "length*signal//10",
-  "preamble": {
-    "ones": 128,
-    "word": "0xF3A0",
-    "bits": 16
-  }
+  "preamble": {"ones": 128, "word": "0xF3A0", "bits": 16}
 }

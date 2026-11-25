@@ -8,8 +8,6 @@
     "pilot_spacing": [12, 3],
     "pilot_step": 3,
     "pilot_period": 4,
-    "frequency": [
-      [470000000.0, 806000000.0]
-    ]
+    "frequency": [[470000000.0, 806000000.0]]
   }
 }

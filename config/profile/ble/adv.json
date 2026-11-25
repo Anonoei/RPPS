@@ -4,14 +4,8 @@
   "ref": "Bluetooth Core 6.0 Vol 6 Part A 3, Part B 2.1, 3.1, 3.2",
   "tags": ["ble"],
   "params": {
-    "sps": {
-      "default": 4,
-      "comment": "samples per bit (4 MS/s: 4)"
-    },
-    "channel": {
-      "default": 37,
-      "comment": "advertising channel index (37, 38, 39): seeds the whitening"
-    }
+    "sps": {"default": 4, "comment": "samples per bit (4 MS/s: 4)"},
+    "channel": {"default": 37, "comment": "advertising channel index (37, 38, 39): seeds the whitening"}
   },
   "requires": {
     "baud": "1e6",
@@ -24,111 +18,26 @@
     "comment": "the advertising channel follows from the carrier: 2402, 2426, 2480 MHz"
   },
   "steps": [
-    {
-      "sync": "burst",
-      "factor": 6.0,
-      "win": 8,
-      "min_s": 6e-05,
-      "max_s": 0.003,
-      "gap_s": 0.001
-    },
-    {
-      "wave": "fm",
-      "h": 0.5,
-      "sps": {
-        "param": "sps"
-      }
-    },
-    {
-      "sync": "preamble",
-      "id": "aa_wave",
-      "name": "aa_wave",
-      "sequence": "ble_adv_aa",
-      "gate": 0.6,
-      "correct": true
-    },
-    {
-      "wave": "shape",
-      "pulse": "gaussian/bt0p5",
-      "sps": {
-        "param": "sps"
-      }
-    },
-    {
-      "sync": "timing",
-      "method": "known",
-      "anchor": "aa_wave"
-    },
-    {
-      "symbol": "constellation",
-      "name": "bpsk",
-      "mapping": "R180"
-    },
-    {
-      "sync": "delimit",
-      "id": "aa",
-      "sequence": "ble_adv_aa",
-      "errors": 2,
-      "keep": true
-    },
-    {
-      "code": "marker",
-      "id": "sync",
-      "sequence": "ble_adv_aa"
-    },
-    {
-      "code": "scramble",
-      "id": "whiten",
-      "name": "additive/ble_whiten",
-      "args": {
-        "channel": {
-          "param": "channel"
-        }
-      }
-    },
-    {
-      "link": "header",
-      "id": "pdu",
-      "name": "ble_adv"
-    }
+    {"sync": "burst", "factor": 6.0, "win": 8, "min_s": 6e-05, "max_s": 0.003, "gap_s": 0.001},
+    {"wave": "fm", "h": 0.5, "sps": {"param": "sps"}},
+    {"sync": "preamble", "id": "aa_wave", "name": "aa_wave", "sequence": "ble_adv_aa", "gate": 0.6, "correct": true},
+    {"wave": "shape", "pulse": "gaussian/bt0p5", "sps": {"param": "sps"}},
+    {"sync": "timing", "method": "known", "anchor": "aa_wave"},
+    {"symbol": "constellation", "name": "bpsk", "mapping": "R180"},
+    {"sync": "delimit", "id": "aa", "sequence": "ble_adv_aa", "errors": 2, "keep": true},
+    {"code": "marker", "id": "sync", "sequence": "ble_adv_aa"},
+    {"code": "scramble", "id": "whiten", "name": "additive/ble_whiten", "args": {"channel": {"param": "channel"}}},
+    {"link": "header", "id": "pdu", "name": "ble_adv"}
   ],
   "controls": {
-    "aa": {
-      "drive": {
-        "sync": {
-          "frame": "frame"
-        },
-        "whiten": {
-          "frame": "frame"
-        },
-        "pdu": {
-          "frame": "frame"
-        }
-      }
-    },
+    "aa": {"drive": {"sync": {"frame": "frame"}, "whiten": {"frame": "frame"}, "pdu": {"frame": "frame"}}},
     "pdu": {
       "on": "tx",
-      "default": {
-        "type": 0,
-        "rfu": 0,
-        "chsel": 0,
-        "txadd": 0,
-        "rxadd": 0
-      },
+      "default": {"type": 0, "rfu": 0, "chsel": 0, "txadd": 0, "rxadd": 0},
       "drive": {
-        "pdu": {
-          "type": "type",
-          "rfu": "rfu",
-          "chsel": "chsel",
-          "txadd": "txadd",
-          "rxadd": "rxadd"
-        },
-        "sync": {
-          "frame": "frame_bits"
-        },
-        "whiten": {
-          "frame": "frame_bits"
-        }
+        "pdu": {"type": "type", "rfu": "rfu", "chsel": "chsel", "txadd": "txadd", "rxadd": "rxadd"},
+        "sync": {"frame": "frame_bits"},
+        "whiten": {"frame": "frame_bits"}
       }
     }
   },

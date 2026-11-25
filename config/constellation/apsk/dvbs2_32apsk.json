@@ -16,24 +16,9 @@
     }
   },
   "rings": [
-    {
-      "n": 4,
-      "pha": 45
-    },
-    {
-      "n": 12,
-      "pha": 15,
-      "mag": {
-        "param": "gamma1"
-      }
-    },
-    {
-      "n": 16,
-      "pha": 0,
-      "mag": {
-        "param": "gamma2"
-      }
-    }
+    {"n": 4, "pha": 45},
+    {"n": 12, "pha": 15, "mag": {"param": "gamma1"}},
+    {"n": 16, "pha": 0, "mag": {"param": "gamma2"}}
   ],
   "maps": [
     {

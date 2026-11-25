@@ -20,27 +20,11 @@
         "6": "ADV_SCAN_IND"
       }
     },
-    {
-      "name": "rfu",
-      "bits": 1
-    },
-    {
-      "name": "chsel",
-      "bits": 1
-    },
-    {
-      "name": "txadd",
-      "bits": 1
-    },
-    {
-      "name": "rxadd",
-      "bits": 1
-    },
-    {
-      "name": "length",
-      "bits": 8,
-      "tx": "bits//8"
-    }
+    {"name": "rfu", "bits": 1},
+    {"name": "chsel", "bits": 1},
+    {"name": "txadd", "bits": 1},
+    {"name": "rxadd", "bits": 1},
+    {"name": "length", "bits": 8, "tx": "bits//8"}
   ],
   "fcs": "crc24_ble",
   "payload": "length*8",
@@ -58,10 +42,7 @@
       "if": "type == 0 or type == 2 or type == 4 or type == 6",
       "comment": "AdvData / ScanRspData: AD structures, each a length, then an AD type and length - 1 bytes",
       "fields": [
-        {
-          "name": "len",
-          "bits": 8
-        },
+        {"name": "len", "bits": 8},
         {
           "name": "ad_type",
           "bits": 8,
@@ -77,12 +58,7 @@
             "255": "Manufacturer data"
           }
         },
-        {
-          "name": "data",
-          "type": "bytes",
-          "bytes": "len - 1",
-          "if": "len > 1"
-        }
+        {"name": "data", "type": "bytes", "bytes": "len - 1", "if": "len > 1"}
       ]
     }
   ]

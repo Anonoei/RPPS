@@ -1,17 +1,6 @@
 {
   "base": "constellation",
   "comment": "BPSK: +1 and -1",
-  "rings": [
-    {"n": 2, "pha": 0}
-  ],
-  "maps": [
-    {
-      "map": [0, 1],
-      "comment": "R000"
-    },
-    {
-      "map": [1, 0],
-      "comment": "R180"
-    }
-  ]
+  "rings": [{"n": 2, "pha": 0}],
+  "maps": [{"map": [0, 1], "comment": "R000"}, {"map": [1, 0], "comment": "R180"}]
 }

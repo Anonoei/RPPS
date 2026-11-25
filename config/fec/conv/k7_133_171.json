@@ -3,9 +3,6 @@
   "abstract": true,
   "comment": "Mother code K=7, generators 133, 171 octal, its rates (1/n unpunctured, and punctured ones) are in k7_133_171/",
   "constraint": 7,
-  "generator": [
-    [1, 0, 1, 1, 0, 1, 1],
-    [1, 1, 1, 1, 0, 0, 1]
-  ],
+  "generator": [[1, 0, 1, 1, 0, 1, 1], [1, 1, 1, 1, 0, 0, 1]],
   "decoder": "viterbi"
 }

@@ -6,9 +6,6 @@
   "tags": ["ieee-802.15.4"],
   "order": "lsb",
   "payload_order": "lsb",
-  "fields": [
-    {"name": "frame_length", "bits": 7, "tx": "bits//8"},
-    {"name": "reserved", "bits": 1}
-  ],
+  "fields": [{"name": "frame_length", "bits": 7, "tx": "bits//8"}, {"name": "reserved", "bits": 1}],
   "payload": "frame_length*8"
 }

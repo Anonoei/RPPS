@@ -9,10 +9,7 @@
   "signature": {
     "min": 20,
     "valid": "version == 4 and ihl >= 5 and total_length == size",
-    "check": {
-      "crc": "internet16",
-      "bytes": "ihl*4"
-    },
+    "check": {"crc": "internet16", "bytes": "ihl*4"},
     "fields": [
       {"name": "version", "bits": 4},
       {"name": "ihl", "bits": 4},

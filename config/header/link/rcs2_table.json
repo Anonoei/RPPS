@@ -6,105 +6,47 @@
   "tags": ["dvb-rcs2"],
   "order": "msb",
   "fields": [
-    {
-      "name": "table_id",
-      "bits": 8,
-      "enum": {
-        "160": "SCT",
-        "171": "FCT2",
-        "172": "BCT",
-        "173": "TBTP2"
-      }
-    },
-    {
-      "name": "interactive_network_id",
-      "bits": 16
-    },
-    {
-      "name": "reserved",
-      "bits": 2
-    },
-    {
-      "name": "version_number",
-      "bits": 5
-    },
-    {
-      "name": "current_next_indicator",
-      "bits": 1
-    }
+    {"name": "table_id", "bits": 8, "enum": {"160": "SCT", "171": "FCT2", "172": "BCT", "173": "TBTP2"}},
+    {"name": "interactive_network_id", "bits": 16},
+    {"name": "reserved", "bits": 2},
+    {"name": "version_number", "bits": 5},
+    {"name": "current_next_indicator", "bits": 1}
   ],
   "payload_fields": [
     {
       "name": "sct",
       "if": "table_id == 160",
       "fields": [
-        {
-          "name": "superframe_loop_count",
-          "bits": 8,
-          "tx": "len(superframes) - 1"
-        },
+        {"name": "superframe_loop_count", "bits": 8, "tx": "len(superframes) - 1"},
         {
           "name": "superframes",
           "repeat": "superframe_loop_count + 1",
           "fields": [
-            {
-              "name": "superframe_sequence",
-              "bits": 8
-            },
-            {
-              "name": "large_timing_uncertainty_flag",
-              "bits": 1
-            },
-            {
-              "name": "reserved_1",
-              "bits": 5
-            },
-            {
-              "name": "uplink_polarization",
-              "bits": 2
-            },
-            {
-              "name": "superframe_start_time_base",
-              "bits": 33
-            },
-            {
-              "name": "reserved_2",
-              "bits": 6
-            },
-            {
-              "name": "superframe_start_time_ext",
-              "bits": 9
-            },
-            {
-              "name": "superframe_duration",
-              "bits": 32
-            },
-            {
-              "name": "superframe_centre_frequency",
-              "bits": 32,
-              "scale": 100,
-              "comment": "Hz (100 Hz units)"
-            },
-            {
-              "name": "superframe_count",
-              "bits": 16
-            },
-            {
-              "name": "reserved_3",
-              "bits": 3
-            },
-            {
-              "name": "frame_loop_count",
-              "bits": 5,
-              "tx": "len(frames) - 1"
-            },
+            {"name": "superframe_sequence", "bits": 8},
+            {"name": "large_timing_uncertainty_flag", "bits": 1},
+            {"name": "reserved_1", "bits": 5},
+            {"name": "uplink_polarization", "bits": 2},
+            {"name": "superframe_start_time_base", "bits": 33},
+            {"name": "reserved_2", "bits": 6},
+            {"name": "superframe_start_time_ext", "bits": 9},
+            {"name": "superframe_duration", "bits": 32},
+            {"name": "superframe_centre_frequency", "bits": 32, "scale": 100, "comment": "Hz (100 Hz units)"},
+            {"name": "superframe_count", "bits": 16},
+            {"name": "reserved_3", "bits": 3},
+            {"name": "frame_loop_count", "bits": 5, "tx": "len(frames) - 1"},
             {
               "name": "frames",
               "repeat": "frame_loop_count + 1",
               "fields": [
                 {"name": "frame_type", "bits": 8},
                 {"name": "frame_start_time", "bits": 32},
-                {"name": "frame_centre_frequency_offset", "bits": 24, "signed": true, "scale": 100, "comment": "Hz (100 Hz units)"}
+                {
+                  "name": "frame_centre_frequency_offset",
+                  "bits": 24,
+                  "signed": true,
+                  "scale": 100,
+                  "comment": "Hz (100 Hz units)"
+                }
               ]
             }
           ]
@@ -115,64 +57,33 @@
       "name": "fct2",
       "if": "table_id == 171",
       "fields": [
-        {
-          "name": "frame_type_loop_count",
-          "bits": 8,
-          "tx": "len(frame_types) - 1"
-        },
+        {"name": "frame_type_loop_count", "bits": 8, "tx": "len(frame_types) - 1"},
         {
           "name": "frame_types",
           "repeat": "frame_type_loop_count + 1",
           "fields": [
-            {
-              "name": "frame_type",
-              "bits": 8
-            },
-            {
-              "name": "frame_duration",
-              "bits": 32
-            },
-            {
-              "name": "tx_format_class",
-              "bits": 8
-            },
-            {
-              "name": "btu_duration",
-              "bits": 24
-            },
-            {
-              "name": "btu_carrier_bw",
-              "bits": 24,
-              "scale": 10,
-              "comment": "Hz (10 Hz units)"
-            },
-            {
-              "name": "btu_symbol_rate",
-              "bits": 24,
-              "scale": 10,
-              "comment": "Bd (10 Bd units)"
-            },
-            {
-              "name": "time_unit_count",
-              "bits": 16
-            },
-            {
-              "name": "grid_repeat_count",
-              "bits": 8,
-              "tx": "len(grid_frequency_offsets)"
-            },
+            {"name": "frame_type", "bits": 8},
+            {"name": "frame_duration", "bits": 32},
+            {"name": "tx_format_class", "bits": 8},
+            {"name": "btu_duration", "bits": 24},
+            {"name": "btu_carrier_bw", "bits": 24, "scale": 10, "comment": "Hz (10 Hz units)"},
+            {"name": "btu_symbol_rate", "bits": 24, "scale": 10, "comment": "Bd (10 Bd units)"},
+            {"name": "time_unit_count", "bits": 16},
+            {"name": "grid_repeat_count", "bits": 8, "tx": "len(grid_frequency_offsets)"},
             {
               "name": "grid_frequency_offsets",
               "repeat": "grid_repeat_count",
               "fields": [
-                {"name": "grid_frequency_offset", "bits": 24, "signed": true, "scale": 100, "comment": "Hz (100 Hz units)"}
+                {
+                  "name": "grid_frequency_offset",
+                  "bits": 24,
+                  "signed": true,
+                  "scale": 100,
+                  "comment": "Hz (100 Hz units)"
+                }
               ]
             },
-            {
-              "name": "section_loop_count",
-              "bits": 8,
-              "tx": "len(sections) - 1"
-            },
+            {"name": "section_loop_count", "bits": 8, "tx": "len(sections) - 1"},
             {
               "name": "sections",
               "repeat": "section_loop_count + 1",
@@ -191,27 +102,14 @@
       "name": "bct",
       "if": "table_id == 172",
       "fields": [
-        {
-          "name": "tx_type_loop_count",
-          "bits": 8,
-          "tx": "len(tx_types)"
-        },
+        {"name": "tx_type_loop_count", "bits": 8, "tx": "len(tx_types)"},
         {
           "name": "tx_types",
           "repeat": "tx_type_loop_count",
           "fields": [
-            {
-              "name": "tx_type",
-              "bits": 8
-            },
-            {
-              "name": "tx_content_type",
-              "bits": 8
-            },
-            {
-              "name": "tx_format_class",
-              "bits": 8
-            },
+            {"name": "tx_type", "bits": 8},
+            {"name": "tx_content_type", "bits": 8},
+            {"name": "tx_format_class", "bits": 8},
             {
               "name": "tx_format_data_length",
               "bits": 8,
@@ -223,118 +121,37 @@
               "bytes": "tx_format_data_length",
               "comment": "linear modulation burst (TC-LM, Table 6-18)",
               "fields": [
-                {
-                  "name": "tx_block_size",
-                  "bits": 8,
-                  "comment": "BTUs"
-                },
-                {
-                  "name": "threshold_es_n0",
-                  "bits": 8
-                },
-                {
-                  "name": "tx_start_offset_1",
-                  "bits": 8,
-                  "default": 255,
-                  "comment": "quarter symbols; 255: none"
-                },
-                {
-                  "name": "reserved",
-                  "bits": 4
-                },
-                {
-                  "name": "tx_start_offset_2",
-                  "bits": 20,
-                  "comment": "NCR ticks"
-                },
-                {
-                  "name": "waveform_id",
-                  "bits": 8,
-                  "if": "tx_type <= 127"
-                },
+                {"name": "tx_block_size", "bits": 8, "comment": "BTUs"},
+                {"name": "threshold_es_n0", "bits": 8},
+                {"name": "tx_start_offset_1", "bits": 8, "default": 255, "comment": "quarter symbols; 255: none"},
+                {"name": "reserved", "bits": 4},
+                {"name": "tx_start_offset_2", "bits": 20, "comment": "NCR ticks"},
+                {"name": "waveform_id", "bits": 8, "if": "tx_type <= 127"},
                 {
                   "name": "lm",
                   "if": "tx_type > 127",
                   "fields": [
-                    {
-                      "name": "payload_size",
-                      "bits": 16,
-                      "comment": "bytes"
-                    },
+                    {"name": "payload_size", "bits": 16, "comment": "bytes"},
                     {
                       "name": "modulation_scheme",
                       "bits": 8,
-                      "enum": {
-                        "0": "psk/bpsk",
-                        "1": "psk/qpsk",
-                        "2": "psk/8psk",
-                        "3": "16QAM",
-                        "5": "pi/2-bpsk"
-                      }
+                      "enum": {"0": "psk/bpsk", "1": "psk/qpsk", "2": "psk/8psk", "3": "16QAM", "5": "pi/2-bpsk"}
                     },
-                    {
-                      "name": "p",
-                      "bits": 8
-                    },
-                    {
-                      "name": "q",
-                      "bits": 32,
-                      "comment": "Q0..Q3, each after 4 reserved bits"
-                    },
-                    {
-                      "name": "reserved_1",
-                      "bits": 3
-                    },
-                    {
-                      "name": "y_period",
-                      "bits": 5
-                    },
-                    {
-                      "name": "reserved_2",
-                      "bits": 3
-                    },
-                    {
-                      "name": "w_period",
-                      "bits": 5
-                    },
-                    {
-                      "name": "y_pattern",
-                      "bits": "y_period"
-                    },
-                    {
-                      "name": "w_pattern",
-                      "bits": "w_period"
-                    },
-                    {
-                      "name": "stuffing",
-                      "align": 8
-                    },
-                    {
-                      "name": "preamble_len",
-                      "bits": 8,
-                      "tx": "len(uw)//2",
-                      "comment": "symbols"
-                    },
-                    {
-                      "name": "postamble_len",
-                      "bits": 8
-                    },
-                    {
-                      "name": "reserved_3",
-                      "bits": 4
-                    },
-                    {
-                      "name": "pilot_period",
-                      "bits": 12
-                    },
-                    {
-                      "name": "pilot_block_len",
-                      "bits": 8
-                    },
-                    {
-                      "name": "pilot_sum",
-                      "bits": 8
-                    },
+                    {"name": "p", "bits": 8},
+                    {"name": "q", "bits": 32, "comment": "Q0..Q3, each after 4 reserved bits"},
+                    {"name": "reserved_1", "bits": 3},
+                    {"name": "y_period", "bits": 5},
+                    {"name": "reserved_2", "bits": 3},
+                    {"name": "w_period", "bits": 5},
+                    {"name": "y_pattern", "bits": "y_period"},
+                    {"name": "w_pattern", "bits": "w_period"},
+                    {"name": "stuffing", "align": 8},
+                    {"name": "preamble_len", "bits": 8, "tx": "len(uw)//2", "comment": "symbols"},
+                    {"name": "postamble_len", "bits": 8},
+                    {"name": "reserved_3", "bits": 4},
+                    {"name": "pilot_period", "bits": 12},
+                    {"name": "pilot_block_len", "bits": 8},
+                    {"name": "pilot_sum", "bits": 8},
                     {
                       "name": "uw",
                       "bits": "2*(preamble_len + postamble_len + (pilot_block_len if pilot_period else 0))",
@@ -344,12 +161,7 @@
                 }
               ]
             },
-            {
-              "name": "tx_format_data",
-              "if": "tx_format_class != 1",
-              "type": "bytes",
-              "bytes": "tx_format_data_length"
-            }
+            {"name": "tx_format_data", "if": "tx_format_class != 1", "type": "bytes", "bytes": "tx_format_data_length"}
           ]
         }
       ]
@@ -358,54 +170,29 @@
       "name": "tbtp2",
       "if": "table_id == 173",
       "fields": [
-        {
-          "name": "group_id",
-          "bits": 8
-        },
-        {
-          "name": "superframe_sequence",
-          "bits": 8
-        },
-        {
-          "name": "assignment_context",
-          "bits": 8
-        },
-        {
-          "name": "superframe_count",
-          "bits": 8
-        },
-        {
-          "name": "assignment_format",
-          "bits": 8
-        },
-        {
-          "name": "frame_loop_count",
-          "bits": 8,
-          "tx": "len(frames) - 1"
-        },
+        {"name": "group_id", "bits": 8},
+        {"name": "superframe_sequence", "bits": 8},
+        {"name": "assignment_context", "bits": 8},
+        {"name": "superframe_count", "bits": 8},
+        {"name": "assignment_format", "bits": 8},
+        {"name": "frame_loop_count", "bits": 8, "tx": "len(frames) - 1"},
         {
           "name": "frames",
           "repeat": "frame_loop_count + 1",
           "fields": [
-            {
-              "name": "frame_number",
-              "bits": 8
-            },
-            {
-              "name": "assignment_offset",
-              "bits": 16
-            },
-            {
-              "name": "assignment_loop_count",
-              "bits": 16,
-              "tx": "len(assignments) - 1"
-            },
+            {"name": "frame_number", "bits": 8},
+            {"name": "assignment_offset", "bits": 16},
+            {"name": "assignment_loop_count", "bits": 16, "tx": "len(assignments) - 1"},
             {
               "name": "assignments",
               "repeat": "assignment_loop_count + 1",
               "fields": [
                 {"name": "dynamic_tx_type", "bits": 8, "if": "10 <= assignment_format <= 12"},
-                {"name": "assignment_id", "if": "assignment_format <= 3 or 10 <= assignment_format <= 12", "bits": "[48, 8, 16, 24][assignment_format] if assignment_format <= 3 else [8, 16, 24][assignment_format - 10]"}
+                {
+                  "name": "assignment_id",
+                  "if": "assignment_format <= 3 or 10 <= assignment_format <= 12",
+                  "bits": "[48, 8, 16, 24][assignment_format] if assignment_format <= 3 else [8, 16, 24][assignment_format - 10]"
+                }
               ]
             }
           ]

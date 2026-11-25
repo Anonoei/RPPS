@@ -652,22 +652,29 @@ def _parse(expr):
 
 _FIRST = ("base", "extends", "abstract", "type", "comment", "ref", "tags") # Header keys, in this order
 
-def format_json(v, ind=0):
-    """The style of every file in config/: header keys first, a row of numbers on one line, one nested row per line"""
+WIDTH = 120 # Columns a line of a definition file fills before what is on it is spread over several
+
+def format_json(v, ind=0, used=0, spread=False):
+    """The style of every file in config/: header keys first; whatever fits on its line (`WIDTH`) on one line, a list of
+    numbers always on one; table "rows" one per line.
+    used: columns already taken on the line this value starts on. spread: never on one line"""
     pad = "  " * ind
-    flat = lambda x: not isinstance(x, (list, dict))
+    if isinstance(v, list) and not any(isinstance(x, (list, dict)) for x in v):
+        return json.dumps(v)
+    if not isinstance(v, (list, dict)) or not v:
+        return json.dumps(v)
+    if ind > 0 and not spread:
+        one = json.dumps(v)
+        if used + len(one) + 1 <= WIDTH: # (+1: the comma after it)
+            return one
     if isinstance(v, dict):
-        if not v:
-            return "{}"
         keys = [k for k in _FIRST if k in v] + [k for k in v if k not in _FIRST] if ind == 0 else list(v)
-        return "{\n" + ",\n".join(f'{pad}  {json.dumps(k)}: {format_json(v[k], ind + 1)}' for k in keys) + f"\n{pad}}}"
-    if isinstance(v, list):
-        if all(flat(x) for x in v):
-            return json.dumps(v)
-        if all(isinstance(x, dict) for x in v) and all(all(flat(y) for y in x.values()) for x in v):
-            return "[\n" + ",\n".join(f"{pad}  {json.dumps(x)}" for x in v) + f"\n{pad}]"
-        return "[\n" + ",\n".join(f"{pad}  {format_json(x, ind + 1)}" for x in v) + f"\n{pad}]"
-    return json.dumps(v)
+        lines = []
+        for k in keys:
+            head = f"{pad}  {json.dumps(k)}: "
+            lines.append(head + format_json(v[k], ind + 1, len(head), spread=k == "rows" and isinstance(v[k], list)))
+        return "{\n" + ",\n".join(lines) + f"\n{pad}}}"
+    return "[\n" + ",\n".join(f"{pad}  {format_json(x, ind + 1, len(pad) + 2)}" for x in v) + f"\n{pad}]"
 
 def save(domain, category, ref, obj, dest=None, overwrite=False):
     """Write a definition to <dest>/<domain>/<category>/<ref>.json and return the file

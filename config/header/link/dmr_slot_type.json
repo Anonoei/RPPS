@@ -6,10 +6,7 @@
   "tags": ["dmr"],
   "order": "msb",
   "fields": [
-    {
-      "name": "cc",
-      "bits": 4
-    },
+    {"name": "cc", "bits": 4},
     {
       "name": "dt",
       "bits": 4,

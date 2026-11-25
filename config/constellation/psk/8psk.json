@@ -1,13 +1,6 @@
 {
   "base": "constellation",
   "comment": "8PSK, Gray: one ring of 8 at 22.5 + 45k degrees",
-  "rings": [
-    {"n": 8, "pha": 22.5}
-  ],
-  "maps": [
-    {
-      "map": [3, 2, 6, 7, 5, 4, 0, 1],
-      "comment": "R000 Grey"
-    }
-  ]
+  "rings": [{"n": 8, "pha": 22.5}],
+  "maps": [{"map": [3, 2, 6, 7, 5, 4, 0, 1], "comment": "R000 Grey"}]
 }

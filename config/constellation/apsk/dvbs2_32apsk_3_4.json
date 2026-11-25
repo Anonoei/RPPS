@@ -3,8 +3,5 @@
   "extends": "apsk/dvbs2_32apsk",
   "comment": "DVB-S2 32APSK for code rate 3/4: gamma1 = 2.84, gamma2 = 5.27",
   "ref": "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10",
-  "params": {
-    "gamma1": 2.84,
-    "gamma2": 5.27
-  }
+  "params": {"gamma1": 2.84, "gamma2": 5.27}
 }

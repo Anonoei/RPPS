@@ -10,19 +10,7 @@
       "comment": "radius of ring 2 over the innermost (table 9/10 of EN 302 307-1 for each code rate)"
     }
   },
-  "rings": [
-    {
-      "n": 4,
-      "pha": 45
-    },
-    {
-      "n": 12,
-      "pha": 15,
-      "mag": {
-        "param": "gamma"
-      }
-    }
-  ],
+  "rings": [{"n": 4, "pha": 45}, {"n": 12, "pha": 15, "mag": {"param": "gamma"}}],
   "maps": [
     {
       "map": [12, 14, 15, 13, 4, 0, 8, 10, 2, 6, 7, 3, 11, 9, 1, 5],

@@ -5,9 +5,7 @@
   "ref": "ICAO Annex 10 Vol IV 3.1.2.3.2, 3.1.2.3.3",
   "tags": ["adsb"],
   "order": "msb",
-  "fields": [
-    {"name": "df", "bits": 5, "default": 17}
-  ],
+  "fields": [{"name": "df", "bits": 5, "default": 17}],
   "fcs": "crc24_mode_s",
   "payload": "(112 if df >= 16 else 56) - 29"
 }

@@ -2,7 +2,5 @@
   "base": "window",
   "type": "kaiser",
   "comment": "Kaiser window, shape 8",
-  "params": {
-    "a": 8
-  }
+  "params": {"a": 8}
 }

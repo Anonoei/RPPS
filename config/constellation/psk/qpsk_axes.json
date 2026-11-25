@@ -5,10 +5,5 @@
   "ref": "IEEE 802.11-2020 16.4.6.5",
   "tags": ["ieee-802.11b"],
   "rotate": -45,
-  "maps": [
-    {
-      "map": [0, 1, 3, 2],
-      "comment": "R000 Grey"
-    }
-  ]
+  "maps": [{"map": [0, 1, 3, 2], "comment": "R000 Grey"}]
 }

@@ -5,12 +5,8 @@
   "title": "PM TT&C (commercial satellites, C and Ku)",
   "features": {
     "modulation": ["pm"],
-    "subcarrier": {
-      "range": [1000.0, 1000000.0]
-    },
-    "subcarrier_baud": {
-      "range": [8.0, 250000.0]
-    },
+    "subcarrier": {"range": [1000.0, 1000000.0]},
+    "subcarrier_baud": {"range": [8.0, 250000.0]},
     "frequency": [
       [3400000000.0, 4200000000.0],
       [10700000000.0, 12750000000.0],

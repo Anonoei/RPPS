@@ -4,10 +4,7 @@
   "ref": "EN 300 421",
   "tags": ["dvb-s"],
   "params": {
-    "sps": {
-      "default": 4,
-      "comment": "samples per symbol"
-    },
+    "sps": {"default": 4, "comment": "samples per symbol"},
     "code": {
       "default": "k7_171_133/1_2",
       "comment": "the inner convolutional code: conv/k7_171_133/<rate>, rate 1_2, 2_3, 3_4, 5_6 or 7_8"
@@ -21,52 +18,15 @@
     "comment": "any symbol rate: given, or measured"
   },
   "steps": [
-    {
-      "wave": "shape",
-      "pulse": "rrc/0p35",
-      "sps": {
-        "param": "sps"
-      }
-    },
-    {
-      "sync": "timing"
-    },
-    {
-      "sync": "carrier",
-      "order": 4,
-      "constellation": "qpsk"
-    },
-    {
-      "symbol": "constellation",
-      "name": "qpsk",
-      "mapping": "R090 inverted"
-    },
-    {
-      "sync": "puncture",
-      "conv": {
-        "param": "code"
-      }
-    },
-    {
-      "code": "conv",
-      "name": {
-        "param": "code"
-      }
-    },
-    {
-      "sync": "align",
-      "period": 204,
-      "pattern": [184, 71, 71, 71, 71, 71, 71, 71],
-      "name": "packets"
-    },
-    {
-      "code": "interleave",
-      "name": "forney/12_17"
-    },
-    {
-      "code": "block",
-      "name": "rs/204_188"
-    },
+    {"wave": "shape", "pulse": "rrc/0p35", "sps": {"param": "sps"}},
+    {"sync": "timing"},
+    {"sync": "carrier", "order": 4, "constellation": "qpsk"},
+    {"symbol": "constellation", "name": "qpsk", "mapping": "R090 inverted"},
+    {"sync": "puncture", "conv": {"param": "code"}},
+    {"code": "conv", "name": {"param": "code"}},
+    {"sync": "align", "period": 204, "pattern": [184, 71, 71, 71, 71, 71, 71, 71], "name": "packets"},
+    {"code": "interleave", "name": "forney/12_17"},
+    {"code": "block", "name": "rs/204_188"},
     {
       "sync": "align",
       "period": 188,
@@ -83,31 +43,11 @@
         "check": true,
         "comment": "MPEG transport stream packets, sync byte first",
         "fields": [
-          {
-            "name": "tei",
-            "from": 8,
-            "bits": 1
-          },
-          {
-            "name": "pusi",
-            "from": 9,
-            "bits": 1
-          },
-          {
-            "name": "pid",
-            "from": 11,
-            "bits": 13
-          },
-          {
-            "name": "afc",
-            "from": 26,
-            "bits": 2
-          },
-          {
-            "name": "cc",
-            "from": 28,
-            "bits": 4
-          },
+          {"name": "tei", "from": 8, "bits": 1},
+          {"name": "pusi", "from": 9, "bits": 1},
+          {"name": "pid", "from": 11, "bits": 13},
+          {"name": "afc", "from": 26, "bits": 2},
+          {"name": "cc", "from": 28, "bits": 4},
           {
             "name": "adaptation",
             "from": 32,
@@ -124,11 +64,5 @@
       }
     }
   ],
-  "capture": {
-    "packet": {
-      "linktype": "mpeg2_ts",
-      "include": ["payload"],
-      "fields": ["pid", "tei"]
-    }
-  }
+  "capture": {"packet": {"linktype": "mpeg2_ts", "include": ["payload"], "fields": ["pid", "tei"]}}
 }

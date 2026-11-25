@@ -4,10 +4,7 @@
   "ref": "AX.25 v2.2 3.1-3.9; Bell 202 / TAPR TNC-2",
   "tags": ["ax.25", "hdlc"],
   "params": {
-    "sps": {
-      "default": 40,
-      "comment": "samples per bit (48 kHz: 40)"
-    },
+    "sps": {"default": 40, "comment": "samples per bit (48 kHz: 40)"},
     "centre": {
       "default": 1700,
       "comment": "where the tones are centred in the input [Hz]: 1700 for audio, 0 for complex baseband"
@@ -32,53 +29,14 @@
     }
   },
   "steps": [
-    {
-      "signal": "shift",
-      "freq": {
-        "expr": "-centre"
-      }
-    },
-    {
-      "signal": "lowpass",
-      "cutoff": 1500,
-      "transition": 1000,
-      "atten_db": 40
-    },
-    {
-      "wave": "fm",
-      "h": 0.8333,
-      "sps": {
-        "param": "sps"
-      }
-    },
-    {
-      "wave": "shape",
-      "pulse": "rect/frequency",
-      "sps": {
-        "param": "sps"
-      }
-    },
-    {
-      "sync": "timing"
-    },
-    {
-      "symbol": "constellation",
-      "name": "bpsk"
-    },
-    {
-      "code": "line",
-      "name": "nrzi"
-    },
-    {
-      "link": "frame",
-      "name": "ax25"
-    }
+    {"signal": "shift", "freq": {"expr": "-centre"}},
+    {"signal": "lowpass", "cutoff": 1500, "transition": 1000, "atten_db": 40},
+    {"wave": "fm", "h": 0.8333, "sps": {"param": "sps"}},
+    {"wave": "shape", "pulse": "rect/frequency", "sps": {"param": "sps"}},
+    {"sync": "timing"},
+    {"symbol": "constellation", "name": "bpsk"},
+    {"code": "line", "name": "nrzi"},
+    {"link": "frame", "name": "ax25"}
   ],
-  "capture": {
-    "frame": {
-      "linktype": "ax25",
-      "include": ["payload"],
-      "fields": true
-    }
-  }
+  "capture": {"frame": {"linktype": "ax25", "include": ["payload"], "fields": true}}
 }

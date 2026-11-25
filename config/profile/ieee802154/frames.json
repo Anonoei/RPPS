@@ -12,33 +12,8 @@
     ]
   },
   "controls": {
-    "shr": {
-      "drive": {
-        "sync": {
-          "frame": "frame"
-        },
-        "phr": {
-          "frame": "frame"
-        }
-      }
-    },
-    "phr": {
-      "on": "tx",
-      "default": {
-        "reserved": 0
-      },
-      "drive": {
-        "sync": {
-          "frame": "frame_bits"
-        }
-      }
-    }
+    "shr": {"drive": {"sync": {"frame": "frame"}, "phr": {"frame": "frame"}}},
+    "phr": {"on": "tx", "default": {"reserved": 0}, "drive": {"sync": {"frame": "frame_bits"}}}
   },
-  "capture": {
-    "phr": {
-      "linktype": "ieee802_15_4",
-      "include": ["payload"],
-      "fields": ["frame_length"]
-    }
-  }
+  "capture": {"phr": {"linktype": "ieee802_15_4", "include": ["payload"], "fields": ["frame_length"]}}
 }

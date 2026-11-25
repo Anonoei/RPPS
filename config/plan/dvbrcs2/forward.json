@@ -8,18 +8,9 @@
     "header": "rcs2_table",
     "kind": "table",
     "id": "table_id",
-    "ids": {
-      "sct": 160,
-      "fct2": 171,
-      "bct": 172,
-      "tbtp2": 173
-    },
+    "ids": {"sct": 160, "fct2": 171, "bct": 172, "tbtp2": 173},
     "protocol": 130,
-    "tx": {
-      "interactive_network_id": "network_id",
-      "version_number": "version % 32",
-      "current_next_indicator": 1
-    }
+    "tx": {"interactive_network_id": "network_id", "version_number": "version % 32", "current_next_indicator": 1}
   },
   "sections": {
     "tx_types": {
@@ -48,11 +39,7 @@
         "tx_format.lm.modulation_scheme.name": "constellation",
         "tx_format.lm.uw": "word"
       },
-      "defaults": {
-        "threshold": 0,
-        "bits": 0,
-        "constellation": "psk/qpsk"
-      }
+      "defaults": {"threshold": 0, "bits": 0, "constellation": "psk/qpsk"}
     },
     "frame_types": {
       "table": "fct2",
@@ -60,20 +47,10 @@
       "rx": {
         "id": "frame_type",
         "duration": "frame_duration",
-        "btu": {
-          "duration": "btu_duration",
-          "bw": "btu_carrier_bw",
-          "symbol_rate": "btu_symbol_rate"
-        },
+        "btu": {"duration": "btu_duration", "bw": "btu_carrier_bw", "symbol_rate": "btu_symbol_rate"},
         "time_units": "time_unit_count",
-        "grid": {
-          "each": "grid_frequency_offsets",
-          "rx": "grid_frequency_offset"
-        },
-        "sections": {
-          "each": "sections",
-          "rx": ["default_tx_type", "repeat_count"]
-        }
+        "grid": {"each": "grid_frequency_offsets", "rx": "grid_frequency_offset"},
+        "sections": {"each": "sections", "rx": ["default_tx_type", "repeat_count"]}
       },
       "tx": {
         "frame_type": "id",
@@ -83,19 +60,10 @@
         "btu_carrier_bw": "btu.bw",
         "btu_symbol_rate": "btu.symbol_rate",
         "time_unit_count": "time_units",
-        "grid_frequency_offsets": {
-          "each": "grid",
-          "tx": {
-            "grid_frequency_offset": "it"
-          }
-        },
+        "grid_frequency_offsets": {"each": "grid", "tx": {"grid_frequency_offset": "it"}},
         "sections": {
           "each": "sections",
-          "tx": {
-            "default_tx_type": "it[0]",
-            "fixed_access_method": 0,
-            "repeat_count": "it[1]"
-          }
+          "tx": {"default_tx_type": "it[0]", "fixed_access_method": 0, "repeat_count": "it[1]"}
         }
       }
     },
@@ -110,11 +78,7 @@
         "count": "superframe_count",
         "frames": {
           "each": "frames",
-          "rx": {
-            "type": "frame_type",
-            "start": "frame_start_time",
-            "offset": "frame_centre_frequency_offset"
-          }
+          "rx": {"type": "frame_type", "start": "frame_start_time", "offset": "frame_centre_frequency_offset"}
         }
       },
       "tx": {
@@ -126,11 +90,7 @@
         "superframe_count": "count",
         "frames": {
           "each": "frames",
-          "tx": {
-            "frame_type": "type",
-            "frame_start_time": "start",
-            "frame_centre_frequency_offset": "offset"
-          }
+          "tx": {"frame_type": "type", "frame_start_time": "start", "frame_centre_frequency_offset": "offset"}
         }
       }
     },
@@ -144,10 +104,7 @@
           "superframe": "superframe_count",
           "frame": "frame_number",
           "offset": "assignment_offset",
-          "slots": {
-            "each": "assignments",
-            "rx": ["assignment_id", "dynamic_tx_type"]
-          }
+          "slots": {"each": "assignments", "rx": ["assignment_id", "dynamic_tx_type"]}
         }
       },
       "tx": {
@@ -161,19 +118,11 @@
           "tx": {
             "frame_number": "frame",
             "assignment_offset": "offset",
-            "assignments": {
-              "each": "slots",
-              "tx": {
-                "dynamic_tx_type": "it[1]",
-                "assignment_id": "it[0]"
-              }
-            }
+            "assignments": {"each": "slots", "tx": {"dynamic_tx_type": "it[1]", "assignment_id": "it[0]"}}
           }
         }
       },
-      "defaults": {
-        "dynamic_tx_type": 0
-      }
+      "defaults": {"dynamic_tx_type": 0}
     }
   },
   "reference": {
@@ -182,10 +131,7 @@
     "protocol": 129,
     "header": "rcs2_ncr",
     "rx": "base*300 + ext",
-    "tx": {
-      "base": "(value//300) % (1 << 33)",
-      "ext": "value % 300"
-    },
+    "tx": {"base": "(value//300) % (1 << 33)", "ext": "value % 300"},
     "wrap": "(1 << 33)*300",
     "events": "pls",
     "lag": 2

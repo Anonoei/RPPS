@@ -5,43 +5,18 @@
   "ref": "3GPP TS 38.212 5.2.2, 5.3.2 (Table 5.3.2-2), 5.4.2",
   "tags": ["nr"],
   "params": {
-    "kp": {
-      "comment": "K': the code block's bits, CRC included",
-      "example": 8448
-    },
-    "e": {
-      "comment": "bits sent",
-      "example": 25344
-    },
-    "rv": {
-      "default": 0,
-      "comment": "redundancy version 0-3"
-    },
-    "qm": {
-      "default": 1,
-      "comment": "modulation order of the bit interleaver (2 QPSK, 4 16QAM, ...)"
-    },
-    "z": {
-      "default": 0,
-      "comment": "lifting size (0: the smallest that holds K')"
-    }
+    "kp": {"comment": "K': the code block's bits, CRC included", "example": 8448},
+    "e": {"comment": "bits sent", "example": 25344},
+    "rv": {"default": 0, "comment": "redundancy version 0-3"},
+    "qm": {"default": 1, "comment": "modulation order of the bit interleaver (2 QPSK, 4 16QAM, ...)"},
+    "z": {"default": 0, "comment": "lifting size (0: the smallest that holds K')"}
   },
   "bg": 1,
-  "kp": {
-    "param": "kp"
-  },
-  "e": {
-    "param": "e"
-  },
-  "rv": {
-    "param": "rv"
-  },
-  "qm": {
-    "param": "qm"
-  },
-  "z": {
-    "param": "z"
-  },
+  "kp": {"param": "kp"},
+  "e": {"param": "e"},
+  "rv": {"param": "rv"},
+  "qm": {"param": "qm"},
+  "z": {"param": "z"},
   "iters": 25,
   "alpha": 0.8,
   "graph": [

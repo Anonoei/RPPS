@@ -3,20 +3,8 @@
   "comment": "P25 phase 1 control channel: Trunking Signalling Data Units of one to three TSBKs, C4FM at 4800 symbols a second (4FSK, h 0.25: the levels +-1, +-3 at +-600, +-1800 Hz). The discriminator's levels are timed, each data unit found by its 24-symbol frame sync among them (matched in phase: the sense of a discriminator is known; the levels scaled by the sync's +-3) and read to the next one (at most 360 symbols, three TSBKs), a status symbol after every 35 dropped, the dibits read, the sync stripped. The 64-bit NID (BCH (63,16) and its DUID bit) gives the NAC and DUID; the whole 196-bit blocks after it, as many as the frame holds (null bits after the last are left), are each deinterleaved, trellis decoded and checked by their CRC-16, as OP25 reads them. Out come the NID and the TSBKs as messages. The capture is the channel at `sps` samples a symbol, its carrier taken off",
   "ref": "TIA-102.BAAA-A 7, 8, 9",
   "tags": ["p25"],
-  "params": {
-    "sps": {
-      "default": 10,
-      "type": "int",
-      "min": 2,
-      "comment": "samples a symbol (48 kS/s: 10)"
-    }
-  },
-  "requires": {
-    "baud": "4800",
-    "Fs": "baud*sps",
-    "bw": "12.5e3",
-    "min_samples": "Fs*0.2"
-  },
+  "params": {"sps": {"default": 10, "type": "int", "min": 2, "comment": "samples a symbol (48 kS/s: 10)"}},
+  "requires": {"baud": "4800", "Fs": "baud*sps", "bw": "12.5e3", "min_samples": "Fs*0.2"},
   "defaults": {
     "timing": {
       "method": "oerder_meyr",
@@ -28,23 +16,9 @@
     }
   },
   "steps": [
-    {
-      "wave": "fm",
-      "h": 0.25,
-      "sps": {
-        "param": "sps"
-      }
-    },
-    {
-      "wave": "shape",
-      "pulse": "rc/0p20_frequency",
-      "sps": {
-        "param": "sps"
-      }
-    },
-    {
-      "sync": "timing"
-    },
+    {"wave": "fm", "h": 0.25, "sps": {"param": "sps"}},
+    {"wave": "shape", "pulse": "rc/0p20_frequency", "sps": {"param": "sps"}},
+    {"sync": "timing"},
     {
       "sync": "frame",
       "id": "fs",
@@ -62,29 +36,11 @@
       "value": -0.4472136,
       "comment": "transmit: status 10 (unknown, inbound or outbound): level -1 of the unit-power four"
     },
-    {
-      "symbol": "constellation",
-      "id": "map",
-      "name": "ask/4level"
-    },
-    {
-      "code": "marker",
-      "id": "sync",
-      "sequence": "p25_fs"
-    },
+    {"symbol": "constellation", "id": "map", "name": "ask/4level"},
+    {"code": "marker", "id": "sync", "sequence": "p25_fs"},
     {
       "branch": "tsdu",
-      "take": {
-        "nid": [
-          [0, 64]
-        ],
-        "tsbk": {
-          "ranges": [
-            [64, null]
-          ],
-          "unit": 196
-        }
-      },
+      "take": {"nid": [[0, 64]], "tsbk": {"ranges": [[64, null]], "unit": 196}},
       "branches": {
         "nid": [
           {"code": "block", "id": "nid_bch", "name": "bch/p25_nid"},
@@ -98,19 +54,5 @@
       }
     }
   ],
-  "controls": {
-    "fs": {
-      "drive": {
-        "status": {
-          "frame": "frame"
-        },
-        "sync": {
-          "frame": "frame"
-        },
-        "tsdu": {
-          "frame": "frame"
-        }
-      }
-    }
-  }
+  "controls": {"fs": {"drive": {"status": {"frame": "frame"}, "sync": {"frame": "frame"}, "tsdu": {"frame": "frame"}}}}
 }

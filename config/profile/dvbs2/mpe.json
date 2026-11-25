@@ -4,26 +4,17 @@
   "comment": "DVB-S2 multiprotocol encapsulation: the transport packets of dvbs2/ts, each one's header read (adaptation field and all), the sections of the `pid` cut out of their payloads by the pointer field (a section may cross packets; each PID its own stream, its continuity counter telling a lost packet; 0xFF stuffing ends a payload), and each MPE datagram section's header read and its CRC-32 checked: the datagram (an IP packet) a message, captured for Wireshark as raw IP. Only MPE sections (table id 0x3E) are kept",
   "ref": "EN 301 192 7.1, ISO/IEC 13818-1 2.4.4",
   "params": {
-    "pid": {
-      "default": -1,
-      "comment": "the PID carrying the MPE sections (the PMT says which); -1: every PID's"
-    }
+    "pid": {"default": -1, "comment": "the PID carrying the MPE sections (the PMT says which); -1: every PID's"}
   },
   "steps": {
     "+end": [
-      {
-        "link": "header",
-        "id": "tsh",
-        "name": "mpeg_ts"
-      },
+      {"link": "header", "id": "tsh", "name": "mpeg_ts"},
       {
         "link": "packets",
         "id": "sections",
         "params": ["pid", "pusi", "cc", "afc", "wanted"],
         "active": "afc & 1 and (wanted < 0 or pid == wanted)",
-        "frame_fields": [
-          {"name": "pointer_field", "bits": 8, "if": "pusi"}
-        ],
+        "frame_fields": [{"name": "pointer_field", "bits": 8, "if": "pusi"}],
         "starts": "pusi == 1",
         "pointer": "8*pointer_field",
         "channel": "pid",
@@ -38,58 +29,18 @@
         ],
         "length": "8*(section_length + 3)",
         "end": "table_id == 255",
-        "defaults": {
-          "wanted": {
-            "param": "pid"
-          }
-        }
+        "defaults": {"wanted": {"param": "pid"}}
       },
-      {
-        "link": "header",
-        "id": "mpe",
-        "name": "dvb_mpe",
-        "select": {
-          "table_id": 62
-        }
-      }
+      {"link": "header", "id": "mpe", "name": "dvb_mpe", "select": {"table_id": 62}}
     ]
   },
   "controls": {
-    "ts": {
-      "drive": {
-        "tsh": {
-          "frame": {
-            "calc": "frame",
-            "on": "rx"
-          },
-          "length": {
-            "calc": "packet_bits",
-            "on": "rx"
-          }
-        }
-      }
-    },
+    "ts": {"drive": {"tsh": {"frame": {"calc": "frame", "on": "rx"}, "length": {"calc": "packet_bits", "on": "rx"}}}},
     "tsh": {
       "on": "rx",
-      "drive": {
-        "sections": {
-          "length": "bits",
-          "pid": "pid",
-          "pusi": "pusi",
-          "cc": "cc",
-          "afc": "afc"
-        }
-      }
+      "drive": {"sections": {"length": "bits", "pid": "pid", "pusi": "pusi", "cc": "cc", "afc": "afc"}}
     },
-    "sections": {
-      "on": "rx",
-      "drive": {
-        "mpe": {
-          "frame": "frame",
-          "length": "packet_bits"
-        }
-      }
-    }
+    "sections": {"on": "rx", "drive": {"mpe": {"frame": "frame", "length": "packet_bits"}}}
   },
   "capture": {
     "ts": false,

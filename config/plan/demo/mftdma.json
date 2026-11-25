@@ -6,64 +6,33 @@
     "128": {
       "btus": 3,
       "offset": 1350,
-      "fields": {
-        "word": "demo_uw1",
-        "constellation": "psk/qpsk",
-        "code": "ldpc/ieee80211n_648_1_2",
-        "bits": 324
-      }
+      "fields": {"word": "demo_uw1", "constellation": "psk/qpsk", "code": "ldpc/ieee80211n_648_1_2", "bits": 324}
     },
     "129": {
       "btus": 5,
       "offset": 1350,
-      "fields": {
-        "word": "demo_uw2",
-        "constellation": "psk/qpsk",
-        "code": "ldpc/ieee80211n_648_1_2",
-        "bits": 648
-      }
+      "fields": {"word": "demo_uw2", "constellation": "psk/qpsk", "code": "ldpc/ieee80211n_648_1_2", "bits": 648}
     },
     "130": {
       "btus": 4,
       "offset": 1350,
-      "fields": {
-        "word": "demo_uw3",
-        "constellation": "psk/qpsk",
-        "code": "ldpc/ieee80211n_648_1_2",
-        "bits": 972
-      }
+      "fields": {"word": "demo_uw3", "constellation": "psk/qpsk", "code": "ldpc/ieee80211n_648_1_2", "bits": 972}
     }
   },
   "frame_types": {
     "1": {
       "duration": 405000,
-      "btu": {
-        "duration": 16200,
-        "bw": 337500.0,
-        "symbol_rate": 250000.0
-      },
+      "btu": {"duration": 16200, "bw": 337500.0, "symbol_rate": 250000.0},
       "time_units": 25,
       "grid": [-250000.0, 250000.0],
-      "sections": [
-        [128, 2],
-        [129, 2],
-        [128, 1],
-        [129, 2],
-        [128, 0]
-      ]
+      "sections": [[128, 2], [129, 2], [128, 1], [129, 2], [128, 0]]
     },
     "2": {
       "duration": 405000,
-      "btu": {
-        "duration": 16200,
-        "bw": 675000.0,
-        "symbol_rate": 500000.0
-      },
+      "btu": {"duration": 16200, "bw": 675000.0, "symbol_rate": 500000.0},
       "time_units": 25,
       "grid": [0],
-      "sections": [
-        [130, 5]
-      ]
+      "sections": [[130, 5]]
     }
   },
   "sequences": {
@@ -72,10 +41,7 @@
       "duration": 405000,
       "centre": 0,
       "count": 0,
-      "frames": [
-        {"type": 1, "start": 0, "offset": -1750000.0},
-        {"type": 2, "start": 0, "offset": 1500000.0}
-      ]
+      "frames": [{"type": 1, "start": 0, "offset": -1750000.0}, {"type": 2, "start": 0, "offset": 1500000.0}]
     }
   }
 }

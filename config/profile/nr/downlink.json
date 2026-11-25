@@ -12,10 +12,7 @@
       "default": 60000.0,
       "comment": "carrier offsets searched about it [Hz]: a LEO pass at S-band moves it by up to some 50 kHz"
     },
-    "nfft": {
-      "default": 512,
-      "comment": "the FFT the sample rate gives: 15 kHz x nfft samples a second"
-    },
+    "nfft": {"default": 512, "comment": "the FFT the sample rate gives: 15 kHz x nfft samples a second"},
     "fc": {
       "default": 0.0,
       "comment": "the SS/PBCH block centre's absolute frequency [Hz], on the synchronization raster: the phase NR's upconversion gives each symbol (38.211 5.4) is reckoned with it, by the cell search (whether the cell applies it) and the PDSCH (it tries its symbols with it taken off and without; 0: never)"
@@ -26,54 +23,20 @@
     "Fs": "15e3*nfft",
     "bw": "0.9*Fs",
     "min_samples": "Fs*0.2",
-    "from_cf": {
-      "fc": "cf"
-    },
+    "from_cf": {"fc": "cf"},
     "comment": "baud: the subcarrier spacing; cf: the SS/PBCH block centre (fc)"
   },
   "steps": [
-    {
-      "grid": "nr_cell",
-      "id": "cell",
-      "offset": {
-        "param": "offset"
-      },
-      "span": {
-        "param": "span"
-      },
-      "fc": {
-        "param": "fc"
-      }
-    },
-    {
-      "grid": "nr_grid"
-    },
+    {"grid": "nr_cell", "id": "cell", "offset": {"param": "offset"}, "span": {"param": "span"}, "fc": {"param": "fc"}},
+    {"grid": "nr_grid"},
     {
       "branch": "channels",
       "order": ["pbch", "pdcch", "pdsch"],
-      "frame": {
-        "expr": "8 + 14*nfft"
-      },
+      "frame": {"expr": "8 + 14*nfft"},
       "branches": {
-        "pbch": [
-          {"grid": "nr_pbch", "id": "pbch"}
-        ],
-        "pdcch": [
-          {
-            "grid": "nr_pdcch",
-            "id": "pdcch",
-            "rntis": [65535]
-          }
-        ],
-        "pdsch": [
-          {
-            "grid": "nr_pdsch",
-            "id": "pdsch",
-            "fc": {
-              "param": "fc"
-            }
-          }
-        ]
+        "pbch": [{"grid": "nr_pbch", "id": "pbch"}],
+        "pdcch": [{"grid": "nr_pdcch", "id": "pdcch", "rntis": [65535]}],
+        "pdsch": [{"grid": "nr_pdsch", "id": "pdsch", "fc": {"param": "fc"}}]
       }
     }
   ],
@@ -90,11 +53,7 @@
           "dmrs_pos": "dmrs_pos",
           "barred": "barred"
         },
-        "pdsch": {
-          "coreset0": "coreset0",
-          "k_ssb": "k_ssb",
-          "dmrs_pos": "dmrs_pos"
-        }
+        "pdsch": {"coreset0": "coreset0", "k_ssb": "k_ssb", "dmrs_pos": "dmrs_pos"}
       }
     },
     "pdcch": {
@@ -114,13 +73,7 @@
     }
   },
   "capture": {
-    "pbch": {
-      "linktype": "upper_pdu",
-      "dissector": "nr-rrc.bcch.bch"
-    },
-    "pdsch": {
-      "linktype": "upper_pdu",
-      "dissector": "nr-rrc.bcch.dl.sch"
-    }
+    "pbch": {"linktype": "upper_pdu", "dissector": "nr-rrc.bcch.bch"},
+    "pdsch": {"linktype": "upper_pdu", "dissector": "nr-rrc.bcch.dl.sch"}
   }
 }

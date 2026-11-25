@@ -1,25 +1,11 @@
 {
   "base": "constellation",
   "comment": "QPSK, Gray, four rotations: one ring of 4 at 45 + 90k degrees",
-  "rings": [
-    {"n": 4, "pha": 45}
-  ],
+  "rings": [{"n": 4, "pha": 45}],
   "maps": [
-    {
-      "map": [0, 1, 3, 2],
-      "comment": "R000 Grey"
-    },
-    {
-      "map": [2, 0, 1, 3],
-      "comment": "R090 Grey"
-    },
-    {
-      "map": [3, 2, 0, 1],
-      "comment": "R180 Grey"
-    },
-    {
-      "map": [1, 3, 2, 0],
-      "comment": "R270 Grey"
-    }
+    {"map": [0, 1, 3, 2], "comment": "R000 Grey"},
+    {"map": [2, 0, 1, 3], "comment": "R090 Grey"},
+    {"map": [3, 2, 0, 1], "comment": "R180 Grey"},
+    {"map": [1, 3, 2, 0], "comment": "R270 Grey"}
   ]
 }

@@ -5,9 +5,5 @@
   "dlt": 195,
   "dissector": "wpan",
   "fcs": "required",
-  "from": {
-    "ieee802_15_4_nofcs": [
-      {"fcs": "crc16_kermit", "order": "little"}
-    ]
-  }
+  "from": {"ieee802_15_4_nofcs": [{"fcs": "crc16_kermit", "order": "little"}]}
 }

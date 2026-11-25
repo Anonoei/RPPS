@@ -5,10 +5,6 @@
   "ref": "ETSI EN 301 545-2 V1.2.1 6.2.1.1",
   "tags": ["dvb-rcs2"],
   "order": "msb",
-  "fields": [
-    {"name": "base", "bits": 33},
-    {"name": "reserved", "bits": 6, "default": 63},
-    {"name": "ext", "bits": 9}
-  ],
+  "fields": [{"name": "base", "bits": 33}, {"name": "reserved", "bits": 6, "default": 63}, {"name": "ext", "bits": 9}],
   "framed": true
 }

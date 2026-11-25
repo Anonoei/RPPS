@@ -4,11 +4,5 @@
   "tags": ["adsb"],
   "title": "Mode S / ADS-B",
   "profile": "adsb/mode_s",
-  "features": {
-    "modulation": ["ppm"],
-    "baud": 1000000.0,
-    "frequency": [
-      [1089000000.0, 1091000000.0]
-    ]
-  }
+  "features": {"modulation": ["ppm"], "baud": 1000000.0, "frequency": [[1089000000.0, 1091000000.0]]}
 }

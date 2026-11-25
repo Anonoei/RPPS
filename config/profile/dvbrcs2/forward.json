@@ -5,35 +5,11 @@
   "ref": "ETSI EN 301 545-2 V1.2.1 6.2, 6.4",
   "tags": ["dvb-rcs2"],
   "steps": {
-    "+end": [
-      {
-        "link": "gse",
-        "id": "gse",
-        "protocols": [130]
-      },
-      {
-        "link": "header",
-        "id": "table",
-        "name": "rcs2_table"
-      }
-    ]
+    "+end": [{"link": "gse", "id": "gse", "protocols": [130]}, {"link": "header", "id": "table", "name": "rcs2_table"}]
   },
   "controls": {
-    "bbheader": {
-      "drive": {
-        "gse": {
-          "frame": "bits"
-        }
-      }
-    },
-    "gse": {
-      "drive": {
-        "table": {
-          "frame": "frame",
-          "length": "pdu_bits"
-        }
-      }
-    }
+    "bbheader": {"drive": {"gse": {"frame": "bits"}}},
+    "gse": {"drive": {"table": {"frame": "frame", "length": "pdu_bits"}}}
   },
   "parallel": null
 }

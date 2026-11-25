@@ -4,17 +4,10 @@
   "comment": "CCSDS turbo code permutation: bit s of the second encoder's input is bit pi(s) of the information block, k = k1 k2 with k1 = 8 (0-based here: i = s - 1, the expression is pi(s) - 1)",
   "ref": "CCSDS 131.0-B-5 6.3 g)",
   "tags": ["ccsds"],
-  "params": {
-    "k": {
-      "comment": "information block length: 1784, 3568, 7136 or 8920 (k2 = k / 8)",
-      "default": 1784
-    }
-  },
+  "params": {"k": {"comment": "information block length: 1784, 3568, 7136 or 8920 (k2 = k / 8)", "default": 1784}},
   "map": "from",
   "perm": {
-    "n": {
-      "param": "k"
-    },
+    "n": {"param": "k"},
     "each": "2*(((19*(i//(2*(k//8))) + 1) % 4) + (([31, 37, 43, 47, 53, 59, 61, 67][((19*(i//(2*(k//8))) + 1) % 4) % 8]*(i//2 - (i//(2*(k//8)))*(k//8)) + 21*(i % 2)) % (k//8))*4 + 1) - (i % 2) - 1"
   }
 }

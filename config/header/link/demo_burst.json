@@ -3,10 +3,7 @@
   "type": "link",
   "comment": "Demo MF-TDMA burst content (profile/demo/mftdma): the sending terminal and a sequence number, the payload, a CRC-16 over all of it at the burst's end; the frame is the burst's units' information bits (a controlled length)",
   "order": "msb",
-  "fields": [
-    {"name": "terminal", "bits": 8},
-    {"name": "seq", "bits": 8}
-  ],
+  "fields": [{"name": "terminal", "bits": 8}, {"name": "seq", "bits": 8}],
   "fcs": "crc16_ccitt_false",
   "framed": true
 }

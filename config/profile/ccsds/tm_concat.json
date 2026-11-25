@@ -4,14 +4,8 @@
   "ref": "CCSDS 131.0-B-5 3, 4, 9, 10",
   "tags": ["ccsds"],
   "params": {
-    "sps": {
-      "default": 4,
-      "comment": "samples per symbol"
-    },
-    "depth": {
-      "default": 5,
-      "comment": "Reed-Solomon interleaving depth I (1 to 8)"
-    },
+    "sps": {"default": 4, "comment": "samples per symbol"},
+    "depth": {"default": 5, "comment": "Reed-Solomon interleaving depth I (1 to 8)"},
     "rs": {
       "default": "rs/ccsds_255_223_dual",
       "comment": "the Reed-Solomon code: rs/ccsds_255_223_dual (the standard's dual basis) or rs/ccsds_255_223 (conventional)"
@@ -25,77 +19,30 @@
     "comment": "any symbol rate: given, or measured"
   },
   "steps": [
-    {
-      "wave": "shape",
-      "pulse": "rrc/0p35",
-      "sps": {
-        "param": "sps"
-      }
-    },
-    {
-      "sync": "timing"
-    },
-    {
-      "sync": "carrier",
-      "order": 2,
-      "constellation": "bpsk"
-    },
-    {
-      "symbol": "constellation",
-      "name": "bpsk"
-    },
-    {
-      "sync": "puncture",
-      "conv": "k7_171_133/ccsds_1_2"
-    },
-    {
-      "code": "conv",
-      "name": "k7_171_133/ccsds_1_2"
-    },
+    {"wave": "shape", "pulse": "rrc/0p35", "sps": {"param": "sps"}},
+    {"sync": "timing"},
+    {"sync": "carrier", "order": 2, "constellation": "bpsk"},
+    {"symbol": "constellation", "name": "bpsk"},
+    {"sync": "puncture", "conv": "k7_171_133/ccsds_1_2"},
+    {"code": "conv", "name": "k7_171_133/ccsds_1_2"},
     {
       "sync": "delimit",
       "id": "asm",
       "sequence": "ccsds_asm",
-      "length": {
-        "expr": "8*255*depth"
-      },
+      "length": {"expr": "8*255*depth"},
       "keep": true,
       "polarity": true,
       "errors": 2
     },
-    {
-      "code": "marker",
-      "sequence": "ccsds_asm",
-      "length": {
-        "expr": "8*255*depth"
-      }
-    },
-    {
-      "code": "scramble",
-      "name": "additive/ccsds",
-      "length": {
-        "expr": "8*255*depth"
-      }
-    },
-    {
-      "code": "interleave",
-      "name": "block/ccsds_rs",
-      "args": {
-        "depth": {
-          "param": "depth"
-        }
-      }
-    },
+    {"code": "marker", "sequence": "ccsds_asm", "length": {"expr": "8*255*depth"}},
+    {"code": "scramble", "name": "additive/ccsds", "length": {"expr": "8*255*depth"}},
+    {"code": "interleave", "name": "block/ccsds_rs", "args": {"depth": {"param": "depth"}}},
     {
       "code": "block",
-      "name": {
-        "param": "rs"
-      },
+      "name": {"param": "rs"},
       "message": {
         "kind": "frame",
-        "bits": {
-          "expr": "8*223*depth"
-        },
+        "bits": {"expr": "8*223*depth"},
         "check": true,
         "comment": "a transfer frame: the RS data of its depth codewords"
       }

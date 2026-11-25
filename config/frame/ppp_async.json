@@ -7,14 +7,7 @@
   "flag": "0x7E",
   "escape": "0x7D",
   "xor": "0x20",
-  "escaped": [
-    {
-      "each": "i",
-      "n": 32
-    },
-    "0x7D",
-    "0x7E"
-  ],
+  "escaped": [{"each": "i", "n": 32}, "0x7D", "0x7E"],
   "fcs": "crc16_x25",
   "min_bytes": 4
 }

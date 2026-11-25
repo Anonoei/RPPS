@@ -3,12 +3,7 @@
   "comment": "IEEE 802.11b DSSS 1 Mb/s: DBPSK, Barker-11 at 11 Mchip/s, self-synchronizing scrambler. The standard sets a spectral mask rather than a pulse: RRC 0.35 here",
   "ref": "IEEE 802.11-2020 16",
   "tags": ["ieee-802.11b"],
-  "params": {
-    "sps": {
-      "default": 4,
-      "comment": "samples per chip"
-    }
-  },
+  "params": {"sps": {"default": 4, "comment": "samples per chip"}},
   "requires": {
     "baud": "11e6",
     "Fs": "baud*sps",
@@ -17,30 +12,11 @@
     "comment": "chips at 11 Mchip/s"
   },
   "steps": [
-    {
-      "wave": "shape",
-      "pulse": "rrc/0p35",
-      "sps": {
-        "param": "sps"
-      }
-    },
-    {
-      "sync": "timing"
-    },
-    {
-      "symbol": "spread",
-      "sequence": "barker11"
-    },
-    {
-      "symbol": "differential"
-    },
-    {
-      "symbol": "constellation",
-      "name": "bpsk"
-    },
-    {
-      "code": "scramble",
-      "name": "feedthrough/ieee80211b"
-    }
+    {"wave": "shape", "pulse": "rrc/0p35", "sps": {"param": "sps"}},
+    {"sync": "timing"},
+    {"symbol": "spread", "sequence": "barker11"},
+    {"symbol": "differential"},
+    {"symbol": "constellation", "name": "bpsk"},
+    {"code": "scramble", "name": "feedthrough/ieee80211b"}
   ]
 }

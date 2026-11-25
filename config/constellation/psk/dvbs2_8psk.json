@@ -3,13 +3,6 @@
   "extends": "psk/8psk",
   "comment": "DVB-S2 8PSK labelling: the points at 45k degrees",
   "tags": ["dvb-s2"],
-  "rings": [
-    {"n": 8, "pha": 0}
-  ],
-  "maps": [
-    {
-      "map": [1, 0, 4, 6, 2, 3, 7, 5],
-      "comment": "DVB-S2 8PSK: label (b0b1b2) of the point at k*45 degrees"
-    }
-  ]
+  "rings": [{"n": 8, "pha": 0}],
+  "maps": [{"map": [1, 0, 4, 6, 2, 3, 7, 5], "comment": "DVB-S2 8PSK: label (b0b1b2) of the point at k*45 degrees"}]
 }

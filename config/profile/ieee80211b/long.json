@@ -4,10 +4,7 @@
   "ref": "IEEE 802.11-2020 16.2, 16.4",
   "tags": ["ieee-802.11b"],
   "params": {
-    "sps": {
-      "default": 4,
-      "comment": "samples per chip"
-    },
+    "sps": {"default": 4, "comment": "samples per chip"},
     "signal": {
       "default": 20,
       "comment": "transmit: the PSDU rate in 100 kb/s, 10 or 20, unless the caller gives one per packet"
@@ -21,90 +18,32 @@
     "comment": "chips at 11 Mchip/s"
   },
   "steps": [
-    {
-      "wave": "shape",
-      "pulse": "rrc/0p35",
-      "sps": {
-        "param": "sps"
-      }
-    },
-    {
-      "sync": "timing"
-    },
-    {
-      "sync": "carrier",
-      "order": 4
-    },
-    {
-      "symbol": "spread",
-      "sequence": "barker11"
-    },
-    {
-      "symbol": "differential"
-    },
-    {
-      "symbol": "constellation",
-      "id": "map",
-      "name": "bpsk"
-    },
-    {
-      "code": "scramble",
-      "name": "feedthrough/ieee80211b"
-    },
-    {
-      "sync": "delimit",
-      "id": "sfd",
-      "header": "ieee80211b_plcp"
-    },
-    {
-      "link": "header",
-      "id": "plcp",
-      "name": "ieee80211b_plcp"
-    }
+    {"wave": "shape", "pulse": "rrc/0p35", "sps": {"param": "sps"}},
+    {"sync": "timing"},
+    {"sync": "carrier", "order": 4},
+    {"symbol": "spread", "sequence": "barker11"},
+    {"symbol": "differential"},
+    {"symbol": "constellation", "id": "map", "name": "bpsk"},
+    {"code": "scramble", "name": "feedthrough/ieee80211b"},
+    {"sync": "delimit", "id": "sfd", "header": "ieee80211b_plcp"},
+    {"link": "header", "id": "plcp", "name": "ieee80211b_plcp"}
   ],
   "controls": {
-    "sfd": {
-      "drive": {
-        "plcp": {
-          "frame": "frame"
-        }
-      }
-    },
+    "sfd": {"drive": {"plcp": {"frame": "frame"}}},
     "plcp": {
       "table": "ieee80211b/rate",
       "key": "signal",
-      "default": {
-        "signal": 10,
-        "frame_bits": null
-      },
-      "schedule": [
-        {
-          "signal": {
-            "param": "signal"
-          }
-        }
-      ],
+      "default": {"signal": 10, "frame_bits": null},
+      "schedule": [{"signal": {"param": "signal"}}],
       "reach": 64,
-      "drive": {
-        "plcp": {
-          "signal": "signal"
-        },
-        "map": {
-          "name": "constellation"
-        },
-        "sfd": {
-          "length": "frame_bits"
-        }
-      }
+      "drive": {"plcp": {"signal": "signal"}, "map": {"name": "constellation"}, "sfd": {"length": "frame_bits"}}
     }
   },
   "capture": {
     "plcp": {
       "linktype": "ieee802_11_radiotap",
       "include": ["payload"],
-      "transform": [
-        {"header": "radiotap", "rate": "signal//5"}
-      ],
+      "transform": [{"header": "radiotap", "rate": "signal//5"}],
       "fields": ["signal", "service", "length"]
     }
   }
