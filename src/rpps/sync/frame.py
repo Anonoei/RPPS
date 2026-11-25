@@ -15,6 +15,7 @@ import numpy as np
 from .. import _accel
 from ..base import Stage, BitStage
 from ..base.kernel import device_functions, has_device_kernels, to_host
+from ..math import bits as bitops
 from ..signal.filters.convolve import convolve
 from ..base.control import publish, anchor
 from . import track
@@ -607,9 +608,8 @@ class Delimiter(BitStage):
         if n > LONG_WORD: # Mismatches from the +-1 correlation, by FFT blocks: no window x word matrix
             pm = lambda b: 1.0 - 2.0*b
             bad = np.rint((n - convolve(pm(hard), pm(self.word)[::-1], "valid"))/2).astype(np.int64)
-        else:
-            w = np.lib.stride_tricks.sliding_window_view(hard, n)
-            bad = np.count_nonzero(w != self.word[None, :], axis=1)
+        else: # (a shift register and a popcount a bit, in C++)
+            bad = bitops.distance(hard, self.word)
         found = {int(j): False for j in np.nonzero(bad <= self.errors)[0]}
         if self.polarity:
             for j in np.nonzero((n - bad) <= self.errors)[0]:

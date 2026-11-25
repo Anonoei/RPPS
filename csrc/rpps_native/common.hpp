@@ -71,5 +71,6 @@ void register_carrier(py::module_ &m);
 void register_resample(py::module_ &m);
 void register_analysis(py::module_ &m);
 void register_polar(py::module_ &m);
+void register_bits(py::module_ &m);
 
 } // namespace rpps

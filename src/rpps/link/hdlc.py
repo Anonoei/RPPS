@@ -1,6 +1,7 @@
 import numpy as np
 
 from ..code.types._code import _code
+from ..math import bits as bitops
 
 class hdlc(_code):
     """HDLC framing: flags, bit stuffing and an FCS, defined by config (see config/frame)
@@ -54,36 +55,20 @@ class hdlc(_code):
         if self.nrzi:
             b = np.concatenate(([0], (b[1:] == b[:-1]).astype(np.uint8)))
         # Flags: 01111110 patterns (LSB first: the flag byte's bits in transmission order)
-        f = self.flag_bits
-        n = len(f)
-        if len(b) < n: # Not even a flag
-            return [], 0
-        win = np.lib.stride_tricks.sliding_window_view(b, n)
-        starts = np.nonzero((win == f).all(axis=1))[0]
+        n = len(self.flag_bits)
+        starts = bitops.find(b, self.flag_bits)
+        spans = [(int(s), int(e)) for s, e in zip(starts[:-1], starts[1:]) if e - s > n] # (adjacent flags: idle)
+        status, raws = bitops.unstuff(b, [s + n for s, _ in spans], [e for _, e in spans], self.stuff)
         frames, aborts = [], 0
-        for s, e in zip(starts[:-1], starts[1:]):
-            if e - s <= n:
-                continue # Adjacent flags: idle
-            body = b[s+n:e]
-            out, ones, bad = [], 0, False
-            for bit in body:
-                if ones == self.stuff:
-                    ones = 0
-                    if bit == 0:
-                        continue # Stuffed zero
-                    bad = True # More than `stuff` ones in a row inside a frame: abort
-                    break
-                out.append(bit)
-                ones = ones + 1 if bit else 0
-            if bad or len(out) % 8:
+        n_fcs = self.fcs.width // 8
+        for (s, _), st, raw in zip(spans, status, raws):
+            if st: # more than `stuff` ones inside, or not whole bytes
                 aborts += 1
                 continue
-            raw = np.packbits(np.array(out, dtype=np.uint8), bitorder="little").tobytes()
             if len(raw) < self.min_bytes:
                 continue
-            n_fcs = self.fcs.width // 8
             ok = self.fcs.to_bytes(self.fcs.compute(raw[:-n_fcs])) == raw[-n_fcs:]
-            frames.append((int(s), raw[:-n_fcs], ok))
+            frames.append((s, raw[:-n_fcs], ok))
         return frames, aborts
 
     def _decode(self, bits):
@@ -103,8 +88,7 @@ class hdlc(_code):
         n = len(self.flag_bits)
         if len(b) < n:
             return 0
-        win = np.lib.stride_tricks.sliding_window_view(b, n)
-        starts = np.nonzero((win == self.flag_bits).all(axis=1))[0]
+        starts = bitops.find(b, self.flag_bits)
         if not len(starts):
             return max(0, len(b) - (n - 1) - (1 if self.nrzi else 0))
         last = int(starts[-1])

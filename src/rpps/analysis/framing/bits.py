@@ -2,6 +2,7 @@
 framed code"""
 import numpy as np
 
+from ...math import bits as bitops
 from ...math.prob import deviance_z, z_critical
 from ..result import Hypothesis
 
@@ -69,8 +70,7 @@ def scan_hdlc(streams, names=None, min_frames=3):
                 work = b
                 if h.nrzi:
                     work = np.concatenate(([0], (b[1:] == b[:-1]).astype(np.uint8)))
-                win = np.lib.stride_tricks.sliding_window_view(work, len(f))
-                nflag = int((win == f).all(axis=1).sum())
+                nflag = len(bitops.find(work, f))
                 trials += 1
                 if nflag < 6:
                     continue

@@ -81,7 +81,8 @@ setup.py             builds the native module and copies config/
 
 `rpps._native` (C++17, pybind11, `csrc/rpps_native/*.cpp`) holds the per-sample loops and decoders (AGC, Costas, timing,
 equalizers, IIR, Viterbi, BCJR, LDPC, polar list decoding, RS, BCH, demapping, resampling, FIR decimation, carrier and
-frame sync) and the blind
+frame sync), bit-level work on hard bits (`bits.cpp`: the Hamming distance to a word at every position, bit destuffing;
+`rpps.math.bits.distance`, `find`, `unstuff`) and the blind
 tools' slow loops (`analysis.cpp`). Without a compiler the build warns and RPPS runs its Python loops.
 
 **The Python loop is the reference.** Every kernel's Python version stays in the stage that calls it, and tests compare the

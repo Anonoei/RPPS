@@ -36,6 +36,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   stream decoded as one trellis sequence is `decode_batch` on a row.
 
 ### Added
+- **Bit kernels** (`rpps.math.bits.distance`, `find`, `unstuff`; C++ in `csrc/rpps_native/bits.cpp`): the Hamming
+  distance to a word of up to 64 bits at every position of a hard-bit stream (a shift register and a popcount a
+  bit), and bit destuffing over many spans in one call. HDLC deframing, `analysis.framing.bits.scan_hdlc` and
+  FrameSync's word search on hard bits use them (`scan_hdlc` about 6x faster).
 - **`rp.analysis.spectrum.find`**: `find` (one capture), `fit_floor`, and `Finder`, a streaming finder for displays
   (`f.step(block)` gives a Survey, ids kept; independent of how the stream is cut). Effort levels choose its frames and
   scales (`fast` for a display block, a few ms for 64k samples). The staircase fit runs in C++ (`rpps._native.pelt`),
