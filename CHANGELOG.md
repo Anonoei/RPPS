@@ -68,6 +68,12 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   carrier is followed by `rp.sync.Costas(..., points=)`.
 
 ### Added
+- **`rp.sync.equalize.BlockLS(..., blind=True)`**: a window whose decisions fail the gate is solved without them, by
+  block least squares constant modulus (LS-CMA: the targets the outputs pushed onto the constellation's modulus, the
+  same normal equations), the taps turned by the constellation's M-th power phase and to the rotation nearest the
+  last; once the eye is open (decisions within dmin/4 pass the gate) it refines decision directed. On a channel that
+  closes the eye it opened every one of 20 seeds of QPSK and 16QAM (decisions alone failed 8 and 20). A profile's
+  `equalize: ls` takes `"blind": true`. `rp.sync.equalize.symmetry(points)`: a constellation's rotational symmetry.
 - **Keys nothing reads are reported** (`rp.errors.ConfigWarning`): a definition's when it loads; a profile's own,
   every step's, its `defaults` and the `sync` given to `load`, once it is built. A misspelling, or a setting the method
   does not take, no longer passes silently. The filter and pulse designs made when a stream starts take their keys at load.

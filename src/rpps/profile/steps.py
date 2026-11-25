@@ -371,10 +371,12 @@ register_sync_method("carrier", "none")(lambda m, rep, ctx: None) # The carrier 
 
 @register_sync_method("equalize", "ls")
 def _ls(m, rep, ctx):
+    """Block least squares per window (rpps.sync.equalize.BlockLS): "constellation", "taps", "window", "blind" (constant
+    modulus until the eye opens)"""
     from .. import sync, symbol
     return sync.equalize.BlockLS(symbol.load(_need(m, "constellation", "equalize ls")), m.get("taps", 7), m.get("window", 1e-3),
                                  m.get("min_symbols", 1024), m.get("iters", 3), m.get("blend", 0.5), m.get("gate", 0.5),
-                                 m.get("name", "equalizer"))
+                                 m.get("name", "equalizer"), m.get("blind", False), m.get("blind_iters", 8))
 
 @register_sync_method("equalize", "lms")
 def _lms(m, rep, ctx):

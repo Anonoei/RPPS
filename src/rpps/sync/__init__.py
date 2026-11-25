@@ -14,7 +14,7 @@ and its rate across windows and gates outliers; the correction is evaluated per 
 | symbol timing | `time.OerderMeyr`: square-law, cubic interpolation; follows a clock 200 ppm off | `timing: oerder_meyr` (default) |
 | symbol timing, the matched filter fused in | `time.MatTrack`: the matched filter's energy maximum (MatRRC), read only at the instants; on a GPU too | `timing: mat` |
 | carrier frequency and phase | `phase.MPower`: M-th power of the phase, FFT acquisition | `carrier: mpower` (default) |
-| channel | `equalize.BlockLS`: least squares per window against decisions | `equalize: ls` (default) |
+| channel | `equalize.BlockLS`: least squares per window against decisions; `blind=True`: constant modulus by least squares until the eye opens | `equalize: ls` (default), `"blind": true` |
 | OFDM timing and frequency | `CPSync`: from the cyclic prefix | |
 | carrier phase per frame | `PilotPhase` (pilot blocks), `phase.FFCarrier` (Viterbi & Viterbi) | `carrier: pilots`, `carrier: ff` |
 | frame starts | `FrameSync` (a preamble and the best word of a header code; or named alternatives, Zadoff-Chu sets, a word mid-burst, real levels, what the match says: word, scale, cfo, esn0, modulation), `Delimiter` (a word among bits) | `frame`, `delimit` |

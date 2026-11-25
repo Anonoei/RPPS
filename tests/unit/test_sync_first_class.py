@@ -102,6 +102,53 @@ def test_block_ls_equalizer_reaches_the_known_symbol_bound():
     y2, _ = run(x, make, [777]*(len(x)//777) + [len(x) % 777], Fs=1e6, sps=1)
     assert np.allclose(y, y2, atol=1e-5)
 
+def _closed_eye(name, seed, n=16000):
+    rng = np.random.default_rng(seed)
+    q = rp.symbol.load("psk/qpsk") if name == "QPSK" else rp.symbol.generate(name)
+    sym = np.asarray(q.points)[rng.integers(0, len(q.points), n)]
+    x = np.convolve(sym, [0.5, 0.2j, 1, 0.55 - 0.3j, -0.3, 0.15j])[2:2 + n]*0.4*np.exp(0.7j)
+    return q, sym, (x + 0.02*(rng.normal(size=n) + 1j*rng.normal(size=n))).astype(np.complex64)
+
+def _ser(y, sym, pts, M=4, reach=6):
+    """Symbol errors at the best of the M rotations and of the delays within `reach` (what blind cannot know)"""
+    best = 1.0
+    for k in range(M):
+        r = y*np.exp(2j*np.pi*k/M)
+        d = pts[np.argmin(np.abs(r[:, None] - pts[None, :]), axis=1)]
+        for sh in range(-reach, reach + 1):
+            best = min(best, float(np.mean(np.abs(np.roll(d, sh) - sym)[reach:-reach] > 1e-6)))
+    return best
+
+@pytest.mark.parametrize("name", ["QPSK", "16QAM"])
+def test_block_ls_blind_opens_an_eye_decisions_cannot(name):
+    """Over 20 seeds of this channel, decision directed fails 8 (QPSK) and 20 (16QAM) of them; blind opened every one
+    (no symbol errors after 8000 symbols) and hands over to decisions"""
+    for seed in range(3):
+        q, sym, x = _closed_eye(name, seed)
+        pts = np.asarray(q.points)
+        y, s = run(x, lambda: [rp.sync.equalize.BlockLS(q, 21, window=0, blind=True)], Fs=1e6, sps=1)
+        assert _ser(np.asarray(y)[8000:], sym[8000:], pts) < 0.002, seed
+    if name == "16QAM":
+        y, _ = run(x, lambda: [rp.sync.equalize.BlockLS(q, 21, window=0)], Fs=1e6, sps=1)
+        assert _ser(np.asarray(y)[8000:], sym[8000:], pts) > 0.5 # (decisions alone: never opened)
+
+def test_block_ls_blind_hands_over_and_any_cut_gives_the_same():
+    q, sym, x = _closed_eye("16QAM", 0)
+    make = lambda: [rp.sync.equalize.BlockLS(q, 21, window=0, blind=True)]
+    d = rp.Data(x[:12288], Fs=1e6, sps=1) # (not flushed: no padded last window)
+    est = (d + make()[0]).stream.est["equalizer"]
+    assert est["mode"] == "decided" and est["good"] > 0.9
+    y1, _ = run(x, make, Fs=1e6, sps=1)
+    y2, _ = run(x, make, [777]*(len(x)//777) + [len(x) % 777], Fs=1e6, sps=1)
+    assert np.allclose(y1, y2, atol=1e-5)
+
+def test_constellation_symmetry():
+    sym = rp.sync.equalize.symmetry
+    assert sym(rp.symbol.load("psk/bpsk").points)[0] == 2
+    assert sym(rp.symbol.load("psk/qpsk").points)[0] == 4
+    assert sym(rp.symbol.generate("16QAM").points)[0] == 4
+    assert sym(rp.symbol.load("psk/8psk").points)[0] == 8
+
 # ---- the profiles from raw samples: nothing but their own steps
 
 def impaired(o, cfo_hz, pad):
