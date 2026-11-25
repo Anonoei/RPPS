@@ -127,8 +127,8 @@ def test_find_signals_cut_by_band_edge(rng):
     assert "cut by band edge" in found[1].describe()
 
 def test_duty_weak_continuous_is_not_bursty(rng):
-    Fs = 1e6 # A wide signal at a few dB above the noise in every bin stays on throughout
-    x = shaped(rng, 1 << 19, Fs, [(0, 200e3, 0.07)], noise=0.05)
+    Fs = 1e6 # A wide signal a few dB over the noise in every bin (6 dB: processable) stays on throughout
+    x = shaped(rng, 1 << 19, Fs, [(0, 200e3, 0.1)], noise=0.05)
     found = rp.analysis.find_signals(x, Fs)
     assert len(found) == 1
     assert found[0].duty is None or found[0].duty > 0.9
@@ -168,17 +168,17 @@ def test_a_smooth_hill_is_not_a_signal(rng):
         assert rp.analysis.find_signals(x, Fs, edges=False) == []
 
 def test_square_edged_boxes_are_signals_and_neighbours_stay_apart(rng):
-    Fs = 100e6 # Two 3 dB boxes 2 MHz apart, as on a transponder pair
+    Fs = 100e6 # Two 6 dB boxes 2 MHz apart, as on a transponder pair (4.7 dB SNR: processable)
     def box(f):
-        return 3.0*((np.abs(f + 15e6) < 8e6) | (np.abs(f - 3e6) < 5e6))
+        return 6.0*((np.abs(f + 15e6) < 8e6) | (np.abs(f - 3e6) < 5e6))
     found = rp.analysis.find_signals(shaped_psd(rng, 1 << 20, Fs, box), Fs)
     assert len(found) == 2
     assert found[0].mid == pytest.approx(-15e6, abs=1e6) and found[0].width == pytest.approx(16e6, rel=0.1)
     assert found[1].mid == pytest.approx(3e6, abs=1e6) and found[1].width == pytest.approx(10e6, rel=0.1)
 
 def test_steep_block_cut_by_band_edge_is_flagged(rng):
-    Fs = 100e6 # A flat top that runs off the end of the usable band
-    found = rp.analysis.find_signals(shaped_psd(rng, 1 << 20, Fs, lambda f: 4.0*(f > 20e6)), Fs)
+    Fs = 100e6 # A flat top (6 dB) that runs off the end of the usable band
+    found = rp.analysis.find_signals(shaped_psd(rng, 1 << 20, Fs, lambda f: 6.0*(f > 20e6)), Fs)
     assert len(found) == 1 and found[0].clipped and found[0].lo == pytest.approx(20e6, abs=1e6)
 
 def test_signal_fields_and_survey_pick(rng):

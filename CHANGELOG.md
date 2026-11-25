@@ -7,6 +7,12 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 ## Unreleased
 
 ### Breaking
+- **`analysis.spectrum.find.Finder` holds what it stops finding**: a signal not found again stays in the Survey with
+  `stale=True` (and `seen`, when it was last found) for the new `hold` [s] (-1, the default: for good; 0: dropped at
+  once, as before). The Finder keeps no raw samples: a stream's bursts are timed by the frames (`find` still times
+  them finer). Frames are held in ring buffers, so `frames` can be a second's worth: each region keeps its reading
+  while its span and level hold (measured again each update) and an update costs about 5 ms at 8192 bins (`track`:
+  keep readings; `full` is gone).
 - **The Costas loop moves to `rp.sync.loops.Costas`, second class** (with `points=`, `from_bandwidth` and the `costas`
   kernel); `rp.sync.Costas` is gone. A profile's `carrier: costas` builds it. The new `rp.sync.phase.DDCarrier` follows
   a carrier from decisions on any constellation (APSK and QAM too: block estimation tracked across 32-symbol windows,
@@ -35,13 +41,15 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   window and a half. The loop is `rp.sync.loops.AGC(target, mu)`, second class, with its `agc` kernel (a profile's
   `{"sync": "agc", "method": "loop", "mu": ...}`); the loop `PeakAGC` is `rp.sync.loops.PeakAGC`.
 - **`rp.analysis.find_signals` is a new detector** (`rp.analysis.spectrum.find`): thresholds set by a false-alarm rate
-  (`pfa`, expected false boxes in a capture of noise), a noise floor fitted per bin, and each signal read off a
-  staircase fit of the spectrum (notches and steps split neighbours; a narrower signal on a wider one is its own box,
-  `over` it). Signals get time extents (`t0`, `t1`, `bursts`), `score`, `edge`, `rough`, and `lines` for a comb (one box
-  for the whole comb). Its arguments after `nfft` are now `cf, pfa, edge, split_db, drop_db, min_bins, min_across,
-  nested`; pass them by name. `min_snr_db`, `gap`, `occupied`, `min_band_snr_db`, `edges` and `edge_db` do nothing and
-  warn (DeprecationWarning) for this release, then go. Defaults: `edge` 0.005 (was 0.02: carriers by the band edge are
-  found), `split_db` 4 dB, `min_bins` 1. `measure_band`'s `edge` default is 0.005 too.
+  (`pfa`, expected false boxes in a capture of noise), a noise floor fitted per bin, and each signal read by level
+  (`rp.analysis.spectrum.levels`): a line raised from the floor in steps of a few noise deviations, a signal what comes
+  up and holds its sides; one coming up out of a wider one stands on it (`over`; the wider `holds` it: a pedestal, a
+  carrier under a jammer); a hump's sides never hold. Lines (tones, spurs) and what is under 3 dB SNR are no signals
+  (nothing to process). Its boxes don't change with noise 80 dB down. Signals get time extents (`t0`, `t1`, `bursts`;
+  one with bursts is a `Burst`) and `score`. Its arguments after `nfft` are now `cf, pfa, edge, drop_db, min_bins,
+  min_across, nested`; pass them by name. `min_snr_db`, `gap`, `occupied`, `min_band_snr_db`, `edges`, `edge_db` and
+  `split_db` do nothing and warn (DeprecationWarning) for this release, then go. Defaults: `edge` 0.005 (was 0.02:
+  carriers by the band edge are found), `min_bins` 1. `measure_band`'s `edge` default is 0.005 too.
 - **`rp.analysis.catalogue.SYSTEMS` is gone: the systems are `config/system` definitions**, one file each
   (`extends`, `abstract`, tags and user config layers work as for any definition); `catalogue.systems()` loads them.
   `match` now reports systems the features can't tell apart as `tied` (ambiguous) instead of ordering them by name,
@@ -68,6 +76,10 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   carrier is followed by `rp.sync.Costas(..., points=)`.
 
 ### Added
+- **`rp.analysis.Burst`**: a `Signal` on part of the time (`find` gives one for anything with bursts), with `duty`,
+  `last` (the latest burst) and `period`.
+- The finder's detector runs in C++ when `rpps._native` is built (`find_detect`; 1.1 to 0.16 ms on 8192 bins), and
+  its spectrogram's FFT in double precision (faster in numpy 2.3).
 - **`rp.sync.equalize.BlockLS(..., blind=True)`**: a window whose decisions fail the gate is solved without them, by
   block least squares constant modulus (LS-CMA: the targets the outputs pushed onto the constellation's modulus, the
   same normal equations), the taps turned by the constellation's M-th power phase and to the rotation nearest the

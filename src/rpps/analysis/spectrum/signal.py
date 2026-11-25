@@ -22,10 +22,12 @@ class Signal:
     baud_est / baud_strength: symbol rate from the |x|^2 line of the channelized signal (None: no clear line)
     holds: how many other signals stand on it (a transponder's pedestal, or a carrier with a narrower signal on it: which
         one, the spectrum can't tell; its own symbol-rate line can). over: the one it stands on, when it stands on one
-    lines: a comb (lines side by side at one spacing, one box): how many. t0/t1, bursts: when it is on
-    score: dB over the threshold that found it; edge, rough: its shape (see rpps.analysis.spectrum.find)
+    t0/t1, bursts: when it is on
+    score: dB over the threshold that found it
     id: its number, kept from survey to survey by `Survey.match`
+    stale, seen: a Finder's: not found in the last block, kept (its hold) as last seen; when it was last found [s]
     Fs, cf, bin_hz: the capture's rates and the spectrum's resolution
+    A signal on only part of the time is a Burst.
     """
     def __init__(self, mid, width, bottom, height, snr=None, *, lo=None, hi=None, power=None, peak_freq=None,
                  duty=None, resolved=True, Fs=None, cf=0.0, bin_hz=None, clipped=False):
@@ -49,10 +51,9 @@ class Signal:
         self.t0 = self.t1 = None # when it is on [s from the capture's start]; bursts: [(t0, t1)], None when steady
         self.bursts = None
         self.over = None         # the signal it stands on (a pedestal, a carrier it jams), or None
-        self.lines = 0           # a comb: how many lines it holds
         self.score = None        # dB over the threshold that found it
-        self.edge = None         # its edges' 25-75% rise over its width, the wider side
-        self.rough = None        # its top's roughness beyond the noise's [dB]
+        self.stale = False       # (a Finder's: not found this block, kept as last seen)
+        self.seen = None         # (a Finder's: when it was last found [s from the stream's start])
 
     @property
     def freq(self):
@@ -115,8 +116,6 @@ class Signal:
             bits.append("cut by band edge")
         if self.holds:
             bits.append(f"holds {self.holds} other signal{'s' if self.holds > 1 else ''}")
-        if self.lines:
-            bits.append(f"a comb of {self.lines} lines")
         if self.over is not None:
             bits.append(f"on the {self.over.width/1e3:.0f} kHz signal at {self.over.freq/1e6:+.4f} MHz")
         return ", ".join(bits)
@@ -124,6 +123,33 @@ class Signal:
     def __repr__(self):
         snr = "" if self.snr is None else f", snr {self.snr:.1f} dB"
         return f"<Signal {self.mid/1e6:+.4f} MHz, {self.width/1e3:.1f} kHz wide{snr}>"
+
+class Burst(Signal):
+    """A Signal on part of the time
+
+    bursts [(t0, t1)] [s] in what was looked at, duty (the fraction on), last (the latest burst), period (the median
+    start to start [s], None under 3 bursts)"""
+
+    @classmethod
+    def of(cls, sig):
+        """sig as a Burst (the same object, its class changed)"""
+        sig.__class__ = cls
+        return sig
+
+    @property
+    def last(self):
+        return self.bursts[-1] if self.bursts else None
+
+    @property
+    def period(self):
+        if not self.bursts or len(self.bursts) < 3:
+            return None
+        return float(np.median(np.diff([b[0] for b in self.bursts])))
+
+    def __repr__(self):
+        snr = "" if self.snr is None else f", snr {self.snr:.1f} dB"
+        duty = "" if self.duty is None else f", {self.duty*100:.0f}% on"
+        return f"<Burst {self.mid/1e6:+.4f} MHz, {self.width/1e3:.1f} kHz wide{snr}{duty}>"
 
 class Survey(list):
     """The signals found in a capture (a list of Signal, by frequency), and the spectrum they came from
@@ -168,13 +194,25 @@ class Survey(list):
         if nxt is None:
             nxt = max((p.id for p, _ in known), default=-1) + 1
         taken = set()
-        for s in sorted(self, key=lambda s: -s.snr if s.snr is not None else -s.height): # Strongest choose first
+        order = sorted(self, key=lambda s: -s.snr if s.snr is not None else -s.height) # Strongest choose first
+        cand = [[] for _ in order]
+        if known and order: # (the pairs near enough and of about the width, at once)
+            pf = np.array([p.freq for p, _ in known], float)
+            pw = np.array([p.width for p, _ in known], float)
+            sf = np.array([s.freq for s in order], float)[:, None]
+            sw = np.array([s.width for s in order], float)[:, None]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                r = sw/pw[None, :]
+            ok = (np.abs(pf[None, :] - sf) <= near*sw) & (ratio[0] <= r) & (r <= ratio[1])
+            cand = [np.flatnonzero(row).tolist() for row in ok]
+        for s, cs in zip(order, cand):
             best = None
-            for p, age in known:
+            for j in cs:
+                p, age = known[j]
                 if p.id in taken:
                     continue
                 d = abs(p.freq - s.freq)
-                if d <= near*s.width and ratio[0] <= s.width/p.width <= ratio[1] and (best is None or (age, d) < best[0]):
+                if best is None or (age, d) < best[0]:
                     best = ((age, d), p) # (one seen in the last survey before one remembered)
             if best is None:
                 s.id, nxt = nxt, nxt + 1
@@ -300,20 +338,19 @@ def measure_band(samps, Fs, freq, bw, cf=0.0, nfft=None, edge=0.005):
                   peak_freq=float((e0 + int(np.argmax(band)) - nfft/2)*bin_hz), duty=duty, resolved=n >= 8,
                   clipped=clipped, Fs=Fs, cf=cf, bin_hz=bin_hz)
 
-_RETIRED = ("min_snr_db", "gap", "occupied", "min_band_snr_db", "edges", "edge_db")
+_RETIRED = ("min_snr_db", "gap", "occupied", "min_band_snr_db", "edges", "edge_db", "split_db")
 
-def find_signals(samps, Fs: float = 1, nfft=None, cf=0.0, pfa=1e-3, edge=0.005, split_db=4.0, drop_db=10.0, min_bins=1,
+def find_signals(samps, Fs: float = 1, nfft=None, cf=0.0, pfa=1e-3, edge=0.005, drop_db=10.0, min_bins=1,
                  min_across=8, nested=True, **retired):
     """The signals in a capture: rpps.analysis.spectrum.find.find (how it works is there), as a Survey of Signal sorted
     by frequency, ids 0, 1... in that order
 
     pfa: expected false boxes in a capture of pure noise; nfft: FFT size [N/16, up to 65536]; cf: the capture's centre
     frequency [Hz], for Signal.freq; edge: fraction of the band at each end not looked at (the receiver's roll-off is
-    also found); split_db: least notch or step between two signals side by side [dB, 3/4 of it for a step]; drop_db: a
-    carrier's edges are this far under its level; min_bins: narrowest signal; min_across: bins across under which its
+    also found); drop_db: a carrier's edges are this far under its level (or halfway to what is beside it); min_bins: narrowest signal; min_across: bins across under which its
     edges aren't trusted (Signal.resolved); nested: keep the boxes that hold other signals (a pedestal, a carrier a
     narrower one jams: Signal.holds). False: only what stands on them
-    The thresholds of the rules this replaced (min_snr_db, gap, occupied, min_band_snr_db, edges, edge_db) are taken
+    The thresholds of the rules this replaced (min_snr_db, gap, occupied, min_band_snr_db, edges, edge_db, split_db) are taken
     for one release with a DeprecationWarning, and do nothing: `pfa` sets what the detection lets through."""
     import warnings
     from .find import find
@@ -323,8 +360,7 @@ def find_signals(samps, Fs: float = 1, nfft=None, cf=0.0, pfa=1e-3, edge=0.005, 
     if retired:
         warnings.warn(f"find_signals: {sorted(retired)} no longer do anything (the finder's thresholds come from pfa); "
                       "they go in the next release", DeprecationWarning, stacklevel=2)
-    sv = find(samps, Fs, cf=cf, nfft=nfft, pfa=pfa, edge=edge, split_db=split_db, drop_db=drop_db, min_bins=min_bins,
-              min_across=min_across)
+    sv = find(samps, Fs, cf=cf, nfft=nfft, pfa=pfa, edge=edge, drop_db=drop_db, min_bins=min_bins, min_across=min_across)
     if not nested:
         kept = [s for s in sv if not s.holds]
         for t in kept:
@@ -342,7 +378,7 @@ def survey(source, Fs=None, cf=None, samples=2**17, more=2**20, baud=True, **kw)
         are right, whatever block size the receive chain will use later
     more: if some signal is too narrow for its bins, read up to this many (once) and look again
     baud: also estimate each signal's symbol rate (Signal.baud_est)
-    The rest (pfa, split_db, ...) is for find_signals. Returns a Survey; Survey.head is what was read.
+    The rest (pfa, drop_db, ...) is for find_signals. Returns a Survey; Survey.head is what was read.
     """
     if hasattr(source, "peek"):
         Fs = source.Fs if Fs is None else Fs

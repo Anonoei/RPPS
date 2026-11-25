@@ -81,3 +81,18 @@ def test_rs_count_zeros_matches_python():
             _accel.native = saved
         got = R._count_zeros(V, n, EXP, LOG, 8)
         assert all(np.array_equal(a, b) for a, b in zip(ref, got))
+
+def test_find_detect():
+    from rpps.analysis.spectrum import find as F
+    rng = np.random.default_rng(5)
+    for _ in range(60):
+        n, R, M = int(rng.integers(50, 9000)), int(rng.integers(1, 5)), int(rng.choice([2, 8, 32]))
+        Z = rng.gamma(M, 1/M, (R, n))
+        for _ in range(rng.integers(0, 8)): # (things of every width and level)
+            a, w = int(rng.integers(0, n)), int(rng.integers(1, max(2, n//4)))
+            Z[:, a:a + w] *= 1 + 10**rng.uniform(-1.5, 1.5)
+        det = F._Detector(8192, 8192, M, 1e-3, int(rng.choice([16, 2048])), R - 1)
+        Zi = Z if R > 1 else Z[0]
+        ref, got = det._detect_py(Zi, M), det.detect(Zi, M)
+        assert np.array_equal(got[0], ref[0]) and np.array_equal(got[2], ref[2])
+        assert np.allclose(got[1], ref[1], atol=1e-4)

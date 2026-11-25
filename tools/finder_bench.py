@@ -234,17 +234,16 @@ KINDS = ("sparse", "dense", "weak", "pedestal", "humps", "bursts", "tones", "edg
 
 # --- finders: callable(x, Fs) -> list of boxes with lo, hi, mid, width, snr (and t0, t1 when they give time)
 
-def _finder(level, segment="stair"):
+def _finder(level):
     def run(x, Fs):
         import rpps as rp
         from rpps.analysis.spectrum.find import find
         with rp.effort(level):
-            return list(find(x, Fs, segment=segment))
-    run.__name__ = level if segment == "stair" else f"{segment}-{level}"
+            return list(find(x, Fs))
+    run.__name__ = level
     return run
 
 FINDERS = {lv: _finder(lv) for lv in ("fast", "balanced", "max")}
-FINDERS.update({f"net-{lv}": _finder(lv, "net") for lv in ("fast", "balanced")}) # (the learned segmenter)
 
 # --- scoring
 

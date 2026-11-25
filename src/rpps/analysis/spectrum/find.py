@@ -22,21 +22,14 @@ How it works, each step a known detector:
    low one grows it (hysteresis, LAD's double threshold); what a width finds is excised before the next (CLEAN).
 4. When it is on: each span's band power frame by frame, gated by the same two thresholds (bursts timed on frames 32
    bins of the span wide); a bursty span is measured on the frames it is on.
-5. The span as a staircase: its spectrum, with context each side, in points of up to 8 bins (dB), fitted with flat
-   levels by optimal partitioning (PELT, exact; each point weighted by its own scatter, the noise's or the roughness
-   about it, a change costing 3 log n; C++ kernel). Runs of levels over the floor are signals. A run is cut at a notch (a
-   level 3/4 x `split_db` under the highest each side) and at a step between two broad levels that far apart (a carrier
-   flush against a stronger one). A run whose lowest broad level stands over the floor, covers a third of it and is
-   never cut under is a pedestal: listed with `holds`, each group of levels on it read the same way over it. Narrower
-   levels standing over a piece's own (its longest) level are a signal on it (a jammer on a carrier): listed with `over`
-   (the piece), the piece with `holds`; whether a box with `holds` is a raised floor or a signal under a jammer, the
-   spectrum can't say (its own symbol-rate line can). Lines narrower than the points (tones), found over the staircase,
-   are boxes of their own when 3 dB over it; 4 or more side by side at one spacing are one box, a comb (`lines`).
-6. Each piece's edges: where the spectrum falls `drop_db` under its level, or halfway to the level outside it (the floor,
-   a notch, a pedestal) when that is less. A piece whose level never falls on a side facing the floor is part of
-   something wider; one whose edge rises over most of its width (1/4 to 3/4 of its height on the staircase, measured
-   from outside in, wider than a fifth of it or 2% of the band) is a hump; a piece cut by the band's edge stands over
-   the other side by 3/4 x `split_db`; every box passes the detector at its own width.
+5. The signals, read by level (rpps.analysis.spectrum.levels): in each region the detector marked, a line is raised
+   from the floor a step of a few noise deviations at a time. What comes up and holds its sides from one step to the
+   next is a signal; one that comes up out of a wider one stands on it (`over`; the wider `holds` it: a pedestal, or a
+   carrier under a narrower signal); a hump's sides never hold. Two carriers side by side come up as one run and part
+   at the notch: the run is only them. Lines (a few bins wide: tones, spurs) are taken out first: no signal.
+6. Each signal's edges: where it falls `drop_db` under its top, or halfway to where it came up (the floor, a notch, a
+   pedestal) when that is less; it passes the detector at its own width and has an SNR of 3 dB or more (what can't be
+   processed is no signal). A Finder keeps each region's reading while it holds (measured again each step).
 
 Effort (rp.set_effort): fast skips frame overlap and tests bursts only in groups of 8 frames; balanced and max overlap
 frames by half and test groups of 2 and 8. Every level tests widths up to a quarter of the band: capped
@@ -48,7 +41,8 @@ import numpy as np
 
 from ... import _effort
 from ...math.mask import runs
-from .signal import Signal, Survey
+from . import levels
+from .signal import Burst, Signal, Survey
 
 # --- statistics (no scipy)
 
@@ -78,21 +72,24 @@ def _gamma_isf(p, n):
     v = 1/(9*float(n))
     return max(1 - v + _norm_isf(p)*np.sqrt(v), 1e-3)**3
 
-@functools.lru_cache(maxsize=4096)
-def _dof_cached(nfft, hop, M, k):
+@functools.lru_cache(maxsize=64)
+def _window_terms(nfft, hop):
+    """The Hann window's correlation between bins (lags 1..7) and between frames hop apart (lags 1, 2, ...)"""
     win = np.hanning(nfft)
     w2 = win**2
     e2 = w2.sum()
+    rb = np.abs(np.fft.fft(w2)[1:8])**2/e2**2
+    lt = np.arange(1, int(np.ceil(nfft/hop)))
+    rt = np.array([(win[j*hop:]*win[:nfft - j*hop]).sum()**2/e2**2 for j in lt])
+    return rb, rt
+
+@functools.lru_cache(maxsize=4096)
+def _dof_cached(nfft, hop, M, k):
+    rb, rt = _window_terms(nfft, hop)
     lags = np.arange(1, min(k, 8))
-    cb = 1.0
-    if len(lags):
-        W = np.fft.fft(w2)
-        cb = 1 + 2*np.sum((1 - lags/k)*np.abs(W[lags])**2/e2**2)
-    ct = 1.0
-    lt = np.arange(1, min(M, int(np.ceil(nfft/hop))))
-    if len(lt):
-        rt = np.array([(win[j*hop:]*win[:nfft - j*hop]).sum()**2/e2**2 for j in lt])
-        ct = 1 + 2*np.sum((1 - lt/M)*rt)
+    cb = 1 + 2*np.sum((1 - lags/k)*rb[:len(lags)]) if len(lags) else 1.0
+    lt = np.arange(1, min(M, len(rt) + 1))
+    ct = 1 + 2*np.sum((1 - lt/M)*rt[:len(lt)]) if len(lt) else 1.0
     return k*M/(cb*ct)
 
 def _dof(nfft, hop, M, k):
@@ -152,13 +149,19 @@ def spectrogram(x, Fs, nfft, overlap=0.5):
     M = (len(x) - nfft)//hop + 1
     if M < 1:
         raise ValueError(f"Need at least {nfft} samples")
-    win = np.hanning(nfft).astype(np.float32)
+    win = _hann_win(nfft)
     frames = np.lib.stride_tricks.as_strided(x, (M, nfft), (x.strides[0]*hop, x.strides[0]))
-    X = np.fft.fft(frames*win, axis=1)
-    P = X.real**2 + X.imag**2
+    X = np.fft.fft(frames*win, axis=1) # (in double: numpy's complex64 FFT is the slower)
+    P = X.real**2
+    P += X.imag**2
     P = np.fft.fftshift(P, axes=1).astype(np.float32)
-    P *= np.float32(1/(np.sum(win.astype(np.float64)**2)*Fs))
+    P *= np.float32(1/(np.sum(win**2)*Fs))
     return P, hop
+
+@functools.lru_cache(maxsize=16)
+def _hann_win(nfft):
+    """The Hann window, float32 values held in double"""
+    return np.hanning(nfft).astype(np.float32).astype(np.float64)
 
 def _run_min(v, w):
     """Minimum over each window of 2w+1 centred on each point (the ends held at their value): van Herk / Gil-Werman, the
@@ -294,7 +297,21 @@ class _Detector:
         only the blocks it touched), and from POOL_FROM bins on everything runs on means of POOL bins: their windows and
         marks fall on multiples of POOL bins, so this is exact, at a POOL-th of the work.
         Returns (mask, score: dB over the high threshold, the most over widths; the narrowest width that marked each
-        bin), each over Z's bins"""
+        bin), each over Z's bins. The C++ kernel when built (rpps._native.find_detect), else _detect_py, the reference
+        it mirrors"""
+        from ... import _accel
+        if _accel.native is None:
+            return self._detect_py(Z, m, local)
+        Zx = np.array(np.atleast_2d(Z), np.float64)
+        Zx /= local
+        n = Zx.shape[1]
+        ks = [1 << L for L in range(self.levels) if (1 << L) <= n]
+        th = np.array([self.thresholds(k, m) for k in ks], np.float64).reshape(-1, 2)
+        return _accel.native.find_detect(Zx, np.ascontiguousarray(th[:, 0]), np.ascontiguousarray(th[:, 1]),
+                                         self.POOL, self.POOL_FROM)
+
+    def _detect_py(self, Z, m, local=1.0):
+        """detect's loop in numpy (the reference the kernel is tested against)"""
         Zx = np.array(np.atleast_2d(Z), np.float64)
         Zx /= local
         R, n = Zx.shape
@@ -378,58 +395,35 @@ class _Detector:
 def _nfft_for(N):
     return 1 << int(np.clip(np.floor(np.log2(max(N//16, 64))), 6, 16))
 
-def _walk(v, i, stop, thr, step, g=1):
-    """From i, step while v stays above thr (a dip under it shorter than g points is stepped over) and short of `stop`;
-    the crossing (fractional index)"""
-    n = len(v)
-    j = i
-    while True:
-        for k in range(1, g + 1):
-            nj = j + step*k
-            if nj == stop or not 0 <= nj < n:
-                k = None
-                break
-            if v[nj] > thr:
-                break
-        else:
-            k = None
-        if k is None:
-            break
-        j += step*k
-    nxt = j + step
-    if nxt != stop and 0 <= nxt < n and v[j] > v[nxt]:
-        return j + step*float(np.clip((v[j] - thr)/(v[j] - v[nxt]), 0, 1))
-    return j + 0.5*step
-
-DEBUG = None # a list: find() appends why it dropped each piece it looked at
-
-def _why(c, reason, e0, e1):
-    if DEBUG is not None:
-        DEBUG.append((reason, (e0 + 0.5 - c.nfft//2)*c.bin_hz, (e1 + 0.5 - c.nfft//2)*c.bin_hz))
-    return None
-
 class _Ctx:
     """What every span's measurement needs"""
-    pass
 
-def find(x, Fs: float = 1.0, cf=0.0, nfft=None, pfa=1e-3, edge=0.005, split_db=4.0, drop_db=10.0, min_bins=1,
-         min_across=8, blocks=64, sys_db=None, segment="stair"):
+    def band(self, a, b):
+        """Each frame's mean over bins a..b of the whitened frames (from their running sums over bins, Cw: a Finder
+        keeps them frame by frame; made here once otherwise)"""
+        if getattr(self, "Cw", None) is None:
+            self.Cw = _cumbins(self.Pw)
+        return (self.Cw[:, b] - self.Cw[:, a])/max(b - a, 1)
+
+def _cumbins(Pw):
+    """Each frame's running sum over its bins, from 0 (float64: (M, nfft + 1))"""
+    C = np.zeros((len(Pw), Pw.shape[1] + 1))
+    np.cumsum(Pw, axis=1, dtype=np.float64, out=C[:, 1:])
+    return C
+
+def find(x, Fs: float = 1.0, cf=0.0, nfft=None, pfa=1e-3, edge=0.005, drop_db=10.0, min_bins=1, min_across=8,
+         blocks=64, sys_db=None):
     """Signals in a capture (see the module): a Survey of Signal sorted by frequency, each with t0/t1 (when it is on,
-    [s from the start]), bursts ([(t0, t1)], None when continuous or too weak a frame to tell), score (dB over the
-    threshold that found it), over (the box it stands on, or None), and its shape: edge (its edges' 25-75% transition,
-    the wider, over its width: a raised-cosine carrier's is under beta/3, a hump's most of it) and rough (its top's
-    roughness beyond the noise's, dB: spectral lines, a rough hump)
+    [s from the start]), bursts ([(t0, t1)], None when continuous or too weak a frame to tell; one with bursts is a
+    Burst), score (dB over the threshold that found it) and over (the box it stands on, or None)
 
     pfa: expected false boxes in a capture of pure noise (spread over every width and group tested)
     nfft: FFT size [N/16, 64 to 65536]
     edge: fraction of the band at each end not looked at [0.5%: the receiver's roll-off is found from the spectrum, and
         carriers can run to within 1% of the band's edge]
-    split_db: least valley between carriers side by side [dB; 4x the spectrum's ripple when more]
     drop_db: a carrier's edges are this far under its top [dB] (or halfway to the floor or valley beside it)
     min_bins: narrowest signal; min_across: bins across under which its edges aren't trusted (Signal.resolved False)
     blocks: blocks the floor is fitted in (at least 8 bins each); sys_db: the floor's own error [measured]
-    segment: how steps 5-6 read what the detector marked: "stair" (the staircase and its rules) or "net" (the learned
-        segmenter, rpps.analysis.spectrum.net)
     For a stream (a display), Finder: the same, block by block.
     """
     st = _SETTINGS[_effort.level()]
@@ -437,7 +431,7 @@ def find(x, Fs: float = 1.0, cf=0.0, nfft=None, pfa=1e-3, edge=0.005, split_db=4
     nfft = _nfft_for(len(x)) if nfft is None else int(nfft)
     P, hop = spectrogram(x, Fs, nfft, st["overlap"])
     fit = fit_floor(P, hop, edge, blocks, sys_db)
-    return _find_frames(P, hop, x, Fs, cf, fit, pfa, edge, split_db, drop_db, min_bins, min_across, segment=segment)
+    return _find_frames(P, hop, x, Fs, cf, fit, pfa, edge, drop_db, min_bins, min_across)
 
 class FloorFit:
     """The noise floor fitted to a spectrogram (find's step 2): floor per bin (power per Hz), the usable bins a..b (past
@@ -484,13 +478,13 @@ def fit_floor(P, hop, edge=0.005, blocks=64, sys_db=None):
             sys = np.sqrt(max(0.0, emp**2 - (4.343/np.sqrt(_dof(nfft, hop, M, kr)))**2))/4.343
     return FloorFit(floor, a_use, b_use, float(sys), busy)
 
-def _find_frames(P, hop, x, Fs, cf, fit, pfa, edge, split_db, drop_db, min_bins, min_across, t_start=0.0, state=None,
-                 segment="stair"):
-    """find's steps 3-6 on a spectrogram P[t, f] (frames at hop) of the samples x, with the floor `fit`
+def _find_frames(P, hop, x, Fs, cf, fit, pfa, edge, drop_db, min_bins, min_across, t_start=0.0, state=None):
+    """find's steps 3-6 on a spectrogram P[t, f] (frames at hop) of the samples x (None: bursts timed by the frames),
+    with the floor `fit`
 
-    state: a Finder's, carried from step to step (None: nothing kept): its detector, mean spectrum, whitened frames,
-    the group detections of groups already complete (frames counted from the stream's start, `frame0` the first
-    held), and the spans of the last step with their boxes, kept where a span has not moved"""
+    state: a Finder's, carried from step to step (None: nothing kept): its detector, mean spectrum, whitened frames
+    and their running sums over bins, the group detections of groups already complete (frames counted from the
+    stream's start, `frame0` the first held), and each region's reading (levels.boxes)"""
     st = _SETTINGS[_effort.level()]
     M, nfft = P.shape
     floor = fit.floor
@@ -538,35 +532,24 @@ def _find_frames(P, hop, x, Fs, cf, fit, pfa, edge, split_db, drop_db, min_bins,
 
     c = _Ctx()
     T = ((M - 1)*hop + nfft)/Fs
-    c.__dict__.update(x=x, fine={}, Z=Z, A=A, Pw=Pw, floor=floor, det=det, nfft=nfft, hop=hop, M=M, Fs=Fs, cf=cf,
-                      bin_hz=bin_hz, freq=freq, cut=(fit.a, fit.b), split_db=split_db, drop_db=drop_db,
+    c.__dict__.update(x=x, fine={}, Z=Z, A=A, Pw=Pw, Cw=state.get("Cw") if state is not None else None, floor=floor, det=det, nfft=nfft, hop=hop, M=M, Fs=Fs, cf=cf,
+                      bin_hz=bin_hz, freq=freq, cut=(fit.a, fit.b), drop_db=drop_db,
                       min_bins=min_bins, min_across=min_across, T=T, score=score, kmin=kmin)
-    prev = state.get("spans") if state is not None else None
-    spans = []
-    out = _net(c, occ, groups, t_start) if segment == "net" else []
-    for a, b in (zip(*runs(occ)) if segment != "net" else ()):
-        if b - a < min_bins:
-            continue
-        a, b = int(a), int(b)
-        lvl = 10*np.log10(max(float(Z[a:b].mean()), 1e-30))
-        got = _tracked(prev, a, b, lvl, c, t_start) if prev else None
-        if got is None:
-            got = _span_seg(c, a, b)
-            for s_ in got:
-                if t_start:
-                    s_.t0, s_.t1 = s_.t0 + t_start, s_.t1 + t_start
-                    if s_.bursts:
-                        s_.bursts = [(u + t_start, v + t_start) for u, v in s_.bursts]
-        spans.append((a, b, lvl, got))
-        out += got
-    if state is not None:
-        state["spans"] = spans
-    out = _own_lines(out) # (a carrier's own comb of lines: its, not signals)
-    out = _combs(c, out) # (lines at about one spacing: one box, the comb)
+    out = levels.boxes(c, occ, groups, state=state) # (steps 4-6: rpps.analysis.spectrum.levels)
+    if t_start:
+        for s_ in out:
+            s_.t0, s_.t1 = s_.t0 + t_start, s_.t1 + t_start
+            if s_.bursts:
+                s_.bursts = [(u + t_start, v + t_start) for u, v in s_.bursts]
     # (a box half inside another, not standing on it: a skirt measured from a span of its own)
-    out = [s for s in out if s.over is not None or not any(
-        t is not s and not t.holds and min(s.hi, t.hi) - max(s.lo, t.lo) >= 0.5*s.width and t.width > s.width
-        for t in out)]
+    if len(out) > 1:
+        lo, hi = np.array([s.lo for s in out]), np.array([s.hi for s in out])
+        w, holds = np.array([s.width for s in out]), np.array([bool(s.holds) for s in out])
+        half = (np.minimum(hi[:, None], hi[None, :]) - np.maximum(lo[:, None], lo[None, :]) >= 0.5*w[:, None]) & \
+            (w[None, :] > w[:, None]) & ~holds[None, :]
+        out = [s for s, h in zip(out, half.any(axis=1)) if s.over is not None or not h]
+    for s in out: # (a signal on part of the time is a Burst; one kept from a step before may be on all of it now)
+        s.__class__ = Burst if s.bursts else Signal
     out.sort(key=lambda s: s.mid)
     for i, s in enumerate(out):
         s.id = i
@@ -574,87 +557,94 @@ def _find_frames(P, hop, x, Fs, cf, fit, pfa, edge, split_db, drop_db, min_bins,
     sv.floor_db = 10*np.log10(floor)
     return sv
 
-def _net(c, occ, groups, t_start):
-    """Steps 4-6 by the learned segmenter (rpps.analysis.spectrum.net), times from t_start"""
-    from . import net
-    out = net.boxes(c, occ, groups)
-    if t_start:
-        for s_ in out:
-            s_.t0, s_.t1 = s_.t0 + t_start, s_.t1 + t_start
-            if s_.bursts:
-                s_.bursts = [(u + t_start, v + t_start) for u, v in s_.bursts]
-    return out
+class _Tail:
+    """The newest `n` rows of a stream of rows (frames, or samples), contiguous and in order, without copying all of
+    them at each push: a buffer of twice that, its rows moved back to the start when it fills"""
 
-def _tracked(prev, a, b, lvl, c, t_start, tol_db=0.5):
-    """The boxes of the last step's span that this one (a..b, mean level lvl dB) is, still: the same bins (to 2% of its
-    width) and level (to tol_db), all steady (none bursting). Copies, their SNR and power measured again over the
-    ranges kept; None when it has moved (measured afresh)"""
-    tol = max(2, int(0.02*(b - a)))
-    for a2, b2, l2, sigs in prev:
-        if abs(a - a2) <= tol and abs(b - b2) <= tol and abs(lvl - l2) <= tol_db:
-            if any(s.bursts for s in sigs) or not all(hasattr(s, "_range") for s in sigs):
-                return None
-            import copy
-            new = {id(s): copy.copy(s) for s in sigs}
-            for s in new.values():
-                x0, x1, i0, i1, loc = s._range
-                excess = float(np.sum(c.Z[x0:x1]/loc - 1.0))
-                if excess > 0:
-                    s.snr = float(10*np.log10(excess/(i1 - i0)))
-                s.power = float(10*np.log10(c.A[i0:i1].sum()*c.bin_hz + 1e-30))
-                s.t0, s.t1 = t_start, t_start + c.T
-                if s.over is not None:
-                    s.over = new.get(id(s.over), s.over)
-            return list(new.values())
-    return None
+    def __init__(self, n, shape=(), dtype=np.float32):
+        self.n = int(n)
+        self.buf = np.zeros((2*self.n,) + tuple(shape), dtype)
+        self.i0 = self.i1 = 0
+
+    def __len__(self):
+        return self.i1 - self.i0
+
+    @property
+    def view(self):
+        return self.buf[self.i0:self.i1]
+
+    def push(self, rows):
+        rows = rows[-self.n:]
+        k = len(rows)
+        if self.i1 + k > len(self.buf): # (full: what is kept moved to the start)
+            keep = min(len(self), self.n - k)
+            self.buf[:keep] = self.buf[self.i1 - keep:self.i1]
+            self.i0, self.i1 = 0, keep
+        self.buf[self.i1:self.i1 + k] = rows
+        self.i1 += k
+        self.i0 = max(self.i0, self.i1 - self.n)
+
+    def drop(self, k):
+        """Forget the oldest k rows"""
+        self.i0 = min(self.i1, self.i0 + int(k))
 
 class Finder:
     """Signals in a stream, block by block (a live display): find over the last `frames` frames, the floor refitted every
     `refit` frames [4 x frames: the receiver's passband changes slowly], ids kept from block to block (Survey.match)
 
-        f = Finder(Fs, nfft=4096, cf=cf)
+        f = Finder(Fs, nfft=4096, cf=cf, frames=frames_in_a_second)
         for blk in source(65536):
             sv = f.step(blk.data)       # a Survey (None before a first frame); times [s] from the stream's start
 
-    A step costs the FFTs of its new frames and a detection over the held ones. Between refits it keeps the detector,
-    the mean spectrum (a running sum), the whitened frames and the detections of groups of frames already complete;
-    and a span that has not moved since the last step (its bins to 2% of its width, its level to 0.5 dB, none of it
-    bursting) keeps its boxes, their SNR and power measured again. Every `full` steps, and after a refit, every span is
-    measured afresh (track=False: always). Frames are cut at fixed places in the stream and the floor refitted at fixed
-    frame counts, so without tracking what it holds after a stretch of samples doesn't depend on how the stretch came in
-    blocks. overlap: of the frames [the effort level's when made]; the rest (pfa, edge, split_db, ...) as find's."""
+    For a display, hold about a second of frames: what is shown then changes little from step to step, and a box
+    follows a change within about that. A step costs the FFTs of its new frames, a detection on the mean (a running
+    sum) and on each new group of frames (one complete is detected once), and the boxes: each region keeps its reading
+    while its span and level hold, its boxes measured again, and is read again when they move or once a window
+    (rpps.analysis.spectrum.levels.boxes; track=False: every step). Bursts are timed by the frames (find times them
+    finer). Frames are cut at fixed places in the stream and the floor refitted at fixed frame counts, so without
+    tracking what it holds after a stretch of samples doesn't depend on how the stretch came in blocks. overlap: of
+    the frames [the effort level's when made]; the rest (pfa, edge, drop_db, ...) as find's.
 
-    def __init__(self, Fs, nfft=4096, cf=0.0, frames=32, refit=None, overlap=None, track=True, full=8, **kw):
+    hold [s]: how long a signal not found again stays in the Survey, marked stale (Signal.stale, as last seen;
+    Signal.seen when it was last found): -1 for good [the default: a display keeps what it has seen], 0 not at all. A
+    stale signal found again has its id back (Survey.match)"""
+
+    def __init__(self, Fs, nfft=4096, cf=0.0, frames=32, refit=None, overlap=None, track=True, hold=-1.0, **kw):
         self.Fs, self.nfft, self.cf = float(Fs), int(nfft), cf
         self.frames = int(frames)
         self.refit = max(1, int(4*self.frames if refit is None else refit))
-        self.track, self.full = track, max(1, int(full))
+        self.track = track
         ov = _SETTINGS[_effort.level()]["overlap"] if overlap is None else overlap
         self.hop = max(1, int(self.nfft*(1 - ov)))
-        self.kw = dict(pfa=1e-3, edge=0.005, split_db=4.0, drop_db=10.0, min_bins=1, min_across=8, segment="stair")
+        self.kw = dict(pfa=1e-3, edge=0.005, drop_db=10.0, min_bins=1, min_across=8)
         self.kw.update({k: v for k, v in kw.items() if k in self.kw})
         self.blocks, self.sys_db = kw.get("blocks", 64), kw.get("sys_db")
+        self.hold = float(hold)
         self.reset()
 
     def reset(self):
         """Forget the stream: the next step starts a new one"""
-        self._raw = np.zeros(0, np.complex64) # samples from the oldest held frame's start on
-        self._raw0 = 0                        # that start's place in the stream
-        self._P = np.zeros((0, self.nfft), np.float32)
-        self._Pw = np.zeros((0, self.nfft), np.float32) # the held frames over the floor
+        self._raw = np.zeros(0, np.complex64) # samples from the next frame's start on
+        self._P = _Tail(self.frames, (self.nfft,))
+        self._Pw = _Tail(self.frames, (self.nfft,)) # the held frames over the floor
+        self._Cw = _Tail(self.frames, (self.nfft + 1,), np.float64) # their running sums over bins (_Ctx.band)
         self._sum = np.zeros(self.nfft)       # their sum (the mean spectrum, running)
         self._n = 0                           # frames made so far
         self._fit = None
+        self._fit_held = 0                    # frames held at the floor's last fit
         self._state = {}
-        self._steps = 0
         self.survey = None
 
     def _refit_now(self):
-        self._fit = fit_floor(self._P, self.hop, self.kw["edge"], self.blocks, self.sys_db)
-        self._Pw = self._P/self._fit.floor[None, :].astype(np.float32)
-        self._sum = self._P.sum(axis=0, dtype=np.float64) # (exact again: no drift from the running sum)
-        self._state = {}
-        self._steps = 0
+        P = self._P.view
+        self._fit = fit_floor(P, self.hop, self.kw["edge"], self.blocks, self.sys_db)
+        self._fit_held = len(P)
+        self._Pw = _Tail(self.frames, (self.nfft,))
+        self._Pw.push(P/self._fit.floor[None, :].astype(np.float32))
+        self._Cw = _Tail(self.frames, (self.nfft + 1,), np.float64)
+        self._Cw.push(_cumbins(self._Pw.view))
+        self._sum = P.sum(axis=0, dtype=np.float64) # (exact again: no drift from the running sum)
+        self._state = {k: v for k, v in self._state.items() if k in ("regions", "levels")} # (the regions' readings carry over)
 
     def _add(self, P):
         """Hold these frames (the newest `frames`), refitting the floor at each multiple of `refit` frames made, and
@@ -662,52 +652,105 @@ class Finder:
         while len(P):
             to = self.refit - self._n % self.refit # frames to the next refit
             take, P = P[:to], P[to:]
-            drop = max(0, len(self._P) + len(take) - self.frames)
-            self._sum += take.sum(axis=0, dtype=np.float64) - self._P[:drop].sum(axis=0, dtype=np.float64)
-            self._P = np.concatenate((self._P, take))[-self.frames:]
+            if len(take) >= self.frames:
+                self._sum = take[-self.frames:].sum(axis=0, dtype=np.float64)
+            else:
+                drop = max(0, len(self._P) + len(take) - self.frames)
+                self._sum += take.sum(axis=0, dtype=np.float64) - self._P.view[:drop].sum(axis=0, dtype=np.float64)
+            self._P.push(take)
             if self._fit is not None:
-                self._Pw = np.concatenate((self._Pw, take/self._fit.floor[None, :].astype(np.float32)))[-self.frames:]
+                w = take/self._fit.floor[None, :].astype(np.float32)
+                self._Pw.push(w)
+                self._Cw.push(_cumbins(w[-self.frames:]))
             self._n += len(take)
-            if self._n % self.refit == 0 or self._fit is None or len(self._P) < self.frames:
-                if len(self._P) >= 2:
+            held = len(self._P)
+            if self._n % self.refit == 0 or self._fit is None or \
+                    (held < self.frames and held >= 2*self._fit_held) or (held == self.frames > self._fit_held):
+                if held >= 2:
                     self._refit_now()
 
     def step(self, block):
         """Take a block of samples; the Survey of the frames now held (None while there are fewer than 2)"""
         x = np.asarray(block, np.complex64)
-        self._raw = np.concatenate((self._raw, x))
-        start = self._n*self.hop - self._raw0 # where the next frame starts in _raw
-        if len(self._raw) - start >= self.nfft:
-            P, _ = spectrogram(self._raw[start:], self.Fs, self.nfft, 1 - self.hop/self.nfft)
+        raw = np.concatenate((self._raw, x))
+        if len(raw) >= self.nfft:
+            P, _ = spectrogram(raw, self.Fs, self.nfft, 1 - self.hop/self.nfft)
             self._add(P)
-        # Keep the samples from the oldest held frame's start
-        first = (self._n - len(self._P))*self.hop
-        if first > self._raw0:
-            self._raw = self._raw[first - self._raw0:]
-            self._raw0 = first
+            raw = raw[len(P)*self.hop:]
+        self._raw = raw
         if len(self._P) < 2 or self._fit is None:
             return None
         M = len(self._P)
-        x_held = self._raw[:(M - 1)*self.hop + self.nfft]
         st = self._state
-        st["A"], st["Pw"], st["frame0"] = self._sum/M, self._Pw, self._n - M
-        if not self.track or self._steps % self.full == 0:
-            st.pop("spans", None)
-        self._steps += 1
-        sv = _find_frames(self._P, self.hop, x_held, self.Fs, self.cf, self._fit, t_start=self._raw0/self.Fs,
-                          state=st, **self.kw)
+        st["A"], st["Pw"], st["Cw"], st["frame0"] = self._sum/M, self._Pw.view, self._Cw.view, self._n - M
+        st["frame"], st["refresh"] = self._n, (self.frames if self.track else None)
+        t_start = (self._n - M)*self.hop/self.Fs # (the oldest held frame's start)
+        sv = _find_frames(self._P.view, self.hop, None, self.Fs, self.cf, self._fit, t_start=t_start, state=st,
+                          **self.kw)
+        now = self._n*self.hop/self.Fs # (the end of the newest frame [s from the stream's start])
+        for g in sv:
+            g.stale, g.seen = False, now
         if self.survey is not None:
             sv.match(self.survey)
+            if self.hold != 0: # (what was not found again: kept, stale, for its hold)
+                found = {g.id for g in sv}
+                kept = [g for g in self.survey if g.id not in found and (self.hold < 0 or now - g.seen <= self.hold)]
+                for g in kept:
+                    g.stale = True
+                sv.extend(kept)
+                sv.sort(key=lambda g: g.mid)
         self.survey = sv
         return sv
 
-def _on(c, a, b, local):
+# --- a Finder's regions from step to step
+
+TRACK_DB = 0.5 # a region's level moving more than this since it was read: read again
+
+def _same(recs, a, b, lvl):
+    """The region of the last step that a..b (level lvl dB) is still: its bins to 2% of its width, its level to
+    TRACK_DB; None"""
+    tol = max(2, int(0.02*(b - a)))
+    for r in recs:
+        if abs(a - r["a"]) <= tol and abs(b - r["b"]) <= tol and abs(lvl - r["lvl"]) <= TRACK_DB:
+            return r
+    return None
+
+def _remeasure(c, sigs):
+    """Copies of a region's Signals measured again on this step's spectrum (a Finder's region that has not moved): SNR
+    (as read, moved by the change of the power over the floor across its reach, Signal._range), power, and the bursts
+    of one that had them (at the frames' resolution: the finer times come with a reading)"""
+    out = _copies(sigs)
+    for g in out:
+        if g is None:
+            continue
+        x0, x1, i0, i1, loc = g._range
+        excess = float(np.sum(c.Z[x0:x1]/loc - 1.0))
+        if excess > 0 and g._excess > 0:
+            g.snr = float(g._snr0 + 10*np.log10(excess/g._excess))
+        g.power = float(10*np.log10(c.A[i0:i1].sum()*c.bin_hz + 1e-30))
+        g.t0, g.t1 = 0.0, c.T
+        if g.bursts:
+            on, g.bursts, g.duty = _on(c, i0, i1, loc, fine=False)
+            if g.bursts:
+                g.t0, g.t1 = g.bursts[0][0], g.bursts[-1][1]
+    return out
+
+def _copies(sigs):
+    """Copies of Signals (None stays None), each one's `over` pointing at the copy of the one it stood on"""
+    import copy
+    new = {id(s): copy.copy(s) for s in sigs if s is not None}
+    for s in new.values():
+        if s.over is not None:
+            s.over = new.get(id(s.over), s.over)
+    return [None if s is None else new[id(s)] for s in sigs]
+
+def _on(c, a, b, local, fine=True):
     """Step 4: the frames a span is on (None: continuous, or too weak a frame to tell), its bursts [(t0, t1)] and duty.
     The frames say which to average; the bursts' times come from frames r times shorter (r as large as leaves the span
     32 bins wide: about 16 degrees of freedom a frame), gated the same way with one-frame gaps closed, when the span stands
-    out of the noise in them too"""
+    out of the noise in them too (fine=False, or no samples in c (a Finder): the frames' times)"""
     hi, lo = c.det.thresholds(b - a, 1)
-    band = c.Pw[:, a:b].mean(axis=1)/_mean(local, a, b)
+    band = c.band(a, b)/_mean(local, a, b)
     if band.mean() < 2*hi: # a frame alone can't tell it from noise
         return None, None, 1.0
     on = _gate(band, hi, lo)
@@ -717,7 +760,7 @@ def _on(c, a, b, local):
     bursts = [(p*c.hop/c.Fs, min(T, ((q - 1)*c.hop + c.nfft)/c.Fs)) for p, q in zip(*runs(on))]
     duty = float(on.mean())
     r = 1 << int(np.clip(np.floor(np.log2(max((b - a)/32, 1))), 0, np.log2(max(c.nfft//16, 1))))
-    if r > 1:
+    if r > 1 and fine and c.x is not None:
         nt = c.nfft//r
         if nt not in c.fine:
             Pt, _ = spectrogram(c.x, c.Fs, nt, 0.0)
@@ -751,442 +794,3 @@ def _mean(local, a, b):
 
 # --- Steps 5-6: the span's spectrum as a staircase of flat levels (optimal changepoints), its signals read off the levels
 
-def need_of(c):
-    """The least notch or step between two signals [dB]: 3/4 of split_db"""
-    return 0.75*c.split_db
-
-def _pelt(y, w, beta, lmin=2):
-    """Optimal partition of y into flat segments (weights w: 1/variance), each change costing beta: PELT (Killick et al.
-    2012), exact, about linear. Returns the segment bounds [0, ..., n]. The C++ kernel when loaded (the loop below is the
-    reference it matches)"""
-    from ... import _accel
-    if _accel.native is not None:
-        return [int(v) for v in _accel.native.pelt(np.ascontiguousarray(y, np.float64), np.ascontiguousarray(w, np.float64),
-                                                   float(beta), int(lmin))]
-    return _pelt_py(y, w, beta, lmin)
-
-def _pelt_py(y, w, beta, lmin=2):
-    """_pelt's Python loop (the reference)"""
-    n = len(y)
-    S0 = np.concatenate(([0.0], np.cumsum(w)))
-    S1 = np.concatenate(([0.0], np.cumsum(w*y)))
-    S2 = np.concatenate(([0.0], np.cumsum(w*y*y)))
-    F = np.full(n + 1, np.inf)
-    F[0] = -beta
-    last = np.zeros(n + 1, int)
-    R = np.array([0])
-    for t in range(lmin, n + 1):
-        ok = t - R >= lmin
-        Rv = R[ok]
-        if len(Rv) == 0:
-            R = np.append(R, t)
-            continue
-        cost = (S2[t] - S2[Rv]) - (S1[t] - S1[Rv])**2/(S0[t] - S0[Rv])
-        vals = F[Rv] + cost
-        k = int(np.argmin(vals))
-        F[t] = vals[k] + beta
-        last[t] = Rv[k]
-        R = np.concatenate((R[~ok], Rv[vals <= F[t]], [t]))
-    bounds, t = [n], n
-    while t > 0:
-        t = last[t]
-        bounds.append(t)
-    return bounds[::-1]
-
-def _span_seg(c, a, b):
-    """Steps 4-6 for one occupied span a..b by segmentation:
-
-    - the spectrum (over the frames it is on), with as much again each side for context, in points of d bins (d up to
-      16, less for a narrow span: 128 points across it at least), in dB
-    - a staircase fitted to it (_pelt): each point weighted by its own scatter (the noise's, or the roughness about it
-      when more: a carrier's spectral lines, a rough top), a change costing 3 log n
-    - the levels read: runs of levels standing over the floor (significantly, and by up_db) are signals; a run is cut
-      at a notch (a level `split_db` x 3/4 under the highest each side) and at a step between two broad levels of
-      `split_db` x 3/4 (a carrier flush against a stronger one). A run whose cuts leave broad levels over the floor between
-      its pieces is a pedestal: listed with `holds`, its pieces measured over it
-    - each piece's edges where the spectrum crosses `drop_db` under its level, or halfway to the level outside it, between
-      the levels' bounds; dropped if its edge rises over most of its width (a hump), or it fails the detector at its width
-    Only pieces centred in a..b are returned (the context is another span's)."""
-    on, bursts, duty = _on(c, a, b, 1.0)
-    bp = c.Pw[on if on is not None else slice(None), a:b].mean(axis=1, dtype=np.float64)
-    m = max(1, int(bp.sum()**2/np.sum(bp**2)))
-    spec = c.Pw[on].mean(axis=0) if on is not None else c.Z
-    a_use, b_use = c.cut
-    w = b - a
-    d = int(np.clip(1 << int(np.floor(np.log2(max(w/128, 1)))), 1, 8)) # (at most 8: notches between carriers are 3-8 bins)
-    lo_r = max(a_use, a - max(w, 32*d))
-    hi_r = min(b_use, b + max(w, 32*d))
-    n = (hi_r - lo_r)//d
-    if n < 4:
-        return []
-    hi_r = lo_r + n*d
-    y = 10*np.log10(np.maximum(spec[lo_r:hi_r].reshape(n, d).mean(axis=1), 1e-30))
-    # Each point's scatter: the noise's for d bins over m frames, or the roughness about it (robust: half the spread of
-    # its neighbours' differences, over 32 points) when more
-    var0 = (4.343**2)/_dof(c.nfft, c.hop, m, d)
-    dy = np.abs(np.diff(y, prepend=y[0]))
-    k = 16
-    pad = np.concatenate((np.full(k, dy[0]), dy, np.full(k, dy[-1])))
-    med = np.median(np.lib.stride_tricks.sliding_window_view(pad, 2*k + 1), axis=1)[:n]
-    var = np.maximum(var0, (1.4826*med)**2/2)
-    bnd = _pelt(y, 1/var, 3.0*np.log(max(n, 3)), lmin=2)
-    segs = [(s, e, float(np.average(y[s:e], weights=1/var[s:e])), float(np.sqrt(np.mean(var[s:e])/(e - s))))
-            for s, e in zip(bnd[:-1], bnd[1:])]
-    lev = np.array([g[2] for g in segs])
-    up = [(g[2] >= max(c.split_db/4, 5*g[3])) for g in segs] # (over the floor: 0 dB, whitened)
-    need = 0.75*c.split_db
-    out = []
-    i = 0
-    while i < len(segs):
-        if not up[i]:
-            i += 1
-            continue
-        j = i
-        while j + 1 < len(segs) and up[j + 1]:
-            j += 1
-        out += _seg_run(c, segs, lev, i, j, need, lo_r, d, spec, m, bursts, on, duty, a, b)
-        i = j + 1
-    if d > 1:
-        out += _seg_lines(c, segs, lo_r, d, spec, m, bursts, duty, a, b, out)
-    return out
-
-def _own_lines(boxes, least=3, even=0.15):
-    """A carrier's own lines go: `least` or more lines standing on it at one spacing (each gap within `even` of their
-    median), their middle within one spacing of its centre (what periodic structure in its symbols puts in its spectrum,
-    a DVB-S carrier's sync bytes). A tone on a carrier alone, or off its centre, stays (a jammer)"""
-    drop = set()
-    for s in boxes:
-        on = sorted([t for t in boxes if t.over is s and not t.holds and getattr(t, "lines", 0) == 0], key=lambda t: t.mid)
-        if len(on) < least:
-            continue
-        gaps = np.diff([t.mid for t in on])
-        g = float(np.median(gaps))
-        if g > 0 and np.all(np.abs(gaps - g) <= even*g) and abs(0.5*(on[0].mid + on[-1].mid) - s.mid) <= g:
-            drop |= {id(t) for t in on}
-            s.holds = max(0, (s.holds or 0) - len(on))
-    return [t for t in boxes if id(t) not in drop]
-
-def _combs(c, boxes, least=4, spread=3.0, narrow=12, first=20):
-    """Lines side by side at about one spacing (a comb: `least` or more boxes `narrow` bins wide or less, each gap under
-    `spread` x the group's median gap, the first under `first` line widths) as one box each, from its first line to its
-    last, its SNR its power over the noise across it; the lines, and the slivers of it narrower than half of it, go.
-    Across spans: each line of a comb is a span of its own"""
-    lines = sorted([t for t in boxes if t.width <= narrow*c.bin_hz and t.over is None], key=lambda t: t.mid)
-    if len(lines) < least:
-        return boxes
-    groups, cur = [], [lines[0]]
-    for t in lines[1:]:
-        g = t.mid - cur[-1].mid
-        gaps = np.diff([u.mid for u in cur]) if len(cur) > 1 else None
-        ok = (g <= spread*float(np.median(gaps))) if gaps is not None else (g <= first*max(cur[-1].width, c.bin_hz))
-        if ok:
-            cur.append(t)
-        else:
-            groups.append(cur)
-            cur = [t]
-    groups.append(cur)
-    out = list(boxes)
-    for grp in groups:
-        if len(grp) < least:
-            continue
-        lo, hi = grp[0].lo, grp[-1].hi
-        i0 = int(np.floor(lo/c.bin_hz + c.nfft//2))
-        i1 = int(np.ceil(hi/c.bin_hz + c.nfft//2))
-        excess = float(np.sum(c.Z[i0:i1] - 1.0))
-        if excess <= 0:
-            continue
-        band = c.A[i0:i1]
-        sg = Signal(0.5*(lo + hi), hi - lo, float(np.median(10*np.log10(c.floor[i0:i1]))),
-                    float(10*np.log10(max(float(c.Z[i0:i1].max()), 1e-30))), float(10*np.log10(excess/(i1 - i0))), lo=lo,
-                    hi=hi, power=float(10*np.log10(band.sum()*c.bin_hz + 1e-30)),
-                    peak_freq=float(c.freq[i0 + int(np.argmax(band))]), duty=grp[0].duty, resolved=True, Fs=c.Fs, cf=c.cf,
-                    bin_hz=c.bin_hz, clipped=False)
-        sg.bursts = None
-        sg.over = None
-        sg.t0, sg.t1 = min(t.t0 for t in grp), max(t.t1 for t in grp)
-        sg.score = float(np.max(c.score[i0:i1]))
-        sg._range = (i0, i1, i0, i1, 1.0)
-        sg.edge = sg.rough = None
-        sg.lines = len(grp) # (how many lines the comb holds)
-        ids = {id(t) for t in grp}
-        # (its lines, and the line-wide slivers of it the staircase made, go; a carrier among them stays)
-        out = [t for t in out if id(t) not in ids and not (lo <= t.mid <= hi and t.width <= narrow*c.bin_hz)]
-        out.append(sg)
-    return out
-
-def _seg_lines(c, segs, lo_r, d, spec, m, bursts, duty, a, b, boxes):
-    """Lines narrower than the staircase's points (tones, a few bins): the detector on the spectrum over the staircase,
-    its runs narrower than two points. Each a box of its own, over the box it stands in when it stands in one"""
-    db = [g[2] for g in segs]
-    # (a level under 3 points is a line's, this pass's: measured over its neighbours' levels, the lower of them)
-    under_db = [min(db[k - 1] if k > 0 else db[k + 1], db[k + 1] if k + 1 < len(segs) else db[k - 1])
-                if g[1] - g[0] < 3 and len(segs) > 1 else db[k] for k, g in enumerate(segs)]
-    under_db = [min(u, x) for u, x in zip(under_db, db)]
-    lev = np.repeat([10**(x/10) if x > 0 else 1.0 for x in under_db], [g[1] - g[0] for g in segs])
-    under = np.maximum(np.repeat(lev, d), 1.0) # (never under the noise)
-    n = len(under)
-    resid = spec[lo_r:lo_r + n]/under
-    occ, _s, _k = c.det.detect(resid, m)
-    out = []
-    v = 10*np.log10(np.maximum(spec[lo_r:lo_r + n], 1e-30))
-    for s0, e0 in zip(*runs(occ)):
-        if e0 - s0 > 2*d or not (a <= lo_r + (s0 + e0)//2 < b):
-            continue
-        pk = s0 + int(np.argmax(v[s0:e0]))
-        # (over the highest of the staircase beside it, and its edges no further than two points from it: where the
-        # staircase lags a steep edge, a run of a few bins is that edge, not a line)
-        lo_b, hi_b = max(0, s0 - 2*d), min(n, e0 + 2*d)
-        base = 10*np.log10(float(under[lo_b:hi_b].max()))
-        top = float(v[pk])
-        if top - base < 0.75*c.split_db:
-            continue
-        thr = base + 0.5*(top - base)
-        el = _walk(v, pk, lo_b - 1, thr, -1)
-        er = _walk(v, pk, hi_b, thr, +1)
-        i0 = int(np.clip(np.floor(lo_r + el + 0.5), 0, c.nfft - 1))
-        i1 = int(np.clip(np.ceil(lo_r + er + 0.5), i0 + 1, c.nfft))
-        local = 10**(base/10)
-        excess = float(np.sum(spec[i0:i1]/local - 1.0))
-        # (a line stands 3 dB over what it is on: under that, reviewers found 25 of 28 to be the noise's or a rough
-        # top's peaks)
-        if excess <= 0 or 10*np.log10(excess/(i1 - i0)) < need_of(c):
-            continue
-        e_0, e_1 = lo_r + el + 0.5, lo_r + er + 0.5
-        lo, hi = (e_0 - c.nfft//2)*c.bin_hz, (e_1 - c.nfft//2)*c.bin_hz
-        band = c.A[i0:i1]
-        sg = Signal(0.5*(lo + hi), hi - lo, float(np.median(10*np.log10(c.floor[i0:i1]))) + base, top - base,
-                    float(10*np.log10(excess/(i1 - i0))), lo=lo, hi=hi, power=float(10*np.log10(band.sum()*c.bin_hz + 1e-30)),
-                    peak_freq=float(c.freq[lo_r + pk]), duty=duty, resolved=(e_1 - e_0) >= c.min_across, Fs=c.Fs, cf=c.cf,
-                    bin_hz=c.bin_hz, clipped=False)
-        sg.bursts = bursts
-        sg.over = next((bx for bx in boxes if bx.lo <= sg.mid <= bx.hi), None)
-        sg.t0, sg.t1 = (bursts[0][0], bursts[-1][1]) if bursts else (0.0, c.T)
-        sg.score = float(np.max(c.score[i0:i1]))
-        sg._range = (i0, i1, i0, i1, local)
-        sg.edge = sg.rough = None
-        out.append(sg)
-    return out
-
-def _seg_run(c, segs, lev, i, j, need, lo_r, d, spec, m, bursts, on, duty, a, b, base=0.0):
-    """The signals of one run of levels i..j over the floor, or over `base` inside a pedestal (see _span_seg)"""
-    run = list(range(i, j + 1))
-    L = [segs[k][1] - segs[k][0] for k in run]
-    width = sum(L)
-    if base == 0.0: # A pedestal: its lowest broad level well over the floor, a third of it at least, nothing dipping
-        # far under it (a row of carriers has notches to the floor), something standing on it
-        broad = [k for k, l in zip(run, L) if l >= max(2, width//20)]
-        if broad:
-            lvl0 = min(lev[k] for k in broad)
-            cover = sum(l for k, l in zip(run, L) if abs(lev[k] - lvl0) <= 1.5)
-            # (between its first and last broad levels: its own sides ramp up from the floor)
-            deep = any(lev[k] < lvl0 - need for k in run if broad[0] < k < broad[-1])
-            # (what stands on it: groups of levels 3 points wide at least; narrower are lines, the line pass's: a
-            # carrier's own spectral lines don't make it a pedestal)
-            groups, k = [], 0
-            while k < len(run):
-                if lev[run[k]] >= lvl0 + 0.5*need:
-                    e = k
-                    while e + 1 < len(run) and lev[run[e + 1]] >= lvl0 + 0.5*need:
-                        e += 1
-                    if segs[run[e]][1] - segs[run[k]][0] >= 3 and max(lev[run[q]] for q in range(k, e + 1)) >= lvl0 + need:
-                        groups.append((run[k], run[e]))
-                    k = e + 1
-                else:
-                    k += 1
-            if lvl0 >= need and cover >= 0.3*width and not deep and groups:
-                out = []
-                for g0, g1 in groups:
-                    out += _seg_run(c, segs, lev, g0, g1, need, lo_r, d, spec, m, bursts, on, duty, a, b, base=float(lvl0))
-                if out:
-                    ped = _seg_piece(c, segs, lev, run, run, lo_r, d, spec, m, bursts, on, duty, 0.0, holds=True)
-                    if ped is not None and a <= (ped.mid/c.bin_hz + c.nfft//2) < b:
-                        ped.holds = len(out)
-                        for t in out:
-                            if t.over is None:
-                                t.over = ped
-                        out.append(ped)
-                    return out
-    # Notches: a level `need` under the highest broad level each side within the run (levels 3 points wide at least:
-    # a carrier between its own spectral lines is not in a notch)
-    wide = np.array([lev[k] if l >= 3 else -np.inf for k, l in zip(run, L)])
-    cut = set()
-    for p, k in enumerate(run[1:-1], 1):
-        if min(wide[:p].max(), wide[p + 1:].max()) - lev[k] >= need:
-            # (a run of low levels is one notch: cut only at its lowest)
-            if lev[k] <= lev[run[p - 1]] and lev[k] <= lev[run[p + 1]]:
-                cut.add(k)
-    # Steps: two broad levels side by side `need` apart (a carrier flush against a stronger one)
-    steps = set()
-    broad = max(4, width//8)
-    for p in range(len(run) - 1):
-        k0, k1 = run[p], run[p + 1]
-        if k0 in cut or k1 in cut:
-            continue
-        lo_len, hi_len = (L[p], L[p + 1]) if lev[k0] < lev[k1] else (L[p + 1], L[p])
-        # (both broad, the lower a quarter of the higher at least: a terrace, not a level of a skirt falling away)
-        if abs(lev[k0] - lev[k1]) >= need and min(L[p], L[p + 1]) >= broad and lo_len >= 0.25*hi_len:
-            steps.add(p + 1) # (a boundary before run[p+1])
-    # Pieces: runs of levels between notches, split again at steps
-    pieces, cur = [], []
-    for p, k in enumerate(run):
-        if k in cut:
-            if cur:
-                pieces.append(cur)
-            cur = []
-            continue
-        if p in steps and cur:
-            pieces.append(cur)
-            cur = []
-        cur.append(k)
-    if cur:
-        pieces.append(cur)
-    out = []
-    for pc in pieces:
-        # Bumps: levels standing `need` over the levels either side of them inside the piece (a narrower signal on a
-        # wider one: a jammer on a carrier), each a box of its own over the piece, the piece measured without them
-        # (the piece's own level T: its longest level. A run of levels `need` over T, with levels about T on both sides
-        # of it inside the piece, narrower than half of it: a bump. A carrier's own top over its skirts has no level of
-        # T beyond it)
-        pw = segs[pc[-1]][1] - segs[pc[0]][0]
-        T = lev[max(pc, key=lambda q: segs[q][1] - segs[q][0])]
-        at_T = [abs(lev[q] - T) < c.split_db and lev[q] < T + need for q in pc]
-        bumps, q = [], 0
-        while q < len(pc):
-            if lev[pc[q]] >= T + need:
-                e = q
-                while e + 1 < len(pc) and lev[pc[e + 1]] >= T + need:
-                    e += 1
-                # (3 points wide at least: narrower is a line, the line pass's, which never makes a carrier `holds`: a
-                # DVB-S carrier's lines from its periodic sync bytes would make it a "pedestal" profile skips)
-                if any(at_T[:q]) and any(at_T[e + 1:]) and 3 <= segs[pc[e]][1] - segs[pc[q]][0] < 0.5*pw:
-                    bumps.append(pc[q:e + 1])
-                q = e + 1
-            else:
-                q += 1
-        under = [q for q in pc if not any(q in bm for bm in bumps)]
-        s = _seg_piece(c, segs, lev, pc, run, lo_r, d, spec, m, bursts, on, duty, base,
-                       top_from=under if bumps else None, top_level=float(T) if bumps else None)
-        if s is not None and a <= (s.mid/c.bin_hz + c.nfft//2) < b:
-            out.append(s)
-            for bm in bumps:
-                # (over T: its edges toward it, its SNR over it)
-                t = _seg_piece(c, segs, lev, bm, pc, lo_r, d, spec, m, bursts, on, duty, float(T), over_level=float(T))
-                if t is not None:
-                    t.over = s
-                    s.holds = getattr(s, "holds", 0) + 1
-                    out.append(t)
-    return out
-
-def _seg_piece(c, segs, lev, pc, run, lo_r, d, spec, m, bursts, on, duty, base, holds=False, top_from=None,
-               over_level=None, top_level=None):
-    """One piece (levels pc of the run) measured: its level, what is outside it each side, its edges on the spectrum,
-    the checks, the Signal"""
-    s0, s1 = segs[pc[0]][0], segs[pc[-1]][1]
-    ls = [segs[k][1] - segs[k][0] for k in pc]
-    if holds: # a pedestal's level: its base, the levels between its pieces (the lowest broad ones)
-        top = float(np.min([lev[k] for k, l in zip(pc, ls) if l >= max(ls)/4]))
-        k_top = pc[len(pc)//2]
-    else: # its level: the broadest of its levels within half a split of its highest (not counting what stands on it,
-        # nor levels under 3 points: a line on it is the line pass's)
-        src = top_from or pc
-        ls_src = [segs[k][1] - segs[k][0] for k in src]
-        hi = max((lev[k] for k, l in zip(src, ls_src) if l >= 3), default=max(lev[k] for k in src))
-        _, top, k_top = max((l, lev[k], k) for k, l in zip(src, ls_src) if lev[k] >= hi - 0.5*need_of(c))
-        top = float(top)
-        if top_level is not None: # (something stands on it: its level is its longest one)
-            k_top = max(src, key=lambda q: segs[q][1] - segs[q][0])
-            top = top_level
-    i_first, i_last = run.index(pc[0]), run.index(pc[-1])
-    out_l = float(lev[run[i_first - 1]]) if i_first > 0 else max(base, 0.0)
-    out_r = float(lev[run[i_last + 1]]) if i_last + 1 < len(run) else max(base, 0.0)
-    if i_first == 0 and pc[0] > 0:
-        out_l = max(base, min(float(lev[pc[0] - 1]), out_l)) if not holds else 0.0
-    if i_last + 1 == len(run) and pc[-1] + 1 < len(segs):
-        out_r = max(base, min(float(lev[pc[-1] + 1]), out_r)) if not holds else 0.0
-    if holds:
-        out_l = out_r = 0.0
-    if over_level is not None: # (standing on a wider signal: what is outside it is that signal's level)
-        out_l = out_r = over_level
-    abut_l, abut_r = out_l > top - 1.0, out_r > top - 1.0 # (flush against something higher: ends at the step)
-    thr_l = max(top - c.drop_db, out_l + 0.5*(top - out_l))
-    thr_r = max(top - c.drop_db, out_r + 0.5*(top - out_r))
-    # On the spectrum smoothed by d (the points' bins), within a level of the piece's bounds each side
-    v = 10*np.log10(np.maximum(_box(spec[lo_r:lo_r + segs[-1][1]*d], d), 1e-30))
-    lo_lim = segs[pc[0] - 1][0]*d if pc[0] > 0 else 0
-    hi_lim = segs[pc[-1] + 1][1]*d if pc[-1] + 1 < len(segs) else len(v)
-    p0, p1 = s0*d, s1*d
-    core = p0 + int(np.argmax(_box(v[p0:p1], max(1, (p1 - p0)//8)))) if p1 > p0 else p0
-    g = max(2, 2*d)
-    el = float(p0) if abut_l else _walk(v, core, lo_lim - 1, thr_l, -1, g)
-    er = float(p1 - 1) if abut_r else _walk(v, core, hi_lim, thr_r, +1, g)
-    el, er = max(el, lo_lim), min(er, hi_lim - 1)
-    if er - el < c.min_bins:
-        return _why(c, 'narrow', lo_r + el, lo_r + er)
-    a_use, b_use = c.cut
-    # A hump: its level rises over most of its width (on the staircase: from 1/4 to 3/4 of its height over what is
-    # outside, wider than a fifth of it or 2% of the band). Sides at a notch or step are a neighbour's; not checked
-    if not holds:
-        stair = np.repeat(lev, [g_[1] - g_[0] for g_ in segs])
-        span_ok = max(0.2*(er - el), 0.02*c.nfft)/d
-        sm = 10*np.log10(np.maximum(_box(spec[lo_r:lo_r + len(stair)*d], max(d, int((er - el)/32))), 1e-30))
-        for side, outv, edge_pt, step in (("left", out_l, int(el)//d, -1), ("right", out_r, int(er)//d, +1)):
-            facing_floor = ((i_first == 0) if step < 0 else (i_last + 1 == len(run))) or over_level is not None
-            if not facing_floor or (step < 0 and lo_r + el <= a_use + 1) or (step > 0 and lo_r + er >= b_use - 2):
-                continue
-            hl, ll = 10**(top/10), 10**(outv/10)
-            t25, t75 = 10*np.log10(ll + 0.25*(hl - ll)), 10*np.log10(ll + 0.75*(hl - ll))
-            mid_pt = (segs[k_top][0] + segs[k_top][1])//2 # (its own level's middle, not what stands on it)
-            # From just outside it inward (a top that wanders under 3/4 of its level would stop a walk from the middle):
-            # where it first reaches 1/4 and 3/4 of its height. Outside, the staircase must be under 3/4 of it
-            start = segs[pc[0]][0] - 1 if step < 0 else segs[pc[-1]][1]
-            outside_ok = 0 <= start < len(stair)
-            below75 = [start] if outside_ok and stair[start] < t75 else []
-            if not len(below75):
-                at_band_edge = (lo_r <= a_use + d) if step < 0 else (lo_r + len(stair)*d >= b_use - d)
-                if at_band_edge: # (cut by the band's edge: Signal.clipped. With one edge to judge it by, it stands over
-                    # what is outside the other by a split at least)
-                    other = out_r if step < 0 else out_l
-                    if top - other < need_of(c):
-                        return _why(c, f'weak at the band edge ({side})', lo_r + el, lo_r + er)
-                    continue
-                return _why(c, f'no edge ({side})', lo_r + el, lo_r + er) # (it never falls: part of something wider)
-            # How fast it rises, on the spectrum itself smoothed over 1/32 of its width (the staircase has a few levels
-            # across a gentle hump, its first step from the floor as abrupt as a carrier's edge)
-            b0, b1 = start*d + (d - 1 if step < 0 else 0), mid_pt*d
-            idx = np.arange(max(b0, 0), b1 + 1) if step < 0 else np.arange(min(b0, len(sm) - 1), b1 - 1, -1)
-            r25, r75 = idx[sm[idx] >= t25], idx[sm[idx] >= t75]
-            if len(r25) and len(r75) and abs(int(r75[0]) - int(r25[0])) > span_ok*d:
-                return _why(c, f'rounded edge ({side})', lo_r + el, lo_r + er)
-    local = 10**(base/10) if base > 0 else 1.0
-    i0 = int(np.clip(np.floor(lo_r + el + 0.5), 0, c.nfft - 1))
-    i1 = int(np.clip(np.ceil(lo_r + er + 0.5), i0 + 1, c.nfft))
-    z = spec[i0:i1]/local
-    if not c.det.passes(z, m):
-        return _why(c, 'under the threshold at its width', lo_r + el, lo_r + er)
-    # SNR: its power over what is under it, summed out to where it is within a tenth of its height of what is outside
-    xl = el if abut_l else _walk(v, int(el), lo_lim - 1, out_l + 0.1*(top - out_l), -1)
-    xr = er if abut_r else _walk(v, int(er), hi_lim, out_r + 0.1*(top - out_r), +1)
-    half = 0.5*(er - el)
-    x0 = int(np.clip(np.floor(lo_r + max(xl, el - half) + 0.5), 0, i0))
-    x1 = int(np.clip(np.ceil(lo_r + min(xr, er + half) + 0.5), i1, c.nfft))
-    excess = float(np.sum(spec[x0:x1]/local - 1.0))
-    if excess <= 0:
-        return None
-    n = i1 - i0
-    snr = 10*np.log10(excess/n)
-    e0, e1 = lo_r + el + 0.5, lo_r + er + 0.5
-    lo, hi = (e0 - c.nfft//2)*c.bin_hz, (e1 - c.nfft//2)*c.bin_hz
-    band = c.A[i0:i1]
-    sg = Signal(0.5*(lo + hi), hi - lo, float(np.median(10*np.log10(c.floor[i0:i1]))) + base,
-                float(10*np.log10(max(z.max(), 1e-30))), float(snr), lo=lo, hi=hi,
-                power=float(10*np.log10(band.sum()*c.bin_hz + 1e-30)), peak_freq=float(c.freq[i0 + int(np.argmax(band))]),
-                duty=duty, resolved=(e1 - e0) >= c.min_across, Fs=c.Fs, cf=c.cf, bin_hz=c.bin_hz,
-                clipped=e0 <= a_use + d + 1 or e1 >= b_use - d - 1) # (to a point of the usable band's ends)
-    sg.bursts = bursts
-    sg.over = None
-    sg.t0, sg.t1 = (bursts[0][0], bursts[-1][1]) if bursts else (0.0, c.T)
-    sg.score = float(np.max(c.score[i0:i1]))
-    sg._range = (x0, x1, i0, i1, local)
-    sg.edge = None
-    sg.rough = None
-    return sg

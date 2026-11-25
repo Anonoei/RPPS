@@ -10,7 +10,9 @@ which `holds` it.
 
 `rp.analysis.spectrum.find.Finder` does the same on a stream, one block at a time, for a display: ids stay with
 their signals from block to block, and what it finds does not depend on how the stream is cut into blocks. Effort
-levels choose how hard it looks (`rp.effort("fast")` for a display, a few milliseconds a block).
+levels choose how hard it looks (`rp.effort("fast")` for a display, a few milliseconds a block). A signal not found
+again stays, `stale`, for the Finder's `hold` [s] (-1, the default: for good). A signal on part of the time is a
+`rp.analysis.Burst` (its `duty`, `last` burst, `period`).
 
 Here: three RRC carriers at different levels, a narrow one jamming the widest, and a TDMA burst train.
 """
@@ -54,14 +56,16 @@ def main():
     # Block by block, as a display would: the same boxes once it holds enough frames, ids kept
     with rp.effort("fast"):
         f = Finder(Fs, nfft=4096, cf=2.4e9)
-        ids = []
+        ids, bursts = [], set()
         for i in range(0, N, 65536):
             live = f.step(x[i:i + 65536])
             if live is not None:
-                ids.append({round(s.mid/1e5)/10: s.id for s in live if s.mid > -3.5e6})
+                ids.append({round(s.mid/1e5)/10: s.id for s in live if s.mid > -3.5e6 and not s.stale})
+                bursts |= {s.id for s in live if isinstance(s, rp.analysis.Burst)}
     print(f"\nlast block: {len(live)} signals; {', '.join(f'{m:+.1f} MHz' for m in sorted(ids[-1]))} (steady ones)")
     assert set(ids[-1]) == {-2.5, 0.0, 2.6, 2.8}, ids[-1]
     assert all(d == ids[-1] for d in ids[-4:])                 # a steady signal keeps its id
+    assert len(bursts) >= 1                                    # the burst train, while the frames held see it come and go
 
 if __name__ == "__main__":
     main()

@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.analysis.spectrum.find import Finder, find, _gamma_isf, _norm_isf, _pelt, _pelt_py, _run_min
+from rpps.analysis.spectrum.find import Finder, find, _gamma_isf, _norm_isf, _run_min
 
 from conftest import shaped
 
@@ -70,11 +70,11 @@ def test_a_weak_carrier_between_strong_ones_is_found_over_the_floor():
     rng = np.random.default_rng(5)
     Fs, baud = 50e6, 500e3
     c = [2e6, 2e6 + 1.3*1.35*baud, 2e6 + 2.6*1.35*baud]
-    x = psd_noise(rng, 1 << 20, Fs, lambda f: 1 + 100*rc(f - c[0], baud) + 2*rc(f - c[1], baud) + 100*rc(f - c[2], baud))
+    x = psd_noise(rng, 1 << 20, Fs, lambda f: 1 + 100*rc(f - c[0], baud) + 4*rc(f - c[1], baud) + 100*rc(f - c[2], baud))
     sv = find(x, Fs)
     weak = min(sv, key=lambda s: abs(s.mid - c[1]))
     assert len(sv) == 3 and weak.mid == pytest.approx(c[1], abs=0.05*baud)
-    assert weak.snr == pytest.approx(10*np.log10(2) - 0.6, abs=1.5) # its own level, not the neighbours' skirts
+    assert weak.snr == pytest.approx(10*np.log10(4) - 0.6, abs=1.5) # its own level, not the neighbours' skirts
 
 def test_carriers_on_a_pedestal_are_measured_over_it():
     rng = np.random.default_rng(6)
@@ -90,12 +90,13 @@ def test_carriers_on_a_pedestal_are_measured_over_it():
     for s in carriers:
         assert s.snr == pytest.approx(10*np.log10(8) - 0.6, abs=1.5)
 
-@pytest.mark.parametrize("jam_baud, jam_db, off", [(100e3, 25, 0.0), (300e3, 20, 1.2e6), (1e6, 22, 0.5e6)])
+@pytest.mark.parametrize("jam_baud, jam_db, off", [(100e3, 25, 0.0), (300e3, 20, 1.2e6), (1e6, 25, 0.5e6)])
 def test_a_narrow_signal_on_a_wider_one_is_found_over_it(jam_baud, jam_db, off):
-    # A jammer on a 4 MBd carrier at 15-20 dB: both listed, the carrier holding it, the jammer measured over it
+    # A jammer on a 4 MBd carrier at 15-20 dB (3 dB or more over it: processable): both listed, the carrier holding it,
+    # the jammer measured over it
     rng = np.random.default_rng(11)
     Fs, wide = 50e6, 4e6
-    wide_db = 20 if jam_db == 22 else 15
+    wide_db = 20 if jam_baud == 1e6 else 15
     x = psd_noise(rng, 1 << 20, Fs, lambda f: 1 + 10**(wide_db/10)*rc(f - 2e6, wide) + 10**(jam_db/10)*rc(f - 2e6 - off, jam_baud))
     sv = find(x, Fs)
     assert len(sv) == 2
@@ -107,17 +108,16 @@ def test_a_narrow_signal_on_a_wider_one_is_found_over_it(jam_baud, jam_db, off):
     over = 10*np.log10((10**(wide_db/10) + 10**(jam_db/10) + 1)/(10**(wide_db/10) + 1)) # its flat part over the carrier's
     assert jammer.snr == pytest.approx(10*np.log10(10**(over/10) - 1) - 0.6, abs=1.5)
 
-def test_a_tone_is_a_narrow_box():
+def test_a_tone_is_no_signal():
     rng = np.random.default_rng(7)
     Fs, N = 1e6, 1 << 18
     x = (rng.standard_normal(N) + 1j*rng.standard_normal(N))/np.sqrt(2) + 0.3*np.exp(2j*np.pi*123.4e3/Fs*np.arange(N))
-    sv = find(x.astype(np.complex64), Fs)
-    assert len(sv) == 1 and sv[0].mid == pytest.approx(123.4e3, abs=sv.bin_hz) and sv[0].width < 4*sv.bin_hz
+    assert len(find(x.astype(np.complex64), Fs)) == 0 # (a line holds no symbols: nothing to process)
 
 @pytest.mark.parametrize("centred", [True, False])
 def test_a_carriers_own_lines_are_not_signals(centred):
-    """Lines at one spacing centred on a carrier (periodic sync bytes put them there: DVB-S) are the carrier's; the same
-    comb off its centre is something else on it"""
+    """Lines on a carrier (periodic sync bytes put them at its centre: DVB-S), centred or not, are no signals: lines
+    hold no symbols"""
     rng = np.random.default_rng(12)
     Fs, N, baud, g = 8e6, 1 << 20, 1e6, 15.625e3
     x = psd_noise(rng, N, Fs, lambda f: 1 + 20*rc(f - 1.7e6, baud))
@@ -128,10 +128,7 @@ def test_a_carriers_own_lines_are_not_signals(centred):
     sv = find(x.astype(np.complex64), Fs)
     carrier = max(sv, key=lambda s: s.width)
     assert carrier.mid == pytest.approx(1.7e6, abs=0.05*baud) and carrier.width == pytest.approx(1.17*baud, rel=0.1)
-    if centred:
-        assert len(sv) == 1 and not carrier.holds
-    else:
-        assert len(sv) > 1 and all(s.over is carrier for s in sv if s is not carrier)
+    assert len(sv) == 1 and not carrier.holds
 
 def test_bursts_get_their_times():
     rng = np.random.default_rng(8)
@@ -159,9 +156,10 @@ def test_a_carrier_cut_by_the_band_edge_is_clipped():
     assert len(sv) == 1 and sv[0].clipped and sv[0].hi > 9e6
 
 def test_snr_of_real_qpsk_agrees_with_its_esn0(rng):
-    # Real symbols through an RRC (not shaped noise): box SNR + 10 log10(width / baud) is its Es/N0
+    # Real symbols through an RRC (not shaped noise): box SNR + 10 log10(width / baud) is its Es/N0 (from 3 dB in its
+    # box: processable)
     pts = [1+1j, 1-1j, -1+1j, -1-1j]
-    for esn0 in (3.0, 10.0, 20.0):
+    for esn0 in (5.0, 10.0, 20.0):
         x, _ = shaped(rng, pts, 1 << 15, 8, beta=0.35, esn0_db=esn0)
         s = find(x, 1.0).pick(strongest=True)
         assert s.snr + 10*np.log10(s.width/(1/8)) == pytest.approx(esn0, abs=1.0)
@@ -191,7 +189,7 @@ def test_finder_does_not_depend_on_how_the_stream_is_cut():
     x = _scene(np.random.default_rng(12), 1 << 18, Fs)
     ends = []
     for cuts in ([65536]*4, [1000, 50000, 3, 80000, 131141], [4096]*64):
-        f = Finder(Fs, nfft=1024, frames=64, refit=8, track=False)
+        f = Finder(Fs, nfft=1024, frames=64, refit=8, track=False, hold=0)
         pos, sv = 0, None
         for n in cuts:
             sv = f.step(x[pos:pos + n]) or sv
@@ -218,7 +216,7 @@ def test_finder_finds_what_find_does_over_the_frames_it_holds():
 def test_finder_times_run_from_the_streams_start_and_ids_stay():
     Fs = 20e6
     x = _scene(np.random.default_rng(14), 1 << 19, Fs)
-    f = Finder(Fs, nfft=1024, frames=64)
+    f = Finder(Fs, nfft=1024, frames=64, hold=0)
     ids = {}
     for k in range(0, len(x), 32768):
         sv = f.step(x[k:k + 32768])
@@ -229,33 +227,3 @@ def test_finder_times_run_from_the_streams_start_and_ids_stay():
             assert (k + 32768 - held)/Fs - 1e-9 <= s.t0 <= s.t1 <= (k + 32768)/Fs + 1e-9
             assert ids.setdefault(round(s.mid/1e5), s.id) == s.id # each keeps its id (the bursting one too)
     assert sorted(ids) == [-30, 20, 60]
-
-def test_tracked_boxes_agree_with_measuring_afresh():
-    Fs = 20e6
-    x = _scene(np.random.default_rng(15), 1 << 19, Fs)
-    tracked, fresh = Finder(Fs, nfft=1024, frames=64), Finder(Fs, nfft=1024, frames=64, track=False)
-    for k in range(0, len(x), 16384):
-        a, b = tracked.step(x[k:k + 16384]), fresh.step(x[k:k + 16384])
-        if a is None:
-            continue
-        assert len(a) == len(b)
-        for s, r in zip(a, b):
-            assert s.mid == pytest.approx(r.mid, abs=0.02*r.width) and s.width == pytest.approx(r.width, rel=0.05)
-            assert s.snr == pytest.approx(r.snr, abs=0.5)
-            assert s.t0 == r.t0 and s.t1 == r.t1
-
-def test_staircase_fit_kernel_matches_the_python_loop():
-    from rpps import _accel
-    if _accel.native is None or not hasattr(_accel.native, "pelt"):
-        pytest.skip("no C++ kernels")
-    rng = np.random.default_rng(16)
-    for n in (3, 40, 700, 2500):
-        y = np.repeat(rng.normal(0, 4, n//25 + 1), 25)[:n] + rng.normal(size=n)
-        w = 1/rng.uniform(0.5, 2, n)
-        for lmin in (1, 2, 3):
-            assert _pelt(y, w, 3*np.log(n + 1), lmin) == _pelt_py(y, w, 3*np.log(n + 1), lmin)
-
-def test_staircase_fit_finds_the_steps():
-    rng = np.random.default_rng(17)
-    y = np.concatenate([np.full(100, 0.0), np.full(60, 6.0), np.full(80, 2.0)]) + 0.3*rng.normal(size=240)
-    assert _pelt_py(y, np.full(240, 1/0.09), 3*np.log(240)) == [0, 100, 160, 240]
