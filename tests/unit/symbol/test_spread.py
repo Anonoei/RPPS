@@ -4,6 +4,8 @@ import pytest
 
 import rpps as rp
 from rpps import _accel
+from rpps.symbol import Differential
+from support.native import kernels
 
 # IS-GPS-200 Table 3-Ia: the first 10 chips of PRN 1..10 in octal
 GPS_FIRST10 = [0o1440, 0o1620, 0o1710, 0o1744, 0o1133, 0o1455, 0o1131, 0o1454, 0o1626, 0o1504]
@@ -90,16 +92,6 @@ def test_despread_block_cuts(chips44, native):
         assert len(got) == len(ref)
         assert np.allclose(got, ref, atol=1e-6)
 
-@pytest.mark.skipif(not _accel.available(), reason="rpps._native is not built")
-def test_native_matches_python_set():
-    rng = np.random.default_rng(2)
-    code = rp.sequence.load("ieee802154_2450")
-    x = (rng.standard_normal(32*3*20) + 1j*rng.standard_normal(32*3*20)).astype(np.complex64)
-    nat = rp.symbol.correlate(x, code, 3)
-    with kernels(False):
-        py = rp.symbol.correlate(x, code, 3)
-    assert nat.shape == (20, 16) and np.allclose(nat, py, atol=1e-5)
-
 def test_set_detection_802154():
     rng = np.random.default_rng(3)
     code = rp.sequence.load("ieee802154_2450")
@@ -107,11 +99,6 @@ def test_set_detection_802154():
     chips = code.spread(np.ones(40), index=syms) + 0.5*rng.standard_normal(40*32)
     corr = rp.symbol.correlate(chips.astype(np.complex64), code, 1)
     assert np.array_equal(np.abs(corr).argmax(axis=1), syms)
-
-# ---- the Spread operator, in the chains of the standards
-
-from rpps.symbol import Differential
-from support.native import kernels
 
 def hard(d):
     return np.asarray(d.data) < 0 if d.DT == rp.dtype.LLR else np.asarray(d.data).astype(bool)

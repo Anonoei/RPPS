@@ -4,11 +4,8 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from rpps import _accel
 from rpps.math import bits
 from support.native import both
-
-pytestmark = pytest.mark.skipif(not _accel.available(), reason="rpps._native is not built")
 
 @pytest.mark.parametrize("L", [1, 7, 8, 32, 63, 64])
 def test_distance_at_every_position(L):

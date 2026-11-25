@@ -3,12 +3,11 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from rpps import _accel, _effort
+from rpps import _effort
 from rpps.math import interp
-from support.native import kernels
+from support.signals import bpsk_llr
 
 P = np.exp(1j*np.pi/4*(2*np.arange(4) + 1))
-
 
 def test_levels_set_and_nest():
     assert _effort.level() == "balanced"
@@ -30,17 +29,6 @@ def test_fractional_is_band_limited(taps, floor):
         x = np.exp(2j*np.pi*f*np.arange(600))
         err = 20*np.log10(np.sqrt(np.mean(np.abs(interp.fractional(x, t, taps) - np.exp(2j*np.pi*f*t))**2)))
         assert err < floor, (f, err)
-
-def test_fractional_native_matches_numpy():
-    if not _accel.available():
-        pytest.skip("rpps._native is not built")
-    rng = np.random.default_rng(1)
-    x = (rng.standard_normal(1000) + 1j*rng.standard_normal(1000)).astype(np.complex64)
-    t = 10 + rng.random(500)*900
-    nat = interp.fractional(x, t, 12)
-    with kernels(False):
-        ref = interp.fractional(x, t, 12)
-    np.testing.assert_allclose(nat, ref, atol=1e-5)
 
 def test_doubled_and_edges():
     x = np.exp(2j*np.pi*0.13*np.arange(500))
@@ -105,12 +93,6 @@ def test_ldpc_and_turbo_follow_the_level():
         with rp.effort(lvl):
             assert np.array_equal(tb.decode(4*x)[:40].astype(bool), m)
 
-def bpsk_llr(bits, ebn0, rate, rng):
-    """Exact LLRs of BPSK bits over AWGN at Eb/N0 (dB)"""
-    N0 = 10**(-(ebn0 + 10*np.log10(rate))/10)
-    y = 1.0 - 2.0*np.asarray(bits, float) + np.sqrt(N0/2)*rng.standard_normal(len(bits))
-    return 4*y/N0
-
 def frame_errors(code, msgs, llr):
     out = np.asarray(code.decoder.decode(llr)).astype(bool)[:msgs.size].reshape(msgs.shape)
     return int(np.count_nonzero((out != msgs).any(axis=1)))
@@ -157,18 +139,3 @@ def test_ldpc_sum_product_at_max():
     with rp.effort("max"):
         assert frame_errors(code, m, llr) == 0
     assert ms >= 2
-
-@pytest.mark.parametrize("level", ["balanced", "max"])
-def test_ldpc_native_matches_numpy(level):
-    if not _accel.available():
-        pytest.skip("rpps._native is not built")
-    dec = rp.code.load("block/ldpc/ieee80211n_648_1_2").decoder
-    rng = np.random.default_rng(6)
-    m = rng.integers(0, 2, 16*dec.num).astype(bool)
-    llr = bpsk_llr(dec.encode(m), 1.5, dec.rate, rng).reshape(16, dec.N)
-    with rp.effort(level):
-        nat = dec.layered(llr)
-        with kernels(False):
-            ref = dec.layered(llr)
-    np.testing.assert_array_equal(nat[1], ref[1])
-    np.testing.assert_array_equal(nat[0][nat[1]], ref[0][ref[1]])

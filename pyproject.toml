@@ -88,6 +88,7 @@ pythonpath = ["src", "tests"]
 markers = [
     "slow: takes more than a few seconds",
     "kernels: over a minute with the C++ kernels off (the no-kernel CI pass leaves it out; it runs in the others)",
+    "native: compares the C++ kernels with the Python reference (tests/unit/native)",
     "oracle: compares against scipy (pytest.importorskip); CI runs these again with scipy installed",
 ]
 # A definition or step with a key nothing reads is an error in the tests (rpps.errors.ConfigWarning)

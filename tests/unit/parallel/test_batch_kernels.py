@@ -3,16 +3,17 @@
 Each kernel is run on a batch and every row compared with the operator run alone on that frame (the `LoopKernel` path, which
 is the oracle): bits exactly, soft values to float32 rounding."""
 from types import SimpleNamespace
-
 import numpy as np
 import pytest
 
 import rpps as rp
 from rpps.base.data import Mod
 from rpps.base.kernel import Form, Batch, to_host
-from support import fakedevice
 from rpps.parallel.kernel import LoopKernel, kernel_of
 from rpps.profile.steps import DECODE, ENCODE, STAGE
+from rpps.base.data import Digital
+from support import fakedevice
+from support.signals import named, noisy_symbols
 
 def form(cat, dt, rep, cls=Mod):
     return Form(cls, cat, dt, rep, 1e6, 1, 0.0, 0.0)
@@ -63,26 +64,12 @@ def on_device(k, b, xp=fakedevice):
     assert type(b.x) is np.ndarray and type(b.bad) is np.ndarray
     return b
 
-def noisy_symbols(c, n, rows, noise, seed):
-    rng = np.random.default_rng(seed)
-    bits = rng.integers(0, 2, (rows, n*c.bits_per_symbol)).astype(bool)
-    out = []
-    for r in bits:
-        s = np.asarray((rp.Data(r, sps=1, flush=True) * c).data)
-        out.append(s + noise*(rng.normal(size=len(s)) + 1j*rng.normal(size=len(s))))
-    return np.array(out, np.complex64)
-
 @pytest.mark.parametrize("name,noise", [("QPSK", 0.2), ("8PSK", 0.15), ("16QAM", 0.1), ("psk/qpsk dvb-s2", 0.3), ("psk/8psk dvb-s2", 0.1)])
 @pytest.mark.parametrize("rows", [1, 5])
 def test_demap(name, noise, rows):
     c = named(name)
     X = noisy_symbols(c, 700, rows, noise, 3)
     both(c, DECODE, X, form(rp.Category.SYMBOL, rp.dtype.SYMBOLS, rp.Rep.SYMBOLS))
-
-def named(name):
-    """A shape ("8PSK"), or a definition and its map ("psk/8psk dvb-s2")"""
-    ref, _, mapping = name.partition(" ")
-    return rp.symbol.load_or_generate(ref, mapping or None)
 
 def test_demap_max_log_and_a_controlled_constellation():
     c = rp.symbol.load("psk/qpsk", "dvb-s2")
@@ -114,10 +101,6 @@ def test_demap_chunks_give_the_same():
         Demap.CHUNK = 1 << 22
     np.testing.assert_array_equal(whole, parts)
 
-# ---- block codes and block interleavers
-
-from rpps.base.data import Digital
-
 def coded_frames(code, blocks, rows, seed, noise=None, flips=0):
     """Rows of `blocks` codewords of `code`: hard bits with `flips` errors a codeword, or LLRs with Gaussian noise"""
     rng = np.random.default_rng(seed)
@@ -136,6 +119,7 @@ def coded_frames(code, blocks, rows, seed, noise=None, flips=0):
     return np.array(out)
 
 HARD = form(rp.Category.CODE, rp.dtype.BITS, rp.Rep.CHANNEL, Digital)
+
 SOFT = form(rp.Category.SYMBOL, rp.dtype.LLR, rp.Rep.CHANNEL, Mod)
 
 @pytest.mark.parametrize("name", ["hamming/7_4", "golay/23_12", "bch/dvbs2_1_2"])
@@ -363,55 +347,3 @@ def test_scramblers_without_a_frame_length_or_with_memory_have_no_kernel():
         sc = rp.code.scram.load(name, **kw)
         step = SimpleNamespace(id="t", rx=[(DECODE, sc)], tx=[])
         assert isinstance(kernel_of(step, {}), LoopKernel), name
-
-# ---- the C++ demapper against the array one
-
-@pytest.fixture
-def numpy_demap(monkeypatch):
-    """Both implementations of rpps.math.demap on the same input: (native, numpy)"""
-    from rpps import _accel
-    from rpps.math import demap
-    if _accel.native is None:
-        pytest.skip("rpps._native is not built")
-    def both_(y, c, **kw):
-        lab = c.labels().astype(bool)
-        a = demap.llr_rows(np, y, c.points, lab, demap.mask_matrix(lab), **kw)
-        monkeypatch.setattr(_accel, "native", None)
-        b = demap.llr_rows(np, y, c.points, lab, demap.mask_matrix(lab), **kw)
-        monkeypatch.undo()
-        return a, b
-    return both_
-
-@pytest.mark.parametrize("name,noise", [("QPSK", 0.2), ("8PSK", 0.1), ("16QAM", 0.06), ("psk/8psk dvb-s2", 0.1), ("32APSK", 0.05)])
-@pytest.mark.parametrize("kw", [{}, {"maxlog": True}, {"noise_var": 0.05}])
-def test_native_demap_equals_numpy(numpy_demap, name, noise, kw):
-    c = named(name)
-    a, b = numpy_demap(noisy_symbols(c, 500, 3, noise, 11).astype(np.complex128), c, **kw)
-    assert a.shape == b.shape and a.dtype == b.dtype == np.float32
-    np.testing.assert_allclose(a, b, rtol=1e-5, atol=1e-4)
-
-@pytest.mark.parametrize("name", ["psk/qpsk dvb-s2", "8PSK", "32APSK"])
-def test_native_demap_of_long_rows_equals_numpy(numpy_demap, name):
-    """Rows longer than EM_SYMBOLS (the noise from every em_stride-th symbol) and than a C++ task (split over threads)"""
-    c = named(name)
-    a, b = numpy_demap(noisy_symbols(c, 10007, 2, 0.08, 12).astype(np.complex128), c)
-    np.testing.assert_allclose(a, b, rtol=1e-5, atol=1e-4)
-
-def test_native_demap_where_the_sums_underflow_and_per_row_noise(numpy_demap):
-    c = rp.symbol.load("8PSK")
-    rng = np.random.default_rng(1)
-    s = c.points[rng.integers(0, 8, (3, 2000))]
-    s = (s + 1e-5*(rng.normal(size=s.shape) + 1j*rng.normal(size=s.shape)))
-    s[0, ::97] *= 3
-    a, b = numpy_demap(s, c)
-    assert np.isfinite(a).all()
-    np.testing.assert_allclose(a, b, rtol=1e-5, atol=1e-3)
-    a, b = numpy_demap(s, c, noise_var=np.array([0.01, 0.1, 1.0]))
-    np.testing.assert_allclose(a, b, rtol=1e-5, atol=1e-3)
-
-def test_native_demap_empty_and_single_symbol(numpy_demap):
-    c = rp.symbol.load("QPSK")
-    a, b = numpy_demap(np.zeros((2, 0), np.complex128), c)
-    assert a.shape == b.shape == (2, 0)
-    a, b = numpy_demap(np.array([[0.3 + 0.2j]]), c)
-    np.testing.assert_allclose(a, b, rtol=1e-5, atol=1e-4)

@@ -1,16 +1,11 @@
-"""The C++ kernels of the decoders, filters and equalizers give the Python reference's output
-
-Each test runs the same input with rpps._native off and on (and checks the kernel ran). Skipped when it isn't built.
-"""
+"""The decoder kernels (Viterbi, BCJR, LDPC, Reed-Solomon, BCH, polar) give the Python reference's output (off and on)"""
 import numpy as np
 import pytest
 
 import rpps as rp
 from rpps import _accel
-from support.native import both
-from support.native import kernels
-
-pytestmark = pytest.mark.skipif(not _accel.available(), reason="rpps._native is not built")
+from support.native import both, kernels
+from support.signals import bpsk_llr
 
 def noisy_llr(bits, rng, ebn0=2.0):
     s = 1.0 - 2.0*np.asarray(bits, dtype=np.float64)
@@ -162,55 +157,6 @@ def test_bch(rng):
     assert np.array_equal(ref[0], got[0]) and np.array_equal(ref[1], got[1])
     assert list(got[1][:2]) == [5, 12]
 
-# ---------------------------------------------------------------- stages: IIR, demod, equalizers
-def stage_run(make, x, cut, **rates):
-    stage, stream, outs, i = make(), None, [], 0
-    for b in cut:
-        d = rp.Data(x[i:i+b], stream=stream, **rates)
-        stream = d.stream
-        outs.append(np.asarray((d + stage).data))
-        i += b
-    return np.concatenate(outs)
-
-CUT = [1]*20 + [3000, 777, 20000 - 3797]
-
-@pytest.mark.parametrize("kind", ["real", "complex"])
-def test_iir(kind, rng):
-    x = rng.standard_normal(20000) + (1j*rng.standard_normal(20000) if kind == "complex" else 0)
-    x = x.astype(np.complex64 if kind == "complex" else np.float32)
-    make = lambda: rp.signal.filters.iir.IIR(rp.signal.filters.iir.design("butter", 6, "lowpass", 0.1))
-    ref, got = both(lambda: stage_run(make, x, CUT, Fs=1e3))
-    assert np.allclose(ref, got, rtol=1e-5, atol=1e-6)
-
-@pytest.mark.parametrize("make", [
-    lambda: rp.wave.AMDemod(1e-3), lambda: rp.sync.Squelch(-10.0, 3.0, 0.01),
-    lambda: rp.signal.DCBlock(0.999), lambda: rp.signal.Deemphasis(75e-6)], ids=["am", "squelch", "dcblock", "deemph"])
-@pytest.mark.parametrize("kind", ["real", "complex"])
-def test_demod_loops(make, kind, rng):
-    env = np.where((np.arange(20000) // 4000) % 2 == 0, 0.05, 2.0) # bursts well clear of the squelch threshold
-    x = env*(rng.standard_normal(20000) + (1j*rng.standard_normal(20000) if kind == "complex" else 0)) + 0.3
-    x = x.astype(np.complex64 if kind == "complex" else np.float32)
-    ref, got = both(lambda: stage_run(make, x, CUT, Fs=48e3))
-    assert ref.dtype == got.dtype
-    assert np.allclose(ref, got, rtol=1e-4, atol=1e-4)
-
-def isi_qpsk(rng, n=6000):
-    sym = (rng.choice([-1, 1], n) + 1j*rng.choice([-1, 1], n))/np.sqrt(2)
-    y = np.convolve(sym, [1.0, 0.35 - 0.2j, 0.1j])[:n] + 0.02*(rng.standard_normal(n) + 1j*rng.standard_normal(n))
-    return sym.astype(np.complex64), y.astype(np.complex64)
-
-@pytest.mark.parametrize("which", ["cma", "lms-dd", "lms-training"])
-def test_equalizers(which, rng):
-    sym, y = isi_qpsk(rng)
-    pts = (np.array([1+1j, 1-1j, -1+1j, -1-1j])/np.sqrt(2)).astype(np.complex64)
-    make = {"cma": lambda: rp.sync.loops.CMA(11, 0.002),
-            "lms-dd": lambda: rp.sync.loops.LMS(11, 0.005, points=pts),
-            "lms-training": lambda: rp.sync.loops.LMS(11, 0.005, points=pts, training=np.roll(sym, 5)[:2000])}[which]
-    cut = [1]*10 + [1000, 4990]
-    ref, got = both(lambda: stage_run(make, y, cut, Fs=1e3, sps=1))
-    assert len(ref) == len(got) > 5900
-    assert np.allclose(ref, got, atol=1e-3)
-
 # --- Polar list decoding: polar_scl against the numpy reference (rpps/code/types/polar.py _scl)
 
 @pytest.mark.parametrize("N,size", [(8, 1), (32, 4), (128, 8), (512, 8), (1024, 16)])
@@ -225,3 +171,16 @@ def test_polar_scl_matches_python(N, size, rng):
     u1, m1 = _accel.native.polar_scl(llr, frozen, size)
     u2, m2 = pol._scl(llr, frozen, size)
     assert np.array_equal(u1, u2) and np.allclose(m1, m2, rtol=1e-12, atol=1e-9)
+
+@pytest.mark.parametrize("level", ["balanced", "max"])
+def test_ldpc_native_matches_numpy(level):
+    dec = rp.code.load("block/ldpc/ieee80211n_648_1_2").decoder
+    rng = np.random.default_rng(6)
+    m = rng.integers(0, 2, 16*dec.num).astype(bool)
+    llr = bpsk_llr(dec.encode(m), 1.5, dec.rate, rng).reshape(16, dec.N)
+    with rp.effort(level):
+        nat = dec.layered(llr)
+        with kernels(False):
+            ref = dec.layered(llr)
+    np.testing.assert_array_equal(nat[1], ref[1])
+    np.testing.assert_array_equal(nat[0][nat[1]], ref[0][ref[1]])

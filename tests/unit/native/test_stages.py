@@ -1,15 +1,12 @@
 """The C++ kernels (rpps._native) give the Python loops' output, across any cut into blocks
-
-Skipped when the extension is not built (`python setup.py build_ext -i`).
 """
 import numpy as np
 import pytest
 
 import rpps as rp
 from rpps import _accel
+from rpps.math import interp
 from support.native import kernels
-
-pytestmark = pytest.mark.skipif(not _accel.available(), reason="rpps._native is not built")
 
 def run(make, x, blocks, native, **rates):
     """x cut into `blocks` through a fresh stage, with the kernels on or off"""
@@ -197,6 +194,24 @@ def test_shift_freq_matches_python(cut):
     assert nat.dtype == py.dtype == np.complex64
     np.testing.assert_allclose(nat, py, atol=1e-5)
     assert st_n.phase == pytest.approx(st_p.phase, abs=1e-9)
+
+def test_fractional_native_matches_numpy():
+    rng = np.random.default_rng(1)
+    x = (rng.standard_normal(1000) + 1j*rng.standard_normal(1000)).astype(np.complex64)
+    t = 10 + rng.random(500)*900
+    nat = interp.fractional(x, t, 12)
+    with kernels(False):
+        ref = interp.fractional(x, t, 12)
+    np.testing.assert_allclose(nat, ref, atol=1e-5)
+
+def test_native_matches_python_set():
+    rng = np.random.default_rng(2)
+    code = rp.sequence.load("ieee802154_2450")
+    x = (rng.standard_normal(32*3*20) + 1j*rng.standard_normal(32*3*20)).astype(np.complex64)
+    nat = rp.symbol.correlate(x, code, 3)
+    with kernels(False):
+        py = rp.symbol.correlate(x, code, 3)
+    assert nat.shape == (20, 16) and np.allclose(nat, py, atol=1e-5)
 
 def test_oerder_meyr_sums_and_cubic_reads_are_the_python_ones(rng):
     """OerderMeyr's window sums and the cubic interpolation in C++ give the numpy lines they replaced, and the stage the

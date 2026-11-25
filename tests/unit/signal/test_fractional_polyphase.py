@@ -5,7 +5,8 @@ import pytest
 import rpps as rp
 from rpps import _accel
 from rpps.signal.sample import FractionalPolyphase, fractional_resample, resample_poly
-from rpps.signal.sample.fractional import design_bank, read_python
+from rpps.signal.sample.fractional import design_bank
+from support.signals import noise
 
 Fs = 20e6
 
@@ -16,11 +17,6 @@ def impl(request, monkeypatch):
     elif _accel.native is None:
         pytest.skip("rpps._native not built")
     return request.param
-
-def noise(n, dtype=np.complex64, seed=0):
-    r = np.random.default_rng(seed)
-    x = r.standard_normal(n) + (1j*r.standard_normal(n) if np.dtype(dtype).kind == "c" else 0)
-    return x.astype(dtype)
 
 def run(make, x, blocks, rates=None, **kw):
     """x cut into blocks of one stream through a fresh stage: (output, the last block's rates)"""
@@ -129,26 +125,3 @@ def test_bank_rows_have_unit_dc_gain():
     assert t.shape == (513, 32) and np.allclose(t.sum(axis=1), 1)
     np.testing.assert_allclose(t[-1][1:], t[0][:-1], atol=1e-7) # a whole sample past is the first row one sample on: no jump where the position wraps
     assert t[0][-1] == 0 and t[-1][0] == 0
-
-@pytest.mark.skipif(_accel.native is None, reason="rpps._native not built")
-@pytest.mark.parametrize("taps", [2, 6, 10, 16, 24, 32, 34, 64])
-@pytest.mark.parametrize("dtype", [np.complex64, np.float32])
-def test_native_read_matches_the_python_reference(dtype, taps):
-    """Every tap count: the vector loops, their 8- and 16-wide steps and the scalar tail"""
-    table = design_bank(taps, 512, 0.185)
-    buf = noise(50000, dtype, 4)
-    step = 20e6/10.7622e6
-    n = int((len(buf) - 1 - taps//2 - (taps//2 - 1))/step) + 1
-    want = read_python(buf, table, taps/2 - 1.0, step, n)
-    got = _accel.native.polyphase_read(buf, table.astype(np.float32), taps/2 - 1.0, step, n, 0)
-    assert got.dtype == dtype and got.shape == want.shape
-    np.testing.assert_allclose(got, want, atol=3e-6)
-
-@pytest.mark.skipif(_accel.native is None, reason="rpps._native not built")
-def test_native_rotate_matches_numpy():
-    x = noise(100000)
-    out = np.empty_like(x)
-    w = 2*np.pi*-0.5e6/20e6
-    ph = _accel.native.rotate_into(x, out, 1.3, w, 0)
-    np.testing.assert_allclose(out, x*np.exp(1j*(1.3 + w*np.arange(len(x)))), atol=2e-6)
-    assert ph == pytest.approx((1.3 + w*len(x)) % (2*np.pi))

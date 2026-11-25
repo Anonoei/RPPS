@@ -108,3 +108,28 @@ def two_bands(rng, N, Fs, f1, f2, bw):
         spec = np.where(np.abs(f - fc) < bw/2, rng.normal(size=N) + 1j*rng.normal(size=N), 0)
         x = x + np.fft.ifft(spec)*np.sqrt(N)*0.5
     return (x + (rng.normal(size=N) + 1j*rng.normal(size=N))*0.05).astype(np.complex64)
+
+def bpsk_llr(bits, ebn0, rate, rng):
+    """Exact LLRs of BPSK bits over AWGN at Eb/N0 (dB)"""
+    N0 = 10**(-(ebn0 + 10*np.log10(rate))/10)
+    y = 1.0 - 2.0*np.asarray(bits, float) + np.sqrt(N0/2)*rng.standard_normal(len(bits))
+    return 4*y/N0
+
+def noise(n, dtype=np.complex64, seed=0):
+    r = np.random.default_rng(seed)
+    x = r.standard_normal(n) + (1j*r.standard_normal(n) if np.dtype(dtype).kind == "c" else 0)
+    return x.astype(dtype)
+
+def named(name):
+    """A shape ("8PSK"), or a definition and its map ("psk/8psk dvb-s2")"""
+    ref, _, mapping = name.partition(" ")
+    return rp.symbol.load_or_generate(ref, mapping or None)
+
+def noisy_symbols(c, n, rows, noise, seed):
+    rng = np.random.default_rng(seed)
+    bits = rng.integers(0, 2, (rows, n*c.bits_per_symbol)).astype(bool)
+    out = []
+    for r in bits:
+        s = np.asarray((rp.Data(r, sps=1, flush=True) * c).data)
+        out.append(s + noise*(rng.normal(size=len(s)) + 1j*rng.normal(size=len(s))))
+    return np.array(out, np.complex64)

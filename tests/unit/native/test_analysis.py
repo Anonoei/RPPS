@@ -2,15 +2,12 @@
 import numpy as np
 import pytest
 
-from rpps import _accel
 from rpps.analysis.modulation import cpm
 from rpps.analysis.code.block import ldpc
 from rpps.math import gf2
 from rpps import code as coding
 from support.native import both
 from support.native import kernels
-
-pytestmark = pytest.mark.skipif(not _accel.available(), reason="rpps._native is not built")
 
 @pytest.mark.parametrize("name", ["msk", "gmsk_0.3", "soqpsk_tg"])
 def test_cpm_detector(name):
