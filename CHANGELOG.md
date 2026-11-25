@@ -407,6 +407,9 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 - `spectrum.burst.demodulate` found only one of two burst kinds on a carrier when the gate opened late on the
   first bursts of a length group (`shared_preamble` took its references from the first 8 only): the references
   are now the longest bursts, the first and some spread over the list.
+- `learn_plan` took a BTU the start differences only nearly fit (a carrier of one burst type, slots of 2.4 ms read
+  as 2.5, and a 5 ms frame for 15): each candidate BTU is now made exact over the capture and taken only where
+  90% of the starts sit on its grid, else the search goes on past its peak.
 - A profile's change for a step that had not run yet was placed as if positions started at 0: in a stream that starts
   elsewhere (every burst of a burst profile, at its place in the capture) it landed at the wrong item. An empty position
   map now scales by its step's rate.

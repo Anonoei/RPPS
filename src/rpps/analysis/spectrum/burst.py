@@ -811,8 +811,9 @@ def learn_plan(bursts, quantum=None, max_btus=4096, clock=27e6, purity=0.95, tol
     the bursts were detected on (rp.sync.Bursts'): each frame type's bandwidth and symbol rate.
 
       1. The BTU: the quantum of the bursts' start differences (every slot starts on the grid of its frame): the largest q
-         whose multiples the differences sit on, to `tol` of q, then made exact over the whole capture (each start's
-         count of BTUs, over a span doubling from the first burst: the slope of a line through them).
+         whose multiples the differences sit on, to `tol` of q, made exact over the whole capture (each start's count of
+         BTUs, over a span doubling from the first burst: the slope of a line through them), and taken only where 90% of
+         the starts sit on its grid (a mean of differences passes near a q they only nearly fit).
       2. The frame: the shortest period of M BTUs at which every (carrier, BTU in the frame) holds one kind of burst
          (`purity` of them; length clusters stand for kinds not given), with bursts at two or more places of it.
       3. A frame type per carrier: its slots where bursts were seen (as many BTUs as the longest burst of the kind needs),
@@ -838,7 +839,6 @@ def learn_plan(bursts, quantum=None, max_btus=4096, clock=27e6, purity=0.95, tol
         q = float(quantum)
     else:
         q, curve = _quantum(starts, tol)
-        q = _stretch(starts, q, tol)
     t0 = float(starts.min())
     k = np.round((starts - t0)/q).astype(np.int64)
     off = (starts - t0) - k*q
@@ -959,12 +959,15 @@ def _stretch(starts, q, tol, grid=1e-4):
             return q
         span *= 2
 
-def _quantum(starts, tol, chunk=1024, most=1 << 21):
-    """The largest q whose multiples the start differences sit on (to tol*q): scored by the mean cosine of 2 pi d / q
+def _quantum(starts, tol, chunk=1024, most=1 << 21, on_grid=0.9, peaks=32):
+    """The largest q whose multiples the starts sit on (to tol*q). Candidates: q scored by the mean cosine of 2 pi d / q
     over the differences d of nearby bursts (each to its next 8), from the longest q down. A difference of N BTUs
     passes only within about tol/N of q: so q steps evenly in 1/q, by tol/4 of the longest differences' (sparse bursts
-    sit hundreds of BTUs apart, their peaks too narrow for a fixed grid), evaluated `chunk` at a time down to the first
-    that passes (at most `most` of them). Returns q and the curve (q's tried, their scores)"""
+    sit hundreds of BTUs apart, their peaks too narrow for a fixed grid), evaluated `chunk` at a time (at most `most`).
+    A mean passes near a q the differences only nearly fit (slots of 2.4 ms read as 2.5: 2.4 and 4.8 within tol of 1
+    and 2 of it), so each candidate, refined over its peak and made exact over the capture (`_stretch`), stands only
+    where `on_grid` of the starts sit on its grid; else the search goes on past its peak (up to `peaks` of them).
+    Returns q (exact) and the curve (q's tried, their scores)"""
     s = np.sort(starts)
     d = np.concatenate([s[i + 1:i + 9] - s[i] for i in range(len(s))])
     d = d[d > 0]
@@ -973,30 +976,35 @@ def _quantum(starts, tol, chunk=1024, most=1 << 21):
     if len(d) > 8192: # (a spread sample: the score is a mean)
         d = np.sort(d)[np.linspace(0, len(d) - 1, 8192).astype(int)]
     lo = max(np.min(d)/64, 1e-7)
-    hi = float(np.median(d))
+    med = float(np.median(d))
     df = tol/(4*float(np.percentile(d, 99)))
     thr = np.cos(2*np.pi*tol)
-    qs, score, found = [], [], None
-    f = 1/hi
-    while f < 1/lo and len(qs)*chunk < most:
+    qs, score = [], []
+    f, n, skip, failed = 1/med, 0, 0.0, 0 # skip: 1/q up to which a peak was looked at and failed
+    while f < 1/lo and n < most and failed < peaks:
         fr = f + df*np.arange(chunk)
         fr = fr[fr < 1/lo]
         sc = np.cos(2*np.pi*np.outer(fr, d)).mean(axis=1)
         qs.append(1/fr)
         score.append(sc)
-        good = np.nonzero(sc >= thr)[0]
-        if len(good):
-            found = 1/fr[good[0]]
-            break
-        f = fr[-1] + df
-    qs, score = np.concatenate(qs), np.concatenate(score)
-    if found is None:
-        raise ValueError("learn_plan: the bursts' starts sit on no grid (give `quantum`)")
-    # Refine: the q whose cosine sum is largest over the peak the first passing q is on the edge of (its half-width
-    # about tol*q/d over the typical difference d), below it (the descent comes from above)
-    width = 2*tol*found*found/float(np.median(d))
-    fine = np.linspace(found + 0.25*width, found - width, 401)
-    return float(fine[np.argmax(np.cos(2*np.pi*np.outer(1/fine, d)).sum(axis=1))]), (qs, score)
+        n += len(fr)
+        for i in np.nonzero(sc >= thr)[0]:
+            if fr[i] <= skip:
+                continue
+            found = 1/fr[i]
+            # Refine over the peak the first passing q is on the edge of (its half-width about tol*q/d over the typical
+            # difference d), below it (the descent comes from above); then exact over the capture, and checked
+            width = 2*tol*found*found/med
+            fine = np.linspace(found + 0.25*width, found - width, 401)
+            q = _stretch(s, float(fine[np.argmax(np.cos(2*np.pi*np.outer(1/fine, d)).sum(axis=1))]), tol)
+            r = (s - s[0])/q
+            if np.mean(np.abs(r - np.round(r)) <= tol) >= on_grid:
+                return q, (np.concatenate(qs), np.concatenate(score))
+            skip, failed = 1/(found - width), failed + 1 # (past this peak)
+            if failed >= peaks:
+                break
+        f = max(fr[-1] + df, skip)
+    raise ValueError("learn_plan: the bursts' starts sit on no grid (give `quantum`)")
 
 # ---- how well a plan explains the bursts
 

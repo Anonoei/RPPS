@@ -339,3 +339,14 @@ def test_sparse_bursts_still_give_the_btu():
     g = B.learn_plan(recs)
     assert g.evidence["frame"] == pytest.approx(15e-3/(1 + 30e-6), rel=1e-5)
     assert B.check_plan(g.plan, recs).explained == 1.0
+
+def test_a_carrier_of_one_kind_gives_its_frame():
+    """The demo's 500 kBd carrier: six slots of one tx type, 2.4 ms each, in a 15 ms frame. A mean over the starts'
+    nearby differences passes at 2.5 ms (2.4 and 4.8 within tol of 1 and 2 of it), whose grid the starts leave: the
+    BTU is taken only where they sit on it, and the frame comes from it"""
+    B = rp.analysis.spectrum.burst
+    recs = [r for r in _sparse(4, sec=2.0, use=0.5) if r["freq"] == 1.5e6]
+    for r in recs:
+        r["kind"] = None # (as demodulate gives them: one kind, by length)
+    g = B.learn_plan(recs)
+    assert g.evidence["frame"] == pytest.approx(15e-3/(1 + 30e-6), rel=1e-5)
