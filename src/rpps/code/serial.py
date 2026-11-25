@@ -49,7 +49,7 @@ Folders are kind (`base`), then the structure of the code; the standard goes in 
 A reference is the path below config/fec or config/interleave with the kind first: "block/rs/204_188", "conv/k7_171_133/3_4",
 "interleave/forney/12_17". A bare name ("204_188") works while one definition of any kind has it.
 
-Decoding only runs from a definition loaded here; `analysis.identify.Guess.save` turns a guessed structure into one,
+Decoding only runs from a definition loaded here; `analysis.result.Guess.save` turns a guessed structure into one,
 `rp.code.import_alist` an LDPC alist file. CRC and framing are in rpps.link.
 """
 from pathlib import Path

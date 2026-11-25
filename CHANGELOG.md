@@ -7,6 +7,9 @@ what to use instead.
 ## Unreleased
 
 ### Breaking
+- **`rpps.profile.steps`, `rpps.analysis.identify` and `rpps.analysis.signal_profile` are packages** (each split into
+  private modules); every name they defined is where it was. Names they only imported are gone from them:
+  `rpps.analysis.identify.Guess` (and `Hypothesis`, `Report`, `pick`) is `rpps.analysis.result.Guess`.
 - **The per-sample sync loops are second class, in `rp.sync.loops`; the first-class stages estimate in blocks.**
   - `rp.sync.Costas` is `rp.sync.loops.Costas` (now with `points=`: decision directed on any constellation, and
     `from_bandwidth`). The first-class carrier follower is the new `rp.sync.phase.DDCarrier` (below). A profile's
