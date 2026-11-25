@@ -3,13 +3,16 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from .. import _accel
 from ..base import Stage
+from ..signal.filters.iir import RunningMean
 
 class Squelch(Stage):
     """Silence the signal while it is quieter than `threshold_db` (power, dB re 1.0), with hysteresis
 
-    The level follows a running average of the power, so a brief dip doesn't close it.
+    The level follows a running average of the power (`alpha` of the gap a sample, from the first sample on: an IIR
+    section), so a brief dip doesn't close it. It opens where the level is over the open threshold, closes where it is at
+    or under the close one, and in between stays as it was: the last of those events, carried forward (no loop over the
+    samples).
     """
     __slots__ = ("open_db", "close_db", "alpha")
     def __init__(self, threshold_db=-40.0, hysteresis_db=3.0, alpha=0.01):
@@ -18,23 +21,22 @@ class Squelch(Stage):
         self.alpha = alpha
 
     def new_state(self, meta):
-        return SimpleNamespace(level=None, is_open=False)
+        return SimpleNamespace(mean=RunningMean(self.alpha), z=None, is_open=False)
 
     def step(self, samples, st, meta):
         lo, hi = 10**(self.close_db/10), 10**(self.open_db/10)
-        x = np.ascontiguousarray(samples)
-        if _accel.native is not None and x.dtype in _accel.NATIVE_DTYPES:
-            out, lvl, have, op = _accel.native.squelch(x, 0.0 if st.level is None else float(st.level), st.level is not None,
-                                                       bool(st.is_open), lo, hi, float(self.alpha))
-            st.level, st.is_open = (lvl if have else None), op
-            return out
-        pw = np.abs(samples)**2
-        out = np.zeros_like(samples)
-        lvl, op = st.level, st.is_open
-        for i, p in enumerate(pw):
-            lvl = p if lvl is None else lvl + self.alpha*(p - lvl)
-            op = lvl > (lo if op else hi)
-            if op:
-                out[i] = samples[i]
-        st.level, st.is_open = lvl, op
-        return out
+        x = np.asarray(samples)
+        level, st.z = st.mean.run(np.abs(x).astype(np.float64)**2, st.z)
+        is_open = gate(level, lo, hi, st.is_open)
+        if len(is_open):
+            st.is_open = bool(is_open[-1])
+        return np.where(is_open, x, np.zeros((), x.dtype))
+
+def gate(level, lo, hi, was_open=False):
+    """Hysteresis: open where level > hi, closed where level <= lo, else as at the sample before (`was_open` before the
+    first): each sample takes the last decisive one's state"""
+    level = np.asarray(level)
+    up, down = level > hi, level <= lo
+    decisive = up | down
+    last = np.maximum.accumulate(np.where(decisive, np.arange(len(level)), -1)) if len(level) else np.zeros(0, int)
+    return np.where(last >= 0, up[np.maximum(last, 0)], bool(was_open))

@@ -6,6 +6,7 @@
     FFTBank     many signals of one capture to baseband at once, each at its own width, from one FFT per hop
     channel     the simulated medium between transmitter and receiver: AWGN, offsets, multipath, fading
     DCBlock, Deemphasis, Conjugate   conditioning: DC removal, FM de-emphasis, spectral inversion
+    loops       second class: DCBlock and Deemphasis as per-sample loops (the same output; C++ kernels)
 """
 from . import filters
 from . import sample
@@ -13,3 +14,4 @@ from . import channel
 from .channelize import channelize, baseband, Channelize
 from .fftbank import FFTBank
 from .condition import DCBlock, Deemphasis, Conjugate
+from . import loops

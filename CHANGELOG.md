@@ -249,6 +249,16 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
   bits match, and `rp.math.prob.log_binom_half_cdf`.
 
 ### Changed
+- **Recursive filters have no loop over samples.** `IIR`'s path without the C++ kernels is one state space system
+  for the whole cascade, its chunks filtered by matrix products and the chunk states found by a log-depth scan: exact
+  to rounding, 13-39x faster than before, and in a form a GPU can run. `DCBlock`, `Deemphasis`, `AMDemod`'s running
+  mean and `Squelch`'s level are now `IIR` sections (`rpps.signal.filters.iir.RunningMean` for a mean that starts at
+  the first sample), and the squelch's hysteresis is a forward fill. With the kernels they run through `sos_filter`,
+  Squelch faster (95 MS/s, was 68) and DCBlock, AMDemod and Deemphasis slower (135, 220, 130 MS/s, were 193, 399, 309:
+  still far above real time).
+- The per-sample loops these replaced stay, second class, under `loops`: `rp.signal.loops.DCBlock`,
+  `rp.signal.loops.Deemphasis`, `rp.wave.loops.AMDemod`, `rp.sync.loops.Squelch`, with their kernels (`dc_block`,
+  `one_pole`, `am_demod`, `squelch`); the same output to rounding. Their Python loops now run in double, as the kernels.
 - `rp.math.runs(mask)` (the True runs of a mask) and `rp.signal.filters.correlate(x, t)` (a template slid along a
   signal, by FFT blocks when long) replace private copies in the finder, framing, burst analysis, FrameSync and the
   LTE/NR cell searches.

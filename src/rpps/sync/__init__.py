@@ -43,6 +43,7 @@ For signals and conditions block estimation does not suit: `time.MM` (Mueller & 
 locked loop around a detector from `time.ted`: `ted="zx"` zero crossing, `"el"` early-late), `Costas`, `AGC`,
 `equalize.LMS`, `equalize.CMA`. Profiles reach them by name (`timing: mm`, `timing: {"method": "tll", "ted": "el"}`,
 `carrier: costas`, `equalize: lms`). Their loop filter is `pll.PILoop` (gains from a bandwidth: `pll.loop_gains`).
+`loops` holds the loops whose first-class stage replaced them: `loops.Squelch` (its level sample by sample).
 
 ## Known, measured, detected
 
@@ -84,6 +85,7 @@ from .agc import AGC, PeakAGC
 from . import pll
 from . import equalize
 from .squelch import Squelch
+from . import loops
 from .code_acquire import acquire_code
 from .pilots import PilotEqualizer, PilotPhase
 from .frame import FrameSync, Delimiter, word_errors

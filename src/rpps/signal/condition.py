@@ -3,57 +3,36 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from .. import _accel
 from ..base import Stage
+from .filters.iir import IIR, single_pole
 
 class DCBlock(Stage):
-    """Removes the DC offset (a one pole high pass: y[n] = x[n] - x[n-1] + r*y[n-1])"""
-    __slots__ = ("r",)
+    """Removes the DC offset (a one pole high pass: y[n] = x[n] - x[n-1] + r*y[n-1]), an `IIR` section"""
+    __slots__ = ("r", "_iir")
     def __init__(self, r=0.999):
         self.r = r
+        self._iir = IIR([[1.0, -1.0, 0.0, 1.0, -r, 0.0]])
 
     def new_state(self, meta):
-        return SimpleNamespace(x=0.0, y=0.0)
+        return self._iir.new_state(meta)
 
     def step(self, samples, st, meta):
-        x = np.ascontiguousarray(samples)
-        if _accel.native is not None and x.dtype in _accel.NATIVE_DTYPES:
-            cplx = x.dtype.kind == "c"
-            out, st.x, st.y = _accel.native.dc_block(x, complex(st.x) if cplx else float(np.real(st.x)),
-                                                     complex(st.y) if cplx else float(np.real(st.y)), float(self.r))
-            return out
-        out = np.empty_like(samples)
-        x1, y1, r = st.x, st.y, self.r
-        for i, v in enumerate(samples):
-            y1 = v - x1 + r*y1
-            x1 = v
-            out[i] = y1
-        st.x, st.y = x1, y1
-        return out
+        return self._iir.step(samples, st, meta)
 
 
 class Deemphasis(Stage):
-    """FM broadcast de-emphasis: a one pole low pass with time constant tau (75 us in the Americas, 50 us elsewhere)"""
+    """FM broadcast de-emphasis: a one pole low pass with time constant tau (75 us in the Americas, 50 us elsewhere), an
+    `IIR` section at the stream's rate"""
     __slots__ = ("tau",)
     def __init__(self, tau=75e-6):
         self.tau = tau
 
     def new_state(self, meta):
-        return SimpleNamespace(y=0.0)
+        f = IIR(single_pole(1 - np.exp(-1/(self.tau*meta.Fs))))
+        return SimpleNamespace(iir=f, z=f.new_state(meta).z)
 
     def step(self, samples, st, meta):
-        a = 1 - np.exp(-1/(self.tau*meta.Fs))
-        x = np.ascontiguousarray(samples)
-        if _accel.native is not None and x.dtype in _accel.NATIVE_DTYPES:
-            out, st.y = _accel.native.one_pole(x, complex(st.y) if x.dtype.kind == "c" else float(np.real(st.y)), float(a))
-            return out
-        out = np.empty_like(samples)
-        y = st.y
-        for i, v in enumerate(samples):
-            y += a*(v - y)
-            out[i] = y
-        st.y = y
-        return out
+        return st.iir._run(samples, st.z)
 
 
 class Conjugate(Stage):
