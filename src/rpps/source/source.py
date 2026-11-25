@@ -149,11 +149,14 @@ class Blocks:
         return Blocks(_threaded(self._gen, depth, drop, "rpps-blocks"))
 
     def pipelined(self, pipe, depth=4):
-        """blocks + pipe, with every top-level stage of the pipe in its own thread (and the source in another)"""
+        """blocks + pipe, with every top-level stage of the pipe in its own thread (and the source in another). A
+        profile's receiver that branches runs its trunk in one and its branches in another (`pipelined_parts`)"""
         items = pipe.items if isinstance(pipe, base.Pipeline) else (pipe,)
         b = self.threaded(depth)
         for it in items:
-            b = (b + it).threaded(depth)
+            parts = it.pipelined_parts() if hasattr(it, "pipelined_parts") else (it,)
+            for part in parts:
+                b = (b + part).threaded(depth)
         return b
 
     def collect(self):

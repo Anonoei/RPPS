@@ -166,3 +166,42 @@ def test_stages_behind_acquire_use_the_detection_their_block_went_through_with(t
     for _ in range(4):
         got = np.concatenate([o.data for o in rp.source.File("cf32", path, Fs=1e6, sps=4)(2048).pipelined(make())])
         assert np.array_equal(got, ref)
+
+def _branched(name, x, block, pipelined, **kw):
+    """A branching profile's output per branch and its messages, serial or pipelined (trunk and branches in threads)"""
+    rx = rp.profile.load(name, **kw).rx()
+    src = rp.source.Memory(x, Fs=FS_OF[name], sps=SPS_OF.get(name, 0.0))(block)
+    outs = list(src.pipelined(rx) if pipelined else src + rx)
+    msgs = [(m.kind, round(m.sample, 6), repr(m.fields)) for m in rx.take_messages()]
+    return {b: np.concatenate([np.asarray(o[b].data) for o in outs]) for b in outs[0]}, msgs
+
+FS_OF, SPS_OF = {"lte/downlink": 1.92e6, "dmr/burst": 48000}, {"dmr/burst": 10}
+
+def test_a_profile_that_branches_gives_its_trunk_and_branches_a_thread_each():
+    """pipelined(profile.rx()) runs the trunk in one thread and the branches in another: the same output and messages as
+    one thread, whatever the threads' timing and however the blocks are cut"""
+    from rpps.grid import lte
+    rng = np.random.default_rng(1)
+    sib = rng.integers(0, 2, 224).astype(np.uint8)
+    x = lte.tx.channel(lte.tx.downlink(pci=77, ports=2, n_rb=6, frames=4, sib=sib), cfo=3.1e3, fs=1.92e6, delay=1234,
+                       snr_db=15, seed=1)
+    rx = rp.profile.load("lte/downlink", n_rb=6).rx()
+    assert [p.name for p in rx.pipelined_parts()] == ["trunk", "branches"]
+    ref, ref_msgs = _branched("lte/downlink", x, 20000, False, n_rb=6)
+    assert len(ref["pdsch"]) and ref_msgs
+    for block in (20000, 7777):
+        for _ in range(2):
+            got, msgs = _branched("lte/downlink", x, block, True, n_rb=6)
+            assert all(np.array_equal(got[b], ref[b]) for b in ref) and msgs == ref_msgs
+
+def test_branches_that_read_part_of_each_frame_pipelined():
+    """`take` and `select` (DMR: the slot type across the sync word, the payload of data bursts only) read the trunk's
+    control log and positions from the branches' thread: the same messages as one thread"""
+    from test_lmr_profiles import dmr_bursts, _fm
+    rng = np.random.default_rng(3)
+    levels, _ = dmr_bursts(rng)
+    x = _fm(levels, 0.27, rng)
+    _, ref = _branched("dmr/burst", x, 3000, False)
+    assert any(k == "info" for k, _, _ in ref)
+    for _ in range(3):
+        assert _branched("dmr/burst", x, 1111, True)[1] == ref

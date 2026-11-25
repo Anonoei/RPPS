@@ -126,6 +126,8 @@ what to use instead.
   position, bit destuffing over many spans. HDLC, `scan_hdlc` (6x) and FrameSync's hard-bit search use them.
 
 **Profiles**
+- **A branching profile pipelined**: `blocks.pipelined(profile.rx())` runs the trunk in one thread and the branches in
+  another (`BranchRunner.pipelined_parts`), with the same output and messages as one thread at any block cut.
 - **`p25/tsdu` and `dmr/burst`**: P25 phase 1 control channel TSDUs (NID and TSBKs, CRC-checked) and DMR bursts (every
   slot type; the data bursts' BPTC payloads), with their definitions.
 - **Burst time plans** (`rpps.plan`, a `plan` resource): TDMA / MF-TDMA plans in DVB-RCS2's model, with frequency
@@ -176,6 +178,7 @@ what to use instead.
   `sync`, `ssb_period`, `subcarrier`, `subcarrier_baud`. `python -m rpps ls system`.
 
 **GPU and tools**
+- **`tools/lte_bench.py`**: `lte/downlink`'s real-time factor in one thread and pipelined, and each step's load.
 - **A parallel region on a GPU, CUDA or ROCm/HIP alike** (`Parallel("thread", xp=xp)`): LDPC, BCH and soft demapping
   run device kernels, with permutation, identity and header kernels so the DVB-S2 region stays on the device; bit for bit
   with the serial runner. On a Radeon 860M against 16 CPU threads the DVB-S2 region is 1.9x faster. `tools/device_bench.py`;
@@ -185,6 +188,11 @@ what to use instead.
   `tools/blind_bench.py` (what the blind code tools break, from how many symbols).
 
 ### Changed
+- **A profile's position maps stay short on a long stream:** a change that keeps a step's rate (every header's) adds
+  no anchor, and lookups no longer rebuild a list, so a receiver no longer slows down the longer it runs.
+  `lte/downlink` at 15.36 MS/s went from 1.6x real time to 1.1x in one thread over 2 s of signal; the LTE grid and
+  channel estimate also keep what a subframe's layout decides, and PDCCH decodes its candidates of a size in one
+  Viterbi batch (`Viterbi.decode_batch` takes tail-biting codes).
 - **No loop over samples or bits where a closed form or block form exists**, the same output to rounding at any block
   cut:
   - self-synchronizing scramblers are a FIR / recursion over GF(2) (`rp.math.gf2.fir`, `recur`): V.35 scrambles at

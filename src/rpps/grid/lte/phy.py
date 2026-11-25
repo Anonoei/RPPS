@@ -49,12 +49,21 @@ def grid(x, nfft, n_rb, early=None):
     """The (14, 12 N_RB) grid of one subframe's samples. Each FFT window starts `early` samples into the prefix (clear of
     the symbol before, and of a timing that runs late), the phase ramp that leaves taken off"""
     early = nfft//128 if early is None else early
+    idx, bins, turn = _grid_plan(int(nfft), int(n_rb), int(early))
+    W = np.fft.fft(np.asarray(x)[idx], axis=1)
+    return W[:, bins]*turn[None, :]
+
+@functools.lru_cache(maxsize=64)
+def _grid_plan(nfft, n_rb, early):
+    """What `grid` reads for a width: each symbol's FFT window, the subcarriers' bins, the ramp the early start leaves"""
     st = symbol_starts(nfft) - early
     idx = st[:, None] + np.arange(nfft)[None, :]
-    W = np.fft.fft(np.asarray(x)[idx], axis=1)
     k = np.arange(12*n_rb)
     f = np.where(k < 6*n_rb, k - 6*n_rb, k - 6*n_rb + 1)
-    return W[:, sc_bin(k, nfft, n_rb)]*np.exp(2j*np.pi*f*early/nfft)[None, :]
+    out = (idx, sc_bin(k, nfft, n_rb), np.exp(2j*np.pi*f*early/nfft))
+    for a in out:
+        a.flags.writeable = False
+    return out
 
 def ramp(n, start, step):
     """e^(-j 2 pi (start + step k)) for k = 0..n-1 (cycles): a derotation, complex64. Built from two short tables and their
@@ -117,29 +126,47 @@ def channel(G, pci, n_rb, sf, ports=4):
     the port's symbols of the subframe (it barely moves in 1 ms). Ports past `ports` are zeros. Every port and symbol at
     once: a port's reference signals are a comb of step 6, so each subcarrier's two neighbours are found by arithmetic"""
     nsc = 12*n_rb
-    ks = np.arange(nsc)
     H = np.zeros((4, 14, nsc), np.complex64)
-    tsym = np.arange(14, dtype=float)
+    plan = _channel_plan(int(pci), int(n_rb), int(sf), int(ports))
+    if plan is None:
+        return H
+    sym, kk, ref, i0, a, r, per_port = plan
+    h = G[sym[:, None], kk]/ref # Least squares at each reference signal
+    hs = h[r, i0]*(1 - a) + h[r, i0 + 1]*a # (rows, nsc)
+    for p, (sel, dt, den, tt) in enumerate(per_port):
+        H_p = hs[sel]
+        mean = H_p.mean(0)
+        slope = np.sum(dt[:, None]*(H_p - mean), axis=0)/den
+        H[p] = mean[None, :] + slope[None, :]*tt[:, None]
+    return H
+
+@functools.lru_cache(maxsize=512)
+def _channel_plan(pci, n_rb, sf, ports):
+    """What `channel` reads of a subframe's reference signals, which only the cell, its width, the subframe and the ports
+    decide: the rows (port, symbol), their subcarriers and values, each subcarrier's neighbours on its row's comb, and
+    each port's line in time"""
+    nsc = 12*n_rb
     rows = [(p, slot, l) for p in range(ports) for slot in (0, 1) for l in CRS_SYMBOLS[p]]
     if not rows:
-        return H
+        return None
     v = np.array([(crs_shift(p, 2*sf + slot, l) + pci) % 6 for p, slot, l in rows])
     sym = np.array([slot*7 + l for _, slot, l in rows])
     kk = 6*np.arange(2*n_rb)[None, :] + v[:, None] # (rows, 2 N_RB)
     ref = np.array([crs_values(pci, 2*sf + slot, l, n_rb) for p, slot, l in rows])
-    h = G[sym[:, None], kk]/ref # Least squares at each reference signal
-    t = np.clip((ks[None, :] - v[:, None])/6.0, 0, 2*n_rb - 1) # Where each subcarrier falls on its row's comb
+    t = np.clip((np.arange(nsc)[None, :] - v[:, None])/6.0, 0, 2*n_rb - 1) # Where each subcarrier falls on its row's comb
     i0 = np.minimum(np.floor(t).astype(np.int64), 2*n_rb - 2)
     a = t - i0
     r = np.arange(len(rows))[:, None]
-    hs = h[r, i0]*(1 - a) + h[r, i0 + 1]*a # (rows, nsc)
+    per_port = []
     for p in range(ports):
         sel = np.array([q == p for q, _, _ in rows])
-        t_p, H_p = sym[sel].astype(float), hs[sel]
+        t_p = sym[sel].astype(float)
         tm = t_p.mean()
-        slope = np.sum((t_p - tm)[:, None]*(H_p - H_p.mean(0)), axis=0)/np.sum((t_p - tm)**2)
-        H[p] = H_p.mean(0)[None, :] + slope[None, :]*(tsym - tm)[:, None]
-    return H
+        per_port.append((sel, t_p - tm, np.sum((t_p - tm)**2), np.arange(14, dtype=float) - tm))
+    out = (sym, kk, ref, i0, a, r, per_port)
+    for x in out[:-1]:
+        x.flags.writeable = False
+    return out
 
 # ---- transmit diversity (6.3.4.3), soft bits (7.1.2)
 

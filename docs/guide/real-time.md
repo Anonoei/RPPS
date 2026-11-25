@@ -15,6 +15,11 @@ print(out.stream.realtime(window=2)) # one number, over the last 2 s of signal: 
   gives the busiest: serial work is the sum, `pipelined` work the slowest stage, a parallel region its workers' time
   over their number.
 
+- **Profiles that branch.** `blocks.pipelined(profile.rx())` gives a branching profile's trunk one thread and its
+  branches another (`BranchRunner.pipelined_parts`), with the same output and messages as one thread. Python holds
+  both to one core between numpy and kernel calls, so they gain less than two threads would: `lte/downlink` at
+  15.36 MS/s is 1.1x real time in one thread and 1.0x pipelined in blocks of 65536, 0.95x pipelined in 262144
+  (`python tools/lte_bench.py`). Longer blocks cost less per sample, at a block's latency.
 - **Native kernels.** The per-sample loops (AGC, Costas, timing recovery, equalizers, IIR, demodulators) and the decoders
   (Viterbi, trellis, BCJR / turbo, LDPC, Reed-Solomon, BCH, polar) run in C++ (`rpps._native`, built with the package)
   and release the GIL, so threads run them in parallel; batches of codewords are spread over the cores (`RPPS_THREADS`

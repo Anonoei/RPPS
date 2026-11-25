@@ -211,6 +211,8 @@ def parse(obj, steps, where):
 
 # ---- Positions through a step
 
+_IN, _OUT = (lambda x: x[0]), (lambda x: x[1])
+
 class PosMap:
     """How a step's input positions become its output positions: anchors (input, output, rate), from which the output
     advances `rate` items per input item. A step gets one when it first runs, one at every change applied to it (its rate
@@ -232,22 +234,26 @@ class PosMap:
         self.a = [x for x in self.a if x[0] <= i]
 
     def add(self, i, o, rate):
-        """An anchor; one at the same input position is replaced (what a step reports wins over what was worked out)"""
-        k = bisect.bisect_left([x[0] for x in self.a], i)
+        """An anchor; one at the same input position is replaced (what a step reports wins over what was worked out). One
+        on the line already there (a change that kept the rate: every header's) changes nothing and is not kept, so a long
+        stream's map stays as short as its rate changes"""
+        k = bisect.bisect_left(self.a, i, key=_IN)
         if k < len(self.a) and self.a[k][0] == i:
             self.a[k] = [i, o, rate]
-        else:
-            self.a.insert(k, [i, o, rate])
+            return
+        if k and rate == self.a[k - 1][2] and o == self.a[k - 1][1] + (i - self.a[k - 1][0])*rate:
+            return
+        self.a.insert(k, [i, o, rate])
 
     def rate_at(self, i):
-        k = bisect.bisect_right([x[0] for x in self.a], i) - 1
+        k = bisect.bisect_right(self.a, i, key=_IN) - 1
         return self.a[max(k, 0)][2] if self.a else 1.0
 
     def fwd(self, i):
         """Output position of input position i"""
         if not self.a:
             return i*self.r0
-        k = max(bisect.bisect_right([x[0] for x in self.a], i) - 1, 0)
+        k = max(bisect.bisect_right(self.a, i, key=_IN) - 1, 0)
         a = self.a[k]
         return a[1] + (i - a[0])*a[2]
 
@@ -255,7 +261,7 @@ class PosMap:
         """Input position of output position o"""
         if not self.a:
             return o/self.r0
-        k = max(bisect.bisect_right([x[1] for x in self.a], o) - 1, 0)
+        k = max(bisect.bisect_right(self.a, o, key=_OUT) - 1, 0)
         a = self.a[k]
         return a[0] + (o - a[1])/a[2] if a[2] else a[0]
 

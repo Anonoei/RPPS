@@ -41,6 +41,8 @@ BBHEADER). The profile ends the trunk on an exit step, `EXIT`, that the controls
 the change forward through the trunk with the data as it does any, and applies it to the exit at the trunk's output
 position, which is where every branch takes it.
 """
+import threading
+
 from ..errors import ConfigError
 from ..base import Stage
 from ..base.meta import Stream
@@ -219,6 +221,23 @@ class _Bus:
             self.queue.append((targets, entry, dict(fields), pos, key, branch))
 
 
+class _TrunkOut:
+    """What the trunk's half hands the branches' half: its output, the exit's changes, and the input's rate and time"""
+    __slots__ = ("data", "exits", "input")
+
+
+class _Part:
+    """Half of a BranchRunner, applied as a stage (data + part) in a thread of its own (Blocks.pipelined)"""
+    def __init__(self, runner, fn, name):
+        self.runner, self.fn, self.name = runner, fn, name
+
+    def __repr__(self):
+        return f"<{self.runner.name}: {self.name}>"
+
+    def __radd__(self, data):
+        return self.fn(data)
+
+
 class BranchRunner:
     """trunk: the runner of the steps before the branch step (None: none), chains: {name: BranchChain} in order"""
     kinds = None # The message kinds handed out (Profile.rx(kinds=...)), None: all
@@ -232,6 +251,7 @@ class BranchRunner:
         if self.frame is not None and self.framed:
             raise ConfigError(f"{name}: frames of a fixed `frame` length, or started by a control, not both")
         self.held = None # Trunk output short of a whole frame
+        self._tlock, self._block = threading.Lock(), threading.Lock() # The trunk's state, the branches' (pipelined_parts)
         self._starts = [] # Frame starts a control gave (trunk output positions), not yet used
         self._input = (1.0, 0.0, None)
         self.take, self.select = dict(take or {}), dict(select or {})
@@ -266,21 +286,40 @@ class BranchRunner:
     def __call__(self, data, fields=None):
         if fields is not None:
             raise ConfigError(f"{self.name}: fields are for transmitting")
-        self._input = (data.meta.Fs or 1.0, data.meta.cf, data.meta.stream.t0)
-        if self.trunk is not None:
-            data = self.trunk(data)
-        if self.exit is not None:
-            for pos, by_step in self.exit.take():
-                for sid, params in by_step.items():
-                    if sid == self.step_id: # The branch step's own `frame`: a frame starts here
-                        self._starts.append(int(round(pos)))
-                        continue
-                    key = (EXIT, sid, int(round(pos)), tuple(sorted(params.items(), key=lambda kv: kv[0])))
-                    chain = self.chains[self.owner[sid]]
-                    if chain.taken is not None: # (placed once its frame has been looked at)
-                        self._pending.append((chain, sid, params, pos, key))
-                    else:
-                        chain.inject_params(sid, params, pos, key)
+        return self._branches(self._trunk(data))
+
+    def pipelined_parts(self):
+        """The runner in two, for Blocks.pipelined to give each a thread: the trunk, then the branches. The branches read
+        what the trunk carries back (positions, its control log) under its lock, once it is done with a block"""
+        return _Part(self, self._trunk, "trunk"), _Part(self, self._branches, "branches")
+
+    def _trunk(self, data):
+        """The trunk's half: its output, and the changes its exit kept for the branches"""
+        item = _TrunkOut()
+        item.input = (data.meta.Fs or 1.0, data.meta.cf, data.meta.stream.t0)
+        with self._tlock:
+            item.data = self.trunk(data) if self.trunk is not None else data
+            item.exits = self.exit.take() if self.exit is not None else []
+        return item
+
+    def _branches(self, item):
+        """The branches' half: every branch reads the trunk's output, in order"""
+        with self._block:
+            return self._read(item)
+
+    def _read(self, item):
+        self._input, data = item.input, item.data
+        for pos, by_step in item.exits:
+            for sid, params in by_step.items():
+                if sid == self.step_id: # The branch step's own `frame`: a frame starts here
+                    self._starts.append(int(round(pos)))
+                    continue
+                key = (EXIT, sid, int(round(pos)), tuple(sorted(params.items(), key=lambda kv: kv[0])))
+                chain = self.chains[self.owner[sid]]
+                if chain.taken is not None: # (placed once its frame has been looked at)
+                    self._pending.append((chain, sid, params, pos, key))
+                else:
+                    chain.inject_params(sid, params, pos, key)
         frames = []
         if self.frame is not None or self.framed:
             data, frames = self._frames(data)
@@ -316,13 +355,14 @@ class BranchRunner:
     def take_messages(self):
         """The frames the trunk and every branch decoded since the last call, placed in the stream given (a branch's
         positions are the trunk's output, carried back through it)"""
-        Fs, cf, t0 = self._input
-        out = list(self.trunk.take_messages()) if self.trunk is not None else []
-        for chain in self.chains.values():
-            for m in chain.take_messages():
-                at = chain.trunk_pos(m.sample)
-                pos = self.trunk.to_input(at) if self.trunk is not None else at
-                out.append(m.placed(pos, Fs, cf, t0))
+        with self._block, self._tlock:
+            Fs, cf, t0 = self._input
+            out = list(self.trunk.take_messages()) if self.trunk is not None else []
+            for chain in self.chains.values():
+                for m in chain.take_messages():
+                    at = chain.trunk_pos(m.sample)
+                    pos = self.trunk.to_input(at) if self.trunk is not None else at
+                    out.append(m.placed(pos, Fs, cf, t0))
         return sorted((m for m in out if self.kinds is None or m.kind in self.kinds), key=lambda m: m.sample)
 
     def _parts(self, data, frames):
@@ -353,11 +393,15 @@ class BranchRunner:
     def _selected(self, name, starts, data):
         """Which frames (trunk output starts) branch `name` reads: its select expression over the fields the named trunk
         step published last at or before each frame's start, carried back to that step's input"""
-        import numpy as np
-        from .. import _config
         rule = self.select[name]
         sid = rule["step"]
         slot = self.trunk._step_slots[sid][0]
+        with self._tlock: # (the trunk's maps and log, as far as it has come: past every frame here)
+            return self._select(name, rule, sid, slot, starts, data)
+
+    def _select(self, name, rule, sid, slot, starts, data):
+        import numpy as np
+        from .. import _config
         ctl = data.meta.stream.control
         log = ctl.log if ctl is not None else []
         st = data.meta.stream.states.setdefault((self, "select", name), {"i": 0, "fields": {}}) # a cursor into the log

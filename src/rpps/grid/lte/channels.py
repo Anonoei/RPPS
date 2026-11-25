@@ -64,6 +64,18 @@ def tail_biting(llr, K):
     d = _conv_rm(K, len(llr)).decode(np.asarray(llr, float))
     return np.asarray(_conv().decoder.decode(d)).astype(np.uint8)
 
+def tail_biting_batch(llrs, K):
+    """`tail_biting` of each of llrs (soft bits of any lengths): (len(llrs), K) bits, the Viterbi of a length in one batch"""
+    out = np.zeros((len(llrs), K), np.uint8)
+    by_len = {}
+    for i, llr in enumerate(llrs):
+        by_len.setdefault(len(llr), []).append(i)
+    for E, rows in by_len.items():
+        rm = _conv_rm(K, E)
+        d = np.array([rm.decode(np.asarray(llrs[i], float)) for i in rows])
+        out[rows] = np.asarray(_conv().decoder.decode_batch(d)).astype(np.uint8)
+    return out
+
 def crc_bits(bits, name):
     return np.asarray(_crc(name).field(np.asarray(bits, np.uint8))).astype(np.uint8)
 
@@ -232,19 +244,18 @@ class PDCCH(_Channel):
         n_rb = head["n_rb"]
         cc = self.cces(head, G, H)
         sizes = {phy.dci_1a_size(n_rb): "1A", phy.dci_1c_size(n_rb): "1C"}
+        cands = [cc[s0:s0 + L].reshape(-1) for L, starts in ((4, (0, 4, 8, 12)), (8, (0, 8))) for s0 in starts
+                 if s0 + L <= len(cc)]
+        decoded = {K: tail_biting_batch(cands, K + 16) for K in sizes} # (every candidate of a size in one batch)
         found, seen = [], set()
-        for L, starts in ((4, (0, 4, 8, 12)), (8, (0, 8))):
-            for s0 in starts:
-                if s0 + L > len(cc):
-                    continue
-                llr = cc[s0:s0 + L].reshape(-1)
-                for K, fmt in sizes.items():
-                    b = tail_biting(llr, K + 16)
-                    rnti = _int(b[K:] ^ crc_bits(b[:K], "crc16_xmodem"))
-                    key = (rnti, K, b[:K].tobytes())
-                    if rnti in self.rntis and key not in seen: # (aggregation 8 holds the 4 of the same DCI)
-                        seen.add(key)
-                        found.append((fmt, rnti, b[:K]))
+        for i in range(len(cands)):
+            for K, fmt in sizes.items():
+                b = decoded[K][i]
+                rnti = _int(b[K:] ^ crc_bits(b[:K], "crc16_xmodem"))
+                key = (rnti, K, b[:K].tobytes())
+                if rnti in self.rntis and key not in seen: # (aggregation 8 holds the 4 of the same DCI)
+                    seen.add(key)
+                    found.append((fmt, rnti, b[:K]))
         out, allocated = [], False
         for fmt, rnti, b in found:
             out.append(b)
