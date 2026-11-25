@@ -122,8 +122,20 @@ def test_applied_sync_is_skipped():
 def test_defaults_and_overrides():
     assert "+OerderMeyr" in names(rp.profile.load("ieee80211b/1m").rx()) # registry default: first class (step 8)
     assert "+MPower" in names(rp.profile.load("ieee80211b/long").rx())
-    p = rp.profile.load("ieee80211b/1m", sync={"timing": {"method": "gardner"}}) # the loops are there by name
-    assert p.rx().ops[1][1].ted == "gardner"
+    p = rp.profile.load("ieee80211b/1m", sync={"timing": {"method": "mat"}}) # another estimator by name
+    assert "+MatTrack" in names(p.rx())
+
+def test_the_timing_loops_are_there_by_name():
+    p = rp.profile.load("ieee80211b/1m", sync={"timing": {"method": "gardner"}}) # second class (rpps.sync.loops)
+    mm = next(op for _, op in p.rx().ops if isinstance(op, rp.sync.loops.MM))
+    assert mm.ted == "gardner"
+
+def test_mm_timing_step_takes_biphase():
+    """{"sync": "timing", "method": "mm", "biphase": true}: M&M on Manchester symbols (RDS)"""
+    p = rp.profile.Profile("x", {"steps": [{"sync": "timing", "method": "mm", "alpha": 0.05, "biphase": True},
+                                           {"symbol": "constellation", "name": "psk/bpsk"}]})
+    mm = p.rx().ops[0][1]
+    assert isinstance(mm, rp.sync.loops.MM) and mm.biphase and mm.ted == "mm"
 
 def test_errors():
     with pytest.raises(ConfigError):
@@ -213,10 +225,3 @@ def test_domain_loader_keeps_the_given_parameters():
     assert _config.load("profile", "ieee802154/2450", params={"sps": 8}).params == {"sps": 8}
     assert rp.profile.load("ieee802154/2450", sps=8).params == {"sps": 8}
     assert rp.profile.load("ieee802154/2450").params == {"sps": 4}
-
-def test_mm_timing_step_takes_biphase():
-    """{"sync": "timing", "method": "mm", "biphase": true}: M&M on Manchester symbols (RDS: examples/e2e_profile.py)"""
-    p = rp.profile.Profile("x", {"steps": [{"sync": "timing", "method": "mm", "alpha": 0.05, "biphase": True},
-                                           {"symbol": "constellation", "name": "psk/bpsk"}]})
-    mm = p.rx().ops[0][1]
-    assert isinstance(mm, rp.sync.time.MM) and mm.biphase and mm.ted == "mm"

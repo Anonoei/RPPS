@@ -13,7 +13,7 @@ Packages follow the categories of `rpps.base`; data goes samples -> symbols -> c
 |---|---|
 | `rpps.source` | files and their formats, WAV, SigMF, sockets, radios through pysdrlib (imported only when used); sinks |
 | `rpps.signal` | `filters` (FIR, IIR, windows, pulses, fractional delay, polyphase channelizer), `sample` (resampling), `channelize`, `DCBlock`, `Deemphasis`, `Conjugate`, `channel` (the simulated medium) |
-| `rpps.sync` | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `Lock`, `AcquireFEC`, `acquire_code`, `Squelch`, `PeakAGC`, `Burst`, `BurstTx`, `Bursts` (many carriers, a burst time plan), `PlanTx`, `Preamble`, `ToneLock`. Second class: `time.MM` (Gardner), `time.TLL`, `Costas`, `AGC`, `equalize.LMS`, `CMA` |
+| `rpps.sync` | first class: `time.OerderMeyr`, `phase.MPower`, `equalize.BlockLS`, `CPSync`, tracked by `track`; `FrameSync`, `Delimiter`, `PilotPhase`, `PilotEqualizer`, `Align`, `Puncture`, `Acquire`, `Lock`, `AcquireFEC`, `acquire_code`, `Squelch`, `AGC`, `PeakAGC`, `Burst`, `BurstTx`, `Bursts` (many carriers, a burst time plan), `PlanTx`, `Preamble`, `ToneLock`. Being replaced: `Costas`, `equalize.LMS`, `CMA` |
 | `rpps.wave` | `Shape`/`Matched`, `Stagger`, `FM`/`FMDemod`, `OFDMTx`/`OFDMRx`, `AMDemod`, `SSBDemod`, `demod` |
 | `rpps.symbol` | `Constellation` (PSK, QAM, APSK, ASK), `Differential`, `Spread`/`Despread`, `Carriers`, `Header`, `Pilots`, `PhaseScramble` |
 | `rpps.code` | FEC, interleaving, rate matching (`code.types`), scramblers (`code.scram`), `Line`, `Marker`, `Uncoded` |

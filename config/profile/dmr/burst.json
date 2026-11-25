@@ -19,7 +19,12 @@
   },
   "defaults": {
     "timing": {
-      "method": "gardner"
+      "method": "oerder_meyr",
+      "comment": "block estimation over 256-symbol windows (its square-law line is weak at this roll-off: no gate, the phase alone, tracked)",
+      "min_symbols": 256,
+      "window": 0,
+      "clock": false,
+      "gate": 0
     }
   },
   "steps": [

@@ -7,7 +7,8 @@ Composed of:
   - Accumulator
     - eC[n] = (eC[n-1] + K0 * eF[n-1] mod [max])
 
-`loop_gains` designs the filter from a bandwidth, which is how Costas and the timing loops should be tuned.
+`loop_gains` designs the filter from a bandwidth, which is how Costas and the timing loops should be tuned; `PILoop`
+is the filter.
 """
 
 def loop_gains(bw, damping=0.7071, Kd=1.0, K0=1.0):

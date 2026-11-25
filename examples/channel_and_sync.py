@@ -11,8 +11,8 @@ frequency offset from the stream itself; `time.Mat` takes the symbols with a mat
 `phase.FFCarrier` removes frequency and phase feed-forward; `quality.Monitor` reports Es/N0 as the symbols go by.
 Nothing is told the baud rate or the offsets.
 
-Per-sample loops (`sync.time.MM`, `sync.time.Gardner`, `sync.Costas`) are still there for signals where blocks are not
-enough, and are chosen by name: compare examples/e2e.py (loops) with e2e_mat.py (blocks) on a real capture.
+The same estimators receive a real capture in examples/e2e.py (Oerder & Meyr timing, the M-th power carrier) and
+e2e_mat.py (the matrix matched filter).
 """
 import numpy as np
 

@@ -2,7 +2,7 @@
 
     {"base": "profile", "comment": "...", "ref": "...",
      "params": {"sps": {"default": 4}},
-     "defaults": {"timing": {"method": "gardner"}},       optional: how the receiver estimates what sync steps name
+     "defaults": {"timing": {"method": "mat"}},           optional: how the receiver estimates what sync steps name
      "steps": [ {"<category>": "<kind>", "id": ..., ...}, ... ]}     in receive order (see rpps.profile.steps)
      "controls": {"<header step id>": {...}}              optional: header-driven control (see rpps.profile.control)
      "parallel": "<step id>"                              optional: the first step that runs frame by frame (see rpps.profile.parallel)

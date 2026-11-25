@@ -62,7 +62,7 @@ class Costas(Stage):
     @classmethod
     def from_bandwidth(cls, bw, order=2, damping=0.7071, offset=0.0, points=None):
         """Loop gains from a noise bandwidth normalised to the symbol rate (0.01-0.05 typical)"""
-        from .pll import loop_gains
+        from .loops.pll import loop_gains
         return cls(*loop_gains(bw, damping), order=order, offset=offset, points=points)
 
     def new_state(self, meta: Meta):

@@ -88,7 +88,7 @@ Each settled by the rule.
 | Function | Category | Why |
 |---|---|---|
 | Matched filter | wave | prepares samples; does not decide when to sample |
-| Timing recovery (`MM`, `Mat`, `TLL`, `OerderMeyr`) | sync | estimates the instant; the one sync step that changes representation |
+| Timing recovery (`OerderMeyr`, `MatTrack`, `Mat`, `Known`) | sync | estimates the instant; the one sync step that changes representation |
 | Differential coding on symbols / on bits (NRZI) | symbol / code | symbols ↔ symbols / bits ↔ bits |
 | Manchester as a pulse / as 0 → 01, 1 → 10 | wave / code | symbols ↔ samples / bits ↔ bits |
 | Spreading at one sample per chip (`Spread`), `Despread` at `sps` with a known code phase | symbol | chips are symbols |

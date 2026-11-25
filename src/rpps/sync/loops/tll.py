@@ -1,10 +1,10 @@
-"""Timing locked loop: a per-symbol loop around a timing error detector (rpps.sync.time.ted)"""
+"""Timing locked loop: a per-symbol loop around a timing error detector (rpps.sync.loops.ted)"""
 from types import SimpleNamespace
 
 import numpy as np
 
 from ...base import Stage
-from ..pll import PILoop
+from .pll import PILoop
 from .ted import DETECTORS
 from ... import _effort
 from ...math import interp
@@ -12,11 +12,11 @@ from ...math import interp
 class TLL(Stage):
     """Symbol timing by a timing locked loop: samples at `sps` in (after their matched filter), one symbol each out
 
-        symbols = matched + rp.sync.time.TLL(sps=4, bw=0.01)
+        symbols = matched + rp.sync.loops.TLL(sps=4, bw=0.01)
 
     Second class (rpps.sync): a loop updated once per symbol. Each symbol is interpolated at its
     instant, and a timing error detector (`ted`: "zx", zero crossing (Gardner), on the symbol before it, the sample half
-    way and this one; "el", early-late, on the samples half a symbol either side of this one) gives the timing error, which a proportional-integral loop filter (rpps.sync.pll.PILoop, from `bw` as a fraction of the
+    way and this one; "el", early-late, on the samples half a symbol either side of this one) gives the timing error, which a proportional-integral loop filter (rpps.sync.loops.pll.PILoop, from `bw` as a fraction of the
     symbol rate) turns into the next instant. Needs no decisions and no carrier, so it runs before carrier recovery.
     Any sps over 1, fractional too, and any block cut. Estimates in stream.est[name]: the timing phase (samples) and the
     loop's rate correction.

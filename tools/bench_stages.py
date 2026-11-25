@@ -19,7 +19,7 @@ import _bench
 STAGES = {
     "AGC": (lambda: rp.sync.AGC(1.0), dict(Fs=1e6)),
     "Costas (QPSK)": (lambda: rp.sync.Costas.from_bandwidth(0.02, order=4), dict(Fs=1e6, sps=1)),
-    "MM (sps 8)": (lambda: rp.sync.time.MM(), dict(Fs=8e6, sps=8)),
+    "OerderMeyr (sps 8)": (lambda: rp.sync.time.OerderMeyr(), dict(Fs=8e6, sps=8)),
     "IIR (butter 6)": (lambda: rp.signal.filters.IIR(rp.signal.filters.iir.design("butter", 6, "lowpass", 0.1)), dict(Fs=1e6)),
     "DCBlock": (lambda: rp.signal.DCBlock(), dict(Fs=1e6)),
     "CMA (11 taps)": (lambda: rp.sync.equalize.CMA(11, 0.002), dict(Fs=1e6, sps=1)),
@@ -135,7 +135,7 @@ def best_rate(make, x, block, rates, repeat):
 def chain():
     """A receiver after the channel filter: matched filter, AGC, timing, carrier (sps 8 in, symbols out)"""
     taps = rp.signal.filters.designer.designer(129, 0.6e6, fs=8e6)
-    return (rp.signal.filters.filters.ConvFilter(taps) + rp.sync.AGC(1.0) + rp.sync.time.MM(alpha=0.1)
+    return (rp.signal.filters.filters.ConvFilter(taps) + rp.sync.AGC(1.0) + rp.sync.time.OerderMeyr()
             + rp.sync.Costas.from_bandwidth(0.02, order=4))
 
 def chain_rate(x, block, how):
@@ -186,7 +186,7 @@ def main(argv=None):
     if not _accel.available():
         print("rpps._native is not built: python tools/builder.py -c")
         return _bench.finish(a, rec)
-    print(f"\nchain (FIR 129 + AGC + MM + Costas), blocks of {a.block}")
+    print(f"\nchain (FIR 129 + AGC + OerderMeyr + Costas), blocks of {a.block}")
     for how in ("one thread", "pipelined"):
         r = rec.add(f"chain {how}", chain_rate(x, a.block, how)/1e6, "MS/s")
         print(f"  {how:12s} {r:6.2f} MS/s")

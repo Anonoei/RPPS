@@ -279,9 +279,11 @@ def rds_chain():
     front, Fs, D = rp.signal.channelize(57e3, 15e3, 480e3, oversample=1.6) # -> 24 kS/s
     assert abs(Fs - 24e3) < 1, Fs
     pre = front + rp.signal.sample.re.Polyphase(19, 24) + rp.signal.filters.ShapingBiphase() # 19 kS/s = 16 samples per symbol
-    sym = rp.sync.time.MM(0.05, 0.0, 32, biphase=True)
-    costas = rp.sync.Costas(0.132, 0.00932, order=2)
-    return SimpleNamespace(pre=pre, post=sym + costas, sym=sym, costas=costas,
+    # Block estimation: timing from the square-law line, the carrier from the square's (BPSK); its acquisition gate
+    # lowered so a weak station is still acquired (measured: at an SER of 20% where the default gate refuses)
+    sym = rp.sync.time.OerderMeyr()
+    carrier = rp.sync.phase.MPower(order=2, gate=1.0)
+    return SimpleNamespace(pre=pre, post=sym + carrier, sym=sym, carrier=carrier,
                            track=rp.sync.quality.Track(np.array([1.0, -1.0])), decoder=RDS())
 
 def reader(blocks, out, stop):

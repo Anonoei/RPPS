@@ -144,7 +144,7 @@ def test_mat_timing_matches_python():
 def test_mm_matches_python(ted, biphase):
     sps = 8
     x = shaped(np.random.default_rng(5), 2500, sps, delay=3)
-    make = lambda: rp.sync.time.MM(alpha=0.1, ted=ted, biphase=biphase)
+    make = lambda: rp.sync.loops.MM(alpha=0.1, ted=ted, biphase=biphase)
     for cut in ([len(x)], [4000, 4000, len(x) - 8000], [1]*40 + [len(x) - 40]):
         ref, st_ref = run(make, x, cut, native=False, Fs=8e3, sps=sps)
         y, st = run(make, x, cut, native=True, Fs=8e3, sps=sps)

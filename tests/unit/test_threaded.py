@@ -24,7 +24,7 @@ def capture(tmp_path):
     return x, path
 
 def chain():
-    return rp.sync.AGC(1.0) + rp.sync.time.MM(alpha=0.1) + rp.sync.Costas.from_bandwidth(0.02, order=4)
+    return rp.sync.AGC(1.0) + rp.sync.time.OerderMeyr(window=0.0, min_symbols=256) + rp.sync.phase.MPower(order=4, offset=np.pi)
 
 def blocks_of(path):
     return rp.source.File("cf32", path, Fs=8e3, sps=8)(1000)
@@ -148,7 +148,7 @@ def test_a_radio_overrun_moves_the_positions_on():
 def test_load_reports_each_stage_against_real_time(capture):
     _, path = capture
     src = rp.source.File("cf32", path, Fs=8e3, sps=8)
-    agc, mm = rp.sync.AGC(), rp.sync.time.MM()
+    agc, mm = rp.sync.AGC(), rp.sync.time.OerderMeyr(window=0.0, min_symbols=256)
     (src(1000) + (agc + mm)).collect()
     assert src.stream.air == pytest.approx(len(capture[0])/8e3)
     load = src.stream.load()

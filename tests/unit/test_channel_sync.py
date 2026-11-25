@@ -71,14 +71,14 @@ def test_timing_loops_lock(ted, delay, rng):
     t = np.arange(len(x))
     x = (np.interp(t - delay, t, x.real) + 1j*np.interp(t - delay, t, x.imag)).astype(np.complex64)
     x = (rp.Data(x, Fs=4.0, sps=4) + rp.signal.channel.AWGN(25, power=None, seed=1))
-    out = (x + rp.sync.time.MM(0.05, ted=ted)).data
+    out = (x + rp.sync.loops.MM(0.05, ted=ted)).data
     assert qpsk_evm(out[1000:]) < -20
 
 @pytest.mark.parametrize("ted", ["mm", "gardner"])
 def test_timing_loops_follow_clock_drift(ted, rng):
     x, _ = shaped_qpsk(rng, n=20000)
     d = rp.Data(x, Fs=4.0, sps=4) + rp.signal.channel.TimingOffset(0.5) + rp.signal.channel.ClockDrift(300) + rp.signal.channel.AWGN(25, power=None, seed=1)
-    out = (d + rp.sync.time.MM(0.05, ted=ted)).data
+    out = (d + rp.sync.loops.MM(0.05, ted=ted)).data
     for a, b in ((2000, 6000), (8000, 13000), (14000, 19000)):
         assert qpsk_evm(out[a:b]) < -18 # Still locked 20000 symbols * 300 ppm = 6 symbols of drift later
 

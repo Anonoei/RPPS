@@ -1,7 +1,7 @@
-"""Timing error detectors: the error a timing loop (rpps.sync.time.TLL) steers by, from samples around a symbol's instant
+"""Timing error detectors: the error a timing loop (rpps.sync.loops.TLL) steers by, from samples around a symbol's instant
 
 Both need no decisions and no carrier (non-data aided) and at least 2 samples a symbol. Positive: the instant is early (the
-loop moves it later). Decision-directed Mueller & Muller is part of rpps.sync.time.MM.
+loop moves it later). Decision-directed Mueller & Muller is part of rpps.sync.loops.MM.
 """
 import numpy as np
 

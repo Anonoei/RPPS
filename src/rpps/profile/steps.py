@@ -260,7 +260,7 @@ def _sync_method(kind, spec, ctx):
 
 _SYNC_DEFAULTS = {
     "timing": {"method": "oerder_meyr"}, # first class: block estimation tracked across windows (rpps.sync)
-    "carrier": {"method": "mpower"},     # first class likewise; the loops (mm, gardner, costas) are there by name
+    "carrier": {"method": "mpower"},     # first class likewise
     "align": {"method": "align"},
     "puncture": {"method": "reencode"},
     "pilots": {"method": "ls"},
@@ -285,21 +285,23 @@ def _om(m, rep, ctx):
 
 @register_sync_method("timing", "mm")
 def _mm(m, rep, ctx):
-    """Mueller & Muller: "alpha" (loop gain), "interp" (interpolation factor), "biphase" (Manchester symbols, timed on
-    their mid-symbol transition: RDS)"""
+    """Mueller & Muller, a per-symbol loop (second class, rpps.sync.loops.MM): "alpha" (loop gain), "interp"
+    (interpolation factor), "biphase" (Manchester symbols, timed on their mid-symbol transition: RDS)"""
     from .. import sync
-    return sync.time.MM(m.get("alpha", 0.3), interp=m.get("interp", 32), biphase=m.get("biphase", False), ted="mm")
+    return sync.loops.MM(m.get("alpha", 0.3), interp=m.get("interp", 32), biphase=m.get("biphase", False), ted="mm")
 
 @register_sync_method("timing", "gardner")
 def _gardner(m, rep, ctx):
+    """Gardner, a per-symbol loop (second class, rpps.sync.loops.MM): "alpha" (loop gain)"""
     from .. import sync
-    return sync.time.MM(m.get("alpha", 0.3), ted="gardner")
+    return sync.loops.MM(m.get("alpha", 0.3), ted="gardner")
 
 @register_sync_method("timing", "tll")
 def _tll(m, rep, ctx):
+    """A timing locked loop (second class, rpps.sync.loops.TLL): "bw" (of the symbol rate), "damping", "ted" (zx, el)"""
     from .. import sync
-    return sync.time.TLL(m.get("sps", ctx["params"].get("sps")), m.get("bw", 0.01), m.get("damping", 0.7071), m.get("name", "timing"),
-                         m.get("ted", "zx"))
+    return sync.loops.TLL(m.get("sps", ctx["params"].get("sps")), m.get("bw", 0.01), m.get("damping", 0.7071),
+                          m.get("name", "timing"), m.get("ted", "zx"))
 
 @register_sync_method("timing", "mat")
 def _mat(m, rep, ctx):

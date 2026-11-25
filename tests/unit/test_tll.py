@@ -1,10 +1,9 @@
-"""The timing locked loop and the timing error detectors it is built from (rpps.sync.time.ted, rpps.sync.pll)"""
+"""The timing locked loop and the timing error detectors it is built from (rpps.sync.loops: ted, pll)"""
 import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.sync import pll
-from rpps.sync.time import ted
+from rpps.sync.loops import pll, ted
 
 P = np.exp(1j*np.pi/4*(2*np.arange(4) + 1))
 
@@ -27,7 +26,7 @@ def evm(y):
 @pytest.mark.parametrize("delay", [0.0, 1.3, 2.7])
 def test_tll_locks_like_oerder_meyr(delay, ted):
     x = matched_qpsk(delay=delay)
-    tll = evm((rp.Data(x, Fs=4e3, sps=4) + rp.sync.time.TLL(4, bw=0.01, ted=ted)).data)
+    tll = evm((rp.Data(x, Fs=4e3, sps=4) + rp.sync.loops.TLL(4, bw=0.01, ted=ted)).data)
     om = evm((rp.Data(x, Fs=4e3, sps=4, flush=True) + rp.sync.time.OerderMeyr(4)).data)
     assert tll < om + 0.02 # (both at the cubic interpolation's floor at 4 samples per symbol)
 
@@ -35,7 +34,7 @@ def test_tll_locks_like_oerder_meyr(delay, ted):
 def test_tll_any_block_cut(ted):
     x = matched_qpsk(2000)
     def run(cut):
-        stage, st, out, i = rp.sync.time.TLL(4, ted=ted), None, [], 0
+        stage, st, out, i = rp.sync.loops.TLL(4, ted=ted), None, [], 0
         for b in cut:
             d = rp.Data(x[i:i+b], stream=st, Fs=4e3, sps=4)
             st = d.stream

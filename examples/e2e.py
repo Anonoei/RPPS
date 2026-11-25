@@ -18,13 +18,13 @@ def main():
     resample = rp.signal.sample.re.Polyphase(19, 25) # Resample 25k to 19k
     matched = rp.signal.filters.ShapingBiphase() # RDS symbols are biphase
 
-    sym_sync = rp.sync.time.MM(0.05, 0.0, 32, biphase=True) # Symbol sync
-    freq_sync = rp.sync.Costas(0.132, 0.00932, order=2) # Fine Frequency correction
+    sym_sync = rp.sync.time.OerderMeyr() # Symbol timing by block estimation (the square-law line, tracked across windows)
+    freq_sync = rp.sync.phase.MPower(order=2) # Carrier frequency and phase from the square (BPSK), tracked likewise
 
     pre = demod + shift + low_pass + decimate + resample + matched # Everything up to the symbol sync
     post = sym_sync + freq_sync
 
-    bpsk = np.array([1.0, -1.0]) # What the Costas loop locks to
+    bpsk = np.array([1.0, -1.0]) # What the carrier is turned onto (the square leaves a 180 degree ambiguity)
     track = rp.sync.quality.Track(bpsk) # Es/N0 over the last symbols
     shown = np.zeros(0, dtype=np.complex64) # The symbols on the phasor
 
@@ -42,12 +42,13 @@ def main():
         out = pre_out + post
         if len(pre_out) >= 4*round(pre_out.sps):
             # Centre the eye on where the sync samples
-            phase = rp.viz.eye.sync_phase(out.state(sym_sync), len(pre_out))
+            phase = rp.viz.eye.sync_phase(out.state(sym_sync), len(pre_out), pre_out.meta.pos, pre_out.sps)
             rp.viz.eye.IQ(ax_e, pre_out.data, pre_out.sps, phase, width=0.5, derotate=2) # BPSK, one lobe wide
 
-        tcor = out.state(sym_sync).est
-        fcor = out.state(freq_sync).freq
-        pcor = out.state(freq_sync).pha
+        est = out.stream.est # (the estimates, a window behind: block estimation's latency)
+        tcor = est.get("timing", {}).get("phase") or 0.0
+        fcor = est.get("carrier", {}).get("frequency") or 0.0
+        pcor = est.get("carrier", {}).get("phase") or 0.0
 
         q = track.update(out.data, sps=pre_out.sps)
         state = f"{sink.percent*100:06.2f}% | tcor: {tcor:09.3e} / fcor: {fcor:09.3e} / pcor: {pcor:09.3e} | " + (f"{q}" if q else "measuring")

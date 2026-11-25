@@ -174,9 +174,9 @@ def ax25_signal():
 
 def test_ax25_builds_the_pairs(ax25_signal):
     p = ax25_signal[0]
-    assert names(p.rx()) == ["+ShiftFreq", "+Designed", "+FMDemod", "+Matched", "+MM", "/Constellation", "/Line", "/ax25"]
+    assert names(p.rx()) == ["+ShiftFreq", "+Designed", "+FMDemod", "+Matched", "+OerderMeyr", "/Constellation", "/Line", "/ax25"]
     assert names(p.tx()) == ["*ax25", "*Line", "*Constellation", "+Shape", "+FM"]
-    assert p.rx().ops[4][1].ted == "gardner"
+    assert p.rx().ops[4][1].min_symbols == 256 and p.rx().ops[4][1].gate == 0 # (short packets: 256-bit windows, no gate)
 
 def test_ax25_frames_round_trip_through_noise(ax25_signal):
     p, x, o, pk = ax25_signal

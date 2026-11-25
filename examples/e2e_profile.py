@@ -25,8 +25,8 @@ RDS = {
         {"signal": "decimate", "ratio": 10},                   # 25 kS/s
         {"signal": "resample", "up": 19, "down": 25},          # 19 kS/s: 16 samples a bit
         {"signal": "class", "class": "rpps.signal.filters.ShapingBiphase"}, # matched to the biphase symbol
-        {"sync": "timing", "method": "mm", "alpha": 0.05, "biphase": True},
-        {"sync": "carrier", "method": "costas", "order": 2, "bw": 0.05},
+        {"sync": "timing"},                                    # block estimation (Oerder & Meyr), tracked across windows
+        {"sync": "carrier", "order": 2},                       # the square's line (M-th power, M = 2), tracked likewise
         {"sync": "quality", "constellation": "psk/bpsk"},      # Es/N0 and EVM, in stream.est["quality"]
         {"symbol": "differential"},                            # a change of phase is a 1
         {"symbol": "constellation", "name": "psk/bpsk"},

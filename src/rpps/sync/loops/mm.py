@@ -1,3 +1,4 @@
+"""Mueller & Muller and Gardner timing recovery: a per-symbol loop (rpps.sync.loops)"""
 from types import SimpleNamespace
 
 import numpy as np

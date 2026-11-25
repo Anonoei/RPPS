@@ -7,6 +7,19 @@ what to use instead. Work in progress (not yet here) is in [WORKING.md](WORKING.
 ## Unreleased
 
 ### Breaking
+- **The timing loops move to `rp.sync.loops`, second class: `loops.MM` (Mueller & Muller, Gardner), `loops.TLL`,
+  `loops.ted`, and `loops.pll` (`PILoop`, `loop_gains`; was `rp.sync.pll`)**, with the `mm` kernel; `rp.sync.time.MM`,
+  `time.TLL`, `time.ted` and `rp.sync.pll` are gone. A profile's `timing: mm`, `gardner` and `tll` build them. The
+  shipped profiles and examples time with `rp.sync.time.OerderMeyr` (block estimation, tracked across windows):
+  `ax25/afsk1200`, `p25/tsdu` and `dmr/burst` time
+  with it over 256-symbol windows (`"min_symbols": 256, "window": 0, "clock": false, "gate": 0`: the square-law line
+  of their matched filter's output is weak, so it is not gated), and decode more than Gardner did at every noise level
+  but the cleanest (frames decoded, 20 seeds each; Gardner / Oerder & Meyr): P25 TSBKs 287/295, 214/266, 89/178, 15/58
+  of 300; DMR slot types 317/320, 294/316, 249/298, 204/256 of 320; AX.25 packets 56/60, 53/59, 22/33 of 60. At the
+  cleanest point P25 has 298 of 300 against 300: one seed's data happens to match the frame sync word (0.83 against
+  the profile's 0.8 threshold), which the cleaner symbols now find. The RDS examples (`e2e.py`, `e2e_profile.py`) and
+  `projects/fm_radio` use `OerderMeyr` and `MPower(order=2)`; on the pysdr.org capture 182 RDS blocks are in sync
+  (the loops: 180), Es/N0 20.1 dB (19.9). `viz.eye.sync_phase` takes OerderMeyr's state (with the block's `pos` and `sps`).
 - **`rp.sync.AGC` is block estimation, not a loop**: `AGC(target, *, window=1e-4, min_samples, log, min_gain,
   max_gain, init)`, its arguments after `target` keywords only. Each window's level (the mean of log|x|, or |x|)
   sets the gain at the window's centre; between centres the gain is a line. `mu` is gone (also in a profile's

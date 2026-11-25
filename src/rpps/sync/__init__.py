@@ -34,17 +34,17 @@ Rules for feedforward estimators:
 4. **Latency is declared** in `stream.est[name]["latency"]` (seconds), not added to `meta.delay`, the group delay.
 
 A profile's sync steps name **what** is estimated (`carrier`, `timing`, `equalize`, `frame`) and get the first-class
-method; a loop is chosen by name in `defaults`: `{"timing": {"method": "gardner", "alpha": 0.3}}`. A new estimator is
-registered with `rp.profile.steps.register_sync_method`.
+method; another is chosen by name in `defaults`: `{"timing": {"method": "mat"}}`. A new estimator is registered with
+`rp.profile.steps.register_sync_method`.
 
 ## Second class: per-sample loops
 
-For signals and conditions block estimation does not suit: `time.MM` (Mueller & Muller, Gardner), `time.TLL` (a timing
-locked loop around a detector from `time.ted`: `ted="zx"` zero crossing, `"el"` early-late), `Costas`,
-`equalize.LMS`, `equalize.CMA`. Profiles reach them by name (`timing: mm`, `timing: {"method": "tll", "ted": "el"}`,
-`carrier: costas`, `equalize: lms`). Their loop filter is `pll.PILoop` (gains from a bandwidth: `pll.loop_gains`).
-`loops` holds the loops whose first-class stage replaced them: `loops.AGC` (`agc: loop`), `loops.PeakAGC`,
-`loops.Squelch`.
+`loops` (`rpps.sync.loops`) holds them, for signals and conditions block estimation does not suit, as references and for
+comparison: `loops.MM` (Mueller & Muller, Gardner), `loops.TLL` (a timing locked loop around a detector from
+`loops.ted`: `ted="zx"` zero crossing, `"el"` early-late), `loops.AGC`, `loops.PeakAGC`, `loops.Squelch`. Profiles reach
+them by name (`timing: mm`, `gardner`, `timing: {"method": "tll", "ted": "el"}`, `agc: loop`). Their loop filter is
+`loops.pll.PILoop` (gains from a bandwidth: `loops.pll.loop_gains`). Not yet moved there: `Costas` (`carrier: costas`),
+`equalize.LMS`, `equalize.CMA` (`equalize: lms`, `cma`).
 
 ## Known, measured, detected
 
@@ -83,7 +83,6 @@ from . import time
 
 from . import agc
 from .agc import AGC, PeakAGC
-from . import pll
 from . import equalize
 from .squelch import Squelch
 from . import loops

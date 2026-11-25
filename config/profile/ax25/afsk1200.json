@@ -1,6 +1,6 @@
 {
   "base": "profile",
-  "comment": "AX.25 packet radio at 1200 baud AFSK (Bell 202: mark 1200 Hz is a 1, space 2200 Hz a 0), NRZI (a 0 is a tone change), HDLC frames with the FCS-16: APRS. The input is the audio of the FM channel, real samples at `sps` x 1200 Hz (48 kHz: 40), the tones centred on `centre` Hz (1700 for audio; 0 for a complex baseband that has them about 0, such as this profile's own transmit output). The discriminator reads the tone, a Gardner loop times the bits (a rectangular NRZ signal has no square-law timing line), the frames' payloads come out",
+  "comment": "AX.25 packet radio at 1200 baud AFSK (Bell 202: mark 1200 Hz is a 1, space 2200 Hz a 0), NRZI (a 0 is a tone change), HDLC frames with the FCS-16: APRS. The input is the audio of the FM channel, real samples at `sps` x 1200 Hz (48 kHz: 40), the tones centred on `centre` Hz (1700 for audio; 0 for a complex baseband that has them about 0, such as this profile's own transmit output). The discriminator reads the tone, its matched filter (rectangular) makes each bit a triangle, the bits are timed by block estimation (Oerder & Meyr, rpps.sync), the frames' payloads come out",
   "ref": "AX.25 v2.2 3.1-3.9; Bell 202 / TAPR TNC-2",
   "tags": ["ax.25", "hdlc"],
   "params": {
@@ -23,8 +23,12 @@
   },
   "defaults": {
     "timing": {
-      "method": "gardner",
-      "alpha": 0.1
+      "method": "oerder_meyr",
+      "comment": "block estimation over 256-symbol windows (its square-law line is weak at this roll-off: no gate, the phase alone, tracked)",
+      "min_symbols": 256,
+      "window": 0,
+      "clock": false,
+      "gate": 0
     }
   },
   "steps": [

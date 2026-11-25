@@ -58,8 +58,8 @@ def test_mm_does_not_depend_on_block_size():
     sym = rng.choice([-1, 1], 3000) + 1j*rng.choice([-1, 1], 3000)
     sig = np.repeat(sym, 8).astype(np.complex64)
     sig = np.convolve(sig, np.ones(8)/8, mode="same").astype(np.complex64)
-    ref = run(lambda: rp.sync.time.MM(), sig, [len(sig)], Fs=8e3, sps=8)
-    y = run(lambda: rp.sync.time.MM(), sig, [4000, 4000, len(sig)-8000], Fs=8e3, sps=8)
+    ref = run(lambda: rp.sync.loops.MM(), sig, [len(sig)], Fs=8e3, sps=8)
+    y = run(lambda: rp.sync.loops.MM(), sig, [4000, 4000, len(sig)-8000], Fs=8e3, sps=8)
     n = min(len(ref), len(y))
     assert n > 2000 and abs(len(ref) - len(y)) <= 2
     assert np.allclose(ref[:n], y[:n], atol=1e-4)

@@ -32,7 +32,7 @@ def _text(chars):
 class RDS:
     """Feed it differentially-decoded bits; read the station's data
 
-    bits(syms) takes the slicer output (+ / - symbols, the Costas loop's sign ambiguity doesn't matter) and does the
+    bits(syms) takes the slicer output (+ / - symbols, the carrier's sign ambiguity doesn't matter) and does the
     differential decoding. events() returns what changed since it was last called, as printable strings.
     """
     def __init__(self, lose=12):

@@ -44,8 +44,8 @@ I into Q while Q is half a symbol late.
 - A step that loads a definition names its kind and reference as the loaders take them:
   `{"code": "conv", "name": "k7_171_133/3_4"}`, `{"code": "interleave", "name": "forney/12_17"}`,
   `{"symbol": "constellation", "name": "psk/qpsk"}`.
-- Sync steps name **what** is estimated (`carrier`, `timing`, `equalize`, `frame`) and get the first-class method; a
-  loop is chosen in `defaults`: `{"timing": {"method": "gardner", "alpha": 0.3}}`.
+- Sync steps name **what** is estimated (`carrier`, `timing`, `equalize`, `frame`) and get the first-class method;
+  another is chosen in `defaults`: `{"timing": {"method": "oerder_meyr", "min_symbols": 256, "gate": 0}}`.
 - Your own operator is a step by module path, in the category it does: `{"signal": "class", "class": "mypkg.Gain",
   "args": {...}}`. A `signal` or `sync` class is a `Stage` run on receive only; a `wave` class a `Stage` on receive
   and `"tx_class"` the one on transmit; a `symbol`, `code` or `link` class a `Pipe`, decoding on receive and encoding on

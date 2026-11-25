@@ -24,7 +24,7 @@ def test_every_category_and_kind_is_registered():
     assert {"signal", "sync", "wave", "symbol", "code", "link"} <= set(kinds)
     assert {"filter", "decimate", "class", "dc_block", "deemphasis", "shift"} <= set(kinds["signal"])
     assert {"timing", "carrier", "equalize", "squelch"} <= set(kinds["sync"])
-    assert {"oerder_meyr", "mm", "gardner", "known", "fixed", "tll"} <= set(steps.methods("timing"))
+    assert {"oerder_meyr", "mat", "known", "fixed", "mm", "gardner", "tll"} <= set(steps.methods("timing"))
 
 def test_unknown_kind_lists_what_there_is():
     with pytest.raises(ConfigError, match="have .*decimate"):
@@ -67,7 +67,7 @@ def test_stage_step_needs_a_stage():
 
 def test_tll_timing_method_from_a_profile_step():
     st = steps.build({"sync": "timing", "method": "tll", "bw": 0.01, "sps": 4}, rp.base.types.Rep.SAMPLES, steps.context())
-    assert isinstance(st.rx[0][1], rp.sync.time.TLL)
+    assert isinstance(st.rx[0][1], rp.sync.loops.TLL)
 
 def test_load_any_definition_by_path():
     assert rp.load("fec/block/rs/204_188").d_den == 204
