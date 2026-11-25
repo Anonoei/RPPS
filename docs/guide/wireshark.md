@@ -88,6 +88,7 @@ Packets that cross frames go as a stream: `dvbs2/ts` transmits transport packets
 (`p.tx()(rp.Data(bits, ...))`), packing them into TS-mode BBFRAMEs itself (SYNCD per frame, each sync byte the CRC-8 of
 the packet before), however the stream is cut.
 
-Without a radio, pysdrlib's simulated radios share an air (`pysdrlib.sim.air`): a sim made with `transmit=True, air="lab"`
-under a `DeviceSink` sends into it, and `rp.source.Device(pysdrlib.device("sim", air="lab"), ...)` receives it, in
-this process or another, at its own frequency and rate (the loop `tests/unit/test_encoder.py` runs in real time).
+Without a radio, pysdrlib's simulated radios share an air (`pysdrlib.air`, pysdrlib 0.5.1):
+`rp.source.DeviceSink("sim", air="lab", transmit=True, ...)` sends into it, and
+`rp.source.Device("sim", air="lab", ...)` receives it, in this process or another, at its own frequency and rate (the
+loop `tests/unit/test_encoder.py` runs in real time).

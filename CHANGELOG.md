@@ -118,7 +118,8 @@ what to use instead.
 - A profile's controls can drive a parameter in one direction only (`{"calc": ..., "on": "tx"}`).
 - Fixed: a DVB-S2 transmitter given a first block too short for a frame sent its PL header twice.
 - Packets through a radio and back without hardware: pysdrlib's simulated radios share an air (pysdrlib 0.5.1,
-  `Sim(transmit=True, air=...)`); `DeviceSink` on one, `rp.source.Device` on another, in real time.
+  `pysdrlib.air`): `DeviceSink("sim", air="lab", transmit=True)` into one, `rp.source.Device("sim", air="lab")` out of it,
+  in real time.
 - The LTE and NR channels say which check their messages passed (`Message.check`: PBCH and PDCCH CRC-16 or
   CRC-24C, PDSCH CRC-24A, or NR's CRC-16 for small transport blocks). `DeviceSink` takes pysdrlib's sim made with
   `transmit=True` (it asks the device as opened, not its class).

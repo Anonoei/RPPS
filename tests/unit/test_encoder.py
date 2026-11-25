@@ -116,12 +116,12 @@ def test_device_sink_with_pysdrlib_sim():
         rp.source.DeviceSink(pysdrlib.device("sim", realtime=False))
 
 def test_over_the_air_of_pysdrlib_sims(tmp_path):
-    """Packets out of one simulated radio and into another (pysdrlib.sim.air), both in real time as radios run:
+    """Packets out of one simulated radio and into another (pysdrlib.air), both in real time as radios run:
     transmitted from a thread while the receiver streams, received and captured again to the same bytes"""
-    pytest.importorskip("pysdrlib.sim.air")
+    pytest.importorskip("pysdrlib.air")
     import threading
     from pysdrlib.sim import Sim
-    from pysdrlib.sim.air import Air
+    from pysdrlib.air import Air
     p = rp.profile.load("ax25/afsk1200", centre=0, sps=10)
     call = lambda c, ssid, last: bytes(ord(ch) << 1 for ch in c.ljust(6)) + bytes([0x60 | ssid << 1 | last])
     frames = [call("APRS", 0, 0) + call("N0CALL", 7, 1) + b"\x03\xf0" + t for t in (b">over the air", b">and again")]
@@ -144,5 +144,4 @@ def test_over_the_air_of_pysdrlib_sims(tmp_path):
         if got > 24e3*(0.5 + sum(len(w) for w in waves)/12e3): # (the air is heard 0.1 s late)
             break
     sender.join()
-    air.close()
     assert [k.data for k in p.capture.packets(rx.take_messages())] == frames
