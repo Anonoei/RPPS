@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "IEEE 802.11b DSSS 1 Mb/s: DBPSK, Barker-11 at 11 Mchip/s, self-synchronizing scrambler.",
     "The standard sets a spectral mask rather than a pulse: RRC 0.35 here"

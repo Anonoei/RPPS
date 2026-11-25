@@ -77,7 +77,7 @@ def test_a_config_file_in_a_user_directory(tmp_path):
     from rpps._config import format_json
     d = tmp_path / "constellation"
     d.mkdir(parents=True)
-    (d / "diamond.json").write_text(format_json({"base": "constellation", "points": [[1, 0], [0, 1], [-1, 0], [0, -1]],
+    (d / "diamond.json").write_text(format_json({"points": [[1, 0], [0, 1], [-1, 0], [0, -1]],
                                                   "maps": [{"map": [0, 1, 3, 2], "comment": "Grey"}]}))
     rp.add_config_path(tmp_path)
     try:
@@ -103,9 +103,9 @@ def test_rings_and_rotate_build_points(tmp_path):
     from rpps._config import format_json
     d = tmp_path / "constellation" / "x"
     d.mkdir(parents=True)
-    (d / "ring8.json").write_text(format_json({"base": "constellation", "comment": "8PSK as a ring", "rings": [{"n": 8}]}))
-    (d / "ring8_axes.json").write_text(format_json({"base": "constellation", "extends": "x/ring8", "comment": "turned", "rotate": -22.5}))
-    (d / "two.json").write_text(format_json({"base": "constellation", "comment": "4+12", "params": {"gamma": 2.0},
+    (d / "ring8.json").write_text(format_json({"comment": "8PSK as a ring", "rings": [{"n": 8}]}))
+    (d / "ring8_axes.json").write_text(format_json({"extends": "x/ring8", "comment": "turned", "rotate": -22.5}))
+    (d / "two.json").write_text(format_json({"comment": "4+12", "params": {"gamma": 2.0},
                                               "rings": [{"n": 4, "pha": 45}, {"n": 12, "mag": {"param": "gamma"}, "pha": 15}],
                                               "normalize": False}))
     rp.add_config_path(tmp_path)

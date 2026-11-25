@@ -21,7 +21,7 @@ def bits(n, seed):
 def tmp_profile(tmp_path, obj, name="test/p"):
     d = tmp_path / "profile" / name.split("/")[0]
     d.mkdir(parents=True, exist_ok=True)
-    (d / f"{name.split('/')[1]}.json").write_text(format_json({"base": "profile", **obj}))
+    (d / f"{name.split('/')[1]}.json").write_text(format_json(obj))
     rp.add_config_path(tmp_path)
 
 @pytest.fixture

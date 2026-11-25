@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "IEEE 802.11-2020 16",
   "tags": ["ieee-802.11b"],
   "title": "Wi-Fi 802.11b (DSSS)",

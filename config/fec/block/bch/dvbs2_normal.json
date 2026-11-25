@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "abstract": true,
   "type": "bch",
   "comment": "DVB-S2 outer BCH codes of normal frames over GF(2^16): each rate's length and errors corrected",

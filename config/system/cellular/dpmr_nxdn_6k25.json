@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "ETSI TS 102 658; NXDN TS 1-A",
   "title": "dPMR / NXDN 6.25 kHz",
   "features": {"modulation": ["4fsk"], "baud": 2400, "bandwidth": 6250.0}

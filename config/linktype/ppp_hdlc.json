@@ -1,5 +1,4 @@
 {
-  "base": "linktype",
   "comment": "PPP in HDLC-like framing as on the wire, flags and escapes included (RFC 1662)",
   "ref": "https://www.tcpdump.org/linktypes.html",
   "dlt": 50,

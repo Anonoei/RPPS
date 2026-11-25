@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "extends": "dvbs2_64800",
   "comment": "DVB-S2 normal frame LDPC rate 2/3: parity address table B.6 of EN 302 307",
   "k": 43200,

@@ -2,8 +2,9 @@
 
 Codes, scramblers, constellations, pulses, filters, sequences, headers, tables, profiles and systems are JSON, not code: a new
 instance is a new file, a new kind is a new loader. Definitions are organized by **resource** (what they define, not
-which package loads them), one folder each: `config/<resource>/[<group>/]<name>.json`. A file's `base` picks the loader
-within the resource and its `type` the implementation; the keys each accepts are in the docstring of the module linked.
+which package loads them), one folder each: `config/<resource>/[<group>/]<name>.json`. The folder a file is in picks the
+loader within the resource (its "base", below) and its `type` the implementation; the keys each accepts are in the
+docstring of the module linked.
 
 - **Search order:** `rp.add_config_path(dir)` and `$RPPS_CONFIG`, then the shipped `config/` (`rpps/config` in a wheel).
   Your directory is searched first, so it can also override shipped definitions.
@@ -38,7 +39,7 @@ python -m rpps ls sequence scramble   # some resources
 | `frame` | frame formats (HDLC) | `hdlc` | `rp.link.load("frame/hdlc")` | [link/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/link/serial.py) |
 | `header` | `physical` (known symbols, a short code carrying fields) and `link` (fields, CRC, payload length) | `physical/dvbs2_pl` | `rp.symbol.load_header("dvbs2_pl")`, `rp.link.load("header/ieee80211b_plcp")` | [symbol/frame.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/symbol/frame.py), [link/header.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/link/header.py) |
 | `table` | rows of parameters looked up by header fields | `dvbs2/modcod` | `rp.profile.table("dvbs2/modcod")` | [profile/control.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/profile/control.py) |
-| `plan` | burst time plans: superframes, frames, timeslots, burst types, assignments, hopping (DVB-RCS2's model) | `demo/mftdma` | `rp.plan.load("demo/mftdma")` | [plan/\_\_init\_\_.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/plan/__init__.py) |
+| `plan` | burst time plans: superframes, frames, timeslots, burst types, assignments, hopping (DVB-RCS2's model); in `builder/`, what makes one from a forward link's tables | `demo/mftdma`, `builder/dvbrcs2/forward` | `rp.plan.load("demo/mftdma")`, `rp.plan.builder("dvbrcs2/forward")` | [plan/\_\_init\_\_.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/plan/__init__.py) |
 | `profile` | whole signals | `dvbs2/normal` | `rp.profile.load("dvbs2/normal")` | [profile/steps/](https://github.com/Anonoei/RPPS/tree/main/src/rpps/profile/steps), `controls`: [profile/control.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/profile/control.py) |
 | `linktype` | pcap link types (`dlt`), the Linux interface type (`arphrd`), Wireshark's dissector, a `signature` to find one in a frame, `from`: another link type with transforms (802.15.4 with FCS from without) | `ieee802_15_4` | `rp.link.linktype("ieee802_15_4")` | [link/capture.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/link/capture.py) |
 | `system` | named radio systems by what blind tools measure (`"features"`: modulation, baud, roll-off, frame, bands...; the `"profile"` that decodes one), what `rp.analysis.catalogue.match` scores against | `satellite/dvbs2` | `rp.analysis.catalogue.systems()` | [analysis/catalogue.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/analysis/catalogue.py) |
@@ -62,7 +63,7 @@ A definition is referenced by its path below the category, without `.json`, case
 A definition can be another one with a few keys changed: `"extends"` names it, in the same resource (looked up below the
 child's own category first, so `"extends": "rs/p25"` in fec/block works). The child holds only what differs:
 ```json
-{"base": "constellation", "extends": "apsk/dvbs2_16apsk", "comment": "DVB-S2 16APSK for code rate 3/4: gamma = 2.85",
+{"extends": "apsk/dvbs2_16apsk", "comment": "DVB-S2 16APSK for code rate 3/4: gamma = 2.85",
  "params": {"gamma": 2.85}}
 ```
 - Dicts merge key by key, lists and values replace, `null` deletes a key the parent has.
@@ -157,7 +158,7 @@ what the code corrects is a failure. A `linear` code can give its parity bits as
 standards write them:
 
 ```json
-{"base": "block", "type": "linear", "n": 7, "k": 4, "parity": [[0, 1, 3], [0, 2, 3], [1, 2, 3]],
+{"type": "linear", "n": 7, "k": 4, "parity": [[0, 1, 3], [0, 2, 3], [1, 2, 3]],
  "layout": {"message": [2, 4, 5, 6], "parity": "rest"}}
 ```
 
@@ -167,7 +168,7 @@ linear code in its own layout and decodes on its syndrome trellis, soft; any oth
 (k up to 16):
 
 ```json
-{"base": "block", "type": "expr", "k": 4, "bits": ["m0 ^ m1 ^ m3", "m0 ^ m2 ^ m3 ^ 1", "m0", "m1 ^ m2 ^ m3", "m1", "m2", "m3"]}
+{"type": "expr", "k": 4, "bits": ["m0 ^ m1 ^ m3", "m0 ^ m2 ^ m3 ^ 1", "m0", "m1 ^ m2 ^ m3", "m1", "m2", "m3"]}
 ```
 
 A trellis code (`fsm`) with a `length` (message bits a codeword) is one codeword per block, each started and flushed on
@@ -189,7 +190,15 @@ changes. pi/4-DQPSK is `psk/qpsk` after `{"symbol": "differential"}`; 802.11b DQ
 `psk/bpsk`. Bit-level differential coding (NRZ-M, NRZ-I) is `{"code": "line"}`.
 
 ## File header
-Every file starts with `base` (the category, picks the loader), then `extends` and `abstract` where it has them, `type` (the implementation, where there are several), `comment`, and optionally `ref` (the spec) and `tags`. `python -m rpps fmt` puts files in the canonical style (`--check` only lists differences): whatever fits in 120 columns on one line, so a profile reads one step a line.
+The folder a file is in says what it is, so the file doesn't: its "base" (the loader) is the first folder below the
+resource when that folder is one of the resource's loaders (`fec/block/`, `fec/conv/`, `filter/fir/`, `filter/iir/`,
+`filter/window/`, `plan/builder/`), else the resource itself (`crc/`, `profile/<family>/`, `sequence/word/`). A file
+that writes `"base"` is refused; a definition made in code (`rp.code.init(name, obj)`, `_config.load_obj`) has no folder
+and says its `"base"`, which `rp.save` and the importers leave out of the file they write.
+
+Every file starts with `extends` and `abstract` where it has them, then `type` (the implementation, where there are
+several), `comment`, and optionally `ref` (the spec) and `tags`. `python -m rpps fmt` puts files in the canonical style
+(`--check` only lists differences): whatever fits in 120 columns on one line, so a profile reads one step a line.
 
 A `comment` (any comment, at any depth) too long for its line is a list of lines, joined by spaces when the definition
 is read; `fmt` cuts a long one where a sentence or clause ends:
@@ -211,7 +220,7 @@ rate is known) takes the keys it will use when it loads, so they count. The test
 ## Adding
 - **A definition**: drop a JSON in the right folder. A variant of one that exists: a child that `extends` it. A tag it needs: add it to [tags.json](https://github.com/Anonoei/RPPS/blob/main/config/tags.json).
 - **Your own**: keep a folder laid out like this one and call `rp.add_config_path(dir)` or set `$RPPS_CONFIG`. It is searched first, so it can also override shipped definitions.
-- **A category**: add the folder and `_config.register_domain("<domain>").register("<category>", loader)`, where `loader(name, obj)` builds the object (reading, through `obj`, every key it uses: what it never reads is reported).
+- **A category**: add the folder (named as the category: the folder says the loader) and `_config.register_domain("<domain>").register("<category>", loader)`, where `loader(name, obj)` builds the object (reading, through `obj`, every key it uses: what it never reads is reported).
 - **A resource**: `_config.register_domain("<name>", {"<base>": loader})`; `_config.ls / find / load` then work on it. [link/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/link/serial.py) is the smallest example.
 
 ## Bringing in existing data

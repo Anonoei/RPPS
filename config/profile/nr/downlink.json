@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "5G NR downlink at 15 kHz subcarriers to SIB1, through the Doppler of a LEO satellite (NTN) or none:",
     "cell search over a wide carrier offset on the PSS, then the SS/PBCH block tracked every 20 ms (the offset and its",

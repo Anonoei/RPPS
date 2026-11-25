@@ -1,4 +1,6 @@
 """The command line: listing, showing a definition, receiving a capture"""
+import json
+
 import numpy as np
 import pytest
 
@@ -88,3 +90,12 @@ def test_rx_only_the_kinds_asked_for(tmp_path, capsys):
                      "--kinds", "pbch,pcfich"]) == 0
     kinds = {json.loads(ln)["kind"] for ln in capsys.readouterr().out.splitlines()}
     assert kinds == {"pbch", "pcfich"}
+
+def test_fmt_takes_out_a_base_the_folder_says(tmp_path, capsys):
+    d = tmp_path / "fec" / "block" / "rs"
+    d.mkdir(parents=True)
+    (d / "a.json").write_text(json.dumps({"base": "block", "type": "rs", "comment": "x", "n": 15, "k": 11, "m": 4}))
+    (d / "b.json").write_text(json.dumps({"base": "conv", "comment": "in the wrong folder"}))
+    assert cli.main(["fmt", str(tmp_path)]) == 1
+    assert "base" not in json.loads((d / "a.json").read_text())
+    assert "folder says 'block'" in capsys.readouterr().err and "base" in json.loads((d / "b.json").read_text())

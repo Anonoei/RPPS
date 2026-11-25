@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "extends": "dvbs/qpsk",
   "comment": [
     "DVB-S QPSK, convolutional code K=7 171/133 punctured to 2/3, Forney interleaver I=12, RS(204,188), energy",

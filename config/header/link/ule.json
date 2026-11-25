@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "Unidirectional Lightweight Encapsulation (ULE) SNDU: the destination address absent flag (D), the length from",

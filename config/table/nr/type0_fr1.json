@@ -1,5 +1,4 @@
 {
-  "base": "table",
   "comment": [
     "Type0-PDCCH common search space monitoring occasions from the MIB's searchSpaceZero, multiplexing pattern 1, FR1:",
     "O (ms), search space sets per slot, M, and the CORESET's first symbol ('alt':",

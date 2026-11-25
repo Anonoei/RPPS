@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "Demo MF-TDMA return link (plan/demo/mftdma): QPSK bursts on three carriers at 250 and 500 kBd, each carrier cut",
     "into its bursts (rpps.sync.Bursts), each burst decimated to 4 samples a symbol, matched filtered and timed on its",

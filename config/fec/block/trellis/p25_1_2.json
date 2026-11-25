@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "fsm",
   "comment": [
     "P25 phase 1 rate 1/2 trellis code (TIA-102.BAAA) of data blocks / TSBKs:",

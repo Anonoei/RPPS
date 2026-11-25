@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "ETSI EN 300 421",
   "tags": ["dvb-s"],
   "title": "DVB-S",

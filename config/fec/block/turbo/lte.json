@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "turbo",
   "comment": [
     "LTE turbo code (3GPP TS 36.212 5.1.3.2): two 8-state RSC codes g0 = 1 + D^2 + D^3, g1 = 1 + D + D^3, QPP",

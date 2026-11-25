@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "3GPP TS 45.004, 45.002",
   "tags": ["gsm"],
   "title": "GSM",

@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "LTE downlink (FDD, normal cyclic prefix) to the system information:",
     "cell search on the PSS and SSS, the resource grid of every subframe with the channel of each antenna port from",

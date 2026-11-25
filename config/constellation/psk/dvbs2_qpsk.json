@@ -1,5 +1,4 @@
 {
-  "base": "constellation",
   "extends": "psk/qpsk",
   "comment": "DVB-S2 QPSK labelling: the first bit on I, the second on Q, a 0 positive",
   "ref": "EN 302 307-1 5.4.1",

@@ -1,5 +1,4 @@
 {
-  "base": "crc",
   "type": "crc",
   "comment": [
     "CRC-24/BLE: Bluetooth LE link layer (Core spec Vol 6 Part B 3.1.1). On air bits:",

@@ -1,5 +1,4 @@
 {
-  "base": "scramble",
   "type": "feedthrough",
   "comment": "Galois LFSR feedthrough scrambler",
   "register": "galois_left",

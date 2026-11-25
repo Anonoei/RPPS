@@ -1,5 +1,4 @@
 {
-  "base": "interleave",
   "type": "block",
   "comment": [
     "CCSDS Reed-Solomon symbol interleaving, depth I: the I codewords of a frame are sent one symbol at a time in turn",

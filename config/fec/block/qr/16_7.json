@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "cyclic",
   "comment": [
     "DMR quadratic residue (16,7,6): the (17,9,5) code, g(x) = x^8 + x^5 + x^4 + x^3 + 1, shortened by 2 and extended",

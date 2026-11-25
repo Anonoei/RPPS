@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "ITU-R M.1371",
   "title": "AIS",
   "features": {

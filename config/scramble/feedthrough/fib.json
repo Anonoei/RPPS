@@ -1,5 +1,4 @@
 {
-  "base": "scramble",
   "type": "feedthrough",
   "comment": "Fibonacci LFSR feedthrough scrambler, x^16+x^14+x^13+x^11+1",
   "register": "fibonacci",

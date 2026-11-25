@@ -1,5 +1,4 @@
 {
-  "base": "crc",
   "type": "crc",
   "comment": "CRC-16/XMODEM",
   "width": 16,

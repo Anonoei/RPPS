@@ -1,5 +1,4 @@
 {
-  "base": "pulse",
   "type": "rc",
   "comment": [
     "Raised-cosine frequency pulse, roll-off 0.2: the Nyquist filter ahead of the FM modulator of P25 C4FM (its sinc",

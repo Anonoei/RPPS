@@ -7,6 +7,11 @@ what to use instead.
 ## Unreleased
 
 ### Breaking
+- **A definition file no longer says its `"base"`: the folder it is in does** (`fec/block/`, `filter/fir/`,
+  `plan/builder/`..., else the resource: `crc/`, `profile/<family>/`). A file that writes `"base"` is refused:
+  `python -m rpps fmt <your config dir>` takes out every `"base"` its folder says (and names a file in the wrong one). Definitions made in code still give `"base"`, and `rp.save`, the importers
+  and `Guess.save` leave it out of the files they write. The plan builder moved to
+  `config/plan/builder/dvbrcs2/forward.json` (`rp.plan.builder("dvbrcs2/forward")` as before).
 - **`hdlc.frames_at` and `bytestuff.frames_at` give `(start, payload, ok, fcs)`**: the FCS bytes as received are the
   fourth (b"" without one), for a message's whole frame. `deframe` still gives `(payload, ok)`.
 - **`rpps.profile.steps`, `rpps.analysis.identify` and `rpps.analysis.signal_profile` are packages** (each split into

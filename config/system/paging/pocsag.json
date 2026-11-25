@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "ITU-R M.584",
   "title": "POCSAG",
   "features": {"modulation": ["2fsk"], "baud": [512, 1200, 2400], "h": {"range": [3.7, 18.0]}}

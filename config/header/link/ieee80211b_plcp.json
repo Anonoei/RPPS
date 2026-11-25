@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "IEEE 802.11b long PLCP: SYNC (128 ones) and SFD 0xF3A0 before the header, then SIGNAL (the PSDU's rate in 100",

@@ -1,5 +1,4 @@
 {
-  "base": "sequence",
   "type": "recurrence",
   "comment": [
     "DVB-S2 physical layer scrambling sequence z = x + y, the Gold code of n = 0 (x: 1 + X^7 + X^18 from x(0) = 1; y:",

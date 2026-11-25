@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "IS-GPS-200",
   "tags": ["gps"],
   "title": "GPS L1 C/A",

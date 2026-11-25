@@ -8,7 +8,7 @@ from rpps import _config
 from rpps.analysis.identify import match_profile, _named
 
 VARIANT = {
-    "base": "profile", "comment": "test: a convolutional code on QPSK or 8PSK",
+    "comment": "test: a convolutional code on QPSK or 8PSK",
     "params": {
         "modulation": {"default": "qpsk", "choices": {"qpsk": {"shape": "QPSK"}, "8psk": {"shape": "8PSK"}}},
         "rate": {"default": "1_2", "choices": ["1_2", "3_4"]},

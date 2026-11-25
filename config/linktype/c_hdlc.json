@@ -1,5 +1,4 @@
 {
-  "base": "linktype",
   "comment": "Cisco HDLC: address (0x0F unicast, 0x8F broadcast), control 0x00, a 16-bit EtherType, then the packet",
   "ref": "https://www.tcpdump.org/linktypes.html",
   "dlt": 104,

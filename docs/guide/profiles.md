@@ -25,7 +25,7 @@ One list of steps, in receive order: a transform step (wave, symbol, code, link)
 inverted, in reverse, on transmit; a sync step is skipped on transmit.
 
 ```json
-{"base": "profile", "comment": "IEEE 802.15.4 2.4 GHz O-QPSK", "ref": "IEEE 802.15.4-2020 12",
+{"comment": "IEEE 802.15.4 2.4 GHz O-QPSK", "ref": "IEEE 802.15.4-2020 12",
  "params": {"sps": {"default": 4}},
  "defaults": {"carrier": {"method": "none"}},
  "steps": [
@@ -66,7 +66,7 @@ A word the modem sends ahead of each block of coded bits (a sync marker, a uniqu
 of any width: 100 bytes are 200 hex digits.
 
 ```json
-{"base": "sequence", "type": "word", "word": "0x1acffc1d...", "bits": 800, "order": "msb"}
+{"type": "word", "word": "0x1acffc1d...", "bits": 800, "order": "msb"}
 ```
 
 There are two places to find it, both after demodulation and before the FEC:
@@ -159,7 +159,7 @@ A plan (`rpps.plan`) comes from where the network keeps it:
 
 - **Over the air.** DVB-RCS2's hub broadcasts it in its forward link: SCT, FCT2, BCT and TBTP2 tables in GSE packets,
   and the network clock (NCR). `profile/dvbrcs2/forward` reads them and `rp.plan.builder("dvbrcs2/forward")` makes the
-  plan and the clock of its messages. The builder is a definition too (`config/plan/dvbrcs2/forward.json`): which
+  plan and the clock of its messages. The builder is a definition too (`config/plan/builder/dvbrcs2/forward.json`): which
   tables, how their fields map onto the plan model both ways, and how the clock references pair with frame starts.
 - **A definition**, `config/plan/<family>/<name>.json`, in the same model: a standard's fixed structure, a test. A
   sequence's `hop` moves its frames from channel to channel (an expression, or an algorithm by name: `ble_csa1`); a

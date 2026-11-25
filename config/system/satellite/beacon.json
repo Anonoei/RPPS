@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "comment": [
     "a carrier alone: a satellite beacon, a test carrier, a CW signal (rp.analysis.spectrum.waveform names its tones)"
   ],

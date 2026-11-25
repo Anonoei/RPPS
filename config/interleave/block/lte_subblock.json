@@ -1,5 +1,4 @@
 {
-  "base": "interleave",
   "type": "block",
   "comment": [
     "LTE sub-block interleaver for convolutionally coded channels (36.212 5.1.4.2.1):",

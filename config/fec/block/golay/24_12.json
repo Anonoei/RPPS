@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "cyclic",
   "comment": [
     "Extended Golay (24,12,8): the (23,12) code plus an overall parity bit last; corrects 3, detects 4.",

@@ -1,5 +1,4 @@
 {
-  "base": "builder",
   "comment": [
     "DVB-RCS2's burst time plan and NCR clock from its forward link (profile/dvbrcs2/forward):",
     "the SCT, FCT2 and BCT make the plan (a tx type's burst format the linear modulation data block, its unique word",

@@ -1,5 +1,4 @@
 {
-  "base": "pulse",
   "type": "rect",
   "comment": [
     "Rectangular frequency pulse, one symbol long: the frequency held for the symbol (plain FSK, AFSK, 4FSK without",

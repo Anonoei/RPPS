@@ -94,7 +94,8 @@ class Guess:
         folder = base / sub / "guess"
         folder.mkdir(parents=True, exist_ok=True)
         f = folder / f"{name.lower()}.json"
-        f.write_text(json.dumps({**self.definition, "guess": self.evidence}, indent=1, default=lambda o: o.item() if hasattr(o, "item") else list(o)))
+        obj = _config.file_obj(domain, (*([sub] if sub else []), "guess", f.stem), self.definition) # (no "base": the folder says it)
+        f.write_text(json.dumps({**obj, "guess": self.evidence}, indent=1, default=lambda o: o.item() if hasattr(o, "item") else list(o)))
         return f
 
 def pick(hyps, z_crit, key, fits):

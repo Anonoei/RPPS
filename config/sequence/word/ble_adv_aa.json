@@ -1,5 +1,4 @@
 {
-  "base": "sequence",
   "type": "word",
   "comment": [
     "Bluetooth LE advertising channel sync word: the 8-bit preamble (01010101 on air:",

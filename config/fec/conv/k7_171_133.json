@@ -1,5 +1,4 @@
 {
-  "base": "conv",
   "abstract": true,
   "comment": [
     "Mother code K=7, generators 171, 133 octal, its rates (1/n unpunctured, and punctured ones) are in k7_171_133/"

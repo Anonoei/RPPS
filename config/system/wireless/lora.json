@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "Semtech AN1200.22",
   "title": "LoRa",
   "features": {

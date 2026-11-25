@@ -1,5 +1,4 @@
 {
-  "base": "scramble",
   "type": "additive",
   "comment": [
     "LTE PBCH scrambling (36.211 6.6.1): c_init = N_ID^cell, over the 1920 bits of four radio frames (start = 480 *",

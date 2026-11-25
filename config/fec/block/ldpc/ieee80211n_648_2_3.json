@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "extends": "ieee80211n_648",
   "comment": [
     "IEEE 802.11n/ac LDPC, codeword 648 bits, rate 2/3: the 8 x 24 matrix prototype of Table F-1 lifted by Z = 27.",

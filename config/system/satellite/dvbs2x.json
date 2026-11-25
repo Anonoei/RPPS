@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "extends": "dvbs2",
   "comment": "DVB-S2's extensions: smaller roll-offs and higher APSK orders",
   "ref": "ETSI EN 302 307-2",

@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "ARIB STD-B31",
   "title": "ISDB-T",
   "features": {

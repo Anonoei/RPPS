@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "rs",
   "comment": "DVB-S shortened RS(255,239), t=8",
   "tags": ["dvb-s"],

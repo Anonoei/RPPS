@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "fsm",
   "comment": [
     "ATSC A/53 8VSB trellis code, one of the 12 interleaved encoders: input (X2, X1);",

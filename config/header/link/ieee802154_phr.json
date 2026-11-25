@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "IEEE 802.15.4 PHY header: the PSDU's length in octets (7 bits) and a reserved bit, then the PSDU (the MAC frame,",

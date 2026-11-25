@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "Bluetooth LE 1 Mb/s advertising channel (LE 1M uncoded PHY): GFSK, BT 0.5, modulation index 0.5, a 1 the higher",
     "frequency. Received packet by packet: the burst step cuts the capture into its packets and every packet is",

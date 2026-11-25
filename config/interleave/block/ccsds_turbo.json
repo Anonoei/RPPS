@@ -1,5 +1,4 @@
 {
-  "base": "interleave",
   "type": "block",
   "comment": [
     "CCSDS turbo code permutation: bit s of the second encoder's input is bit pi(s) of the information block, k = k1",

@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "comment": [
     "frame lists the SSB burst periods too: a repetition measured on NR is often the SSB period, not the 10 ms frame"
   ],

@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "extends": "ax25/afsk1200",
   "comment": [
     "Demo: AFSK 1200 HDLC frames (FCS-16) whose payload starts with a 3-byte header of its own (address, control,",

@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "nr_ldpc",
   "comment": [
     "5G NR LDPC base graph 1: one code block of K' bits (CRC included) to E bits, lifted by Z (default:",

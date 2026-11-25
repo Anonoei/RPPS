@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "DMR (ETSI TS 102 361) bursts: 4FSK at 4800 symbols a second (h 0.27: +-648, +-1944 Hz).",
     "The discriminator's levels are timed and each burst found by the 24-symbol sync in its middle, any of the eight",

@@ -72,7 +72,7 @@ class CodeDetection:
         folder = base / "guess"
         folder.mkdir(parents=True, exist_ok=True)
         f = folder / f"{name.lower()}.json"
-        f.write_text(json.dumps(self.definition(), indent=1))
+        f.write_text(json.dumps(_config.file_obj("profile", ("guess", f.stem), self.definition()), indent=1)) # (no "base")
         return f
 
     def __str__(self):

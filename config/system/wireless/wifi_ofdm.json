@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "IEEE 802.11-2020 17",
   "tags": ["ieee-802.11a", "ieee-802.11n"],
   "title": "Wi-Fi 802.11a/g/n/ac (OFDM)",

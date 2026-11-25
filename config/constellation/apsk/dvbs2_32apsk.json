@@ -1,5 +1,4 @@
 {
-  "base": "constellation",
   "comment": [
     "DVB-S2 32APSK: rings of 4 + 12 + 16 points; the outer radii depend on the code rate (the rate files below give",
     "them), the labelling does not"

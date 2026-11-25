@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "extends": "ccsds/tm_rs",
   "comment": [
     "CCSDS TM space packets: the transfer frames of ccsds/tm_rs, their primary header read, and the space packets of",

@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "comment": [
     "return-link bursts on MF-TDMA: frames of tens to hundreds of ms;",
     "seen on the uplink bands and on a transparent satellite's downlink"

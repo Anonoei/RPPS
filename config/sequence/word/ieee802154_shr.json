@@ -1,5 +1,4 @@
 {
-  "base": "sequence",
   "type": "word",
   "comment": [
     "IEEE 802.15.4 O-QPSK synchronization header: the preamble (four zero octets) then the start-of-frame delimiter",

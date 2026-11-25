@@ -1,5 +1,4 @@
 {
-  "base": "linktype",
   "comment": [
     "Ethernet II / IEEE 802.3 frames from the destination address, without preamble or FCS (a TAP carries these)"
   ],

@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "Demo MF-TDMA burst content (profile/demo/mftdma): the sending terminal and a sequence number, the payload, a",

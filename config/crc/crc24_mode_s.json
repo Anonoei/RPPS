@@ -1,5 +1,4 @@
 {
-  "base": "crc",
   "type": "crc",
   "comment": [
     "Mode S / ADS-B parity (ICAO Annex 10 Vol IV 3.1.2.3.3): over the first 32 or 88 bits. DF17/18 syndrome is 0;",

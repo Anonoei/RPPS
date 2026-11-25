@@ -1,5 +1,4 @@
 {
-  "base": "sequence",
   "type": "word",
   "comment": [
     "Mode S / ADS-B preamble as 16 half-microsecond chips: pulses at 0, 1.0, 3.5 and 4.5 us, then 3 us of silence, 8",

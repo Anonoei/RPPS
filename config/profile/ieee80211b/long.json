@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "IEEE 802.11b DSSS with the long PLCP: SYNC, SFD and the PLCP header at 1 Mb/s DBPSK, then the PSDU at the rate",
     "the header's SIGNAL field gives (1 or 2 Mb/s DQPSK), switched mid-packet.",

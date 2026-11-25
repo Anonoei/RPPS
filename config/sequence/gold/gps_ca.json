@@ -1,5 +1,4 @@
 {
-  "base": "sequence",
   "type": "gold",
   "comment": [
     "GPS C/A code (IS-GPS-200 3.3.2.3): G1 = 1 + x^3 + x^10 and G2 = 1 + x^2 + x^3 + x^6 + x^8 + x^9 + x^10, both from",

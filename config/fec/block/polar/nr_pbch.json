@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "nr_polar",
   "comment": [
     "5G NR BCH: the 32-bit PBCH payload and a CRC-24C, polar coded with the input interleaver (n_max 9), 864 bits out",

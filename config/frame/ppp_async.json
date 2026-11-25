@@ -1,5 +1,4 @@
 {
-  "base": "frame",
   "type": "bytes",
   "comment": [
     "PPP in HDLC-like framing over an asynchronous link: frames between flags 0x7E, the flag, the escape 0x7D and the",

@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "DVB multiprotocol encapsulation (MPE) datagram section: table id 0x3E, the section's length, the receiver's MAC",

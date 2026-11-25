@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "product",
   "comment": [
     "Turbo product code (64,57)^2: extended Hamming rows and columns, rate 0.793, decoded soft by Chase-II over 4 bits",

@@ -208,7 +208,7 @@ def test_profile_parameters_reach_the_steps(tmp_path):
     from rpps._config import format_json
     d = tmp_path / "profile" / "test"
     d.mkdir(parents=True)
-    (d / "ble_whitening.json").write_text(format_json({"base": "profile", "params": {"channel": {"default": 37}},
+    (d / "ble_whitening.json").write_text(format_json({"params": {"channel": {"default": 37}},
         "steps": [{"code": "scramble", "name": "additive/ble_whiten", "args": {"channel": {"param": "channel"}}}]}))
     rp.add_config_path(tmp_path)
     try:

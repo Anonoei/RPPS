@@ -1,5 +1,5 @@
 """A burst time plan over the air (DVB-RCS2): GSE in BBFRAMEs (rpps.link.gse), the RCS2 tables (header/link/rcs2_table)
-and the NCR (header/link/rcs2_ncr), plan/dvbrcs2/forward's builder; a whole synthetic network: the forward link tells the plan, the return link's
+and the NCR (header/link/rcs2_ncr), plan/builder/dvbrcs2/forward's builder; a whole synthetic network: the forward link tells the plan, the return link's
 bursts are found and named by it"""
 import numpy as np
 import pytest

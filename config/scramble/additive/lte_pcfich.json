@@ -1,5 +1,4 @@
 {
-  "base": "scramble",
   "type": "additive",
   "comment": "LTE PCFICH scrambling (36.211 6.7.1): c_init = (floor(ns/2) + 1)(2 N_ID^cell + 1) 2^9 + N_ID^cell",
   "tags": ["lte"],

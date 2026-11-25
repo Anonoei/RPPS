@@ -1,5 +1,4 @@
 {
-  "base": "sequence",
   "type": "set",
   "comment": [
     "IEEE 802.15.4 2.4 GHz O-QPSK: each 4-bit symbol (low nibble first) is one of 16 nearly orthogonal 32-chip",

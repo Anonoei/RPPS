@@ -1,11 +1,10 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "DVB-RCS2 Network Clock Reference as carried in GSE (protocol type 0x0081):",
     "a 33-bit base (90 kHz) and a 9-bit extension (27 MHz); NCR = 300 base + extension, the NCR of the first symbol of",
     "the SOF of the DVB-S2 PL frame two before the one that carries it.",
-    "plan/dvbrcs2/forward fits the forward link's NCR clock of them"
+    "plan/builder/dvbrcs2/forward fits the forward link's NCR clock of them"
   ],
   "ref": "ETSI EN 301 545-2 V1.2.1 6.2.1.1",
   "tags": ["dvb-rcs2"],

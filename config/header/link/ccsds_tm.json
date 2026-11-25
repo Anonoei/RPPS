@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "CCSDS TM transfer frame primary header: version, spacecraft and virtual channel ids, the operational control",

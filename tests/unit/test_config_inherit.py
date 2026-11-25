@@ -32,23 +32,23 @@ def test_merge_rules():
     assert "gone" not in out and "extends" not in out # null deletes
 
 def test_a_child_loads_as_its_parent_changed(layer):
-    layer("constellation/t/base", {"base": "constellation", "comment": "QPSK", "tags": ["dvb-s2"], "rings": [{"n": 4}],
+    layer("constellation/t/base", {"comment": "QPSK", "tags": ["dvb-s2"], "rings": [{"n": 4}],
                                    "maps": [{"map": [0, 1, 3, 2], "comment": "R000"}]})
-    layer("constellation/t/axes", {"base": "constellation", "extends": "t/base", "comment": "on the axes", "rotate": -45})
+    layer("constellation/t/axes", {"extends": "t/base", "comment": "on the axes", "rotate": -45})
     a, b = rp.symbol.load("t/base"), rp.symbol.load("t/axes")
     assert np.allclose(b.points, a.points*np.exp(-1j*np.pi/4))
     assert np.array_equal(a.mapping.arr, b.mapping.arr)
     assert _config.file_tags(_config.find("constellation", "t/axes")) == ["dvb-s2"]
 
 def test_extends_is_looked_up_below_the_category_first(layer):
-    layer("fec/block/rs/fam", {"base": "block", "type": "rs", "abstract": True, "comment": "family", "m": 8, "poly": 285})
-    layer("fec/block/rs/fam_15_11", {"base": "block", "extends": "rs/fam", "comment": "a member", "n": 15, "k": 11})
+    layer("fec/block/rs/fam", {"type": "rs", "abstract": True, "comment": "family", "m": 8, "poly": 285})
+    layer("fec/block/rs/fam_15_11", {"extends": "rs/fam", "comment": "a member", "n": 15, "k": 11})
     c = rp.code.load("block/rs/fam_15_11")
     assert c.encoder.num == 11 and c.encoder.den == 15
 
 def test_abstract_parents_are_hidden_and_refuse_to_load(layer):
-    layer("crc/abs_parent", {"base": "crc", "abstract": True, "comment": "half a CRC", "width": 16, "poly": "0x1021"})
-    layer("crc/abs_child", {"base": "crc", "extends": "abs_parent", "type": "crc", "comment": "XMODEM", "init": "0x0",
+    layer("crc/abs_parent", {"abstract": True, "comment": "half a CRC", "width": 16, "poly": "0x1021"})
+    layer("crc/abs_child", {"extends": "abs_parent", "type": "crc", "comment": "XMODEM", "init": "0x0",
                             "xorout": "0x0", "refin": False, "refout": False, "check": "0x31c3"})
     assert "abs_parent" not in _config.ls("crc")["crc"] and "abs_parent" in _config.ls("crc", all=True)["crc"]
     with pytest.raises(ConfigError, match="abstract"):
@@ -56,20 +56,20 @@ def test_abstract_parents_are_hidden_and_refuse_to_load(layer):
     assert rp.link.load("crc/abs_child").encoder.compute(b"123456789") == 0x31c3
 
 def test_loops_and_other_resources_are_refused(layer):
-    layer("crc/loop_a", {"base": "crc", "extends": "loop_b", "comment": "a"})
-    layer("crc/loop_b", {"base": "crc", "extends": "loop_a", "comment": "b"})
+    layer("crc/loop_a", {"extends": "loop_b", "comment": "a"})
+    layer("crc/loop_b", {"extends": "loop_a", "comment": "b"})
     with pytest.raises(ConfigError, match="loops"):
         _config.read(_config.find("crc", "loop_a"))
-    layer("crc/cross", {"base": "crc", "extends": "constellation/psk/qpsk", "comment": "wrong kind"})
+    layer("crc/cross", {"extends": "constellation/psk/qpsk", "comment": "wrong kind"})
     with pytest.raises(ConfigError, match="its own kind"):
         _config.read(_config.find("crc", "cross"))
-    layer("crc/orphan", {"base": "crc", "extends": "no_such_parent", "comment": "?"})
+    layer("crc/orphan", {"extends": "no_such_parent", "comment": "?"})
     with pytest.raises(ConfigError, match="not a crc definition"):
         _config.read(_config.find("crc", "orphan"))
 
 def test_the_raw_file_keeps_extends(layer):
-    f = layer("crc/raw_child", {"base": "crc", "extends": "crc16_xmodem", "comment": "same"})
-    assert _config.read_raw(f) == {"base": "crc", "extends": "crc16_xmodem", "comment": "same"}
+    f = layer("crc/raw_child", {"extends": "crc16_xmodem", "comment": "same"})
+    assert _config.read_raw(f) == {"extends": "crc16_xmodem", "comment": "same"}
     assert _config.read(f)["poly"] == _config.read(_config.find("crc", "crc16_xmodem"))["poly"]
 
 def test_every_tag_used_is_declared():
@@ -78,7 +78,7 @@ def test_every_tag_used_is_declared():
     assert used <= known, f"undeclared tags (add them to config/tags.json): {sorted(used - known)}"
 
 def test_tagged_lists_across_resources(layer):
-    layer("crc/tagged_x", {"base": "crc", "extends": "crc16_xmodem", "comment": "x", "tags": ["test-tag"]})
+    layer("crc/tagged_x", {"extends": "crc16_xmodem", "comment": "x", "tags": ["test-tag"]})
     found = _config.tagged("test-tag")
     assert found == {"crc": ["tagged_x"]}
     with pytest.raises(ConfigError, match="No tag"):
@@ -90,11 +90,11 @@ def test_save_needs_a_destination(monkeypatch):
         _config.save("crc", "crc", "x", {"base": "crc"})
 
 def test_a_child_patches_single_steps(layer):
-    layer("profile/t/base", {"base": "profile", "comment": "parent", "params": {"sps": {"default": 4}},
+    layer("profile/t/base", {"comment": "parent", "params": {"sps": {"default": 4}},
                              "steps": [{"wave": "shape", "pulse": "rrc/0p35", "sps": {"param": "sps"}}, {"sync": "timing"},
                                        {"sync": "carrier", "order": 2, "constellation": "bpsk"},
                                        {"symbol": "constellation", "id": "map", "name": "bpsk"}]})
-    layer("profile/t/child", {"base": "profile", "extends": "t/base", "comment": "child",
+    layer("profile/t/child", {"extends": "t/base", "comment": "child",
                               "steps": {"shape": {"pulse": "rrc/0p20"}, "carrier": None,
                                         "+after:timing": [{"sync": "carrier", "id": "loop", "method": "mpower", "order": 2}],
                                         "map": {"mapping": "R180"}}})
@@ -105,10 +105,10 @@ def test_a_child_patches_single_steps(layer):
     assert [s.id for s in rp.profile.load("t/child").steps] == ["shape", "timing", "loop", "map"]
 
 def test_patching_an_id_two_steps_share_is_an_error(layer):
-    layer("profile/t/two", {"base": "profile", "comment": "p", "steps": [{"sync": "timing"}, {"sync": "timing"}]})
-    layer("profile/t/bad", {"base": "profile", "extends": "t/two", "comment": "c", "steps": {"timing": {"x": 1}}})
+    layer("profile/t/two", {"comment": "p", "steps": [{"sync": "timing"}, {"sync": "timing"}]})
+    layer("profile/t/bad", {"extends": "t/two", "comment": "c", "steps": {"timing": {"x": 1}}})
     with pytest.raises(ConfigError, match="more than one step 'timing'.*give them"):
         rp.profile.load("t/bad")
-    layer("profile/t/none", {"base": "profile", "extends": "t/two", "comment": "c", "steps": {"+after:nope": []}})
+    layer("profile/t/none", {"extends": "t/two", "comment": "c", "steps": {"+after:nope": []}})
     with pytest.raises(ConfigError, match="no step 'nope'"):
         rp.profile.load("t/none")

@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "extends": "p25p2",
   "comment": [
     "P25 phase 2 I-OEMI (FACCH): (63,35) shortened to (58,30) and punctured by its last 6 parity symbols:",

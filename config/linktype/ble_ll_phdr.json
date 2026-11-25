@@ -1,5 +1,4 @@
 {
-  "base": "linktype",
   "comment": [
     "Bluetooth LE link layer packets after a 10-byte pseudo-header:",
     "RF channel, signal and noise power, access address offenses, reference access address, flags (dewhitened, signal",

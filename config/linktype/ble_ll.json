@@ -1,5 +1,4 @@
 {
-  "base": "linktype",
   "comment": [
     "Bluetooth LE link layer packets: the access address (4 bytes, little endian), the PDU, the 3-byte CRC;",
     "no preamble"

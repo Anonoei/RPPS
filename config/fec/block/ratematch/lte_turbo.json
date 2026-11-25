@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "ratematch",
   "comment": [
     "LTE rate matching for turbo coded channels (36.212 5.1.4.1): input d0 | d1 | d2 of K + 4 bits each;",

@@ -1,5 +1,4 @@
 {
-  "base": "table",
   "comment": [
     "5G NR polar input interleaver pattern (K_IL,max = 164): a message of K bits takes the entries at or above 164 -",
     "K, less 164 - K, in order"

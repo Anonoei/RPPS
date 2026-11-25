@@ -86,6 +86,7 @@ def _files(base):
     return sorted(base.rglob("*.json")) if base.is_dir() else []
 
 _INDEX = {} # str(directory) -> its definitions by path and by name
+_LOCATED: dict = {} # str(resolved file) -> (domain, parts): where `locate` found it, for files below a `path` given to it
 
 def _index(base, fresh=False):
     """The definitions below `base`, scanned once and again when `fresh` (a miss: a file may have been written since)"""
@@ -124,7 +125,9 @@ def locate(domain, ref, category=None, path=None):
         if hit is None or not hit.exists(): # Not there when the folder was scanned, or gone since
             hit = _lookup(domain, ref, ref_l, base, True)
         if hit is not None:
-            return hit, hit.relative_to(root).with_suffix("").parts
+            parts = hit.relative_to(root).with_suffix("").parts
+            _LOCATED[str(hit.resolve())] = (domain, parts)
+            return hit, parts
     return None, None
 
 def find(domain, ref, category=None, path=None):
@@ -169,7 +172,26 @@ def place(path):
             continue
         if len(rel.parts) > 1:
             return rel.parts[0], rel.with_suffix("").parts[1:]
-    return None, None
+    return _LOCATED.get(str(path), (None, None)) # (below a `path` given to `locate`)
+
+def base_of(domain, parts):
+    """The loader ("base") of the definition at `parts` below `domain`: the folder it is in says it. The first folder below
+    the resource when that is one of its loaders (fec/block, fec/conv, filter/fir, plan/builder), else the resource itself"""
+    d = _DOMAINS.get(domain)
+    if d is None:
+        raise ConfigError(f"{domain}/{'/'.join(parts)}: no resource {domain!r}, have {domains()}")
+    if len(parts) > 1 and parts[0].lower() in d.loaders:
+        return parts[0].lower()
+    if domain in d.loaders:
+        return domain
+    raise ConfigError(f"{domain}/{'/'.join(parts)}: a {domain} definition is in one of the folders {sorted(d.loaders)}")
+
+def file_base(path):
+    """The loader ("base") of a definition file, from where it is (`base_of`)"""
+    domain, parts = place(path)
+    if domain is None:
+        raise ConfigError(f"{path}: not in a config folder (rp.add_config_path), so the folder can't say what it is")
+    return base_of(domain, parts)
 
 def _parent(path, ref):
     """The file a definition at `path` extends: `ref` below the definition's category first (fec/block: "rs/p25"), then below its domain"""
@@ -296,9 +318,14 @@ def join_comments(v, where="definition"):
     return v
 
 def expand(path, _chain=()):
-    """The definition in a file with its "extends" chain applied (abstract or not), comments one string each"""
+    """The definition in a file with its "extends" chain applied (abstract or not), comments one string each, and its
+    "base" from the folder it is in (`base_of`)"""
     path = Path(path)
-    obj = join_comments(read_raw(path), str(path))
+    raw = read_raw(path)
+    base = file_base(path)
+    if "base" in raw:
+        raise ConfigError(f"{path}: \"base\" is the folder the file is in ({base!r}), take the key out")
+    obj = {"base": base, **join_comments(raw, str(path))}
     ref = obj.get("extends")
     if ref is None:
         return obj
@@ -307,7 +334,7 @@ def expand(path, _chain=()):
     if parent.resolve() in chain:
         raise ConfigError(f"extends loops: {' -> '.join(str(p) for p in (*chain, parent.resolve()))}")
     try:
-        return merge(expand(parent, chain), obj)
+        return {**merge(expand(parent, chain), obj), "base": base}
     except ConfigError as e:
         if str(path) in str(e):
             raise
@@ -666,7 +693,7 @@ def _parse(expr):
 
 # ---- Writing definitions
 
-_FIRST = ("base", "extends", "abstract", "type", "comment", "ref", "tags") # Header keys, in this order
+_FIRST = ("base", "extends", "abstract", "type", "comment", "ref", "tags") # Header keys, in this order ("base" only in code: a file's folder says it)
 
 WIDTH = 120 # Columns a line of a definition file fills before what is on it is spread over several
 
@@ -717,7 +744,8 @@ def _format_comment(text, pad, used):
     return "[\n" + ",\n".join(f"{pad}    {json.dumps(s)}" for s in lines) + f"\n{pad}  ]"
 
 def save(domain, category, ref, obj, dest=None, overwrite=False):
-    """Write a definition to <dest>/<domain>/<category>/<ref>.json and return the file
+    """Write a definition to <dest>/<domain>/<category>/<ref>.json and return the file. Its "base" is not written: the
+    folder says it, and must say the same (`base_of`)
 
     ref: the name, with any group folders ("taps/my_filter"): lowercase letters, digits, "_", "-" and "." in each part, never absolute or "..".
     dest: a config directory laid out like config/; default the first one added with `add_config_path`. Never the shipped
@@ -729,12 +757,22 @@ def save(domain, category, ref, obj, dest=None, overwrite=False):
     if not dest and not _EXTRA:
         raise ConfigError("save: no destination; pass dest=<config dir> or add one with rp.add_config_path(dir)")
     root = Path(dest) if dest else _EXTRA[0]
-    file = root / domain / category / f"{ref}.json"
+    parts = (*([category] if category and category != domain else []), *ref.split("/"))
+    out = file_obj(domain, parts, obj)
+    file = root.joinpath(domain, *parts[:-1], f"{parts[-1]}.json")
     if file.exists() and not overwrite:
         raise FileExistsError(f"{file} exists (overwrite=True replaces it)")
     file.parent.mkdir(parents=True, exist_ok=True)
-    file.write_text(format_json(obj) + "\n")
+    file.write_text(format_json(out) + "\n")
     return file
+
+def file_obj(domain, parts, obj):
+    """A definition made in code as its file at `parts` below `domain` holds it: without "base", which the folder says,
+    and which must be the one it has (`base_of`)"""
+    base = base_of(domain, parts)
+    if str(obj.get("base", base)).lower() != base:
+        raise ConfigError(f"a {obj['base']!r} definition does not go in {domain}/{'/'.join(parts)}, whose folder says {base!r}")
+    return {k: v for k, v in obj.items() if k != "base"}
 
 
 LOG_CODING = logging.INFO

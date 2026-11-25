@@ -21,7 +21,7 @@ def codes_table(tmp_path, monkeypatch):
     """A table from the header's length field to a code name (a control's strings come from fields or a table's columns)"""
     d = tmp_path / "table" / "test_branch"
     d.mkdir(parents=True)
-    (d / "codes.json").write_text('{"base": "table", "comment": "test", "key": "length", "columns": ["length", "code"], '
+    (d / "codes.json").write_text('{"comment": "test", "key": "length", "columns": ["length", "code"], '
                                   '"rows": [[20, "hamming/15_11"]]}')
     monkeypatch.setattr(rp._config, "_EXTRA", [tmp_path] + list(rp._config._EXTRA))
 

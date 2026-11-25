@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "IEEE 802.15.4-2020 12",
   "tags": ["ieee-802.15.4"],
   "title": "IEEE 802.15.4 2.4 GHz (Zigbee, Thread)",

@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "rs",
   "comment": [
     "CCSDS Reed-Solomon (255,223), E=16: field polynomial x^8+x^7+x^2+x+1 (0x187), generator roots alpha^(11 j) for j",

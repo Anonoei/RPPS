@@ -246,12 +246,21 @@ def cmd_tx(args):
     return 0
 
 def cmd_fmt(args):
-    """Rewrite config/**/*.json in the house style; with --check only list the files that would change"""
-    from rpps._config import PATH_CONFIG, format_json, join_comments
+    """Rewrite config/**/*.json in the house style; with --check only list the files that would change. A "base" the
+    folder says too is taken out (one the folder contradicts is an error: move the file)"""
+    import rpps # noqa: F401 (registers every resource's loaders)
+    from rpps._config import PATH_CONFIG, format_json, join_comments, domains, file_obj
     root = Path(args.dir) if args.dir else PATH_CONFIG
-    changed = []
+    changed, bad = [], []
     for f in sorted(root.rglob("*.json")):
         obj = json.loads(f.read_text())
+        rel = f.relative_to(root).with_suffix("").parts
+        if isinstance(obj, dict) and "base" in obj and len(rel) > 1 and rel[0] in domains():
+            try:
+                obj = file_obj(rel[0], rel[1:], obj)
+            except Exception as e:
+                bad.append(f"{f.relative_to(root)}: {e}")
+                continue
         text = format_json(obj) + "\n"
         assert join_comments(json.loads(text)) == join_comments(obj), f # (a long comment is cut into lines)
         if text != f.read_text():
@@ -260,7 +269,9 @@ def cmd_fmt(args):
                 f.write_text(text)
     for f in changed:
         print(f.relative_to(root))
-    return 1 if changed and args.check else 0
+    for b in bad:
+        print(b, file=sys.stderr)
+    return 1 if bad or (changed and args.check) else 0
 
 
 def cmd_survey(args):

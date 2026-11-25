@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "extends": "dvbs2/normal",
   "comment": [
     "DVB-RCS2 forward link signalling: a DVB-S2 generic continuous stream whose BBFRAME data fields carry GSE packets;",

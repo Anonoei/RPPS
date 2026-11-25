@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "Bluetooth LE advertising channel PDU: a 16-bit header (PDU type, RFU, ChSel, TxAdd, RxAdd, then the payload",

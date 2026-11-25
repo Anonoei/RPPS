@@ -45,7 +45,7 @@ def test_register_step_rejects_a_taken_name():
 
 def test_generic_stage_step_runs_a_user_class(tmp_path):
     """A profile in a user's config directory names a class by its module path"""
-    prof = {"base": "profile", "comment": "gain then DC block",
+    prof = {"comment": "gain then DC block",
             "steps": [{"signal": "class", "class": "test_registry.Gain", "args": {"k": 2.0}},
                       {"signal": "dc_block"}]}
     d = tmp_path / "profile" / "mine"

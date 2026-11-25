@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "DMR slot type after its Golay (20,8) decode (fec block/golay/20_8): colour code and data type, 8 bits a burst"

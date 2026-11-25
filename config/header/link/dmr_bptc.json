@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "The 96 information bits of a DMR data burst after its BPTC (196,96) decode, as 12 octets:",

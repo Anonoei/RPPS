@@ -1,5 +1,4 @@
 {
-  "base": "constellation",
   "comment": "QPSK, Gray, four rotations: one ring of 4 at 45 + 90k degrees",
   "rings": [{"n": 4, "pha": 45}],
   "maps": [

@@ -1,5 +1,4 @@
 {
-  "base": "scramble",
   "type": "additive",
   "comment": [
     "DVB energy dispersal 1+x^14+x^15: restarts every 8 packets at the inverted sync byte (0xB8);",

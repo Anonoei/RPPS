@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "CCSDS telemetry, Reed-Solomon only: BPSK, each transfer frame of `depth` interleaved RS(255,223) codewords behind",
     "the 32-bit attached sync marker, the frame randomized (restarting at each marker).",

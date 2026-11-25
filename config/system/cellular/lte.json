@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "3GPP TS 36.211",
   "tags": ["lte"],
   "title": "LTE",

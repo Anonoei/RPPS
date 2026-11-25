@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "AX.25 packet radio at 1200 baud AFSK (Bell 202: mark 1200 Hz is a 1, space 2200 Hz a 0), NRZI (a 0 is a tone",
     "change), HDLC frames with the FCS-16: APRS. The input is the audio of the FM channel, real samples at `sps` x",

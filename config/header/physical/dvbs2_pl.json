@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "physical",
   "comment": [
     "DVB-S2 PLHEADER: 26 SOF symbols then the PLS code, 64 symbols, all pi/2-BPSK. The PLS carries s2x (b0:",

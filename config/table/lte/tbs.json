@@ -1,5 +1,4 @@
 {
-  "base": "table",
   "comment": [
     "LTE transport block sizes for I_TBS 0-26 and N_PRB 1-10 (the columns a DCI 1A for system information, paging or",
     "random access uses: N_PRB^1A is 2 or 3). For those RNTIs I_TBS is the DCI's MCS"

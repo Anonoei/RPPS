@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "DVB-S2, normal (64800 bits) and short (16200) FECFRAMEs, QPSK, 8PSK, 16APSK and 32APSK, MODCOD by MODCOD (VCM,",
     "ACM): each PLHEADER's PLS sets the PL scrambling length, pilots, constellation, bit interleaver, LDPC, BCH and",

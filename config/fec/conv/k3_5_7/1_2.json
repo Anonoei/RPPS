@@ -1,5 +1,4 @@
 {
-  "base": "conv",
   "extends": "k3_5_7",
   "comment": "Rate 1/2, constraint length 3 convolutional code"
 }

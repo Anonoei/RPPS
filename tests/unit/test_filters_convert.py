@@ -42,9 +42,9 @@ def test_iir_definition_in_a_stream():
     assert out.dtype == np.float32 and np.allclose(out, iir.IIR(f.sos()).run(x), atol=1e-5)
 
 def test_iir_types(user):
-    put(user, "iir", "ba1", {"base": "iir", "type": "ba", "b": [0.2], "a": [1, -0.8]})
-    put(user, "iir", "zpk1", {"base": "iir", "type": "zpk", "z": [-1], "p": [[0.5, 0.3], [0.5, -0.3]], "k": 0.1})
-    put(user, "iir", "ch1", {"base": "iir", "type": "cheby1", "order": 3, "pass": "bandpass", "cutoff": [0.1, 0.2], "ripple_db": 1, "gain": 2})
+    put(user, "iir", "ba1", {"type": "ba", "b": [0.2], "a": [1, -0.8]})
+    put(user, "iir", "zpk1", {"type": "zpk", "z": [-1], "p": [[0.5, 0.3], [0.5, -0.3]], "k": 0.1})
+    put(user, "iir", "ch1", {"type": "cheby1", "order": 3, "pass": "bandpass", "cutoff": [0.1, 0.2], "ripple_db": 1, "gain": 2})
     ba = rp.signal.filters.load("iir/ba1")
     assert np.allclose(ba.sos(), iir.single_pole(0.2))
     z = rp.signal.filters.load("iir/zpk1")
@@ -55,7 +55,7 @@ def test_iir_types(user):
     assert gain_db(rp.signal.filters.load("iir/ch1").sos(), 0.15) == pytest.approx(gain_db(base, 0.15) + 20*np.log10(2), abs=1e-9)
 
 def test_iir_hz_units_follow_the_sample_rate(user):
-    put(user, "iir", "lp_hz", {"base": "iir", "type": "butter", "order": 2, "pass": "lowpass", "cutoff": 25, "units": "hz"})
+    put(user, "iir", "lp_hz", {"type": "butter", "order": 2, "pass": "lowpass", "cutoff": 25, "units": "hz"})
     f = rp.signal.filters.load("iir/lp_hz")
     with pytest.raises(ConfigError, match="sample rate"):
         f.sos()
@@ -77,12 +77,12 @@ def test_iir_hz_units_follow_the_sample_rate(user):
     ("badalpha", {"type": "single_pole", "alpha": 2}, "alpha"),
 ])
 def test_bad_iir_definitions_fail_on_load(user, name, obj, match):
-    put(user, "iir", name, {"base": "iir", **obj})
+    put(user, "iir", name, obj)
     with pytest.raises(ConfigError, match=match):
         rp.signal.filters.load(f"iir/{name}")
 
 def test_iir_designed_for_another_rate_warns(user):
-    put(user, "iir", "rated", {"base": "iir", "type": "single_pole", "alpha": 0.1, "fs": 1000.0})
+    put(user, "iir", "rated", {"type": "single_pole", "alpha": 0.1, "fs": 1000.0})
     f = rp.signal.filters.load("iir/rated")
     with pytest.warns(UserWarning, match="designed for Fs=1000"):
         rp.Data(np.ones(10, dtype=np.float32), Fs=500.0) + f
@@ -90,12 +90,12 @@ def test_iir_designed_for_another_rate_warns(user):
 # ---- Complex FIR taps
 
 def test_complex_taps(user):
-    put(user, "fir", "taps/c", {"base": "fir", "type": "taps", "taps": [1, 0.5], "taps_imag": [0, 0.25]})
+    put(user, "fir", "taps/c", {"type": "taps", "taps": [1, 0.5], "taps_imag": [0, 0.25]})
     f = rp.signal.filters.load("fir/taps/c")
     assert np.allclose(f.taps(), [1, 0.5 + 0.25j])
     x = np.arange(8, dtype=np.complex64)
     assert np.allclose((rp.Data(x, Fs=1.0) + f).data, np.convolve(x, [1, 0.5 + 0.25j])[:8])
-    put(user, "fir", "taps/bad", {"base": "fir", "type": "taps", "taps": [1, 2], "taps_imag": [1]})
+    put(user, "fir", "taps/bad", {"type": "taps", "taps": [1, 2], "taps_imag": [1]})
     with pytest.raises(ConfigError, match="taps_imag"):
         rp.signal.filters.load("fir/taps/bad")
 
@@ -265,7 +265,7 @@ def test_write_then_load(tmp_path):
     f = rp.signal.filters.import_fir(tmp_path / "t.f32", name="my_lp", dest=out, comment="mine")
     assert f == out / "filter" / "fir" / "taps" / "my_lp.json"
     text = f.read_text()
-    assert text.index('"base"') < text.index('"comment"') < text.index('"taps": [') and "0.10000000149" not in text
+    assert '"base"' not in text and text.index('"type"') < text.index('"comment"') < text.index('"taps": [') and "0.10000000149" not in text # (the folder says the base)
     sos = iir.design("cheby2", 4, "highpass", 0.2, atten_db=50)
     np.save(tmp_path / "s.npy", sos)
     g = rp.signal.filters.import_iir(tmp_path / "s.npy", name="my_hp", dest=out)

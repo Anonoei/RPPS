@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "ETSI EN 302 307-1",
   "tags": ["dvb-s2"],
   "title": "DVB-S2",

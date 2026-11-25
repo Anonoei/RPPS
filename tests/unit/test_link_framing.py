@@ -41,7 +41,7 @@ def test_checksum_definition_errors():
 def test_a_checksum_as_a_composite_part(tmp_path):
     import json
     (tmp_path/"crc").mkdir()
-    (tmp_path/"crc"/"t_xor8.json").write_text(json.dumps({"base": "crc", "type": "checksum", "comment": "t",
+    (tmp_path/"crc"/"t_xor8.json").write_text(json.dumps({"type": "checksum", "comment": "t",
                                                           "algorithm": "xor"}))
     rp.add_config_path(tmp_path)
     try:

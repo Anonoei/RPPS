@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "ETSI TS 102 361-1",
   "tags": ["dmr"],
   "title": "DMR",

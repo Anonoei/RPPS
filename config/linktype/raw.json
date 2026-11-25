@@ -1,5 +1,4 @@
 {
-  "base": "linktype",
   "comment": "Raw IP: each packet an IPv4 or IPv6 packet, told apart by its version (a TUN carries these)",
   "ref": "https://www.tcpdump.org/linktypes.html, Linux include/uapi/linux/if_arp.h",
   "dlt": 101,

@@ -1,5 +1,4 @@
 {
-  "base": "linktype",
   "comment": [
     "IEEE 802.15.4 MAC frames without their FCS, from the frame control field; no PHR (Linux's ARPHRD_IEEE802154)"
   ],

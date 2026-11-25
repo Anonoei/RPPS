@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "ICAO Annex 10 vol IV",
   "tags": ["adsb"],
   "title": "Mode S / ADS-B",

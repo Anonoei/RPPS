@@ -1,5 +1,4 @@
 {
-  "base": "crc",
   "type": "checksum",
   "comment": [
     "The Internet checksum: the ones' complement of the ones' complement sum of the 16-bit big-endian words (IPv4,",

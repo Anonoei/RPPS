@@ -1,5 +1,4 @@
 {
-  "base": "crc",
   "type": "crc",
   "comment": "CRC-11 of 5G NR: gCRC11 of 3GPP TS 38.212 5.1 (UCI of 20 or more bits)",
   "tags": ["nr"],

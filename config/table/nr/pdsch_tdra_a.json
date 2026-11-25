@@ -1,5 +1,4 @@
 {
-  "base": "table",
   "comment": [
     "Default PDSCH time domain resource allocation A, normal cyclic prefix (what a DCI 1_0 to the SI-RNTI in the Type0",
     "common search space indexes, row = field + 1): by row and dmrs-TypeA-Position, the mapping type, K0, the first",

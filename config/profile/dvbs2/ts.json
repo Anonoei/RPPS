@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "extends": "dvbs2/normal",
   "comment": [
     "DVB-S2 transport stream: BBFRAMEs in TS mode (MATYPE TS) whose data fields carry user packets back to back across",

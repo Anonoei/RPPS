@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "abstract": true,
   "type": "rs",
   "comment": "P25 phase 2 Reed-Solomon codes over GF(64) (x^6 + x + 1)",

@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "Mode S reply (ADS-B extended squitter): the 5-bit downlink format decides the length, 56 bits (DF 0-15) or 112",

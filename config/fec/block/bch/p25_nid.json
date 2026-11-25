@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "bch",
   "comment": [
     "P25 phase 1 Network Identifier: NAC (12 bits) and DUID (4 bits) in a (63,16,23) primitive BCH code over GF(2^6),",

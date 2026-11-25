@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "Bluetooth Core 5.4 vol 6 A",
   "tags": ["ble"],
   "title": "Bluetooth LE 2M",

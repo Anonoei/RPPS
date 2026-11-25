@@ -1,5 +1,4 @@
 {
-  "base": "crc",
   "type": "crc",
   "comment": [
     "P25 Phase 2 MAC PDU CRC-12 (TIA-102.BBAC): x^12+x^11+x^7+x^4+x^2+x+1, inverted remainder.",

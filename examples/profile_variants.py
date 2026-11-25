@@ -24,10 +24,9 @@ FRAME = "8*payload*7//4 if fec == 'hamming' else 8*payload" # channel bits a fra
 
 DEFINITIONS = {
     "sequence/word/variant_sync": {
-        "base": "sequence", "type": "word", "comment": "A 64-bit sync word, most significant bit first",
+        "type": "word", "comment": "A 64-bit sync word, most significant bit first",
         "word": "0xF3A2B5C71D9E4A63", "bits": 64, "order": "msb"},
     "profile/demo/variants": {
-        "base": "profile",
         "comment": "Demo: QPSK or 16QAM, RRC 0.2 or 0.35, frames of `payload` bytes behind a sync word, randomized, "
                    "Hamming (7,4) or uncoded",
         "params": {
@@ -50,10 +49,10 @@ DEFINITIONS = {
             {"code": "scramble", "name": "additive/ccsds", "length": {"expr": FRAME}},
             {"code": "block", "name": "hamming/7_4", "when": "fec == 'hamming'"}]},
     "crc/demo_fcs16": {
-        "base": "crc", "type": "composite",
+        "type": "composite",
         "comment": "FCS-16: the CRC-8 of the frame, then the CRC-8 of the frame with its bytes' nibbles swapped",
         "parts": [{"crc": "crc8_smbus"}, {"crc": "crc8_smbus", "input": ["nibble_swap"]}]},
-    "frame/demo_hdlc": {"base": "frame", "extends": "hdlc", "comment": "HDLC with the demo FCS-16", "fcs": "demo_fcs16"},
+    "frame/demo_hdlc": {"extends": "hdlc", "comment": "HDLC with the demo FCS-16", "fcs": "demo_fcs16"},
 }
 
 def loopback(nframes=40, esn0_db=20.0, **variant):

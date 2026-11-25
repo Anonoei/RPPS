@@ -1,5 +1,4 @@
 {
-  "base": "table",
   "comment": [
     "5G NR MCS index table 1 for PDSCH (up to 64QAM; what DCI 1_0 uses):",
     "modulation order and target code rate x 1024 (29-31: reserved, retransmissions)"

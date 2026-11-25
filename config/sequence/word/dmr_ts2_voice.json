@@ -1,5 +1,4 @@
 {
-  "base": "sequence",
   "type": "word",
   "comment": [
     "DMR sync pattern, direct mode time slot 2 voice: 48 bits (24 symbols, +3 / -3) in the middle of a burst, most",

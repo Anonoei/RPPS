@@ -1,5 +1,4 @@
 {
-  "base": "linktype",
   "comment": "IEEE 802.15.4 MAC frames (PSDUs) with their 2-byte FCS, from the frame control field; no PHR",
   "ref": "https://www.tcpdump.org/linktypes.html",
   "dlt": 195,

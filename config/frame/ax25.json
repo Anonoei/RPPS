@@ -1,5 +1,4 @@
 {
-  "base": "frame",
   "extends": "hdlc",
   "comment": [
     "AX.25 frames in HDLC with the FCS-16: each message's payload read as the destination, source and digipeater",

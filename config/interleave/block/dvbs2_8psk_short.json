@@ -1,5 +1,4 @@
 {
-  "base": "interleave",
   "type": "block",
   "comment": [
     "DVB-S2 bit interleaver, short frames: the LDPC codeword written column by column into 3 columns of 5400, read row",

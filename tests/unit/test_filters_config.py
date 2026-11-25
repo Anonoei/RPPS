@@ -32,7 +32,7 @@ def test_windowed_meets_its_stopband():
 
 def test_hz_units_follow_the_sample_rate(tmp_path):
     (tmp_path / "filter" / "fir" / "windowed").mkdir(parents=True)
-    obj = {"base": "fir", "type": "windowed", "pass": "lowpass", "cutoff": 25e3, "taps": 101, "units": "hz"} # No window: np.hamming, as low_pass
+    obj = {"type": "windowed", "pass": "lowpass", "cutoff": 25e3, "taps": 101, "units": "hz"} # No window: np.hamming, as low_pass
     (tmp_path / "filter" / "fir" / "windowed" / "lp_25k.json").write_text(json.dumps(obj))
     rp.add_config_path(tmp_path)
     try:
@@ -45,7 +45,7 @@ def test_hz_units_follow_the_sample_rate(tmp_path):
 
 def test_highpass_needs_odd_taps(tmp_path):
     (tmp_path / "filter" / "fir").mkdir(parents=True)
-    obj = {"base": "fir", "type": "windowed", "pass": "highpass", "cutoff": 0.2, "taps": 100}
+    obj = {"type": "windowed", "pass": "highpass", "cutoff": 0.2, "taps": 100}
     (tmp_path / "filter" / "fir" / "hp.json").write_text(json.dumps(obj))
     rp.add_config_path(tmp_path)
     try:
@@ -61,7 +61,7 @@ def test_bad_definitions_fail_on_load(tmp_path):
                    "badtype": {"type": "iir"},
                    "badunits": {"type": "taps", "taps": [1], "units": "rad"},
                    "empty": {"type": "taps", "taps": []}}.items():
-        (tmp_path / "filter" / "fir" / f"{n}.json").write_text(json.dumps({"base": "fir", **obj}))
+        (tmp_path / "filter" / "fir" / f"{n}.json").write_text(json.dumps(obj))
     rp.add_config_path(tmp_path)
     try:
         for n in ("nopass", "nospec", "badtype", "badunits", "empty"):
@@ -96,7 +96,7 @@ def test_window_presets_and_builtins():
 
 def test_inline_window_in_a_design(tmp_path):
     (tmp_path / "filter" / "fir").mkdir(parents=True)
-    obj = {"base": "fir", "type": "windowed", "pass": "lowpass", "cutoff": 0.2, "taps": 51, "window": {"type": "kaiser", "params": {"a": 8}}}
+    obj = {"type": "windowed", "pass": "lowpass", "cutoff": 0.2, "taps": 51, "window": {"type": "kaiser", "params": {"a": 8}}}
     (tmp_path / "filter" / "fir" / "inline.json").write_text(json.dumps(obj))
     obj["window"] = "kaiser/a8"
     (tmp_path / "filter" / "fir" / "ref.json").write_text(json.dumps(obj))
@@ -109,7 +109,7 @@ def test_inline_window_in_a_design(tmp_path):
 
 def test_remez_design(tmp_path):
     (tmp_path / "filter" / "fir").mkdir(parents=True)
-    obj = {"base": "fir", "type": "remez", "taps": 41, "bands": [0, 0.1, 0.15, 0.5], "desired": [1, 0]}
+    obj = {"type": "remez", "taps": 41, "bands": [0, 0.1, 0.15, 0.5], "desired": [1, 0]}
     (tmp_path / "filter" / "fir" / "rz.json").write_text(json.dumps(obj))
     rp.add_config_path(tmp_path)
     try:
@@ -119,7 +119,7 @@ def test_remez_design(tmp_path):
 
 def test_named_hamming_is_the_builtin_one(tmp_path):
     (tmp_path / "filter" / "fir").mkdir(parents=True)
-    obj = {"base": "fir", "type": "windowed", "pass": "lowpass", "cutoff": 0.1, "taps": 101, "window": "hamming"}
+    obj = {"type": "windowed", "pass": "lowpass", "cutoff": 0.1, "taps": 101, "window": "hamming"}
     (tmp_path / "filter" / "fir" / "h.json").write_text(json.dumps(obj))
     rp.add_config_path(tmp_path)
     try:

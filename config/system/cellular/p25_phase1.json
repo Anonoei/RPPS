@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "TIA-102.BAAA",
   "tags": ["p25"],
   "title": "APCO P25 phase 1",

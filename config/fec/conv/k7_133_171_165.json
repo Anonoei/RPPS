@@ -1,5 +1,4 @@
 {
-  "base": "conv",
   "abstract": true,
   "comment": "Mother code K=7, generators 133, 171, 165 octal, its rates are in k7_133_171_165/",
   "ref": "3GPP TS 36.212 5.1.3.1",

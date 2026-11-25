@@ -7,10 +7,12 @@ for one (`rp.sync.acquire_code`).
     rp.sequence.load("lte_gold", c_init=77).bits(100)       a Recurrence: 0/1 bits from any position
     rp.sequence.load("gps_ca", prn=1).chips                 a Code: (count, length) of +/-1
 
-    {"base": "sequence", "type": "recurrence", "sequences": [...], "skip": 1600}      see rpps.sequence.recurrence
-    {"base": "sequence", "type": "chips" | "set" | "gold", ...}                       see rpps.sequence.code
-    {"base": "sequence", "type": "word", "word": "0x1ACFFC1D", "bits": 32}          a fixed word (sync marker, access address): rpps.sequence.word
-    {"base": "sequence", "type": "zc", "root": 25, "length": 63, "shift": 0}       a Zadoff-Chu sequence: `.symbols` (complex)
+A config/sequence/<group>/<name>.json is one of:
+
+    {"type": "recurrence", "sequences": [...], "skip": 1600}      see rpps.sequence.recurrence
+    {"type": "chips" | "set" | "gold", ...}                       see rpps.sequence.code
+    {"type": "word", "word": "0x1ACFFC1D", "bits": 32}          a fixed word (sync marker, access address): rpps.sequence.word
+    {"type": "zc", "root": 25, "length": 63, "shift": 0}       a Zadoff-Chu sequence: `.symbols` (complex)
 Complex sequences are computed: `rp.sequence.zadoff_chu(u, N, shift)` (rpps.sequence.zc), the CAZAC roots of LTE and NR
 (PSS, PRACH, SRS, uplink DM-RS); a "zc" definition names one, as a preamble a profile's `sync frame` step finds.
 Any value can be a load-time parameter ("params", then {"param": ...} / {"expr": ...}). Chip rates are in "rate" (chips/s).

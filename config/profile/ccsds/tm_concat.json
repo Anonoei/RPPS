@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "CCSDS telemetry, concatenated: Reed-Solomon outer code (each transfer frame `depth` interleaved RS(255,223)",
     "codewords, randomized, behind the 32-bit attached sync marker) and the rate 1/2, K=7 convolutional inner code",

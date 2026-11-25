@@ -1,5 +1,4 @@
 {
-  "base": "linktype",
   "comment": "An IPv4 packet, from its header",
   "ref": "https://www.tcpdump.org/linktypes.html, Linux include/uapi/linux/if_arp.h",
   "dlt": 228,

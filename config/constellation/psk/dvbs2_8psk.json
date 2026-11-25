@@ -1,5 +1,4 @@
 {
-  "base": "constellation",
   "extends": "psk/8psk",
   "comment": "DVB-S2 8PSK labelling: the points at 45k degrees",
   "tags": ["dvb-s2"],

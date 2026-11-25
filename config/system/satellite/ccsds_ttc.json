@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "comment": [
     "subcarrier ranges are wide on purpose: a PM subcarrier at all is the evidence (rp.analysis.framing.telemetry",
     "measures it)"

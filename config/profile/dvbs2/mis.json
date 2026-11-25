@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "DVB-S2 multiple input streams (MIS): one demodulator and decoder (the steps of dvbs2/normal through the BBFRAME",
     "descrambler), then a branch per input stream, each a BBHEADER that keeps the frames of its ISI (MATYPE-2, with",

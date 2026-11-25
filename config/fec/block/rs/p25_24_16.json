@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "extends": "p25",
   "comment": [
     "P25 phase 1 LDU2 encryption sync: RS(24,16,9) over GF(64), roots alpha^1..alpha^8 (TIA-102.BAAA). Checked on air:",

@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "comment": [
     "Mode S replies and ADS-B extended squitters at 1090 MHz: pulse position modulation at 1 Mb/s, a bit a pulse in",
     "the first (1) or the second (0) half of its microsecond, after a preamble of four pulses.",

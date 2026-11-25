@@ -1,5 +1,4 @@
 {
-  "base": "linktype",
   "comment": "MPEG-2 transport stream packets, 188 bytes each starting with the 0x47 sync byte",
   "ref": "https://www.tcpdump.org/linktypes.html",
   "dlt": 243

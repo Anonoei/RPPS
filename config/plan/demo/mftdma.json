@@ -1,5 +1,4 @@
 {
-  "base": "plan",
   "comment": [
     "Demo MF-TDMA burst time plan (profile/demo/mftdma), in DVB-RCS2's model: a 15 ms superframe of two frames, one of",
     "two 250 kBd carriers (BTU 0.6 ms = 150 symbols) and one of a 500 kBd carrier (300 symbols a BTU).",

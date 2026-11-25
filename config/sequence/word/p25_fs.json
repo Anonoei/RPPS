@@ -1,5 +1,4 @@
 {
-  "base": "sequence",
   "type": "word",
   "comment": [
     "P25 phase 1 frame synchronization, 48 bits (24 symbols, all +3 / -3) at the start of every data unit, most",

@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "P25 phase 1 Network Identifier after its BCH decode (fec block/bch/p25_nid):",

@@ -24,10 +24,9 @@ MODES = [[25, "psk/qpsk", "hamming/7_4", SYMBOLS*2*4//7],
 
 DEFINITIONS = {
     "table/demo/zc_modes": {
-        "base": "table", "comment": "Zadoff-Chu root -> the frame's constellation, code and data bits",
+        "comment": "Zadoff-Chu root -> the frame's constellation, code and data bits",
         "key": "root", "columns": ["root", "constellation", "code", "bits"], "rows": MODES},
     "profile/demo/zc_modes": {
-        "base": "profile",
         "comment": "Demo: frames of 420 symbols, each after a 63-symbol Zadoff-Chu preamble whose root says its "
                    "modulation and code (table demo/zc_modes). The input is symbols, one a sample",
         "steps": [

@@ -1,5 +1,4 @@
 {
-  "base": "interleave",
   "type": "block",
   "comment": [
     "Each octet's bits reversed: bytes sent least significant bit first, between the bits as sent and bytes most",

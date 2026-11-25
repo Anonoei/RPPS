@@ -1,5 +1,4 @@
 {
-  "base": "pulse",
   "type": "halfsine",
   "comment": [
     "Half-sine pulse of one symbol on each rail of O-QPSK (staggered by half a symbol this is MSK):",

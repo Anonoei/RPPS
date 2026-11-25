@@ -1,5 +1,4 @@
 {
-  "base": "constellation",
   "extends": "psk/qpsk",
   "comment": [
     "QPSK turned onto the axes (0, 90, 180, 270 degrees): the phase-change alphabet of IEEE 802.11b DQPSK, used with a",

@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "extends": "ccsds_255_223",
   "comment": [
     "CCSDS Reed-Solomon (255,223) as sent: symbols in the Berlekamp dual basis of {1, beta, ..., beta^7}, beta =",

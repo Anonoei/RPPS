@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "P25 phase 1 Trunking Signalling Block after its trellis decode:",

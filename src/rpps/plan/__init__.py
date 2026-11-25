@@ -34,7 +34,7 @@ A receiver places its bursts in the plan (rpps.sync.Burst `plan`), and a transmi
 (rpps.sync.PlanTx). The plan's time is the network's: where its clock is in a capture (the origin) is the receiver's to
 find (from the forward link's clock reference, or from the bursts' preambles).
 
-    {"base": "plan", "clock": 27e6,
+    {"clock": 27e6,
      "tx_types": {"1": {"btus": 2, "offset": 270, "fields": {"word": "demo_uw1", "units": 1}}},
      "frame_types": {"1": {"duration": 2700000, "btu": {"duration": 108000, "bw": 600e3, "symbol_rate": 500e3},
                            "time_units": 25, "grid": [-1e6, 0, 1e6], "sections": [[1, 36]]}},
@@ -339,7 +339,9 @@ from .air import Builder # (after Plan: a builder makes one)
 DOMAIN = _config.register_domain("plan", {"plan": Plan.load, "builder": Builder.load})
 
 def load(name, **params):
-    """A plan definition by name: `rp.plan.load("demo/mftdma")`"""
+    """A plan definition by name: `rp.plan.load("demo/mftdma")` (config/plan/<family>/<name>.json)"""
+    if _config.find("plan", name) is None and _config.find("plan", name, "builder") is not None:
+        raise ConfigError(f"plan {name} is a plan builder: rp.plan.builder({name!r})")
     p = _config.load("plan", name, params=params)
     if not isinstance(p, Plan):
         raise ConfigError(f"plan {name} is a plan builder: rp.plan.builder({name!r})")
@@ -355,8 +357,10 @@ def ls():
 
 def builder(name, **params):
     """A new builder of plans from a forward link's tables and clock references (rpps.plan.air):
-    `rp.plan.builder("dvbrcs2/forward")`"""
-    b = _config.load("plan", name, params=params)
+    `rp.plan.builder("dvbrcs2/forward")` (config/plan/builder/<family>/<name>.json)"""
+    if _config.find("plan", name, "builder") is None and _config.find("plan", name) is not None:
+        raise ConfigError(f"plan {name} is a plan, not a builder: rp.plan.load({name!r})")
+    b = _config.load("plan", name, "builder", params=params)
     if not isinstance(b, Builder):
         raise ConfigError(f"plan {name} is a plan, not a builder: rp.plan.load({name!r})")
     return b

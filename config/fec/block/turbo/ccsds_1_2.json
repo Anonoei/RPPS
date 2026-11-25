@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "extends": "ccsds",
   "comment": "CCSDS turbo code, rate 1/2: every other parity bit of each encoder",
   "outputs": [["0a", "1a"], ["0a", "1b"]]

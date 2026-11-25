@@ -1,5 +1,4 @@
 {
-  "base": "table",
   "comment": [
     "DVB-S2 MODCODs with normal (64800 bits, short 0) and short (16200, short 1) frames that have constellations and",
     "codes here: QPSK 1/4 to 9/10, 8PSK 3/5 to 9/10, 16APSK 2/3 to 9/10, 32APSK 3/4 to 9/10 (short frames:",

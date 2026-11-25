@@ -16,12 +16,47 @@ def refs(domain):
             else:
                 yield cat, f"{group}/{n}" if group else n
 
-def test_every_file_has_header():
+def test_the_folder_says_the_base():
     for f in _config.PATH_CONFIG.glob("*/**/*.json"): # Definitions are in a resource folder; config/tags.json is the tag list
-        obj = json.loads(f.read_text())
-        assert "base" in obj, f
+        assert "base" not in json.loads(f.read_text()), f
         domain = f.relative_to(_config.PATH_CONFIG).parts[0]
-        assert str(obj["base"]).lower() in _config._DOMAINS[domain].loaders, f
+        assert _config.file_base(f) in _config._DOMAINS[domain].loaders, f
+    assert _config.file_base(_config.find("fec", "rs/204_188", "block")) == "block"
+    assert _config.file_base(_config.find("plan", "dvbrcs2/forward", "builder")) == "builder"
+    assert _config.file_base(_config.find("plan", "demo/mftdma")) == "plan"
+    assert _config.file_base(_config.find("profile", "dvbs2/normal")) == "profile"
+    assert _config.base_of("filter", ("iir", "sos", "x")) == "iir"
+    with pytest.raises(ConfigError, match="one of the folders"):
+        _config.base_of("fec", ("ldpc", "x")) # fec has no loader of its own name: block/ or conv/
+
+def test_a_file_that_says_its_base_is_refused(tmp_path):
+    d = tmp_path / "crc"
+    d.mkdir()
+    (d / "said.json").write_text(json.dumps({"base": "crc", "type": "crc", "comment": "x", "width": 8, "poly": "0x07",
+                                             "init": "0x00", "refin": False, "refout": False, "xorout": "0x00"}))
+    rp.add_config_path(tmp_path)
+    try:
+        with pytest.raises(ConfigError, match="folder the file is in"):
+            rp.link.load("crc/said")
+    finally:
+        _config._EXTRA.remove(tmp_path)
+
+def test_save_leaves_base_to_the_folder(tmp_path):
+    obj = {"base": "constellation", "comment": "two points", "points": [[1, 0], [-1, 0]]}
+    f = _config.save("constellation", "constellation", "mine/two", obj, dest=tmp_path)
+    assert f == tmp_path / "constellation" / "mine" / "two.json" and "base" not in json.loads(f.read_text())
+    with pytest.raises(ConfigError, match="not in a config folder"):
+        _config.expand(f) # (outside every layer, nothing says it is a constellation)
+    rp.add_config_path(tmp_path)
+    try:
+        assert _config.expand(f)["base"] == "constellation"
+        assert len(rp.symbol.load("mine/two").points) == 2
+    finally:
+        _config._EXTRA.remove(tmp_path)
+    f = _config.save("filter", "fir", "taps/x0.5", {"base": "fir", "type": "taps", "taps": [1]}, dest=tmp_path)
+    assert f.name == "x0.5.json"
+    with pytest.raises(ConfigError, match="folder says 'fir'"):
+        _config.save("filter", "fir", "taps/y", {"base": "iir", "type": "taps"}, dest=tmp_path)
 
 def test_refs_unique():
     for domain in _config.domains():
@@ -168,6 +203,10 @@ def test_comment_lines():
 def test_a_comment_list_loads_as_one_string(tmp_path):
     d = tmp_path / "sequence" / "word"
     d.mkdir(parents=True)
-    (d / "w.json").write_text(json.dumps({"base": "sequence", "type": "word", "comment": ["The word,", "MSB first"],
+    (d / "w.json").write_text(json.dumps({"type": "word", "comment": ["The word,", "MSB first"],
                                           "word": "0xF3A2", "bits": 16, "order": "msb"}))
-    assert _config.expand(d / "w.json")["comment"] == "The word, MSB first"
+    rp.add_config_path(tmp_path)
+    try:
+        assert _config.expand(d / "w.json")["comment"] == "The word, MSB first"
+    finally:
+        _config._EXTRA.remove(tmp_path)

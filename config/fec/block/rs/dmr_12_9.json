@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "rs",
   "comment": [
     "DMR Reed-Solomon (12,9,4) over GF(256), roots alpha^1..alpha^3: the full link control checksum (ETSI TS 102 361-1",

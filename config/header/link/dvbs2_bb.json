@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "DVB-S2 BBHEADER, normal mode: MATYPE (TS/GS, SIS/MIS, CCM/ACM, ISSYI, NPD, roll-off;",

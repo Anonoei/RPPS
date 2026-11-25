@@ -1,5 +1,4 @@
 {
-  "base": "table",
   "comment": [
     "Demo MF-TDMA burst types by their unique word: constellation, code, and the header's frame bits (the units'",
     "information bits)"

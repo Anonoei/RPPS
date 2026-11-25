@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "3GPP TS 45.004",
   "tags": ["gsm"],
   "title": "EDGE (8PSK slots of GSM)",

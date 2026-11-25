@@ -1,5 +1,4 @@
 {
-  "base": "interleave",
   "type": "block",
   "comment": [
     "P25 phase 1 data / TSBK block interleave (TIA-102.BAAA-A Table 7-4): 98 dibits;",

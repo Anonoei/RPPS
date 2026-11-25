@@ -1,5 +1,4 @@
 {
-  "base": "linktype",
   "comment": [
     "AX.25 frames after a one-byte KISS header (port and command:",
     "0x00 data), without flags or FCS (Linux's ARPHRD_AX25)"

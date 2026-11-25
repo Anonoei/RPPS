@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "linear",
   "comment": "Hamming (7,4)",
   "n": 7,

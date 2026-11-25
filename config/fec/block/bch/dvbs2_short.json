@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "abstract": true,
   "type": "bch",
   "comment": "DVB-S2 outer BCH codes of short frames over GF(2^14), t = 12: each rate's length",

@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "ETSI EN 300 392-2",
   "title": "TETRA",
   "features": {

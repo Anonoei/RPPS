@@ -1,5 +1,4 @@
 {
-  "base": "sequence",
   "type": "recurrence",
   "comment": [
     "LTE pseudo-random sequence c(n) (3GPP TS 36.211 7.2): x1 = x^31 + x^3 + 1 from 1, x2 = x^31 + x^3 + x^2 + x + 1",

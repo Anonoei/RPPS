@@ -1,5 +1,4 @@
 {
-  "base": "profile",
   "extends": "ieee802154/2450",
   "comment": [
     "IEEE 802.15.4 2.4 GHz O-QPSK frames: the synchronization header (preamble and SFD) found and taken off, the PHY",

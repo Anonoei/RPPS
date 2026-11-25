@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "Demo header inside an HDLC frame (profile/demo/hdlc_header): an address, a control byte and a protocol byte",

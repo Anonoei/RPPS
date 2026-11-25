@@ -1,5 +1,4 @@
 {
-  "base": "crc",
   "type": "crc",
   "comment": "CRC-32 (Ethernet, HDLC FCS-32, GZIP)",
   "width": 32,

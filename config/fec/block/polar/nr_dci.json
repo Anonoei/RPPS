@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "nr_polar",
   "comment": [
     "5G NR DCI: a payload of K - 24 bits and its CRC-24C (computed over 24 ones and the payload;",

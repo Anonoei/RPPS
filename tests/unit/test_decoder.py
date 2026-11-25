@@ -44,7 +44,7 @@ def test_requires_takes_only_its_keys(tmp_path, monkeypatch):
         requirements({"input": "video"}, {})
     d = tmp_path / "profile" / "demo"
     d.mkdir(parents=True)
-    (d / "stray.json").write_text(json.dumps({"base": "profile", "params": {"sps": 2},
+    (d / "stray.json").write_text(json.dumps({"params": {"sps": 2},
                                               "requires": {"baud": "1e6", "from_cf": {"chan": "cf"}}, "steps": []}))
     monkeypatch.setattr(_config, "_EXTRA", [tmp_path])
     with pytest.raises(ConfigError, match="from_cf sets \\['chan'\\]"):

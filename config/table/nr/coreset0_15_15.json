@@ -1,5 +1,4 @@
 {
-  "base": "table",
   "comment": [
     "CORESET 0 from the MIB's controlResourceSetZero, SS/PBCH block and PDCCH both at 15 kHz (bands of 5 or 10 MHz",
     "minimum bandwidth): multiplexing pattern, resource blocks, symbols, and the offset in RBs from the CORESET's",

@@ -1,5 +1,4 @@
 {
-  "base": "header",
   "type": "link",
   "comment": [
     "MPEG-2 transport packet header: sync byte, transport error, payload unit start (PUSI:",

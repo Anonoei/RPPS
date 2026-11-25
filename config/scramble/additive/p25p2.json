@@ -1,5 +1,4 @@
 {
-  "base": "scramble",
   "type": "additive",
   "comment": [
     "P25 phase 2 outbound scrambling (TIA-102.BBAC): 44-bit LFSR x^44 + x^40 + x^35 + x^29 + x^24 + x^10 + 1 seeded",

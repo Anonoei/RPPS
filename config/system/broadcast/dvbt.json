@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "ref": "ETSI EN 300 744",
   "title": "DVB-T",
   "features": {

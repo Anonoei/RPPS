@@ -1,5 +1,4 @@
 {
-  "base": "crc",
   "type": "crc",
   "comment": [
     "CRC-16/GSM. P25 Phase 1 TSBK / header blocks (CRC-CCITT, inverted remainder, TIA-102.BAAA).",

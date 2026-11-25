@@ -1,5 +1,4 @@
 {
-  "base": "frame",
   "extends": "slip",
   "comment": [
     "KISS TNC framing (SLIP's FEND 0xC0 / FESC 0xDB, TFEND 0xDC / TFESC 0xDD):",

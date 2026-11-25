@@ -10,10 +10,10 @@ A signal is built from explicit pieces, and a new kind of signal is a new config
 ## Constellations
 
 A constellation is a set of points and the ways of labelling them with bits. PSK, QAM, APSK and ASK are generators
-(`rp.symbol.PSK(8)`, `rp.symbol.QAM(16)`, `rp.symbol.generate("64QAM")`); anything else is a config file:
+(`rp.symbol.PSK(8)`, `rp.symbol.QAM(16)`, `rp.symbol.generate("64QAM")`); anything else is a config file
+(config/constellation/<group>/<name>.json):
 
-    {"base": "constellation",
-     "points": [{"mag": 1, "pha": 45}, {"re": 0, "im": 2}, [-1.5, 0]],
+    {"points": [{"mag": 1, "pha": 45}, {"re": 0, "im": 2}, [-1.5, 0]],
      "maps": [{"map": [0, 1, 3, 2], "comment": "R000 Grey"}]}
 
 `maps[i].map[point]` is the value (bits, first bit most significant) the point carries. Points are scaled to unit mean

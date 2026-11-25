@@ -4,9 +4,10 @@
 
 Everything RPPS can load (constellations, pulses, sequences, scramblers, codes, headers, tables, profiles) is a JSON
 definition, found by name in config/ and in the directories you add with `rp.add_config_path(dir)` (or `RPPS_CONFIG`),
-laid out the same way. A new signal is usually a profile that strings shipped definitions together, plus the one or
-two things that are really yours: here a 32-bit sync word. A definition can `extend` another and change only what
-differs. Nothing in the package is touched, and the same files load from the shell (`python -m rpps rx ...`).
+laid out the same way: the folder a file is in says what it is (sequence/word/ holds sync words). A new signal is
+usually a profile that strings shipped definitions together, plus the one or two things that are really yours: here a
+32-bit sync word. A definition can `extend` another and change only what differs. Nothing in the package is touched,
+and the same files load from the shell (`python -m rpps rx ...`).
 
 Here: a made-up beacon. BPSK with RRC pulses; frames of `payload` bytes, each Hamming (7,4) coded, randomized with the
 CCSDS sequence and sent behind our own sync word. Timing and carrier come from the block estimators; the 180 degree
@@ -24,10 +25,9 @@ FRAME = "7*8*payload//4" # channel bits a frame: payload bytes, Hamming (7,4) co
 
 DEFINITIONS = {
     "sequence/word/beacon_sync": {
-        "base": "sequence", "type": "word", "comment": "The beacon's sync word, most significant bit first",
+        "type": "word", "comment": "The beacon's sync word, most significant bit first",
         "word": "0xF3A2B5C7", "bits": 32, "order": "msb"},
     "profile/demo/beacon": {
-        "base": "profile",
         "comment": "Demo beacon: BPSK, RRC 0.35, frames of `payload` bytes, Hamming (7,4), randomized, behind a sync word",
         "params": {"sps": {"default": 4, "comment": "samples per symbol"},
                    "payload": {"default": 32, "comment": "data bytes a frame"}},
@@ -42,7 +42,7 @@ DEFINITIONS = {
             {"code": "scramble", "name": "additive/ccsds", "length": {"expr": FRAME}},
             {"code": "block", "name": "hamming/7_4"}]},
     "profile/demo/beacon_long": { # only what differs from its parent
-        "base": "profile", "extends": "demo/beacon", "comment": "Demo beacon with 64-byte frames",
+        "extends": "demo/beacon", "comment": "Demo beacon with 64-byte frames",
         "params": {"payload": 64}},
 }
 

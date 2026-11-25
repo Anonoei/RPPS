@@ -1,5 +1,4 @@
 {
-  "base": "linktype",
   "comment": [
     "IEEE 802.11 MAC frames (MPDUs), from the frame control field;",
     "the FCS may be present (Wireshark's \"Assume packets have FCS\")"

@@ -1,5 +1,4 @@
 {
-  "base": "system",
   "comment": [
     "single channel per carrier: QPSK, K=7 convolutional code 1/2 or 3/4; rates for 64 kbit/s ..",
     "2.048 Mbit/s (the range spans both code rates)"

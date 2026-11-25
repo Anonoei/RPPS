@@ -62,7 +62,7 @@ setup.py             builds the native module and copies config/
 ## Adding things
 
 - **A definition** (constellation, code, scrambler, pulse, CRC, sequence, header, table, profile): a JSON file in
-  `config/<resource>/` with `base`, `type`, `comment` and `ref`; `python -m rpps ls <resource>` to see it,
+  `config/<resource>/` (the folder says what it is) with `type`, `comment` and `ref`; `python -m rpps ls <resource>` to see it,
   `python -m rpps fmt --check` for style.
 - **An implementation** (a code type, a sync method): put it in its category's package (`rpps.base`, The rule); subclass
   `Pipe`, `Stage` or `BitStage` with `CATEGORY`, `takes` and `SCOPE`; register its loader and its profile step
