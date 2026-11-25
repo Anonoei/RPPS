@@ -178,6 +178,14 @@ what to use instead.
   `sync`, `ssb_period`, `subcarrier`, `subcarrier_baud`. `python -m rpps ls system`.
 
 **GPU and tools**
+- **Oerder & Meyr and MPower on a GPU** (`OerderMeyr(device=True)`, `MPower(device=True)`; a profile's `"device": true`
+  on `timing: oerder_meyr` and `carrier: mpower`): each window's sums, symbols and correction on the device, the
+  tracking the host's, the host's output to float32 rounding. Each window waits on the device, so with 1 ms windows
+  they are slower than the C++ host paths on an integrated GPU (the DVB-S2 receiver 1.3x slower on a Radeon 860M).
+- **Device benchmarks re-run on an idle machine** (Radeon 860M against 16 CPU threads, 16-64 frames a batch): LDPC
+  1.9-2.4x, BCH 2.0-3.6x, demap 4.2-8.6x, the DVB-S2 region 2.1x, the receiver end to end 1.1x; `timing: mat` on the
+  device makes the receiver 16% faster. `tools/parallel_bench.py --front-device` puts the front's timing and carrier on
+  the GPU (`--device` is the region alone, with any timing).
 - **`tools/lte_bench.py`**: `lte/downlink`'s real-time factor in one thread and pipelined, and each step's load.
 - **A parallel region on a GPU, CUDA or ROCm/HIP alike** (`Parallel("thread", xp=xp)`): LDPC, BCH and soft demapping
   run device kernels, with permutation, identity and header kernels so the DVB-S2 region stays on the device; bit for bit

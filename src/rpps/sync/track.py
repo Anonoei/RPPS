@@ -31,11 +31,15 @@ def line_phasor(phi0, rate, length):
     multiplications an item and about 2 sqrt(length) exponentials, and agrees with the direct exponential to about 1e-14"""
     if length <= 0:
         return np.zeros(0, np.complex128)
-    block = max(16, int(length**0.5))
-    nb = -(-length//block)
-    local = np.exp(-1j*rate*np.arange(block))
-    starts = np.exp(-1j*(phi0 + rate*block*np.arange(nb)))
+    starts, local = line_parts(phi0, rate, length)
     return (starts[:, None]*local[None, :]).reshape(-1)[:length]
+
+def line_parts(phi0, rate, length):
+    """(starts, local) of `line_phasor`: item i's phasor is starts[i // len(local)]*local[i % len(local)] (a device kernel
+    reads the line this way, the exponentials made on the host in double)"""
+    block = max(16, int(max(length, 1)**0.5))
+    nb = -(-max(length, 1)//block)
+    return np.exp(-1j*(phi0 + rate*block*np.arange(nb))), np.exp(-1j*rate*np.arange(block))
 
 def update(tr, measured, t, period=None, bw=0.25, rate=None):
     """A window's measurement (modulo `period` when given) at position t, its centre. rate: a measured rate to start from"""

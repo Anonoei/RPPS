@@ -155,6 +155,11 @@ Pitfalls found the hard way:
   (158 GFLOP/s SGEMM, 16 GB/s), so a GPU path that wins on an idle machine can tie with the CPU on a loaded one, and a
   CPU front competes with a GPU region inside one receiver. Check `pp_dpm_sclk` (or `rocm-smi --showclocks`) and the
   load before trusting a number.
+- **A front stage that tracks window by window waits on the device every window.** `OerderMeyr` and `MPower` with
+  `device=True` measure each window with one reduction and read the sums back before the tracker can place the next
+  window: on the 860M, with 1 ms windows, the DVB-S2 receiver was 1.3x slower with both on the device than with the C++
+  host paths. `MatTrack` (`timing: mat`) measures a group of windows a launch and wins (16%). Batch a group of windows
+  before moving a front stage to a device.
 - **ROCm packages out of step:** a hipcub newer than rocprim fails CuPy's build (`segmented_reduce_config_selector`). Build
   against the hipcub release that matches rocprim (`HIPCUB_VERSION` = `ROCPRIM_VERSION` in their `*_version.hpp`), for
   example by pointing `ROCM_HOME` at a copy of `/opt/rocm` made of links with that hipcub's headers in `include/hipcub`.

@@ -55,11 +55,11 @@ fork).
   (no implicit conversion, no numpy array mixed in); every kernel and the DVB-S2 region run on it in the suite.
 - **Batches pay on a device.** A layer launch needs thousands of (check, codeword) threads to fill a GPU, so a device
   wins from about 16 frames a batch (`Parallel(max_batch=)`) and is even at one; measure with `tools/device_bench.py`.
-  On an AMD Radeon 860M (an integrated GPU) against 16 CPU threads with the C++ kernels, 16-64 frames a batch: LDPC
-  2.1-2.6x, BCH 2.7-3.8x (clean words; about 1.1x with five errors a word), demap 4.5-7.9x; the DVB-S2 region 1.9x,
-  and the receiver end to end 1.35x, the serial front now most of its time.
-- **What moves next:** the front's block estimators (matched filter, timing, carrier, frame sync); its per-sample
-  loops stay on the CPU.
+  On an AMD Radeon 860M (an integrated GPU) against 16 CPU threads with the C++ kernels, 16-64 frames a batch, the
+  machine otherwise idle: LDPC 1.9-2.4x, BCH 2.0-3.6x (clean words; 1.0-1.5x with five errors a word), demap 4.2-8.6x;
+  the DVB-S2 region 2.1x, and the receiver end to end (four workers) 1.1x, the serial front now most of its time.
+- **The front on a device** (`"device": true`): frame sync, `timing: mat` (16% faster end to end on the 860M), Oerder
+  & Meyr and MPower (1.3x slower: each window waits on the device). Per-sample loops stay on the CPU.
 """
 from .frame import Frame, Result, OK, DROPPED
 from .executor import Executor, InlineExecutor, ThreadExecutor, ProcessExecutor, make

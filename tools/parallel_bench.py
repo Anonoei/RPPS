@@ -3,7 +3,7 @@
     python tools/parallel_bench.py [frames] [max_workers] [block]
     python tools/parallel_bench.py 16 8 --update-baseline   # keep this machine's rates in .benchmarks/ (--check compares)
     python tools/parallel_bench.py 64 4 --device             # the region on the GPU (rpps._accel.device(): CuPy, CUDA or HIP)
-    python tools/parallel_bench.py 64 4 --device --timing mat   # and the matched filter and timing too (MatTrack)
+    python tools/parallel_bench.py 64 4 --device --front-device --timing mat   # the front's timing and carrier too
 
 block: samples per block fed to the receiver (default: the whole stream as one block). In blocks the serial front of one
 block overlaps the region of the one before, as it does on a live source.
@@ -28,12 +28,14 @@ BATCH = 16
 XP = None # the region's array module (--device), else numpy
 p = o = x = data = None
 
-def setup(frames_n, workers, block, timing="known", device=False):
+def setup(frames_n, workers, block, timing="known", front=False):
     """The profile and its transmitted stream, as the module's globals the runners read. timing: the receiver's method
-    (known, oerder_meyr, mat); device: a `mat` front on the GPU too"""
+    (known, oerder_meyr, mat); front: its timing (mat, oerder_meyr) and carrier (mpower) on the GPU"""
     global N, W, BLOCK, p, o, x, data
     N, W, BLOCK = frames_n, workers, block
-    p = rp.profile.load("dvbs2/normal", sync={"timing": {"method": timing, **({"device": True} if device and timing == "mat" else {})}})
+    dev = {"device": True} if front else {}
+    p = rp.profile.load("dvbs2/normal", sync={"timing": {"method": timing, **(dev if timing != "known" else {})},
+                                              "carrier": {"method": "mpower", **dev}})
     t = rp.profile.table("dvbs2/modcod")
     frames = [{"modcod": (4, 12)[i % 2], "pilots": 1} for i in range(N)]
     dfl = [t.row({**f, "short": 0})["kbch"] - 80 for f in frames]
@@ -85,20 +87,23 @@ def main(argv=None):
     ap.add_argument("block", type=int, nargs="?", default=0, help="samples a block (0: the whole stream)")
     ap.add_argument("--device", action="store_true", help="the region's kernels on the GPU (thread and inline runs)")
     ap.add_argument("--batch", type=int, default=16, help="frames a batch at most (Parallel max_batch)")
+    ap.add_argument("--front-device", action="store_true", help="the front's timing (mat, oerder_meyr) and carrier on the GPU")
     ap.add_argument("--timing", default="known", choices=["known", "oerder_meyr", "mat"],
-                    help="the receiver's timing (mat: the matched filter fused in; on the GPU with --device)")
+                    help="the receiver's timing (mat: the matched filter fused in)")
     _bench.add_args(ap)
     a = ap.parse_args(argv)
-    setup(a.frames, a.max_workers, a.block, a.timing, a.device)
+    setup(a.frames, a.max_workers, a.block, a.timing, a.front_device)
     global XP, BATCH
     BATCH = a.batch
-    if a.device:
-        XP, backend = rp._accel.device()
+    if a.device or a.front_device:
+        xp, backend = rp._accel.device()
         if backend is None:
-            ap.error("--device: no usable GPU (rpps._accel.device() gives numpy)")
+            ap.error("--device, --front-device: no usable GPU (rpps._accel.device() gives numpy)")
+        XP = xp if a.device else None
     rec = _bench.Record("parallel")
     base = timed(p.rx)
-    print(f"{N} frames, native={rp._accel.available()}, timing {a.timing}, region on {getattr(XP, '__name__', 'numpy')}, batch {BATCH}")
+    print(f"{N} frames, native={rp._accel.available()}, timing {a.timing}, front on {'the GPU' if a.front_device else 'the host'}, "
+          f"region on {getattr(XP, '__name__', 'numpy')}, batch {BATCH}")
     print(f"serial        {base:6.2f} s  {N/base:6.2f} frames/s")
     rec.add("serial", N/base, "frames/s")
     w = 1

@@ -15,9 +15,11 @@ def _sps(m, ctx, where):
 
 @register_sync_method("timing", "oerder_meyr")
 def _om(m, rep, ctx):
+    """Oerder & Meyr, block estimation tracked across windows (rpps.sync.time.OerderMeyr). "device": true measures and
+    interpolates on the GPU of rpps._accel.device()"""
     from ... import sync
     return sync.time.OerderMeyr(m.get("sps"), m.get("window", 1e-3), m.get("min_symbols", 2048), m.get("bw", 0.25),
-                                m.get("gate", 2.0), m.get("name", "timing"), m.get("clock", True))
+                                m.get("gate", 2.0), m.get("name", "timing"), m.get("clock", True), m.get("device", False))
 
 @register_sync_method("timing", "mm")
 def _mm(m, rep, ctx):
@@ -67,6 +69,8 @@ def _pilot_phase(m, rep, ctx):
 
 @register_sync_method("carrier", "mpower")
 def _mpower(m, rep, ctx):
+    """The M-th power, block estimation tracked across windows (rpps.sync.phase.MPower). "device": true measures and
+    corrects on the GPU of rpps._accel.device()"""
     from ... import sync
     order = int(m.get("order", 4))
     offset = m.get("offset")
@@ -76,7 +80,7 @@ def _mpower(m, rep, ctx):
              else None) # A definition, or a generated shape, as the constellation step names them
         offset = sync.phase.offset_of(c, order) if c is not None else 0.0
     return sync.phase.MPower(order, offset, m.get("window", 1e-3), m.get("min_symbols", 1024), m.get("bw", 0.25),
-                             m.get("gate", 3.0), m.get("relock", 4), m.get("name", "carrier"))
+                             m.get("gate", 3.0), m.get("relock", 4), m.get("name", "carrier"), m.get("device", False))
 
 @register_sync_method("carrier", "costas")
 def _costas(m, rep, ctx):

@@ -105,10 +105,12 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
   with known timing `anchor` (the grid lands off); the transmit side of branches (and of `grid`:
   `grid.lte.tx`, `grid.nr.tx` are test transmitters); NR at 30 kHz and above, NR VRB-to-PRB interleaving, several
   code blocks a transport block, multiple antenna ports; LTE beyond SIB1 (unicast DCI formats, multiple code blocks, TDD, extended prefix); `lte/downlink` in
-  real time at 15.36 MS/s (about 1.1x slower; `nr/downlink` keeps up at 7.68 MS/s); a first-class carrier estimator for
+  real time at 15.36 MS/s in short blocks (pipelined, it keeps up from blocks of about 17 ms; the trunk and branches
+  share the GIL, so two threads gain about 8% over one; `nr/downlink` keeps up at 7.68 MS/s); a first-class carrier estimator for
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
 - **Links, sources, profiles:** MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
   block-coded headers; tun/tap, audio devices, transmitting to a radio; profiles for DMR voice, P25 phase 2 and voice, 802.11a/g/n, ATSC, GPS C/A,
   DAB, UMTS, CCSDS turbo (and `projects/` using the BLE, ADS-B and 802.11b profiles that exist); `dvbs2/normal` dummy frames;
-  positions and gaps in the parallel runner's output; MPower and Oerder & Meyr on a GPU; an FPGA backend.
+  positions and gaps in the parallel runner's output; MPower and Oerder & Meyr on a GPU a group of windows a launch (each window is a launch and a wait now: slower than the
+  host); an FPGA backend.
