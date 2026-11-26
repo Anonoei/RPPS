@@ -19,7 +19,7 @@ def diff_alphabets(constellation):
     from ... import symbol
     c = _constellation(constellation)
     out = {}
-    for stem in symbol.ls().get("psk", []):
+    for stem in symbol.ls(examples=False).get("psk", []):
         if stem.startswith("dvbs2_"):
             continue
         d = symbol.load(f"psk/{stem}")

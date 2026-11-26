@@ -456,8 +456,10 @@ def load(name, sync=None, **params):
     resolved = _config.resolve(_config.read(file), params, f"profile/{name}")
     return Profile(name, resolved, sync=sync, params=_config.declared(resolved))
 
-def ls():
-    """The profiles there are: {family: [modes]}"""
-    return _config.ls("profile")
+def ls(examples=True):
+    """The profiles there are: {family: [modes]}
+
+    examples: False leaves out the definitions tagged "example" (what the blind tools do)"""
+    return _config.ls("profile", examples=examples)
 
 DOMAIN = _config.register_domain("profile", {"profile": Profile.load})

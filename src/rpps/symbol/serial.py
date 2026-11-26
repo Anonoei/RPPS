@@ -34,9 +34,11 @@ def load_header(name: str, **params) -> Header:
     h = _config.load("header", name, "physical", params=params)
     return h
 
-def ls():
-    """List available modulation types: {category: [names]}"""
-    return _config.ls("constellation")
+def ls(examples=True):
+    """List available modulation types: {category: [names]}
+
+    examples: False leaves out the definitions tagged "example" (what the blind tools do)"""
+    return _config.ls("constellation", examples=examples)
 
 
 def load_or_generate(name: str, mapping=None) -> Constellation:

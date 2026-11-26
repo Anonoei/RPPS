@@ -143,10 +143,10 @@ def fits(name, baud=None, bw=None, Fs=None, seconds=None, input=None, tol=TOL, *
     return None
 
 def candidates(names=None, baud=None, bw=None, Fs=None, seconds=None, input=None, tol=TOL, limit=64):
-    """[(name, params)]: each variant (rp.profile.variants) of each profile (`names`, or every one) a signal measured so
-    may be (`fits`), in name order, the defaults of each first"""
+    """[(name, params)]: each variant (rp.profile.variants) of each profile (`names`, or every non-"example" one)
+    a signal measured so may be (`fits`), in name order, the defaults of each first"""
     if names is None:
-        names = [f"{family}/{mode}" for family, modes in sorted(ls().items()) for mode in modes]
+        names = [f"{family}/{mode}" for family, modes in sorted(ls(examples=False).items()) for mode in modes] # (no made-up ones)
     return [(n, v) for n in names for v in variants(n, limit)
             if fits(n, baud=baud, bw=bw, Fs=Fs, seconds=seconds, input=input, tol=tol, **v) is None]
 

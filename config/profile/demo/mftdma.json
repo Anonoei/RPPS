@@ -9,6 +9,7 @@
     "plan's origin acquired from the bursts; transmitting, the plan places each burst on its slot.",
     "The capture is 8 MS/s around the plan's centre"
   ],
+  "tags": ["example"],
   "params": {
     "sps": {"default": 4, "comment": "samples a symbol of every carrier's bursts"},
     "plan": {"default": "demo/mftdma", "comment": "the burst time plan (\"\": none, detection only, with `carriers`)"},

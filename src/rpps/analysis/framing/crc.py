@@ -143,7 +143,7 @@ def _catalogue(w, p):
     """Shipped config/crc definitions of this width and generator: [(name, init, xorout, refin, refout)]"""
     from ... import link
     out = []
-    for name in link.ls()["crc"]:
+    for name in link.ls(examples=False)["crc"]:
         try:
             c = link.load(f"crc/{name}").encoder
         except Exception: # a definition that does not load is not a candidate

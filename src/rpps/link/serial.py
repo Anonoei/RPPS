@@ -46,9 +46,11 @@ def root() -> Path:
     """Directory holding the encapsulation definitions"""
     return _config.find_config("crc")
 
-def ls(path=None):
-    """List available definitions: {category: [names]}"""
-    return {k: sorted(n for names in _config.ls(k, path).items() if k != "header" or names[0] == "link" for n in names[1])
+def ls(path=None, examples=True):
+    """List available definitions: {category: [names]}
+
+    examples: False leaves out the definitions tagged "example" (what the blind tools do)"""
+    return {k: sorted(n for names in _config.ls(k, path, examples=examples).items() if k != "header" or names[0] == "link" for n in names[1])
             for k in KINDS}
 
 def load(ref: str, path=None, **params):

@@ -204,6 +204,12 @@ python -m rpps ls --tag dvb-s2        # constellations, codes, interleavers, hea
 rp.tagged("ccsds")                    # {resource: [refs]}
 ```
 
+A definition made up to show a feature (a demo profile, a docs example, a test word) carries `"tags": ["example"]`,
+as its children then do. It loads by name and `ls` lists it, but the blind tools never try it: `identify`, the survey's
+framed profiles, `solve`, the catalogue and the CRC, scrambler, convolutional code and PSK searches all list with
+`examples=False` (`rp.profile.ls(examples=False)`, `rp.code.names("conv", examples=False)`...). Keep the shipped
+`profile/demo/`, `plan/demo/`, `table/demo/` and `demo_*` definitions that way, so they cost a blind search nothing.
+
 ## Differential modulation
 There is no DPSK definition: a differential step chains with a plain constellation, whose points are then the phase
 changes. pi/4-DQPSK is `psk/qpsk` after `{"symbol": "differential"}`; 802.11b DQPSK is `psk/qpsk_axes`; DBPSK is

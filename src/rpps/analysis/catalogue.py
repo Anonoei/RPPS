@@ -75,7 +75,8 @@ def systems(fresh=False):
     key = tuple(str(p) for p in _config.layers("system"))
     if fresh or key not in _SYSTEMS:
         _SYSTEMS.clear()
-        _SYSTEMS[key] = [_config.load("system", f"{cat}/{n}") for cat, names in _config.ls("system").items() for n in names]
+        _SYSTEMS[key] = [_config.load("system", f"{cat}/{n}") for cat, names in _config.ls("system", examples=False).items()
+                         for n in names]
     return _SYSTEMS[key]
 
 _configured = systems # `match` takes a `systems` argument

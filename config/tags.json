@@ -19,6 +19,12 @@
     },
     "dvb-s": {"comment": "DVB-S satellite television", "ref": "EN 300 421"},
     "dvb-s2": {"comment": "DVB-S2 satellite television and data", "ref": "EN 302 307-1"},
+    "example": {
+      "comment": [
+        "Made up to show a feature (examples, tests, docs), used by no real system:",
+        "loadable by name, never a candidate of the blind tools (identify, survey, solve, the catalogue)"
+      ]
+    },
     "gps": {"comment": "GPS L1 C/A", "ref": "IS-GPS-200"},
     "gsm": {"comment": "GSM", "ref": "3GPP TS 45.004, 45.003"},
     "hdlc": {"comment": "HDLC framing (ISO 13239) and the links built on it", "ref": "ISO/IEC 13239"},

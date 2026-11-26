@@ -72,6 +72,12 @@ what to use instead.
 
 ### Added
 
+- **The `example` tag: definitions made up to show a feature load and list, but no blind tool tries them.**
+  `identify`, the survey's framed profiles, `solve`, the system catalogue and the CRC, scrambler, convolutional code
+  and PSK searches list with `examples=False` (new on `rp.profile.ls`, `rp.code.ls`/`names`, `rp.link.ls`,
+  `rp.code.scram.ls`, `rp.symbol.ls`). The shipped demos (`profile/demo/*`, `plan/demo/mftdma`, `table/demo/*`,
+  `header/link/demo_*`, `sequence/word/demo_uw*`) carry it, so `profile.candidates()` no longer tries the two demo
+  profiles. A user layer's file decides how its name lists, over a shipped one.
 - **A parent can hold its children as rows, `"variants"`** (`{"columns": ["name", ...], "rows": [...]}`, a dotted
   column a key inside a dict: `params.gamma`): each row loads, lists, tags and is extended as the child file it stands
   for, by the same name. The DVB-S2 BCH codes (`bch/dvbs2_normal`, `dvbs2_short`), the CCSDS turbo rates, the DVB-S2

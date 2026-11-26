@@ -50,7 +50,7 @@ def solve(bits, rs_lengths=None, max_taps=2, exhaustive=False, block=True):
         return [(ha[0], ga)]
     if not h: # Bits that stay white: maybe RS-coded random payload behind a known scrambler (RS structure is algebraic)
         from ... import code
-        for name in code.scram.ls().get("feedthrough", []):
+        for name in code.scram.ls(examples=False).get("feedthrough", []):
             obj = cached_scrambler(f"feedthrough/{name}")
             found = code_layer(Feedthrough.descramble(bits, obj["poly"]), with_block=False)
             if found:

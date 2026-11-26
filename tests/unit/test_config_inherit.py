@@ -168,3 +168,19 @@ def test_a_variant_that_is_also_a_file_is_refused(layer):
     layer("crc/vdup", {"extends": "crc16_xmodem", "comment": "a file"})
     with pytest.raises(ConfigError, match="also a file"):
         _config.ls("crc")
+
+def test_examples_load_and_list_but_are_never_blind_candidates(layer):
+    from rpps.profile.catalogue import candidates
+    layer("crc/ex_crc", {"extends": "crc16_xmodem", "comment": "made up", "tags": ["example"]})
+    layer("crc/ex_child", {"extends": "ex_crc", "comment": "a child of one is one too"})
+    layer("profile/ex/beacon", {"extends": "ax25/afsk1200", "comment": "made up", "tags": ["example"]})
+    assert {"ex_crc", "ex_child"} <= set(rp.link.ls()["crc"]) and "beacon" in rp.profile.ls()["ex"]
+    assert not {"ex_crc", "ex_child"} & set(rp.link.ls(examples=False)["crc"])
+    assert "ex" not in rp.profile.ls(examples=False) and not [n for n, _ in candidates() if n.startswith("ex/")]
+    assert rp.link.load("crc/ex_child") is not None and rp.profile.load("ex/beacon") is not None
+    for family, modes in rp.profile.ls(examples=False).items(): # (the shipped demos too)
+        assert family != "demo", modes
+
+def test_a_higher_layer_decides_what_a_name_lists_as(layer):
+    layer("crc/crc16_arc", {"extends": "crc16_xmodem", "comment": "mine, made up", "tags": ["example"]})
+    assert "crc16_arc" in rp.link.ls()["crc"] and "crc16_arc" not in rp.link.ls(examples=False)["crc"]

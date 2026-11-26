@@ -97,7 +97,7 @@ def candidates(names=None):
         names = _CANDIDATES.get((where, None))
         if names is None:
             names = _CANDIDATES[(where, None)] = tuple(
-                n for n in symbol.ls().get("psk", []) if "extends" not in _config.read_raw(_config.find("constellation", f"psk/{n}")))
+                n for n in symbol.ls(examples=False).get("psk", []) if "extends" not in _config.read_raw(_config.find("constellation", f"psk/{n}")))
     out = {}
     for name in names:
         pts = _CANDIDATES.get((where, name))

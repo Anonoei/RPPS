@@ -5,6 +5,7 @@
     "Tx types 128 and 129 (one and two LDPC units) on the 250 kBd frame, 130 (three units) on the 500 kBd one;",
     "each its own unique word. Times in NCR ticks (27 MHz)"
   ],
+  "tags": ["example"],
   "clock": 27000000.0,
   "tx_types": {
     "128": {

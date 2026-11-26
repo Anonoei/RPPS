@@ -69,18 +69,27 @@ def domains():
 def _roots(domain, path):
     return [Path(path)] if path else layers(domain)
 
-def ls(domain, path=None, all=False):
+EXAMPLE = "example" # The tag of a made-up definition (a demo, a docs example): loadable by name, never a blind candidate
+
+def ls(domain, path=None, all=False, examples=True):
     """Definitions of a domain: {"<category>[/<group>]": [names]}, merged across layers (files straight in the domain are under the domain's name).
-    all: also the abstract parents (definitions only children load)"""
+    all: also the abstract parents (definitions only children load). examples: also the definitions tagged "example"
+    (made up to show a feature, no system uses them): the blind tools (identify, survey, solve, catalogue) leave them out"""
     out: dict = {}
+    seen = set() # (a name a higher layer has decides, as `locate` does)
     for root in _roots(domain, path):
         for f in _files(root):
-            if not all and _head(f).get("abstract"):
-                continue
             rel = f.parent.relative_to(root).as_posix()
             key = domain if rel == "." else rel
-            out[key] = sorted(set(out.get(key, [])) | {f.stem})
-    return dict(sorted(out.items()))
+            if (key, f.stem) in seen:
+                continue
+            seen.add((key, f.stem))
+            if not all and _head(f).get("abstract"):
+                continue
+            if not examples and EXAMPLE in file_tags(f):
+                continue
+            out.setdefault(key, set()).add(f.stem)
+    return {k: sorted(v) for k, v in sorted(out.items())}
 
 
 def _files(base):
