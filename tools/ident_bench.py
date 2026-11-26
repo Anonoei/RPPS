@@ -74,16 +74,23 @@ def sig_mis(name, rng, seconds):
     return rp.profile.load(name), np.asarray(o.data), o.Fs, o.meta.sps, len(bits)
 
 def sig_tm_packets(name, rng, seconds):
-    """CCSDS space packets in TM transfer frames (one virtual channel, an idle packet filling the last), RS depth 1"""
+    """CCSDS space packets in TM transfer frames (one virtual channel, an idle packet filling the last), RS depth 1.
+    Each frame's first header pointer says where its first packet starts (2047: none starts in it)"""
     dfl = 223 - 6
     n = max(4, int(seconds*1e6/(8*(32 + 8*255))))
-    stream = b"".join(struct.pack(">HHH", 100, (3 << 14) | i, k - 1) + rng.bytes(k)
-                      for i, k in enumerate(rng.integers(20, 300, 2*n)))[:n*dfl]
+    pkts = [struct.pack(">HHH", 100, (3 << 14) | i, k - 1) + rng.bytes(k)
+            for i, k in enumerate(rng.integers(20, 300, 2*n))]
+    starts = np.cumsum([0] + [len(q) for q in pkts])[:-1]
+    stream = b"".join(pkts)[:n*dfl]
     frames = []
     for k in range(n):
         chunk = stream[k*dfl:(k + 1)*dfl]
-        chunk += struct.pack(">HHH", 2047, 3 << 14, max(0, dfl - len(chunk) - 7)) + bytes(max(0, dfl - len(chunk) - 6))
-        frames.append(struct.pack(">HBBH", (42 << 4) | (1 << 1), k, k, (3 << 11) | (0 if k == 0 else 2047)) + chunk[:dfl])
+        if len(chunk) < dfl: # (an idle packet to the end, its start a packet start too)
+            starts = np.append(starts, k*dfl + len(chunk))
+            chunk += struct.pack(">HHH", 2047, 3 << 14, max(0, dfl - len(chunk) - 7)) + bytes(max(0, dfl - len(chunk) - 6))
+        first = starts[(starts >= k*dfl) & (starts < (k + 1)*dfl)]
+        fhp = int(first[0] - k*dfl) if len(first) else 2047
+        frames.append(struct.pack(">HBBH", (42 << 4) | (1 << 1), k, k, (3 << 11) | fhp) + chunk[:dfl])
     bits = np.unpackbits(np.frombuffer(b"".join(frames), np.uint8)).astype(bool)
     _, x, Fs, sps, n = pb._stream("ccsds/tm_rs", bits, depth=1) # (its packet step only receives: the same on air)
     return rp.profile.load(name, depth=1), x, Fs, sps, n

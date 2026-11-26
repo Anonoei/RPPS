@@ -77,6 +77,8 @@ def test_space_packets_across_frames(tm):
         assert [m.payload for m in space if m.fields["channel"] == 1] == a # Virtual channels kept apart
         assert [m.payload for m in space if m.fields["channel"] == 2] == b # (the OCF passed over)
         assert st.est["space"]["idle"] == 2 and st.est["space"]["lost"] == 0
+        # Each pointer after the first of a channel met by the packets' lengths (the layer's check), none missed
+        assert st.est["space"]["aligned"] >= 5 and st.est["space"]["misaligned"] == 0
         assert all(m.parts == {"header": (0, 48), "payload": (48, 8*len(m.payload) - 48)} for m in space)
 
 def test_a_lost_frame_drops_only_what_crossed_it(tm):

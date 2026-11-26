@@ -59,11 +59,15 @@ class MPower(Stage):
     residual phase of y turned back by the tracked line, (angle(sum u^M) - offset) / M with u = y e^{-j phase} / |y|, and a block-rate
     loop (rpps.sync.track) carries phase and frequency on, so the correction is a line per symbol, with no staircase and no
     slips while the drift stays inside the loop. A window whose M-th power line is weaker than `gate` (its SNR: noise
-    alone is about 1) is skipped; after `relock` of those in a row the carrier is acquired again from the FFT. Acquiring
+    alone is about 1) is skipped; after `relock` of those in a row the carrier is acquired again from the FFT, its phase on
+    the branch (of the M) nearest the line held till then, so the correction carries on without a jump. Acquiring
     wants `gate` more than the best of the FFT's N frequencies reaches on noise, sqrt(2 ln N): at an Es/N0 where the M-th
     power is lost in noise (DVB-S2 under 0 dB with M = 8) nothing is acquired and the symbols pass, for a preamble and
     pilots to take the phase. acquire: a line one window can't show is tried on the last `acquire` symbols together,
-    once every that many windows (fixed positions): DVB-S2 at 8 dB under M = 8 wants about 8000.
+    once every that many windows (fixed positions): DVB-S2 at 8 dB under M = 8 wants about 8000. Tracking does the
+    same: a window under the gate holds the line, and the last `acquire` symbols are measured together at those
+    positions, so a carrier a window can't show is still tracked (each long measurement is one update; only a long one
+    missing counts towards `relock`) rather than acquired again and again.
 
     The phase is known modulo 2 pi / M: a preamble, a differential code or a polarity search takes the rest. order: M (a
     profile may change it with the modulation, live). offset: the angle of the constellation's mean point^M (0 for BPSK,
@@ -119,8 +123,12 @@ class MPower(Stage):
         N = 4*(1 << int(np.ceil(np.log2(max(len(z), 2)))))
         if st.snr < self.gate + np.sqrt(2*np.log(N)):
             return False
+        ph = (np.angle(s) - self.offset)/M
+        if tr.started: # Acquired again: on the 2 pi / M branch nearest the line it held (no jump a frame can't follow)
+            want = track.at(tr, c)
+            ph = want + track.wrap(ph - want, 2*np.pi/M)
         tr.started = False
-        track.update(tr, (np.angle(s) - self.offset)/M, c, rate=2*np.pi*f)
+        track.update(tr, ph, c, rate=2*np.pi*f)
         return True
 
     def step(self, x, st, meta):
@@ -144,6 +152,20 @@ class MPower(Stage):
                         e = track.wrap((np.angle(s) - self.offset)/M, 2*np.pi/M)
                         bw = self.bw if tr.windows >= 4 else max(self.bw, 0.6) # Wide while it pulls in
                         track.update(tr, track.at(tr, c) + e, c, 2*np.pi/M, bw)
+                    elif group > 1:
+                        # Under the gate a window at a time: the line held, and measured on the last `group` windows
+                        # together at fixed positions (as it acquired); only those missing count towards acquiring again
+                        if ((b - 1)//st.W + 1) % group == 0 and b - st.base >= group*st.W:
+                            lo = b - group*st.W
+                            long = st.buf[lo - st.base:b - st.base]
+                            s, mag = self._measure(st, lo, long, track.at(tr, lo), tr.rate, M)
+                            st.snr = float(np.abs(s)/max(mag, 1e-30)*np.sqrt(len(long)))
+                            if st.snr >= self.gate:
+                                cl = (lo + b)/2
+                                e = track.wrap((np.angle(s) - self.offset)/M, 2*np.pi/M)
+                                track.update(tr, track.at(tr, cl) + e, cl, 2*np.pi/M, self.bw)
+                            else:
+                                track.miss(tr, c)
                     else:
                         track.miss(tr, c)
             out.append(self._turn_back(st, a0, seg, track.at(tr, a0), tr.rate) if tr.started else seg.astype(np.complex64))

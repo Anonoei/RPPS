@@ -58,27 +58,32 @@ class PilotPhase(Stage):
     Block estimation per frame, data-aided: the phase of each pilot block (the mean of the symbols times the conjugate pilot
     value) at its centre, unwrapped in order, and a least-squares line through them (and through `lead`: a position before
     the payload where the phase is known to be 0, the frame's preamble once a frame sync took its phase off). A frame is held
-    until it is whole. Without pilots, or before a profile says how the frame is laid out (`slots`, `pilots`), the symbols
-    pass unchanged. Frames start where a profile applies a change (rpps.profile.control), or at the start of the stream.
+    until it is whole. `left`: a frequency (cycles a symbol) known to be on the frame still, taken off from `lead` first
+    (a control: FrameSync's `cfo_left`, the part of a tracked frequency its preambles, far apart, could not place),
+    so the blocks' phases are unwrapped about it. Without pilots, or before a profile says how the frame is laid out
+    (`slots`, `pilots`), the symbols pass unchanged (`left` too: with nothing to check it by, it is not taken off). Frames start where a profile applies a change (rpps.profile.control), or at the start of the stream.
     Estimates in stream.est[name]: the last frame's phase line (phase at the start, per symbol).
     """
-    CONTROLS = {"slots": "live", "pilots": "live"}
+    CONTROLS = {"slots": "live", "pilots": "live", "left": "live"}
     SCOPE = FRAME
 
     def __init__(self, slot=90, every=16, length=36, value=(1 + 1j)/np.sqrt(2), slots=None, pilots=True, lead=None,
-                 name="pilots"):
+                 name="pilots", left=0.0):
         self.slot, self.every, self.length, self.value = int(slot), int(every), int(length), complex(value)
         self.slots, self.pilots, self.lead, self.name = slots, bool(pilots), lead, name
+        self.left = float(left)
         self._start = True
 
     def __str__(self):
         return f"PilotPhase({self.name})"
 
-    def control(self, slots=None, pilots=None):
+    def control(self, slots=None, pilots=None, left=None):
         if slots is not None:
             self.slots = int(slots)
         if pilots is not None:
             self.pilots = bool(pilots)
+        if left is not None:
+            self.left = float(left)
         self._start = True
 
     def pos_rate(self, decode):
@@ -93,7 +98,7 @@ class PilotPhase(Stage):
             return PilotLine([], 0, self.length, self.value, None, self.name) # the symbols pass
         from ..symbol.frame import pilot_layout
         total, starts = pilot_layout(self.slots, self.pilots, self.slot, self.every, self.length)
-        return PilotLine(starts, total, self.length, self.value, self.lead, self.name)
+        return PilotLine(starts, total, self.length, self.value, self.lead, self.name, self.left)
 
     def new_state(self, meta):
         return SimpleNamespace(held=np.zeros(0, np.complex128), i=0)
@@ -101,6 +106,9 @@ class PilotPhase(Stage):
     def _fit(self, y):
         from ..symbol.frame import pilot_layout
         _, starts = pilot_layout(self.slots, self.pilots, self.slot, self.every, self.length)
+        w = 2*np.pi*self.left
+        if w and starts:
+            y = y*np.exp(-1j*w*(np.arange(len(y)) - (self.lead or 0.0)))
         pos = [s + self.length/2 for s in starts]
         ph = [float(np.angle(np.mean(y[s:s + self.length]*np.conj(self.value)))) for s in starts]
         if self.lead is not None:
@@ -109,6 +117,9 @@ class PilotPhase(Stage):
             return y, (0.0, 0.0)
         ph = np.unwrap(ph)
         line = np.polyfit(pos, ph, 1) if len(ph) > 1 else np.array([0.0, ph[0]])
+        if w and starts: # (reported as one line from the frame's start: `left` and the fit)
+            y = y*np.exp(-1j*np.polyval(line, np.arange(len(y))))
+            return y, (float(line[1] - w*(self.lead or 0.0)), float(line[0] + w))
         return y*np.exp(-1j*np.polyval(line, np.arange(len(y)))), (float(line[1]), float(line[0]))
 
     def step(self, x, st, meta):

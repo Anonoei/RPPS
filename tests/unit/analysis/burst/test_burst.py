@@ -390,3 +390,12 @@ def test_a_shared_preamble_when_the_first_bursts_gated_late():
     early = [SimpleNamespace(symbols=np.concatenate((qpsk(18 + rng.integers(0, 3)), word, qpsk(340)))) for _ in range(10)]
     n, _, _ = burst.shared_preamble(on_time + early, search=32)
     assert n >= 28 # (31 over seeds; the first 8 as references: 0 to 24)
+
+def test_many_bursts_sharing_nothing_have_no_shared_segment():
+    """Hundreds of bursts of random symbols (a weak or absent network: the gate's noise bursts): the chance that so
+    many agree at a position underflows to 0, which is no shared segment, not a math domain error"""
+    import types
+    rng = np.random.default_rng(4)
+    q = rp.symbol.load("qpsk").points
+    B = [types.SimpleNamespace(symbols=q[rng.integers(0, 4, 80)]) for _ in range(600)]
+    assert burst.shared_segments(B) == []

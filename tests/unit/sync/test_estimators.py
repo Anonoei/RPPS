@@ -256,3 +256,21 @@ def test_find_rate():
     syms = np.exp(1j*np.pi/4*(2*rng.integers(0, 4, 4000) + 1))
     x = np.convolve(np.repeat(syms, sps), np.hanning(sps), "same")
     assert rp.sync.find_rate(x) == pytest.approx(1/sps, rel=0.01)
+
+@pytest.mark.parametrize("seed", [0, 3])
+def test_mpower_tracks_a_carrier_no_window_shows(seed):
+    """8PSK at 8 dB under M = 8, past acquiring: about half the 1024-symbol windows miss the gate, and those hold the
+    line, measured 16384 symbols at a time; the phase it leaves never jumps (a 45 degree branch acquired again
+    mid-stream would): its steps block to block under 0.25 rad (10 seeds: at most 0.061), never acquired again"""
+    n, f = 300000, 4e-4
+    rng = np.random.default_rng(seed)
+    pts = np.exp(2j*np.pi*np.arange(8)/8)
+    s = pts[rng.integers(0, 8, n)].astype(np.complex64)
+    x = np.asarray((rp.Data(s, sps=1, Fs=1e6) + rp.signal.channel.CFO(f*1e6) + rp.signal.channel.PhaseOffset(0.5)
+                    + rp.signal.channel.AWGN(esn0_db=8.0, seed=seed)).data)
+    y, st = run(x, lambda: [rp.sync.phase.MPower(8, window=0, min_symbols=1024)], sps=1, Fs=1e6)
+    e = st.est["carrier"]
+    assert e["missed"] == 0 and e["windows"] >= (n - 32768)//16384
+    B = 4096
+    ph = np.unwrap([np.angle(np.mean(y[k:k + B]*np.conj(s[k:k + B]))) for k in range(32768, n - B, B)])
+    assert np.max(np.abs(np.diff(ph))) < 0.25

@@ -3,7 +3,7 @@ import traceback
 
 import numpy as np
 
-from ._framed import framed, ties
+from ._framed import deeper, framed, ties
 from ._measures import CARRIER_SHARE, ESN0_GAP, NEAR, PM_OFFSET, RATE_WIDTH, SYMS, _strong, _waveform_detail, carrier_share, esn0_gap
 from ._result import FOUND, GUESS, MIN_PAYLOAD, SignalProfile, Step, UNSOLVED, _code_steps, _guess_steps, weights
 
@@ -519,6 +519,21 @@ class _Chain:
         relocked = frames.cut(np.asarray(f).ravel(), at0, grid=frames.grid_of(det.mod))
         return relocked
 
+    def _deeper(self, p, fec, det):
+        """A profile built on the one the code named, whose own layers verify (a packet layer over its frames)"""
+        try:
+            got = deeper(fec.profile_name, fec.profile_params, np.concatenate(self.raw), det, inverted=bool(fec.inverted))
+        except Exception as e:
+            p.add("link", f"profiles built on {fec.profile_name}", UNSOLVED, note=f"{type(e).__name__}: {e}")
+            return
+        if got is None:
+            return
+        name, params, ev = got
+        checked = ", ".join(f"{k} {ps}/{ps + fs}" for k, (ps, fs) in sorted(ev["checks"].items()))
+        p.add("link", f"{name}: built on {fec.profile_name}, its own layers verified",
+              note=f"checks passed: {checked}")
+        p.profile_name, p.profile_params = name, params
+
     def _tcm(self, p, det):
         """No code on the bits: a trellis code on the labels (rpps.analysis.code.conv.tcm: Ungerboeck, pragmatic), when one holds"""
         from ..code.conv import tcm
@@ -626,6 +641,8 @@ class _Chain:
         if fec is not None and fec.found and not weak:
             p.profile_name, p.profile_params = fec.profile_name, fec.profile_params
             _code_steps(p, fec, c)
+            if fec.profile_name and self.raw:
+                self._deeper(p, fec, det)
             # Inner finds the steps don't hold: blind ones, and a configured RS code with nothing to align it by
             extra = [h for h in fec.inner if h.kind != "rs" or "pattern" not in h.params]
             if extra:

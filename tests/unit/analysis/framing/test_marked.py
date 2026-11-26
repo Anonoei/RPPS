@@ -47,10 +47,12 @@ def test_layer_on_random_bits_is_nothing(rng):
 @pytest.mark.parametrize("depth", [1, 5])
 def test_identify_names_the_ccsds_tm_profiles(name, depth):
     """BPSK at about 9 dB, its phase turned: the marker-framed RS code found on the channel bits (tm_rs) or behind the
-    Viterbi (tm_concat), the profile named; tm_packets reads the same code steps and extends tm_rs, so tm_rs is named"""
+    Viterbi (tm_concat), the profile named at the depth found; tm_packets reads the same code steps and extends tm_rs,
+    so tm_rs is named (rpps.analysis.signal_profile looks past it at the packets)"""
     rng = np.random.default_rng(depth)
     x = channel_bits(name, rng.integers(0, 2, 8*223*depth*10).astype(bool), depth).astype(bool)
     s = np.asarray((rp.Data(x) * rp.symbol.load("bpsk")).data)
     s = (s*np.exp(0.3j) + 0.25*(rng.normal(size=len(s)) + 1j*rng.normal(size=len(s)))).astype(np.complex64)
     d = identify.identify(s, "bpsk", blind=False)
     assert d.found and d.profile_name == name
+    assert d.profile_params == ({} if depth == 5 else {"depth": depth}) # (a param with no choices, bound from the find)

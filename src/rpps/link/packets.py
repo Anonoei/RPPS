@@ -26,7 +26,9 @@ profile's `controls` give it `frame` (a frame starts here), `length` (the data's
 last frame of its channel left open; from the pointer, packets follow one another, each `length` long, the last one
 left open for the next frame. A frame lost (its channel's count skips: `modulo`), or a packet whose end doesn't meet
 the pointer, drops only the packets that crossed it (`est[id]`: "lost", "misaligned"); the stream picks up again at
-the next pointer. Bits left before a pointer that are fewer than a header are filler (no packet fits there). A
+the next pointer. A pointer the open packet does end at is counted `est[id]["aligned"]`: the packets' own lengths
+meeting the frames' pointers is the layer's check (random data's lengths run past them), which blind identification
+reads to tell a packet layer that is there from one that isn't (rpps.analysis.signal_profile). Bits left before a pointer that are fewer than a header are filler (no packet fits there). A
 packet's length of zero or over `max` bits (default 65536*8) is taken as lost sync.
 
 Every packet is a message (kind: the step's id) with its header's fields and the `channel`, its frame the whole
@@ -252,8 +254,8 @@ class Packets(Pipe):
         st = self._state(ctx)
         x = np.asarray(data.bits()).astype(bool)
         pos0 = data.meta.pos
-        est = data.meta.stream.est.setdefault(self.name, {"packets": 0, "idle": 0, "lost": 0, "misaligned": 0, "failed": 0,
-                                                          "frames": 0})
+        est = data.meta.stream.est.setdefault(self.name, {"packets": 0, "idle": 0, "lost": 0, "misaligned": 0, "aligned": 0,
+                                                          "failed": 0, "frames": 0})
         out = []
         if self._start: # A frame's data starts here: the last one, short or not, is done
             self._start = False
@@ -328,6 +330,8 @@ class Packets(Pipe):
             if len(ch["buf"]) >= max(self.header_bits, 1): # The open packet doesn't end where the pointer says the next starts
                 est["misaligned"] += 1
                 self._lose(ch, est, meta, out)
+            elif ch["synced"]: # It does: the lengths and the pointer agree
+                est["aligned"] += 1
             # (fewer bits than a header: no packet, filler: the 0xFF byte at the end of a transport packet's payload)
         ch["buf"], ch["at"], ch["synced"] = bits[p:], at + p, True
         self._cut(ch, est, meta, out)

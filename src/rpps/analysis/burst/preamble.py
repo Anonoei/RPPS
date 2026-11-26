@@ -97,7 +97,7 @@ def shared_segments(burst_list, search=24, min_len=12, agree=0.8, refs=6, M=4, f
     share = need/K - 1e-9
     pc = min(1.0, M*sum(comb(K, j)*(1/M)**j*(1 - 1/M)**(K - j) for j in range(need, K + 1)))
     positions = 2*max(len(v) for v in S)*(2*search + 1) # (every position of both alignments, each lag tried)
-    if pc < 1:
+    if 0 < pc < 1: # (0: underflowed, many bursts: chance agreeing that well is nothing, no longer run needed)
         min_len = max(min_len, int(ceil(log(false_alarm/positions)/log(pc))))
     out = []
     for end in (False, True):

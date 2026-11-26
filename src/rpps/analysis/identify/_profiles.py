@@ -1,5 +1,6 @@
 """Shipped profiles a detection matches, and the constellation it targets (rpps.analysis.identify)"""
 import functools
+import json
 
 import numpy as np
 
@@ -22,8 +23,10 @@ def _transform(points, src, dst, rotate=True):
 
 def _fec_steps(steps):
     """The code steps that are codes: fec (type, name), and a line code or a sync marker, which a find never has (ax25/afsk1200
-    is HDLC behind NRZI, not the HDLC a find names). Scramblers and alignment are not compared: a find leaves those to the profile"""
-    return [(s["code"], s.get("name")) for s in steps if s.get("code") in ("block", "conv", "interleave", "line", "marker")]
+    is HDLC behind NRZI, not the HDLC a find names), with their args (an interleaver's depth: a variant of the profile).
+    Scramblers and alignment are not compared: a find leaves those to the profile"""
+    return [(s["code"], s.get("name"), json.dumps(s.get("args") or {}, sort_keys=True, default=str))
+            for s in steps if s.get("code") in ("block", "conv", "interleave", "line", "marker")]
 
 
 def _symbol_steps(steps):
@@ -59,6 +62,37 @@ def _profiles(baud=None):
             continue
 
 
+PROBE = 900001 # A value no param has: an arg that comes out as it (or PROBE + k) is that param's
+
+def _bind(name, params, steps):
+    """(resolved definition, params) of profile `name` with the params its code steps' args come from set as `steps`
+    has them (ccsds/tm_rs's interleave depth from a find at depth 1), or None when none do"""
+    from ... import _config
+    try:
+        raw = _config.read(_config.find("profile", name))
+        free = [k for k, v in (raw.get("params") or {}).items()
+                if k not in params and isinstance(v, dict) and isinstance(v.get("default"), int)
+                and not isinstance(v.get("default"), bool)]
+        if not free:
+            return None
+        probe = {k: PROBE + i for i, k in enumerate(free)}
+        mine = [s for s in _config.resolve(raw, {**params, **probe}, f"profile/{name}")["steps"]
+                if s.get("code") in ("block", "conv", "interleave", "line", "marker")]
+        theirs = [s for s in steps if s.get("code") in ("block", "conv", "interleave", "line", "marker")]
+        if len(mine) != len(theirs):
+            return None
+        set_ = {}
+        for a, b in zip(mine, theirs):
+            for k, v in (a.get("args") or {}).items():
+                if isinstance(v, int) and PROBE <= v < PROBE + len(free):
+                    set_[free[v - PROBE]] = (b.get("args") or {}).get(k)
+        if not set_ or any(v is None for v in set_.values()):
+            return None
+        params = {**params, **set_}
+        return _config.resolve(raw, params, f"profile/{name}"), params
+    except Exception:
+        return None
+
 def match_profile(steps, baud=None):
     """A shipped profile (config/profile), or a variant of one, with the same code and symbol steps as `steps`, the most
     general when several do (rp.profile.catalogue.lineage): (name, its steps, the params of the variant: {} for the
@@ -72,6 +106,12 @@ def match_profile(steps, baud=None):
             got = (_fec_steps(obj["steps"]), _symbol_steps(obj["steps"])[:2])
         except Exception: # A profile whose steps a header names (no fixed code) can't match
             continue
+        if got != want and got[1] == want[1] and [g[:2] for g in got[0]] == [w[:2] for w in want[0]]:
+            # The same codes, other args: a param of the profile's (an interleaver's depth) may set them as found
+            bound = _bind(name, params, steps)
+            if bound is not None:
+                obj, params = bound
+                got = (_fec_steps(obj["steps"]), _symbol_steps(obj["steps"])[:2])
         if got == want:
             hits.append((len(lineage(name)), len(hits), name, obj["steps"], params))
     # The most general of those that match: ccsds/tm_packets extends ccsds/tm_rs with a link layer the code doesn't show

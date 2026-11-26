@@ -383,6 +383,14 @@ what to use instead.
 - **`rp.symbol.mapping.bit_rotations`**: a constellation's turns that act on its labels as bit swaps and inversions
   (Gray QPSK's 90 degrees); **`rp.analysis.framing.frames.grid_of`**: the turns a constellation is symmetric under;
   **`rp.sync.acquire.onset`**: where a signal comes on in a block.
+- **`rp.sync.FrameSync(cfo="track")`**: the carrier frequency tracked across frames from each frame's known symbols
+  (the preamble and the header word it matched), started again when it changes, and refined by the phase from one
+  preamble to the next; what it leaves (`cfo_left`) drives `rp.sync.PilotPhase(left=)`, which takes it off before its
+  pilot line. The DVB-S2 profiles use it: with a 4e-4 or 2e-3 Rs carrier offset QPSK 1/2 decodes from 10 down to 2 dB
+  Es/N0 (it decoded nothing at 6 dB and below: the 8th power never locks there, and the pilots alone alias).
+- **A profile built on the one a code names is named when its own layer verifies** (`rp.analysis.profile`): a packet
+  layer's check is its packets' lengths meeting the frames' pointers (`rp.link.packets` counts `aligned`), so
+  `ccsds/tm_packets` is named for space packets and `ccsds/tm_rs` for frames of other data.
 
 
 ### Changed
@@ -458,6 +466,9 @@ what to use instead.
 - **`analysis.profile` re-locks on a frame's unique word** when the continuous lock's decisions fail the gate
   (`framing.frames.pilot_frames`, frame by frame) instead of stopping there; frames are cut on their constellation's own
   symmetry (`grid_of`): BPSK was turned 45 degrees off its points.
+- **`rp.sync.phase.MPower` tracks a carrier its windows can't show one at a time**: under the gate it holds the line and
+  measures the last `acquire` symbols together (as it acquires); acquired again, it keeps to the 2 pi / M branch of the
+  line it held. At 8 dB under M = 8 it acquired again and again, each time possibly 45 degrees round, mid-frame.
 
 
 ### Fixed
@@ -493,6 +504,10 @@ what to use instead.
 - **The configured Reed-Solomon scan read dual-basis codes in the conventional basis** (`identify`'s `scan_rs`):
   CCSDS RS behind a Viterbi was never found.
 - **`analysis.signal_profile.framed` lost every profile's frames when one candidate failed to build.**
+- **`identify` names a profile at the interleaving depth it found** (`match_profile` binds the params a profile's code
+  steps take: `ccsds/tm_rs` at depth 1 came out at its default, 5).
+- **`rp.analysis.burst.shared_segments` raised a math domain error** on hundreds of bursts (a weak or absent network):
+  the chance of them agreeing underflowed to 0. It is no shared segment, and the bursts are demodulated blind.
 - **A convolutional profile decoded at only some carrier phases** (`dvbs/qpsk`: 5 of 12): nothing resolved the 90 degree
   ambiguity an M-th power carrier leaves. `rp.sync.Puncture` tries the constellation's turns (`bit_rotations`) with its
   offsets and applies the one that decodes; and it decides on the first window where one hypothesis clearly wins, not on

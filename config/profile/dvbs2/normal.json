@@ -32,7 +32,7 @@
     {"sync": "timing"},
     {"sync": "inversion", "header": "dvbs2_pl", "window": 33282},
     {"sync": "carrier", "id": "carrier", "order": 8},
-    {"sync": "frame", "header": "dvbs2_pl", "max_length": 33282},
+    {"sync": "frame", "header": "dvbs2_pl", "max_length": 33282, "cfo": "track"},
     {"symbol": "header", "id": "pls", "name": "dvbs2_pl"},
     {"symbol": "scramble", "id": "plscram", "sequence": "dvbs2_pl", "offsets": [131072, 0], "step": 90},
     {"sync": "carrier", "id": "phase", "method": "pilots", "lead": -77.5},
@@ -45,7 +45,7 @@
     {"link": "header", "id": "bbheader", "name": "dvbs2_bb"}
   ],
   "controls": {
-    "frame": {"drive": {"pls": {"frame": "frame"}}},
+    "frame": {"drive": {"pls": {"frame": "frame"}, "phase": {"left": "cfo_left"}}},
     "pls": {
       "table": "dvbs2/modcod",
       "key": ["modcod", "short"],

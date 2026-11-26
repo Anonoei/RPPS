@@ -498,3 +498,36 @@ def test_cut_keeps_each_constellation_on_its_points():
     fr = frames.Frame(period=P, uw_start=0, uw_length=U, coherence=1.0, floor=0.0, uw=None, frames=30)
     pay = frames.cut(y, fr, grid=frames.grid_of("bpsk"))[:, U:]
     assert np.max(np.abs(pay.imag)) < 1e-6
+
+def _tm_symbols(rng, frames):
+    """BPSK symbols of TM transfer frames (bytes, 223 each) through ccsds/tm_rs at depth 1, a little noise on them"""
+    import types
+    bits = np.unpackbits(np.frombuffer(b"".join(frames), np.uint8)).astype(bool)
+    d = rp.Data(bits, Fs=1e6, sps=1, flush=True)
+    prof = rp.profile.load("ccsds/tm_rs", depth=1)
+    for how, op in prof.tx():
+        if how == "*" and op.CATEGORY == rp.Category.CODE:
+            d = d*op
+    z = np.asarray((rp.Data(np.asarray(d.data).astype(bool))*rp.symbol.load("bpsk")).data)
+    z = z*np.exp(0.4j) + 0.15*(rng.normal(size=len(z)) + 1j*rng.normal(size=len(z)))
+    return z.astype(np.complex64), types.SimpleNamespace(cfo=0.0, baud=1.0)
+
+def test_a_profile_built_on_the_code_is_named_when_its_own_layer_verifies():
+    """ccsds/tm_packets extends ccsds/tm_rs (the code names tm_rs): space packets whose lengths meet each frame's first
+    header pointer name tm_packets; frames of random data don't"""
+    import struct
+    rng = np.random.default_rng(3)
+    pkts = [struct.pack(">HHH", 100, (3 << 14) | i, k - 1) + rng.bytes(int(k)) for i, k in enumerate(rng.integers(20, 300, 80))]
+    starts = np.cumsum([0] + [len(q) for q in pkts])[:-1]
+    stream, dfl = b"".join(pkts), 223 - 6
+    frames = []
+    for k in range(len(stream)//dfl):
+        first = starts[(starts >= k*dfl) & (starts < (k + 1)*dfl)]
+        fhp = int(first[0] - k*dfl) if len(first) else 2047
+        frames.append(struct.pack(">HBBH", (42 << 4) | 2, k, k, (3 << 11) | fhp) + stream[k*dfl:(k + 1)*dfl])
+    z, det = _tm_symbols(rng, frames)
+    got = F.deeper("ccsds/tm_rs", {"depth": 1}, z, det, skip=0)
+    assert got is not None and got[0] == "ccsds/tm_packets" and got[1] == {"depth": 1}
+    assert got[2]["checks"]["space"][0] >= 10 and not got[2]["refuted"]
+    z, det = _tm_symbols(rng, [rng.bytes(223) for _ in range(len(frames))])
+    assert F.deeper("ccsds/tm_rs", {"depth": 1}, z, det, skip=0) is None

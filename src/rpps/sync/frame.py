@@ -113,7 +113,15 @@ class FrameSync(Stage):
     count: frames to find in a stream, then no more searching (None: all; a burst's runner: 1, as data later in the burst
         can pass for the word).
     cfo: take the carrier frequency its preamble measured off each frame too (within +-1/L cycles a symbol: a larger
-        offset is for a carrier step before), not only its phase.
+        offset is for a carrier step before), not only its phase. "track": the frequency tracked over the frames instead,
+        data-aided (Luise and Reggiannini over each frame's known symbols, the preamble and the word it matched, summed
+        over the last `memory` frames or so, weighted down by age, started again when a frame's own estimate is over
+        4 of its standard deviations off: an offset taken off upstream mid-stream; unambiguous within +-2/(L + n)
+        cycles a symbol), and refined by the phase from one preamble to the next (the turns between them from the
+        tracked frequency once it is 3 standard deviations off 0, else none, as without it; what that leaves of the
+        tracked frequency is published as `cfo_left`, for pilots closer together to take off: rpps.sync.PilotPhase): below an M-th power's SNR gate the offset is not taken
+        off before, and a frame's own known symbols measure it too poorly to resolve pilots far apart (DVB-S2 at
+        6 dB Es/N0: 90 known symbols a frame, pilot blocks 1476 apart). Published as `cfo` (cycles a symbol).
     scale: divide each frame by the gain its preamble measured, so levels come out as the preamble's (4FSK +-1, +-3).
     Real levels (a discriminator's output) stay real: the phase is a polarity, a frame upside down is turned over.
     polarity: an inverted (turned) match counts (an unknown carrier phase, a discriminator of unknown sense); False:
@@ -131,7 +139,7 @@ class FrameSync(Stage):
 
     def __init__(self, preamble, words=None, threshold=None, max_length=None, name="frame", pending=False, device=False,
                  before=0, length=None, segments=1, scale=False, classify=None, margin=0.1, min_symbols=64, polarity=True,
-                 cfo=False, count=None):
+                 cfo=False, count=None, memory=32):
         if preamble is None and not pending:
             raise ValueError("FrameSync: a preamble, or pending=True (set_template gives it later)")
         if pending and words is not None:
@@ -161,7 +169,10 @@ class FrameSync(Stage):
         self.classify = None if not classify else list(classify)
         self.margin, self.min_symbols = float(margin), int(min_symbols)
         self.polarity = bool(polarity)
-        self.cfo = bool(cfo)
+        if cfo not in (True, False, "track"):
+            raise ValueError(f"FrameSync: cfo True, False or 'track', not {cfo!r}")
+        self.cfo = cfo if cfo == "track" else bool(cfo)
+        self.memory = float(memory)
         self.count = None if count is None else int(count)
         self._check()
 
@@ -219,7 +230,7 @@ class FrameSync(Stage):
     def new_state(self, meta):
         return SimpleNamespace(buf=np.zeros(0, np.complex128), base=None, searched=None, start=None, phase=0.0, k=0,
                                metric=0.0, p=None, info=None, queue=[], floor=None, last=None, real=None, modulation=None,
-                               est={}, found=0)
+                               est={}, found=0, R=0j, w=None, n=0, sig=None)
 
     @property
     def _plain(self):
@@ -392,7 +403,11 @@ class FrameSync(Stage):
             if f < st.floor: # Its start is gone: before the stream, or inside the last frame of a fixed length
                 continue
             st.last = p
-            info = self._measure(st.buf[i:i + L], alt, ph, m, st.real)
+            if self.cfo == "track" and not st.real:
+                self._track(st, st.buf, i, alt, ph)
+            info = self._measure(st.buf[i:i + L], alt, ph, m, st.real, st.w if self.cfo == "track" else None)
+            if self.cfo == "track" and st.sig is not None:
+                info["_sig"] = st.sig
             if self.length is None:
                 if st.start is not None:
                     n_out += self._emit(st, f, info["phase"], out, meta, n_out)
@@ -423,9 +438,39 @@ class FrameSync(Stage):
             return np.zeros(0, np.float32 if st.real else np.complex64)
         return np.concatenate(out).astype(np.float32 if st.real else np.complex64)
 
-    def _measure(self, y, alt, ph, metric, real):
+    def _track(self, st, y, i, alt, ph):
+        """The tracked frequency (st.w, radians a symbol) with the known symbols at y[i:]: the preamble, and the word
+        after it that matches best"""
+        known = self.pres[alt]
+        if self.words is not None and i + self.L + self.n <= len(y):
+            tail = y[i + self.L:i + self.L + self.n]*np.exp(-1j*ph)
+            best = int(np.argmax(np.real(self.words @ tail)))
+            known = np.concatenate((known, np.conj(self.words[best])))
+        K = len(known)
+        if i + K > len(y) or K < 4:
+            return
+        z = y[i:i + K]*np.conj(known)
+        M = K//2
+        R = sum(np.vdot(z[:K - m], z[m:])/(K - m) for m in range(1, M + 1)) # (each lag's mean: arg R = w (M + 1)/2)
+        own = 2*float(np.angle(R))/(M + 1)
+        # The frame's own estimate against the tracked one: far more apart than its noise (4 standard deviations at
+        # the Cramer-Rao bound, 6/(SNR K^3)) and the offset before it changed (a carrier step upstream acquired): the
+        # frames before are no evidence, start again from this one
+        a2 = abs(np.vdot(z[:-1], z[1:]))/(K - 1) # (the known symbols' power, from the lag-1 correlation)
+        snr = a2/max(float(np.mean(np.abs(z)**2)) - a2, 1e-12*a2 + 1e-300)
+        sig = np.sqrt(6/(max(snr, 1e-6)*K**3))
+        if st.w is not None and abs(own - st.w) > 4*sig:
+            st.R, st.n = 0j, 0
+        w = 1.0 - 1.0/max(self.memory, 1.0)
+        st.R = w*st.R + R # (each frame weighted by its own energy: a faded one counts less)
+        st.n += 1
+        st.w = 2*float(np.angle(st.R))/(M + 1)
+        st.sig = sig/np.sqrt(min(st.n, (1 + w)/(1 - w) if w < 1 else st.n)) # (the frames it averages, at most 2 memory - 1)
+
+    def _measure(self, y, alt, ph, metric, real, w=None):
         """What the preamble at y (L symbols) says: {metric, phase, scale (the gain), esn0 (dB, the residual after the
-        known symbols), cfo (cycles a symbol: the phase between its halves; complex symbols), word and its fields}"""
+        known symbols), cfo (cycles a symbol: the phase between its halves, or `w`, a tracked frequency in radians a
+        symbol; complex symbols), word and its fields}"""
         p, ep, L = self.pres[alt], float(self._eps[alt]), self.L
         info = {"metric": float(metric)}
         if real:
@@ -435,7 +480,10 @@ class FrameSync(Stage):
         else:
             h = L//2
             cfo = 0.0
-            if h:
+            if w is not None:
+                cfo = w/(2*np.pi)
+                info["cfo"] = cfo
+            elif h:
                 c1, c2 = np.vdot(p[:h], y[:h]), np.vdot(p[h:], y[h:])
                 cfo = float(np.angle(c2*np.conj(c1)))/(2*np.pi*L/2)
                 info["cfo"] = cfo
@@ -457,13 +505,28 @@ class FrameSync(Stage):
         y = st.buf[a:b]
         info = dict(st.info)
         noise = info.pop("_noise")
+        sig = info.pop("_sig", None)
         es = float(np.mean(np.abs(y)**2)) - noise if len(y) else 0.0 # The frame's symbols: their power less the noise
         info["esn0"] = float(10*np.log10(max(es, noise*1e-12)/noise))
         if st.real:
             y = y.real*(1.0 if np.cos(info["phase"]) >= 0 else -1.0)
         else:
             c = (st.p - st.start) + (self.L - 1)/2 # The preamble's centre, where its phase was measured
-            if self.cfo and "cfo" in info: # The frequency the preamble measured, from its centre on
+            if self.cfo == "track" and "cfo" in info:
+                # The tracked frequency from the preamble's centre, and what is left of the phase at the next preamble.
+                # It says how many turns lie between two preambles only once it is clearly off 0 (3 standard
+                # deviations): a frame's known symbols measure it to some 1e-4 cycles a symbol, preambles tens of
+                # thousands apart want under 1/(2 span); near 0 the offset is taken to be off already, as without it
+                # (what it leaves, `cfo_left`, a step with known symbols spaced closer can take off: pilots)
+                rate = 2*np.pi*info["cfo"]
+                if sig is None or abs(rate) < 3*sig:
+                    rate = 0.0
+                if next_phase is not None:
+                    span = max(until - st.p, 1)
+                    rate += np.angle(np.exp(1j*(next_phase - info["phase"] - rate*span)))/span
+                turn = track.line_phasor(info["phase"] - rate*c, rate, len(y))
+                info["cfo_left"] = info["cfo"] - rate/(2*np.pi)
+            elif self.cfo and "cfo" in info: # The frequency the preamble measured, from its centre on
                 turn = np.exp(-1j*(info["phase"] + 2*np.pi*info["cfo"]*(np.arange(len(y)) - c)))
             elif next_phase is None:
                 turn = np.exp(-1j*info["phase"])

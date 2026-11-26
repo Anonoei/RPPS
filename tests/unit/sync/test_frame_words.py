@@ -211,3 +211,49 @@ def test_auto_segments_hold_a_long_word_a_burst_turns(rng):
     _, a = _run(auto, y, 0, rng)
     _, w = _run(whole, y, 0, rng)
     assert [p["word"] for p in a] == truth and len(w) < len(truth)//2
+
+QPSK = np.exp(1j*(np.pi/4 + np.pi/2*np.arange(4)))
+
+def _worded(rng, cfos, esn0, payload=1500):
+    """Frames of a 26-symbol preamble, one of 16 words of 64 and QPSK data, each at its own carrier frequency (cycles a
+    symbol, the phase carried on): (preamble, words, received, the frames sent)"""
+    pre, words = QPSK[rng.integers(4, size=26)], QPSK[rng.integers(4, size=(16, 64))]
+    seq, ph, frames = [QPSK[rng.integers(4, size=100)]], 0.0, []
+    for f in cfos:
+        x = np.concatenate((pre, words[rng.integers(16)], QPSK[rng.integers(4, size=payload)]))
+        seq.append(x*np.exp(1j*(ph + 2*np.pi*f*np.arange(len(x)))))
+        ph += 2*np.pi*f*len(x)
+        frames.append(x)
+    y = np.concatenate(seq)
+    y = y + (rng.normal(size=len(y)) + 1j*rng.normal(size=len(y)))*np.sqrt(10**(-esn0/10)/2)
+    return pre, words, y.astype(np.complex64), frames
+
+def _phase_right(out, frames):
+    """Frames out whose data sits on its points (the residual phase's spread under a radian)"""
+    L = len(frames[0])
+    return sum(float(np.std(np.angle(out[k*L + 90:(k + 1)*L]*np.conj(x[90:])))) < 1.0 for k, x in enumerate(frames[:-1]))
+
+def test_a_tracked_frequency_holds_frames_a_preamble_alone_cannot(rng):
+    """1e-3 cycles a symbol at 6 dB, 1.6 turns a frame: the line from one preamble's phase to the next wraps, the
+    frequency tracked over the frames' known symbols doesn't (over 20 seeds: 9-11 of 11 frames against none, the
+    median frequency within 1.5e-4)"""
+    pre, words, y, frames = _worded(rng, [1e-3]*12, 6.0)
+    tracked, pubs = _run(rp.sync.FrameSync(pre, words, cfo="track"), y, 0, rng)
+    plain, _ = _run(rp.sync.FrameSync(pre, words), y, 0, rng)
+    assert _phase_right(tracked, frames) >= 9 and _phase_right(plain, frames) <= 2
+    assert abs(np.median([p["cfo"] for p in pubs[3:]]) - 1e-3) < 2.5e-4 # (its spread at 6 dB: some 7e-5)
+    again, pubs2 = _run(rp.sync.FrameSync(pre, words, cfo="track"), y, 37, rng) # (however the stream is cut)
+    assert np.allclose(again, tracked, atol=1e-5) and [p["cfo"] for p in pubs2] == pytest.approx([p["cfo"] for p in pubs])
+
+def test_the_tracked_frequency_starts_again_when_the_offset_changes(rng):
+    """A carrier step before acquiring mid-stream: 2e-3 then 0 cycles a symbol at 8 dB. The frames before are no
+    evidence once a frame's own estimate is far off them: the next frames read near 0 (20 seeds: under 3.5e-4 from the
+    second after; within 3e-4 of 2e-3 before), not the slow decay of an average"""
+    pre, words, y, _ = _worded(rng, [2e-3]*6 + [0.0]*6, 8.0)
+    _, pubs = _run(rp.sync.FrameSync(pre, words, cfo="track"), y, 0, rng)
+    c = np.array([p["cfo"] for p in pubs])
+    assert np.all(np.abs(c[1:6] - 2e-3) < 4.5e-4) and np.all(np.abs(c[7:]) < 5e-4)
+
+def test_cfo_is_true_false_or_track():
+    with pytest.raises(ValueError, match="track"):
+        rp.sync.FrameSync(QPSK, cfo="tracked")

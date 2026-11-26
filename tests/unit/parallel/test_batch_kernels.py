@@ -321,15 +321,16 @@ def test_pilot_removal(pilots, delta):
 @pytest.mark.parametrize("pilots", [1, 0])
 @pytest.mark.parametrize("delta", [0, 40, -50])
 @pytest.mark.parametrize("lead", [None, -77.5])
-def test_pilot_line(pilots, delta, lead):
-    """A frame whose carrier turns along it: the line through its pilot blocks (and the lead) is taken off, row by row"""
+@pytest.mark.parametrize("left", [0.0, 6e-4])
+def test_pilot_line(pilots, delta, lead, left):
+    """A frame whose carrier turns along it: the line through its pilot blocks (and the lead) is taken off, row by row;
+    `left` (a frequency known to be on it: 0.89 turns between blocks, which alone alias) first"""
     total, _ = rp.symbol.frame.pilot_layout(20, pilots)
     n = total + delta
-    ramp = 0.3 + 0.002*np.arange(n)
+    ramp = 0.3 + (0.002 + 2*np.pi*left)*np.arange(n)
     X = (rand_symbols(3, n, 3)*np.exp(1j*ramp)[None, :]).astype(np.complex64)
-    X[:, :0] = X[:, :0]
     pp = rp.sync.PilotPhase(slots=20, pilots=bool(pilots), lead=lead)
-    both(pp, STAGE, X, SYM, live={"slots": 20, "pilots": pilots})
+    both(pp, STAGE, X, SYM, live={"slots": 20, "pilots": pilots, "left": left})
 
 @pytest.mark.parametrize("how", [DECODE, ENCODE])
 @pytest.mark.parametrize("n,length", [(800, 800), (2000, 800)])
