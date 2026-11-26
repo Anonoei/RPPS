@@ -8,9 +8,10 @@ DVB-S2 16APSK (`load("apsk/dvbs2_16apsk", rate="2/3")`) is never confused with t
                      "points": [{"mag": 1, "pha": 45}, {"re": 0.7, "im": -0.7}, [-0.7, 0.7], ...],   where the points are: phase in degrees
                      or "rings": [{"n": 4, "mag": 1, "pha": 45}, {"n": 12, "mag": 2.85, "pha": 15}],    PSK / APSK rings, innermost first
                      "rotate": -45,                                                                      degrees added to every point
-                     "maps": [{"map": [0, 1, 3, 2], "comment": "R000 Grey"}, ...],                      the ways of labelling them with bits
+                     "maps": [{"map": [0, 1, 3, 2], "comment": "Grey"}, ...],                           the ways of labelling them with bits
                      "normalize": true}                                                                  scale to unit mean power (default)
         maps[i].map[point] is the value (bits, first bit most significant) the point carries. The first map is the default;
+        its turns are not listed (the code makes them, below): a map in the file is a labelling of its own (a standard's).
         `rp.symbol.load(name, "R090")` picks another by index or a word of its comment, and every rotation and spectral inversion of
         the first map is added (see rpps.symbol.mapping).
     header          {"base": "header", "type": "physical" | "link"}: known symbols then a short code carrying fields

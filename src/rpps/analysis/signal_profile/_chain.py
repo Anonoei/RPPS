@@ -570,11 +570,13 @@ class _Chain:
         if gap is not None and gap > ESN0_GAP:
             fit_doubt.append(f"Es/N0 {det.esn0:.1f} dB is {gap:.1f} dB under the {want:.1f} dB the band's SNR gives at this "
                              "rate: the symbols don't sit on this constellation (not linear, a wrong rate, one not tried "
-                             "such as APSK, carriers on top of each other, bursts, or OFDM)")
+                             "such as 64APSK or 64QAM, carriers on top of each other, bursts, or OFDM)")
         q = "" if det.esn0 is None else f", Es/N0 {det.esn0:.1f} dB"
-        p.add("acquire", f"{det.mod.upper()} at {det.baud/1e6:.6g} MBd (sps {det.sps:.4f}), roll-off {det.beta}, "
+        ro = "" if getattr(det, "rolloff", None) is None else f" (edges {det.rolloff:.2f})"
+        p.add("acquire", f"{det.mod.upper()} at {det.baud/1e6:.6g} MBd (sps {det.sps:.4f}), roll-off {det.beta}{ro}, "
                          f"CFO {det.cfo/1e3:+.2f} kHz{q}",
-              detail={"mod": det.mod, "baud": det.baud, "sps": det.sps, "beta": det.beta, "cfo": det.cfo, "esn0": det.esn0,
+              detail={"mod": det.mod, "baud": det.baud, "sps": det.sps, "beta": det.beta, "rolloff": getattr(det, "rolloff", None),
+                      "cfo": det.cfo, "esn0": det.esn0,
                       "esn0_expected": want, "esn0_gap": gap, "scores": dict(scores), "margin": det.margin},
               note="; ".join((["rate doubtful: " + ", ".join(rate_doubt)] if rate_doubt else []) +
                              (["fit doubtful: " + ", ".join(fit_doubt)] if fit_doubt else []) +

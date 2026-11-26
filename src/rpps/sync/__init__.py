@@ -20,7 +20,7 @@ and its rate across windows and gates outliers; the correction is evaluated per 
 | spectral inversion | `Inversion`, `inversion.sense` (known symbols turning backwards) | `inversion` |
 | frame starts | `FrameSync` (a preamble and the best word of a header code; or named alternatives, Zadoff-Chu sets, a word mid-burst, real levels, what the match says: word, scale, cfo, esn0, modulation), `Delimiter` (a word among bits) | `frame`, `delimit` |
 | alignment on bits | `Align` (markers, patterns, polarity), `Puncture` (puncture phase) | `align`, `puncture` |
-| modulation, rate, offset | `Acquire` (`detect` once), `Lock` (a snapshot: `Lock.find`, `lock.update`; contiguous blocks joined: `lock.follow`); code phase and Doppler: `acquire_code` | |
+| modulation (PSK, QAM, APSK), rate, roll-off, offset | `Acquire` (`detect` once; roll-off: `rate.find_rolloff`), `Lock` (a snapshot: `Lock.find`, `lock.update`; contiguous blocks joined: `lock.follow`); code phase and Doppler: `acquire_code` | |
 | channel code, bit map, alignment | `AcquireFEC` | |
 | bursts | `Burst` splits a stream into bursts, `BurstTx` places them; `Bursts` on many carriers, placed in a burst time plan (rpps.plan) whose origin it acquires and tracks, `PlanTx` places them by one; `Preamble` finds each one's preamble (`attach_tx()`: its `PreambleTx`) | `burst`, `preamble` |
 | a pilot tone | `ToneLock` (FM stereo's 19 kHz, ATSC's pilot) | |

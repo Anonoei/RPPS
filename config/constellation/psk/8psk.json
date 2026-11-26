@@ -6,7 +6,7 @@
   "ref": "EN 302 307-1 5.4.2 (DVB-S2)",
   "rings": [{"n": 8, "pha": 22.5}],
   "maps": [
-    {"map": [3, 2, 6, 7, 5, 4, 0, 1], "comment": "R000 Grey"},
+    {"map": [3, 2, 6, 7, 5, 4, 0, 1], "comment": "Grey"},
     {"map": [1, 0, 4, 6, 2, 3, 7, 5], "rotate": -22.5, "comment": "DVB-S2", "tags": ["dvb-s2"]}
   ]
 }

@@ -14,7 +14,7 @@ A constellation is a set of points and the ways of labelling them with bits. PSK
 (config/constellation/<group>/<name>.json):
 
     {"points": [{"mag": 1, "pha": 45}, {"re": 0, "im": 2}, [-1.5, 0]],
-     "maps": [{"map": [0, 1, 3, 2], "comment": "R000 Grey"}]}
+     "maps": [{"map": [0, 1, 3, 2], "comment": "Grey"}]}
 
 `maps[i].map[point]` is the value (bits, first bit most significant) the point carries. Points are scaled to unit mean
 power unless `"normalize": false`. The first map is also turned by every rotation the points allow, with and without

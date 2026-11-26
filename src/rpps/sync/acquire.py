@@ -27,7 +27,7 @@ from ..base import Stage
 from ..errors import NoLock
 from ..math.interp import peak
 from ..math.prob import mixture_variance
-from .rate import find_baud
+from .rate import find_baud, find_rolloff, nearest_rolloff
 from .time.mat import matrix_mf, centres_in, best_tau
 from .quality import measure, decide, errors, summary, m2m4
 
@@ -40,6 +40,7 @@ class Detection:
 
     line: strength of the symbol-rate line the rate came from, over its local floor (noise peaks at about 3-4; a rate
         taken from a weaker line is a guess)
+    beta: the roll-off of the matched filter that scored best; rolloff: the spectrum's (rate.find_rolloff), when measured
     mod: the modulation, None when detect was asked for `min_evidence` and the evidence is short (`best` the leader)
     how: how the candidates were scored: "given" (at the caller's esn0, `given`), "moments" (each at its M2M4 Es/N0) or
         "fit" (each its own variance). null: the score of Gaussian noise of the symbols' power (see over_noise)"""
@@ -47,7 +48,7 @@ class Detection:
         "mod", "baud", "sps", "beta", "tau",
         "cfo", "phase", "M", "gain",
         "scores", "n", "esn0", "ebn0", "line",
-        "best", "how", "given", "null"
+        "best", "how", "given", "null", "rolloff"
     )
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -85,6 +86,7 @@ def symmetry(points, tol=1e-3, max_order=16):
             return M
     return 1
 
+GROUPS = ("psk", "qam", "apsk") # The constellation folders `detect` names from (ASK is real levels: a discriminator's)
 _CANDIDATES = {} # (config search path, name) -> unit-rms points (read-only), None -> the default names
 
 def candidates(names=None):
@@ -93,11 +95,13 @@ def candidates(names=None):
     from .. import symbol  # Late: symbol imports after sync
     from .. import _config
     where = _config.state()
-    if names is None: # The PSK family's own point sets: a child (a labelling or a rotation of a parent) is not another modulation
-        names = _CANDIDATES.get((where, None))
+    if names is None: # The PSK, QAM and APSK families' own point sets: a child (a labelling, rotation or radii of a parent)
+        names = _CANDIDATES.get((where, None))                             # is not another modulation
         if names is None:
+            have = symbol.ls(blind=True)
             names = _CANDIDATES[(where, None)] = tuple(
-                n for n in symbol.ls(blind=True).get("psk", []) if "extends" not in _config.read_raw(_config.find("constellation", f"psk/{n}")))
+                n for g in GROUPS for n in have.get(g, [])
+                if "extends" not in _config.read_raw(_config.find("constellation", f"{g}/{n}")))
     out = {}
     for name in names:
         pts = _CANDIDATES.get((where, name))
@@ -201,12 +205,15 @@ def track_timing(x, sps, beta, span=8, rounds=2):
     tau, _e = best_tau(x, sps, beta, span)
     return sps, tau
 
-def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None, esn0=None, min_evidence=None):
+BETAS = (0.2, 0.25, 0.35) # The roll-offs always tried; the spectrum's nearest standard one (rate.ROLLOFFS) joins them
+
+def detect(x, Fs, names=None, betas=None, span=8, baud=None, esn0=None, min_evidence=None):
     """Find symbol rate, timing, modulation, frequency offset and phase from baseband samples
 
     x: complex baseband at Fs, with the signal of interest centred and filtered
-    names: candidate modulations, default everything in config/constellation
-    betas: RRC roll-offs to try
+    names: candidate modulations, default `candidates()`'s (the PSK, QAM and APSK definitions)
+    betas: RRC roll-offs to try; None: BETAS and the standard roll-off nearest the spectrum's (rate.find_rolloff: the
+        likelihood can't tell 0.05 from 0.15, the edges can), which `rolloff` records
     baud: the symbol rate when already known (a channel plan, rpps.analysis.spectrum.cyclic): timing refines it, no search
     esn0: the Es/N0 when known (rpps.sync.quality.from_sequence on a known sequence): every candidate is scored at it
     min_evidence: nats the winner must lead the runner-up by in all (Detection.evidence), with it NULL_MARGIN over
@@ -215,6 +222,10 @@ def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None, esn0=N
     """
     cands = candidates(names)
     baud0, line = (float(baud), None) if baud else find_baud(x, Fs)
+    rolloff = None
+    if betas is None:
+        rolloff = find_rolloff(x, Fs, baud0)[0] if baud0 > 0 else None
+        betas = tuple(sorted(set(BETAS) | ({nearest_rolloff(rolloff)} if rolloff is not None else set())))
     best = None
     for beta in betas:
         sps, tau = track_timing(x, Fs/baud0, beta, span)
@@ -238,7 +249,7 @@ def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None, esn0=N
                 mod=top, baud=baud, sps=sps, beta=beta, tau=tau,
                 cfo=cfo*baud, phase=phase, M=M, gain=gain,
                 scores=scores, n=len(y), esn0=q.esn0_db, ebn0=q.ebn0_db, line=line,
-                best=top, how=how, given=esn0, null=null_score(y)
+                best=top, how=how, given=esn0, null=null_score(y), rolloff=rolloff
             ))
     det = best[1]
     if min_evidence is not None and (det.over_noise < NULL_MARGIN or det.evidence < min_evidence):
@@ -261,7 +272,7 @@ class Lock:
     symbols: matched-filtered, frequency and phase corrected, unit rms, at `centres` (sample positions in the block)
     points: the constellation (unit rms). quality: rpps.sync.quality.Quality of the symbols
     stale: why the lock no longer fits (Es/N0 fell `drop_db` below the search's, the rate moved more than `drift` from
-        it, or another of the searched modulations now fits better), None while it does
+        it, or one of the search's RECHECK runners-up now fits better), None while it does
     x: the block the lock is of (after `follow`, with the end of the one before that the filter needs)
     end: the stream position just past x, when `at` gave where x starts (None otherwise)
 
@@ -274,13 +285,14 @@ class Lock:
     MIN_SYMBOLS = 16 # Fewer symbols in a block are no measurement
     RECHECK_MARGIN = 0.05 # nats/symbol another modulation must lead by to call the lock stale (a QPSK lock on 8PSK at
     # 6 dB Es/N0: 8PSK leads by about 0.1; the right one leads the next by 0.13 there, more above)
+    RECHECK = 2 # The search's runners-up rescored every block (all seven candidates would cost an update 2.4 times as much)
 
     @classmethod
-    def find(cls, x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None, lock=5.0, min_samples=1024,
+    def find(cls, x, Fs, names=None, betas=None, span=8, baud=None, lock=5.0, min_samples=1024,
              drop_db=6.0, drift=2e-3, at=None, esn0=None, min_evidence=None):
         """Search x for a signal: its symbol rate, modulation, roll-off, timing, cfo and phase (`detect`)
 
-        names / betas: candidate modulations and roll-offs (default: the PSK family, 0.2 0.25 0.35)
+        names / betas: candidate modulations and roll-offs (default: candidates(), and as `detect` chooses them)
         baud: the symbol rate when known: no rate search and no line needed
         lock: symbol-rate line strength needed over its local floor (noise peaks at about 3-4); None takes any line
         min_samples: fewer samples are not searched (the rate search goes down to Fs/16: at least 64 symbols)
@@ -438,7 +450,8 @@ class Lock:
             elif recheck and found.scores and len(found.scores) > 1:
                 # scored as the search scores (score_all), on this block's symbols
                 ycs = {det.mod: (syms, points)}
-                for name, pts in candidates([n for n in found.scores if n != det.mod]).items():
+                rivals = sorted((n for n in found.scores if n != det.mod), key=found.scores.get, reverse=True)[:cls.RECHECK]
+                for name, pts in candidates(rivals).items():
                     ycs[name] = (correct(y/gain, pts, symmetry(pts))[0], pts)
                 others, _ = score_all(ycs, found.given)
                 own = others.pop(det.mod)
@@ -560,7 +573,7 @@ class Acquire(Stage):
     baud: the symbol rate when known (a channel plan, rpps.analysis.spectrum.cyclic): no waiting for a line, no rate search
     """
     __slots__ = ("lock", "max_wait", "history", "names", "betas", "min_samples", "baud")
-    def __init__(self, lock=5.0, max_wait=2**17, history=2**16, names=None, betas=(0.2, 0.25, 0.35), min_samples=1024,
+    def __init__(self, lock=5.0, max_wait=2**17, history=2**16, names=None, betas=None, min_samples=1024,
                  baud=None):
         self.baud = baud
         self.min_samples = min_samples

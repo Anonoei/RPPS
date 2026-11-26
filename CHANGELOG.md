@@ -7,6 +7,9 @@ what to use instead.
 ## Unreleased
 
 ### Breaking
+- **A constellation file lists only labellings, not their turns**: `psk/qpsk`'s R090 / R180 / R270 maps and `psk/bpsk`'s
+  R180 are gone from the files, and first maps drop their "R000" prefix. The code makes every turn and conjugate of the
+  first map as before (`rpps.symbol.mapping.expand_maps`), with the same names, so `load("psk/qpsk", "R090")` is unchanged.
 - **`rp.analysis.signal_profile.rotation` is `rp.sync.inversion.sense`**, returning the same (True inverted, False, None).
 - **The DVB-S2 constellations are four, not fifteen.** `psk/dvbs2_qpsk` is `rp.symbol.load("psk/qpsk", "dvb-s2")` and
   `psk/dvbs2_8psk` is `rp.symbol.load("psk/8psk", "dvb-s2")`: named maps on QPSK and 8PSK (a map's `"rotate"` turns the
@@ -83,6 +86,13 @@ what to use instead.
 
 ### Added
 
+- **Acquisition names QAM and APSK, and measures the roll-off.** `rp.sync.detect`, `Lock` and `Acquire` try the PSK, QAM
+  and APSK definitions (`acquire.GROUPS`; children such as `dvbs2_16apsk` aren't other modulations), not only PSK. With
+  `betas=None` (now the default) the roll-off is also read off the spectrum's edges (`rp.sync.rate.find_rolloff`: the
+  matched-filter likelihood can't tell 0.05 from 0.15), and its nearest standard one (`rate.ROLLOFFS`, DVB-S2X's 0.05 to
+  0.35) joins the three always tried; `Detection.rolloff` holds the measure, and the signal profile shows it ("roll-off
+  0.05 (edges 0.06)"). A lock rechecks only the search's two runners-up each block (`Lock.RECHECK`), so an update costs
+  what it did with three candidates.
 - **Spectral inversion is found and put right, not picked as a map.** `rp.sync.Inversion(known)` (profile step
   `{"sync": "inversion", "header": ...}` or a complex `sequence`) matches a known sequence that turns (DVB-S2's
   pi/2-BPSK SOF) forwards and backwards on the symbol steps, so before carrier and frame sync, decides the sense by
