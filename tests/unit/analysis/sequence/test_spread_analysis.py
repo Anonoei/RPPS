@@ -58,3 +58,14 @@ def test_noise_has_no_period():
     rng = np.random.default_rng(1)
     g = rng.standard_normal(300000) + 1j*rng.standard_normal(300000)
     assert not spread.period(g, 1e6, max_period=800).significant
+
+@pytest.mark.parametrize("fine", [False, True])
+def test_chip_rate_from_the_peak_width_without_a_line(fine):
+    """No significant |x|^2 line (here: none can pass pfa): the rate comes from the fluctuation peak, or is refused"""
+    x, _ = dsss(np.random.default_rng(0), C127, 1200, -5.0)
+    p = spread.period(x, 1e6, max_period=800)
+    with pytest.raises(ValueError, match=r"no \|x\|\^2 line"):
+        spread.chip_rate(x, 1e6, p.lag, pfa=1e-300)
+    R, k, T = spread.chip_rate(x, 1e6, p.lag, pfa=1e-300, fluct=p.fluct, fine=p.fine if fine else None)
+    assert k == 127 and R == pytest.approx(250e3, rel=1e-3) and T == pytest.approx(k/R)
+

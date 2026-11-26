@@ -102,3 +102,55 @@ def test_burst_timing_stack_terminals_and_plan_evidence():
     with pytest.raises(B.NoPlan) as e:
         B.learn_plan(mixed)
     rp.viz.plan_evidence(None, e.value)
+
+@pytest.mark.parametrize("sps", [7, 8])
+def test_eye_traces_are_centred_on_the_instants(sps):
+    """get_eye cuts a fixed grid; get_eye_at puts the sampling instant (fractional too) in the middle column and derotates"""
+    x = np.exp(1j*np.pi/4)*np.ones(40*sps + 3, np.complex64)
+    grid = eye.get_eye(x, sps)
+    assert grid.shape[1] == 2*(sps//2) + 1 and len(grid) == 41
+    mesh = eye.get_eye_at(x, sps, 3.5, derotate=4)
+    assert mesh.shape[1] % 2 == 1 and len(mesh) > 30
+    np.testing.assert_allclose(mesh[:, mesh.shape[1]//2].imag, 0, atol=1e-6)
+    assert eye.get_eye_at(x[:sps//2], sps, 0.0).shape[0] == 0
+
+def test_lock_phase_takes_out_a_carrier():
+    rng = np.random.default_rng(0)
+    k = np.arange(200)
+    z = np.exp(1j*(np.pi/2*rng.integers(0, 4, len(k)) + 0.3 + 0.01*k))
+    locked = eye.lock_phase(z[:, None], 4)[:, 0]
+    assert np.abs(np.angle(locked**4)).max() < 0.2 < np.abs(np.angle(z**4)).max()
+
+@pytest.mark.parametrize("sync", ["oerder_meyr", "mat"])
+def test_the_eye_follows_a_timing_sync(sync):
+    """sync_phase says where the sync samples in the block it just took: the eye drawn there is open at its centre"""
+    rng = np.random.default_rng(0)
+    syms = np.exp(1j*np.pi/4*(2*rng.integers(0, 4, 4000) + 1)).astype(np.complex64)
+    x = (rp.Data(syms, Fs=1e3, sps=1) + rp.wave.Shape(8, rp.signal.filters.load("pulse/rrc/0p35"))).data
+    st = rp.sync.time.OerderMeyr() if sync == "oerder_meyr" else rp.sync.time.Mat()
+    stages = st if sync == "oerder_meyr" else rp.sync.Acquire() + st
+    stream = None
+    for i in range(0, len(x), 4096):
+        d = rp.Data(x[i:i + 4096], Fs=8e3, sps=8, stream=stream)
+        stream = d.stream
+        out = d + stages
+    phase = eye.sync_phase(out.state(st), len(d), d.meta.pos, d.sps)
+    assert phase is not None
+    block = x[-len(d):]
+    mesh = eye.get_eye_mf(block, 8, phase, 0.35, lock=4)
+    centre = np.abs(mesh[:, mesh.shape[1]//2])
+    assert len(mesh) > 100 and np.std(centre) < 0.1*np.mean(centre)
+    eye.IQ(None, block, 8, phase=phase, beta=0.35, derotate=4, lock=4)
+    eye.IQ(None, block, 8, phase=phase)
+
+@pytest.mark.parametrize("rail", [eye.I, eye.Q])
+def test_single_rail_eyes_draw_and_update(rail, x):
+    lines = rail(None, x[:400], 4)
+    assert len(lines) > 50
+    assert rail(lines, x[:400], 4) is lines
+
+def test_sync_phase_is_none_before_the_sync_runs():
+    from types import SimpleNamespace
+    assert eye.sync_phase(SimpleNamespace(), 100) is None
+    assert eye.sync_phase(rp.sync.time.Mat().new_state(rp.base.Meta()), 100) is None
+

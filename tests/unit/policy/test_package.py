@@ -18,12 +18,20 @@ def test_extra_config_path_adds_to_the_packaged_definitions(tmp_path, config_lay
     assert {"mine", "v35"} <= set(rp.code.scram.ls()["feedthrough"])
 
 @pytest.mark.parametrize("level", ["INFO", "TRACE"])
-def test_logging_is_opt_in(level, caplog):
+def test_logging_is_opt_in(level, capsys):
+    log = rp.logger.Logger("t")
+    log.info("before")
+    assert capsys.readouterr().err == ""
     rp.logger.enable(level)
     try:
-        rp.logger.Logger("t").info("hello")
+        log.info("hello")
+        log.trace("fine %s", "detail")
     finally:
         rp.logger.disable()
+    err = capsys.readouterr().err
+    assert "hello" in err and ("fine detail" in err) == (level == "TRACE")
+    log.info("after")
+    assert capsys.readouterr().err == ""
 
 def test_a_native_build_from_other_sources_is_stale(tmp_path):
     from types import SimpleNamespace

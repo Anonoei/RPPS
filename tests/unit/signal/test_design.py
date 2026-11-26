@@ -61,3 +61,13 @@ def test_shaping_mat_rrc_shapes_a_block():
     f = rp.signal.filters.ShapingMatRRC(16, 4)
     assert f.pulse.shape == (16, 64)
     assert f.burst(np.ones(40)).shape == (160,)
+
+@pytest.mark.parametrize("shape", ["sinc", "exp", "sqr"])
+def test_prototype_low_and_high_pass_split_the_band(shape):
+    """The fixed-shape prototypes: the low pass passes DC, its high pass (an impulse less the low pass) blocks it"""
+    from rpps.signal.filters.impl import designer
+    low, high = designer.lowpass(64, shape), designer.highpass(64, shape)
+    assert len(low) == len(high) == 64
+    assert np.sum(low) == pytest.approx(1.0) and np.sum(high) == pytest.approx(0.0, abs=1e-9)
+    assert abs(np.sum(low*(-1)**np.arange(64))) < 0.2 < abs(np.sum(high*(-1)**np.arange(64)))
+

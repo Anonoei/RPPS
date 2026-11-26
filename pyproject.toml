@@ -34,7 +34,7 @@ dependencies = ["numpy>=2.0", "pysdrlib>=0.5.0"]
 
 [project.optional-dependencies]
 viz = ["matplotlib"]
-test = ["pytest", "pytest-xdist"]
+test = ["pytest", "pytest-xdist", "coverage>=7.10"]
 oracle = ["scipy"] # only the tests that check against it: RPPS itself must not need it
 docs = ["zensical>=0.1.3", "mkdocstrings-python>=2.0"]
 dev = ["rpps[viz,test,oracle,docs]", "twine", "build", "bumpver"]
@@ -82,9 +82,16 @@ test-requires = ["pytest", "matplotlib"]
 test-command = "python -c \"import rpps._native\" && python {project}/tests/run_wheel_tests.py"
 
 
+# `coverage run -m pytest -n auto`, then `coverage combine` and `coverage report`
+[tool.coverage.run]
+branch = true
+source = ["rpps"]
+patch = ["subprocess"] # the xdist workers, and the examples and CLI the tests start
+
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
 pythonpath = ["src", "tests"]
+addopts = "--strict-markers --strict-config"
 markers = [
     "slow: takes more than a few seconds",
     "kernels: over a minute with the C++ kernels off (the no-kernel CI pass leaves it out; it runs in the others)",
