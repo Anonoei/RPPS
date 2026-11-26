@@ -76,6 +76,7 @@ def test_wireshark_reads_it(tmp_path):
     assert "FAILED (crc16_x25)" in rows[1][5]
 
 @needs_tshark
+@pytest.mark.skipif(not LUA.is_file(), reason="no tools/ (the wheel tests copy only what an install needs)")
 def test_the_lua_dissector(tmp_path):
     p = [Packet(linktype("ethernet"), ETH, "ble/adv", "pdu", "crc24_ble", ok, 4160 + i, 0.004, 2.402e9, 12.5,
                 {"type.name": name}) for i, (ok, name) in enumerate([(True, "ADV_IND"), (False, "ADV_NONCONN_IND")])]
