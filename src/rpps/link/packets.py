@@ -17,6 +17,7 @@
      "insert": {"count": "dnp", "bits": 1504,         packets put back before it: `count` of them, each `head` then
                 "head": "0x471FFF10", "fill": 255},   `fill` bytes to `bits` (the null packets DVB-S2 deleted)
      "defaults": {"upl": 1504},                      values of the params before any control (transmit: all there is)
+                                                     (a list of numbers too: `pid in more`)
      "tx": {"syncd": "pointer if start else 65535"}} transmit: the fields published at each frame's start
 
 A header step before it (a transfer frame's, a BBHEADER, a transport packet's) drives it from each frame's data: the
@@ -122,7 +123,8 @@ class Packets(Pipe):
         defaults = dict(spec.get("defaults", {}))
         if set(defaults) - set(self.params):
             raise ConfigError(f"link packets {name}: defaults {sorted(set(defaults) - set(self.params))} are not params ({self.params})")
-        self.defaults = {p: int(defaults.get(p, 0)) for p in self.params}
+        self.defaults = {p: tuple(int(x) for x in v) if isinstance(v, (list, tuple)) else int(v)
+                         for p, v in ((p, defaults.get(p, 0)) for p in self.params)} # (a list: for `in`)
         self.tx = dict(spec.get("tx", {}))
         self.values = dict(self.defaults)
         self.frame_len = None

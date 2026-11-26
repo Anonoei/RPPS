@@ -140,3 +140,20 @@ def test_the_vectorized_search_is_the_loop(seed):
         if seed % 2:
             bits = ~bits
         assert a._estimate(bits) == _estimate_loop(a, bits)
+
+def test_publishes_each_period_as_a_frame_start_however_cut():
+    """publish: every period out is a frame start, at its input position, the same for any block cut"""
+    from rpps.base.control import of
+    rng = np.random.default_rng(8)
+    bits = ts_bits(rng, 30)
+    x = np.concatenate((rng.integers(0, 2, 500).astype(bool), bits))
+    got = []
+    for cuts in ([len(x)], cuts_of(len(x), np.random.default_rng(1))):
+        out, s = run(x, cuts, rp.sync.Align(204, pattern=DVBS, publish=True))
+        pub = [(f["frame"], at) for _, f, at, *_ in of(s).published]
+        assert len(pub) == len(out)//P and [k for k, _ in pub] == list(range(len(pub)))
+        assert all((at - 500) % P == 0 for _, at in pub)
+        got.append(pub)
+    assert got[0] == got[1]
+    _, s = run(x, [len(x)], rp.sync.Align(204, pattern=DVBS))
+    assert not of(s).published # (only when asked)

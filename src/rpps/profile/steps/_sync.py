@@ -80,7 +80,8 @@ def _mpower(m, rep, ctx):
              else None) # A definition, or a generated shape, as the constellation step names them
         offset = sync.phase.offset_of(c, order) if c is not None else 0.0
     return sync.phase.MPower(order, offset, m.get("window", 1e-3), m.get("min_symbols", 1024), m.get("bw", 0.25),
-                             m.get("gate", 3.0), m.get("relock", 4), m.get("name", "carrier"), m.get("device", False))
+                             m.get("gate", 3.0), m.get("relock", 4), m.get("name", "carrier"), m.get("device", False),
+                             m.get("acquire", 16384))
 
 @register_sync_method("carrier", "costas")
 def _costas(m, rep, ctx):
@@ -199,7 +200,8 @@ def _preamble(kind, spec, rep, ctx):
 def _align(m, ctx):
     from ... import sync
     return sync.Align(_need(m, "period", "align"), markers=m.get("markers"), pattern=m.get("pattern"), unit=m.get("unit", 8),
-                      polarity=m.get("polarity", True), name=m.get("name", "align"), start=m.get("start", "any"))
+                      polarity=m.get("polarity", True), name=m.get("name", "align"), start=m.get("start", "any"),
+                      publish=m.get("publish", False))
 
 @_sync_one("puncture")
 def _puncture(m, ctx):

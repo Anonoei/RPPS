@@ -368,4 +368,4 @@ def _word(name):
 def _header_schema(name):
     from ..link.fields import Schema
     obj = _config.read(_config.find("header", name, "link"))
-    return Schema(obj["fields"] + (obj.get("payload_fields") or []), obj.get("order", "msb"), f"header {name}")
+    return Schema(obj["fields"] + (obj.get("payload_fields") or []), obj.get("order", "msb"), f"header {name}", obj.get("groups"))

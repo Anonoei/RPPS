@@ -30,6 +30,7 @@ The shipped profiles' rules:
 | `dvbs/*` | `packet` | `mpeg2_ts` (243) | transport stream packets |
 | `dvbs2/ts` | `ts` | `mpeg2_ts` (243) | user packets cut across BBFRAMEs (SYNCD, UPL), CRC-8 checked, sync byte put back, deleted null packets put back |
 | `dvbs2/mpe` | `mpe` | `raw` (101) | the IP datagrams of MPE sections cut across the transport packets of a `pid` (pointer field), CRC-32 checked |
+| `dvbs2/si`, `dvbs/si` | `ts`, `packet` | `mpeg2_ts` (243) | the transport packets: Wireshark reads the PSI/SI tables itself; the profile's `si` messages are the sections, read |
 | `dvbs2/ule` | `ule` | `raw` (101) | the IPv4 and IPv6 PDUs of ULE SNDUs cut across the transport packets of a `pid`, CRC-32 checked |
 | `ccsds/tm_packets` | `space` | exported PDU, `ccsds` | space packets cut across transfer frames per virtual channel (first header pointer) |
 | `dvbs2/*`, `dvbrcs2/forward` | `bbheader` | exported PDU, `dvb-s2_modeadapt` | the BBFRAME, header and data field: Wireshark reads GSE and what it carries |
@@ -41,6 +42,15 @@ link type expects (bit order, a prefix, a sync byte, PPP's compressed address an
 drops idle frames (`drop`), and names the fields for the comment. A standard framing Wireshark knows (Cisco HDLC, PPP)
 is captured whole, with its link type, and Wireshark separates its header; `"linktype": "find"` finds where a known
 link type starts after a header nobody describes.
+
+## DVB service information
+
+The tables a DVB receiver finds its way round a multiplex with (EN 300 468, ISO/IEC 13818-1) are sections on known
+PIDs: `dvbs2/si` and `dvbs/si` give a message per section (kind `si`), read by `header/link/dvb_si`: its table in
+`table_id.name`, its descriptors by tag, dates and times decoded, its CRC-32 checked. Its transport packets are
+captured as MPEG-TS, which Wireshark reads the tables of too.
+
+--8<-- "examples/dvb_si.py"
 
 ## In Wireshark
 

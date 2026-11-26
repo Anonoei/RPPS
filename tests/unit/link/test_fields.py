@@ -163,3 +163,46 @@ def test_mode_s_header_matches_a_real_frame():
     out = as_data_bits(bits) / rp.link.load("header/mode_s")
     assert out.stream.est["mode_s"]["last"] == {"df": 17} and len(out) == 83
     assert np.array_equal(hard(out), bits[5:88])
+
+# ---- BCD, MJD dates, BCD times, DVB text, lists filling bytes, shared groups (EN 300 468)
+
+def test_bcd_mjd_and_time():
+    s = Schema([{"name": "f", "type": "bcd", "bits": 32, "scale": 10000}, {"name": "d", "type": "mjd", "bits": 16},
+                {"name": "t", "type": "time", "bits": 24}, {"name": "o", "type": "time", "bits": 16}])
+    # EN 300 468 annex C: 93/10/13 12:45:00 is MJD 0xC079, BCD 0x124500; 11.778 GHz is 0x01177800 in 10 kHz digits
+    b = bits_of((0x01177800, 32), (0xC079, 16), (0x124500, 24), (0x0130, 16))
+    v, used = s.parse(b)
+    assert v == {"f": 11778000000, "d": "1993-10-13", "t": "12:45:00", "o": "01:30"} and used == 88
+    assert np.array_equal(s.build(v), b)
+    assert s.fixed_bits == 88
+
+def test_dvb_text_tables():
+    from rpps.link.fields import dvb_text, dvb_bytes
+    assert dvb_text(b"News") == "News"
+    assert dvb_text(b"\x15Caf\xc3\xa9") == "Café"
+    assert dvb_text(b"\x05\xc4\xe9") == "Äé" # 0x05: ISO 8859-9
+    assert dvb_text(b"\x10\x00\x02\xa1") == "Ą" # 0x10 0x00 n: ISO 8859-n
+    assert dvb_text(b"\x11\x04\x14") == "Д" # UCS-2
+    assert dvb_text(b"A\x86B\x87\x8aC") == "AB\nC" # emphasis codes go, 0x8A breaks the line
+    assert dvb_bytes("News") == b"News" and dvb_bytes("Café") == b"\x15Caf\xc3\xa9"
+    s = Schema([{"name": "n", "bits": 8, "tx": "len(name)"}, {"name": "name", "type": "text", "encoding": "dvb", "bytes": "n"}])
+    b = s.build({"name": "Café"})
+    assert s.parse(b)[0] == {"n": 6, "name": "Café"}
+
+def test_lists_filling_bytes_groups_and_the_rest():
+    groups = {"d": [{"name": "tag", "bits": 8}, {"name": "length", "bits": 8, "tx": "len(body)"},
+                    {"name": "body", "bytes": "length", "fields": [{"name": "data", "type": "bytes", "bytes": "*"}]}]}
+    s = Schema([{"name": "n", "bits": 8, "tx": "len(ds)"}, {"name": "ds", "bytes": "n", "repeat": "*", "group": "d"},
+                {"name": "after", "bits": 8}], groups=groups)
+    v = {"ds": [{"tag": 1, "body": {"data": b"ab"}}, {"tag": 2, "body": {"data": b""}}], "after": 9}
+    b = s.build(v)
+    assert np.packbits(b).tobytes() == bytes([6, 1, 2]) + b"ab" + bytes([2, 0, 9])
+    got, used = s.parse(b)
+    assert got["ds"] == [{"tag": 1, "length": 2, "body": {"data": b"ab"}}, {"tag": 2, "length": 0, "body": {"data": b""}}]
+    assert got["after"] == 9 and used == len(b)
+    with pytest.raises(ConfigError):
+        Schema([{"name": "x", "group": "g"}], groups={"g": [{"name": "y", "group": "g"}]})
+    with pytest.raises(ConfigError):
+        Schema([{"name": "x", "group": "nope"}])
+    with pytest.raises(ConfigError):
+        Schema([{"name": "x", "bytes": 2, "repeat": 3, "fields": [{"name": "y", "bits": 8}]}])

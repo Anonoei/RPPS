@@ -12,6 +12,7 @@ import rpps as rp
 from rpps import _config
 from rpps.base.types import Rep
 from rpps.errors import ConfigError
+from support.ts import ts_stream, receive_ts, ts_packets, mux, through_dvbs2
 
 TSHARK = shutil.which("tshark")
 
@@ -174,14 +175,6 @@ def test_step_errors():
 
 # ---- DVB-S2 transmitting transport streams, null-packet deletion
 
-def ts_stream(rng, n, pid=0x100):
-    return [bytes([0x47, pid >> 8, pid & 255, 0x10 | (k & 15)]) + rng.bytes(184) for k in range(n)]
-
-def receive_ts(p, o):
-    rx = p.rx()
-    out = rx(rp.Data(np.concatenate((o.data, np.zeros(200, np.complex64))), Fs=o.Fs, sps=4, delay=o.delay, flush=True))
-    return out, rx.take_messages()
-
 def test_dvbs2_transmits_transport_streams():
     """dvbs2/ts packs a transport stream into TS-mode BBFRAMEs itself (SYNCD, the CRC-8s), however the stream is cut"""
     rng = np.random.default_rng(5)
@@ -263,46 +256,6 @@ def ule_sndu(ip):
     crc = rp.link.load("crc/crc32_mpeg2").encoder
     body = struct.pack(">HH", 0x8000 | (len(ip) + 4), 0x0800) + ip # (D = 1: no destination address)
     return body + crc.compute(body).to_bytes(4, "big")
-
-def ts_packets(units, pid, rng):
-    """Units (sections, SNDUs) in the payloads of transport packets of one PID (ISO/IEC 13818-1 2.4.4.2): a pointer
-    field where one starts, some packets with an adaptation field, 0xFF to fill the last"""
-    stream = b"".join(units)
-    starts = set(np.cumsum([0] + [len(u) for u in units[:-1]]).tolist())
-    out, pos, cc = [], 0, 0
-    while pos < len(stream):
-        af = b"" if rng.random() < 0.7 else bytes([7, 0]) + b"\xff"*6
-        room = 184 - len(af)
-        first = min((s for s in starts if pos <= s < pos + room), default=None)
-        if first is not None:
-            room -= 1
-            first = min((s for s in starts if pos <= s < pos + room), default=None)
-        data = stream[pos:pos + room]
-        payload = (bytes([first - pos]) if first is not None else b"") + data
-        payload += b"\xff"*(184 - len(af) - len(payload))
-        afc = 3 if af else 1
-        out.append(bytes([0x47, (first is not None) << 6 | pid >> 8, pid & 255, afc << 4 | cc]) + af + payload)
-        pos, cc = pos + len(data), (cc + 1) % 16
-    return out
-
-def mux(rng, *streams):
-    """Transport packets of several PIDs, each in its order, mixed, with null packets"""
-    null = bytes([0x47, 0x1F, 0xFF, 0x10]) + b"\xff"*184
-    queues = [list(s) for s in streams]
-    out = []
-    while any(queues):
-        q = [q for q in queues if q][int(rng.integers(0, sum(1 for q in queues if q)))]
-        out.append(q.pop(0))
-        if rng.random() < 0.2:
-            out.append(null)
-    return out
-
-def through_dvbs2(p, ts):
-    """Transport packets sent by dvbs2/ts and received by profile p"""
-    tx = rp.profile.load("dvbs2/ts").tx()
-    bits = np.unpackbits(np.frombuffer(b"".join(ts), np.uint8)).astype(bool)
-    o = tx(rp.Data(bits, Fs=1e6, sps=1, flush=True), fields={"modcod": 4, "pilots": 1})
-    return receive_ts(p, o)
 
 @pytest.mark.parametrize("kind", ["mpe", "ule"])
 def test_ip_over_transport_streams(kind, tmp_path):

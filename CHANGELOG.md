@@ -86,6 +86,21 @@ what to use instead.
 
 ### Added
 
+- **DVB service information: the NIT, the time (TDT/TOT) and the rest of SI, with the PSI.** `header/link/dvb_si`
+  reads (and builds) a section of every PSI/SI table: PAT, CAT, PMT, NIT, SDT, BAT, EIT, TDT, TOT, RST, ST, the CRC-32
+  checked where there is one (not the TDT; the TOT too), descriptors by tag (network and bouquet names, satellite,
+  cable and terrestrial delivery systems, service list, service, short event, local time offset, CA, language, stream
+  identifier), others as bytes. New profiles `dvbs2/si` and `dvbs/si` give a message per section on the PSI/SI PIDs
+  (and the PMTs' in `pids`), its table in `table_id.name`; `dvbs2/sections` (abstract) is what `dvbs2/mpe` and
+  `dvbs2/si` share. Example: `examples/dvb_si.py`, in the Wireshark guide.
+  - Field schemas (`rpps.link.fields`) read `"type": "bcd"`, `"mjd"` (an ISO date) and `"time"` (`"hh:mm:ss"`), DVB
+    strings (`"encoding": "dvb"`, by their table byte), `"bytes": "*"` (the rest of the group), a list filling a byte
+    count (`"bytes"` with `"repeat": "*"`), and shared `"groups"` a field names (`"group"`); `Schema.build` takes a
+    `scope`.
+  - A link header's `fcs` can be `{"crc": ..., "if": <expression>}`: only frames whose fields say so carry it.
+  - `rp.sync.Align(publish=True)` (an align step's `"publish"`) publishes each period as a frame start, so a header can
+    follow DVB-S's transport packets; `dvbs/qpsk`'s align steps have ids, `packets` and `frames`.
+  - A packets step's `defaults` take a list of numbers (`pid in more`).
 - **What a carrier's frequency is worth.** The signal profile's `frequency` step gives each carrier and symbol rate
   with its standard error from the receive context (pysdrlib's `ppm_accuracy` and a chain's `lo_accuracy`), and says
   which is not known when one isn't. Measuring them is `projects/reference` (LTE cells: the radio's reference error and an

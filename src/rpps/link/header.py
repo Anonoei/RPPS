@@ -16,7 +16,8 @@ A definition, config/header/link/<name>.json, `rp.link.load("header/ieee80211b_p
                 ...],                                         fields (an expression, as "expr" takes, worked out per frame);
                                                               else the controlled value, its "default", or 0
      "crc": "crc16_genibus",                              a crc definition over the field bits, sent after them
-     "fcs": "crc24_ble",                                  a crc definition over header and payload, sent after the payload
+     "fcs": "crc24_ble",                                  a crc definition over header and payload, sent after the payload;
+                                                          {"crc": ..., "if": "ssi == 1"}: only on frames whose fields say so
      "payload": "length*signal//10",                      receive: payload bits after the header, from the fields (and
                                                           `length`, a framed header's frame length: "length - 48 - 32*ocf")
      "preamble": {"ones": 128, "word": "0xF3A0", "bits": 16},   transmit: sent before the header (in `order`)
@@ -55,17 +56,24 @@ class Header(Pipe):
     EMITS = True # Every frame, good or failed, is a message (rpps.profile.message)
 
     def __init__(self, name, fields, order="msb", crc=None, payload=None, preamble=None, framed=False, fcs=None,
-                 payload_order="msb", payload_fields=None):
+                 payload_order="msb", payload_fields=None, groups=None):
         from .fields import Schema
         self.name = name
         if payload_order not in ("msb", "lsb"):
             raise ConfigError(f"header {name}: payload_order is msb or lsb, not {payload_order!r}")
         self.payload_lsb = payload_order == "lsb"
-        self.schema = Schema(fields, order, f"header {name}") # (rpps.link.fields: optional, repeated, sized by expression)
+        self.schema = Schema(fields, order, f"header {name}", groups) # (rpps.link.fields: optional, repeated, sized by expression)
         self.fields = self.schema.fields
-        self.payload_schema = None if not payload_fields else Schema(payload_fields, "msb", f"header {name} payload")
+        self.payload_schema = None if not payload_fields else Schema(payload_fields, "msb", f"header {name} payload", groups)
         self.order = order
         self.crc = None if crc is None else _crc(crc)
+        self.fcs_if = None # An expression over the fields: the frames that carry the FCS (None: all)
+        if isinstance(fcs, dict):
+            if set(fcs) - {"crc", "if"} or "crc" not in fcs:
+                raise ConfigError(f"header {name}: fcs is a crc name or {{\"crc\": ..., \"if\": ...}}, not {fcs}")
+            if framed:
+                raise ConfigError(f"header {name}: a framed header's FCS is on every frame")
+            fcs, self.fcs_if = fcs["crc"], fcs.get("if")
         self.fcs = None if fcs is None else _crc(fcs)
         self.fcs_bits = 0 if self.fcs is None else self.fcs.width
         self.check_name = fcs or crc # The check behind a message's crc_ok (Message.check)
@@ -217,6 +225,13 @@ class Header(Pipe):
         scope = {**fields, "length": self.length} if self.length is not None else fields
         return int(_config.evaluate(self.payload, scope, f"header {self.name}"))
 
+    def frame_fcs(self, fields):
+        """The FCS bits this frame carries (`fcs` with an "if": only some frames do)"""
+        if self.fcs is None or (self.fcs_if is not None and not _config.evaluate(
+                self.fcs_if, {k: v for k, v in fields.items() if not isinstance(v, (list, dict))}, f"header {self.name}")):
+            return 0
+        return self.fcs_bits
+
     # ---- receive
 
     def _state(self, ctx, enc):
@@ -224,7 +239,7 @@ class Header(Pipe):
         st = ctx.get(key)
         st = SimpleNamespace(**vars(st)) if st is not None else SimpleNamespace(
             mode="header", held=np.zeros(0, bool), start=None, left=0, frame_left=None, pend=np.zeros(0, bool), pend_pos=None,
-            body=np.zeros(0, bool), tail=np.zeros(0, bool), fields=None, part=np.zeros(0, bool))
+            body=np.zeros(0, bool), tail=np.zeros(0, bool), fields=None, part=np.zeros(0, bool), fb=self.fcs_bits)
         ctx[key] = st
         return st
 
@@ -266,33 +281,34 @@ class Header(Pipe):
                     st.mode = "skip"
                     continue
                 n = self.payload_bits(fields)
+                fb = st.fb = self.frame_fcs(fields)
                 if self.framed and self.length:
                     n = min(n if n is not None else self.length, self.length - self.header_bits - self.fcs_bits)
-                if failed is not None and failed[max(0, i - hb):i + (n or 0) + self.fcs_bits].any():
+                if failed is not None and failed[max(0, i - hb):i + (n or 0) + fb].any():
                     est["fec_failed"] += 1 # The code under it failed: its header passing its CRC proves nothing about the data
                     emit(data.meta, self, None, fields, None, False, st.start)
-                    st.mode, st.left = "drop", (n or 0) + self.fcs_bits
+                    st.mode, st.left = "drop", (n or 0) + fb
                     continue
                 if self.select and any(fields.get(k) != v for k, v in self.select.items()):
                     est["skipped"] += 1 # Not one of the frames kept
-                    st.mode, st.left = "drop", (n or 0) + self.fcs_bits
+                    st.mode, st.left = "drop", (n or 0) + fb
                     continue
-                if self.fcs is None:
+                if not fb:
                     est["frames"] += 1
                 est["last"] = fields
                 at = st.start + hb
-                whole = hb + n + self.fcs_bits
+                whole = hb + n + fb
                 publish(data.meta, self, {**fields, "bits": n}, at=at, out=n_out, span=n, group=st.start)
                 publish(data.meta, self, {"frame_bits": whole}, at=st.start, out=None, span=whole, group=st.start)
                 anchor(data.meta, self, at, n_out)
                 st.mode, st.left, st.body, st.fields, st.part = "payload", n, np.zeros(0, bool), fields, np.zeros(0, bool)
-                if n == 0 and self.fcs is None: # A header that is the whole frame: done now, not when more bits come
+                if n == 0 and not fb: # A header that is the whole frame: done now, not when more bits come
                     st.mode = "skip"
                     self._emit(data.meta, st.fields, self._bytes_order(st.body), True if self.crc is not None else None, st.start,
                                st.held)
             elif st.mode == "payload":
                 take = min(st.left, len(x) - i)
-                if self.fcs is None: # (with an FCS: held until it says the frame is good)
+                if not st.fb: # (with an FCS: held until it says the frame is good)
                     part = np.concatenate((st.part, x[i:i + take])) if self.payload_lsb else x[i:i + take]
                     give = len(part)//8*8 if self.payload_lsb and st.left > take else len(part) # whole bytes, then the rest
                     out.append(self._bytes_order(part[:give]))
@@ -303,17 +319,17 @@ class Header(Pipe):
                 st.left -= take
                 self._used(st, take)
                 if st.left <= 0:
-                    st.mode = "skip" if self.fcs is None else "fcs"
+                    st.mode = "skip" if not st.fb else "fcs"
                     st.tail = np.zeros(0, bool)
-                    if self.fcs is None:
+                    if not st.fb:
                         body = self._bytes_order(st.body)
                         self._emit(data.meta, st.fields, body, True if self.crc is not None else None, st.start, st.held)
             elif st.mode == "fcs": # The frame check sequence over header and payload
-                take = min(self.fcs_bits - len(st.tail), len(x) - i)
+                take = min(st.fb - len(st.tail), len(x) - i)
                 st.tail = np.concatenate((st.tail, x[i:i + take]))
                 i += take
                 self._used(st, take)
-                if len(st.tail) < self.fcs_bits:
+                if len(st.tail) < st.fb:
                     break
                 good = np.array_equal(self.fcs.field(np.concatenate((st.held, st.body))), st.tail)
                 body = self._bytes_order(st.body) # (the FCS is over the bits as sent)
@@ -368,7 +384,7 @@ class Header(Pipe):
                 pad = np.zeros(self.length - self.header_bits - self.fcs_bits - len(payload), bool)
             hdr = self.build(v)
             head = np.concatenate((self.preamble, hdr))
-            tail = np.zeros(0, bool) if self.fcs is None else self.fcs.field(np.concatenate((hdr, payload)))
+            tail = np.zeros(0, bool) if not self.frame_fcs(v) else self.fcs.field(np.concatenate((hdr, payload)))
             anchor(data.meta, self, at, n_out)
             publish(data.meta, self, {**v, "bits": len(payload)}, at=at, out=n_out + len(head), span=len(payload))
             whole = len(hdr) + len(payload) + len(tail) + len(pad)
@@ -404,7 +420,8 @@ class Header(Pipe):
         if "fields" not in obj:
             raise ConfigError(f"header {name}: needs 'fields'")
         h = Header(name, obj["fields"], obj.get("order", "msb"), obj.get("crc"), obj.get("payload"), obj.get("preamble"),
-                   obj.get("framed", False), obj.get("fcs"), obj.get("payload_order", "msb"), obj.get("payload_fields"))
+                   obj.get("framed", False), obj.get("fcs"), obj.get("payload_order", "msb"), obj.get("payload_fields"),
+                   obj.get("groups"))
         if obj.get("length") is not None: # A framed header's frame length until a control says another
             if not h.framed:
                 raise ConfigError(f"header {name}: `length` is the frame length of a framed header (\"framed\": true)")

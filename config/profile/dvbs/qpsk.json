@@ -27,11 +27,12 @@
     {"symbol": "constellation", "name": "qpsk", "mapping": "R090 inverted"},
     {"sync": "puncture", "conv": {"param": "code"}},
     {"code": "conv", "name": {"param": "code"}},
-    {"sync": "align", "period": 204, "pattern": [184, 71, 71, 71, 71, 71, 71, 71], "name": "packets"},
+    {"sync": "align", "id": "packets", "period": 204, "pattern": [184, 71, 71, 71, 71, 71, 71, 71], "name": "packets"},
     {"code": "interleave", "name": "forney/12_17"},
     {"code": "block", "name": "rs/204_188"},
     {
       "sync": "align",
+      "id": "frames",
       "period": 188,
       "pattern": [184, 71, 71, 71, 71, 71, 71, 71],
       "name": "frames",
