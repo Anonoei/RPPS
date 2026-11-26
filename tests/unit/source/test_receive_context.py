@@ -85,6 +85,9 @@ def test_the_profile_places_the_carrier_over_the_air(tmp_path):
     spec = next(s for s in p.steps if s.kind == "spectrum")
     assert spec.what == "normal" and "conjugated at the source" in spec.note
     assert p.solved and p.profile_name == "dvbs/qpsk_3_4"
+    lv = next(s for s in p.steps if s.kind == "level")
+    assert [s.kind for s in p.steps].index("level") == [s.kind for s in p.steps].index("frequency") + 1
+    assert "from Es/N0 and the symbol rate" in lv.note and "no level calibration" in lv.note
 
 def test_what_a_frequency_is_worth_comes_from_the_context():
     """The reference's accuracy at the carrier's IF, and the LO's, added in quadrature; unknown parts named"""
@@ -97,3 +100,20 @@ def test_what_a_frequency_is_worth_comes_from_the_context():
     assert sf == pytest.approx((975.0**2 + 2e3**2)**0.5)
     assert accuracy(dataclasses.replace(lnb, chain=caps.Chain(lo=9.75e9)), 11.7e9)[2] == ["the LO's accuracy"]
     assert accuracy(None, 1e9) == (None, None, ["the reference's accuracy"])
+
+def test_the_level_step_reads_the_calibration_from_the_context():
+    """C/N0 from Es/N0 and the rate where demodulated (a gap to the spectrum's named), dBFS, and dBm at the port only
+    with a level calibration in the context"""
+    from types import SimpleNamespace as NS
+    from rpps.analysis.signal_profile._receive import level
+    sig = rp.analysis.spectrum.signal.Signal(0.0, 1e6, -80.0, 30.0, 20.0, power=-30.0)
+    assert sig.cn0 == pytest.approx(80.0) and sig.carrier == pytest.approx(-30.0 + 10*np.log10(100/101))
+    src = rp.source.Memory(np.zeros(8, np.complex64), Fs=1e6)
+    st = level(sig, NS(esn0=23.0, baud=0.5e6), None, src) # (consistent: 20 dB in 1 MHz is 23 dB at 0.5 MBd)
+    assert st.detail["cn0"] == pytest.approx(23.0 + 10*np.log10(0.5e6)) and "differs by" not in st.note
+    assert "writer's scale" in st.note and "dBm" not in st.what
+    off = NS(gains={"LNA": 16.0}, level_offset=-60.0, level_accuracy=2.0)
+    st = level(sig, NS(esn0=16.0, baud=0.5e6), off, rp.source.Memory(np.zeros(8, np.complex64), Fs=1e6, context=off))
+    assert st.detail["dbm"] == pytest.approx(sig.carrier - 60.0) and "+- 2.0 dB at the antenna port" in st.what
+    assert "differs by -7.0 dB" in st.note and "LNA 16 dB" in st.note and "writer's scale" not in st.note
+    assert level(rp.analysis.spectrum.signal.Signal(0.0, 1e6, -80.0, 30.0), None, None, src) is None

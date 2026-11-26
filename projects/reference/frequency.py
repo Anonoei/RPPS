@@ -1,7 +1,7 @@
 """Measure a receiver's own errors from signals of known frequency or rate: its reference (ppm) and an LNB's LO
 
-    python projects/reference/reference.py --freq 751 --fs 15.36                 # the radio (RPPS_RADIO, PYSDRLIB_REMOTE)
-    python projects/reference/reference.py --file cap.cf32 --fmt cf32 --fs 15.36 --freq 751
+    python projects/reference/frequency.py --freq 751 --fs 15.36                 # the radio (RPPS_RADIO, PYSDRLIB_REMOTE)
+    python projects/reference/frequency.py --file cap.cf32 --fmt cf32 --fs 15.36 --freq 751
 
 Prints what it measured and the pysdrlib calls that keep it: `set_freq_correction(ppm, accuracy=)` for the radio's
 reference, and a chain's `lo` and `lo_accuracy` (a frontends file entry) for an LNB. RPPS reads them back from the
@@ -241,26 +241,11 @@ def calibrate(source, seconds=0.4, references=(), prior=None):
 def main():
     import argparse
     import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E401,E402,F401
-    import rpps as rp
+    import reference_io
     ap = argparse.ArgumentParser(description="Measure the radio's reference error (and an LNB's LO) from LTE cells in a capture")
-    ap.add_argument("--freq", type=float, required=True, help="centre frequency over the air [MHz]")
-    ap.add_argument("--fs", type=float, default=15.36, help="sample rate [MS/s] (default 15.36)")
-    ap.add_argument("--file", help="a capture instead of the radio")
-    ap.add_argument("--fmt", default="cf32", help="the capture's pysdrlib format (default cf32)")
-    ap.add_argument("--seconds", type=float, default=0.6, help="seconds to capture (default 0.6)")
-    ap.add_argument("--gain", type=float, default=0.45, help="receive gain, a fraction of the radio's range (default 0.45)")
+    reference_io.add_source_args(ap)
     a = ap.parse_args()
-    Fs, cf = a.fs*1e6, a.freq*1e6
-    if a.file:
-        src = rp.source.File(a.fmt, a.file, Fs=Fs, cf=cf)
-    else:
-        import radio_io
-        dev = radio_io.device()
-        try:
-            live = rp.source.Device(dev, cf=cf, Fs=Fs, rx_gain=a.gain)
-            src = rp.source.Memory.capture(live, int(a.seconds*Fs), skip=int(0.45*Fs)) # (a retuned radio delivers the old frequency a while)
-        finally:
-            dev.close()
+    src = reference_io.source(a)
     cal = calibrate(src, seconds=a.seconds)
     for r in cal.used:
         print(f"  {r.what}: " + (f"{r.ppm:+.3f} +- {r.sigma:.3f} ppm" if isinstance(r, RateReference) else

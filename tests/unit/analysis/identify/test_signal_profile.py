@@ -32,13 +32,13 @@ def test_a_dvbs_capture_profiles_to_its_shipped_profile(dvbs_capture):
     p = min(profiles, key=lambda p: abs(p.signal.mid - 1.7e6) - p.signal.width) # (the widest one there: the carrier)
     assert p.solved and p.profile_name == "dvbs/qpsk_3_4"
     kinds = [s.kind for s in p.steps]
-    assert kinds[:4] == ["channel", "acquire", "timing", "carrier"]
-    assert kinds[4:] == ["spectrum", "map", "demap", "puncture", "fec", "align", "deinterleave", "fec", "align", "descramble"]
-    assert p.steps[4].what == "normal" and p.steps[4].status == "found" # DVB-S's code on its profile's map says so
+    assert kinds[:5] == ["channel", "acquire", "level", "timing", "carrier"]
+    assert kinds[5:] == ["spectrum", "map", "demap", "puncture", "fec", "align", "deinterleave", "fec", "align", "descramble"]
+    assert p.steps[5].what == "normal" and p.steps[5].status == "found" # DVB-S's code on its profile's map says so
     text = str(p)
     assert "QPSK at" in text and abs(p.det.baud - 1e6) < 100 and "rs/204_188" in text and "UNSOLVED" not in text
     d = json.loads(json.dumps(p.to_dict(), default=str))
-    assert d["solved"] and d["steps"][8]["kind"] == "fec" # (after the spectrum step)
+    assert d["solved"] and d["steps"][9]["kind"] == "fec" # (after the spectrum step)
 
 @pytest.mark.kernels
 def test_a_signal_short_of_symbols_reads_on(dvbs_capture):
@@ -63,7 +63,7 @@ def test_uncoded_symbols_end_in_an_unsolved_step(tmp_path):
     p = max(rp.analysis.profile(capture(tmp_path/"qpsk.cs16", x/np.abs(x).max()*0.5, 8e6, -1.5e6, rng), blind=False),
             key=lambda p: p.signal.width)
     assert not p.solved and p.steps[-1].kind == "fec" and p.steps[-1].status == SP.UNSOLVED
-    assert [s.kind for s in p.steps[:4]] == ["channel", "acquire", "timing", "carrier"]
+    assert [s.kind for s in p.steps[:5]] == ["channel", "acquire", "level", "timing", "carrier"]
     assert "UNSOLVED" in str(p) and "!" in str(p).splitlines()[-1 - len(p.steps[-1].candidates) - bool(p.steps[-1].note)]
 
 def test_candidates_are_one_per_code_with_softmax_weights():

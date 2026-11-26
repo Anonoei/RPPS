@@ -16,6 +16,7 @@ class Signal:
     width: occupied bandwidth [Hz] (the span holding `occupied` of its power), lo/hi: its edges [Hz from the capture's centre]
     bottom: noise floor [dB] (global), height: peak above the floor [dB], snr: in-band power over noise power in that band [dB]
     power: total in-band power [dB], peak_freq: strongest bin [Hz from the capture's centre]
+    carrier, cn0: its power without the band's noise [dBFS], C/N0 [dB-Hz]
     duty: fraction of the time it is on (1: continuous, less: bursty)
     resolved: there were enough bins across it to trust the edges. False means read more samples
     clipped: it runs into the edge of the capture's band, so its width and centre are only what is inside
@@ -79,6 +80,21 @@ class Signal:
         delay = (Data(np.zeros(1, np.complex64), Fs=self.Fs) + front).meta.delay # (a stream of its own: front holds no state)
         return Channel(front, Fs, D, delay, int(np.ceil(2*delay*Fs)))
 
+    @property
+    def carrier(self):
+        """The carrier's power [dB of the samples' |x|^2: dBFS where |x| = 1 is full scale]: `power` less the noise in
+        its band (None without snr)"""
+        if self.power is None or self.snr is None:
+            return None
+        return float(self.power + 10*np.log10(10**(self.snr/10)/(1 + 10**(self.snr/10))))
+
+    @property
+    def cn0(self):
+        """C/N0 [dB-Hz]: the carrier over the noise density, snr over the band's width (None without snr)"""
+        if self.snr is None or not self.width:
+            return None
+        return float(self.snr + 10*np.log10(self.width))
+
     def esn0_db(self, baud=None):
         """Es/N0 [dB] from the in-band SNR: the noise in the signal's width (snr) is that density times width, the
         symbol energy is the power over the symbol rate, so Es/N0 = snr + 10log10(width/baud). `baud` defaults to
@@ -106,6 +122,10 @@ class Signal:
         bits = [f"{self.freq/1e6:+.4f} MHz", f"{self.width/1e3:.1f} kHz wide"]
         if self.snr is not None:
             bits.append(f"snr {self.snr:.1f} dB")
+            if self.cn0 is not None:
+                bits.append(f"C/N0 {self.cn0:.1f} dB-Hz")
+            if self.carrier is not None:
+                bits.append(f"{self.carrier:.1f} dBFS")
         if self.baud_est:
             bits.append(f"baud ~{self.baud_est/1e3:.1f} k")
         if self.duty is not None and self.duty < 0.9:
@@ -127,7 +147,7 @@ class Signal:
 class Burst(Signal):
     """A Signal on part of the time
 
-    bursts [(t0, t1)] [s] in what was looked at, duty (the fraction on), last (the latest burst), period (the median
+    bursts: [(t0, t1)] in seconds, in what was looked at, duty (the fraction on), last (the latest burst), period (the median
     start to start [s], None under 3 bursts)"""
 
     @classmethod

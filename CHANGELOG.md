@@ -90,6 +90,12 @@ what to use instead.
   with its standard error from the receive context (pysdrlib's `ppm_accuracy` and a chain's `lo_accuracy`), and says
   which is not known when one isn't. Measuring them is `projects/reference` (LTE cells: the radio's reference error and an
   LNB's LO, and the pysdrlib calls that keep them), not the library's.
+- **A carrier's level.** `Signal.carrier` (its power without the band's noise, dBFS) and `Signal.cn0` (dB-Hz), in the
+  survey's listing. The signal profile's `level` step gives C/N0 (from Es/N0 and the symbol rate once demodulated, and
+  names a gap to the spectrum's), dBFS, the gains, and dBm at the antenna port when the receive context holds a level
+  calibration (pysdrlib's `level_offset` / `level_accuracy`). Calibrating (the radio's floor and noise figure, a tone, a
+  noise source) is `projects/reference/power.py`. Which feed each carrier of a two-feed capture is on (leakage,
+  frequency reuse) is `projects/reference/polarization.py`; `projects/reference/reference.py` is now `frequency.py`.
 - **Sources know how their samples were received.** A pysdrlib `RxContext` (pysdrlib 0.5.1: the chain in front of the
   radio and its LO, whether it inverts the spectrum, the reference correction and clock source, gains, antenna) is
   `stream.rx`: `Device` asks the radio, `SigMF` reads `pysdrlib:rx`, and `File` / `Memory` take `context=`. A chain

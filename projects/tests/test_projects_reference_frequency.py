@@ -1,4 +1,4 @@
-"""projects/reference/reference.py: the receive chain's own errors (the radio's reference, an LNB's LO), from known
+"""projects/reference/frequency.py: the receive chain's own errors (the radio's reference, an LNB's LO), from known
 carriers, known rates and LTE cells"""
 import pathlib
 import sys
@@ -11,7 +11,7 @@ import rpps as rp
 PROJECTS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECTS))
 import _paths  # noqa: E402,F401
-import reference as R  # noqa: E402
+import frequency as R  # noqa: E402
 
 class Chain: # (what fit reads of a pysdrlib caps.Chain: rpps doesn't need pysdrlib for this)
     def __init__(self, lo, invert):
