@@ -308,7 +308,7 @@ class Lock:
                 baud, line = find_baud(x, Fs)
                 if lock is not None and not line >= lock:
                     raise NoLock(f"no symbol rate (line {line:.1f}, needs {lock:g}): a carrier, or noise?", line)
-                if not 0 < baud < Fs/2:
+                if not 0 < baud <= Fs/1.5: # (find_baud searches up to there: 1.5 samples a symbol)
                     raise NoLock(f"no symbol rate (the strongest line is at {baud:.6g} Bd): a carrier, or noise?", line)
             det = detect(x, Fs, names, betas, span, baud=baud, esn0=esn0, min_evidence=min_evidence)
             det.line = line

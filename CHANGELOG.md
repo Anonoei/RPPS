@@ -506,6 +506,9 @@ what to use instead.
 - **`analysis.signal_profile.framed` lost every profile's frames when one candidate failed to build.**
 - **`identify` names a profile at the interleaving depth it found** (`match_profile` binds the params a profile's code
   steps take: `ccsds/tm_rs` at depth 1 came out at its default, 5).
+- **A signal at 2 samples a symbol locked at a wrong rate** (`rp.sync.rate.find_baud`, `Lock.find`): |x|^2 put its
+  rate line on Fs/2, outside the search, and a noise peak was taken (16QAM at 0.17-0.53 of its rate). With no clear line,
+  x is interpolated to twice its rate and searched to Fs/1.5, a line there taken when clear and the signal as wide as it.
 - **`rp.analysis.burst.shared_segments` raised a math domain error** on hundreds of bursts (a weak or absent network):
   the chance of them agreeing underflowed to 0. It is no shared segment, and the bursts are demodulated blind.
 - **A convolutional profile decoded at only some carrier phases** (`dvbs/qpsk`: 5 of 12): nothing resolved the 90 degree

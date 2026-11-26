@@ -4,17 +4,42 @@ import numpy as np
 
 from ..math.interp import parabolic_offset
 
+CLEAR_LINE = 5.0 # A symbol-rate line this many times its floor is not noise (noise peaks reach 3-4)
+
 def find_baud(x, Fs, lo=None, hi=None, pad=4):
     """Find the symbol rate from IQ samples using the |x|^2 cyclostationary line
 
     lo/hi: search range in Hz [Fs/16, Fs/2.5]
-    returns (baud, strength). Strength is the line over the local floor, a few is noise
+    returns (baud, strength). Strength is the line over the local floor, a few is noise.
+    Under 2.5 samples a symbol the line is at Fs/2.5 or above, and at 2 |x|^2 aliases it onto Fs/2: with the default
+    range and no line over CLEAR_LINE, x is interpolated to twice its rate (in frequency) and Fs/2.5 to Fs/1.5 searched
+    there too, its line taken when clear, stronger and no wider than the signal (16QAM at exactly 2 samples a symbol read a noise peak as its rate)
     """
     n = len(x)
     if n < 256:
         return 0.0, 0.0
-    lo = Fs/16 if lo is None else lo
-    hi = Fs/2.5 if hi is None else hi
+    got = _line(x, Fs, Fs/16 if lo is None else lo, Fs/2.5 if hi is None else hi, pad)
+    if hi is None and got[1] < CLEAR_LINE:
+        X = np.fft.fft(np.asarray(x, dtype=np.complex128))
+        h = n//2
+        Z = np.zeros(2*n, np.complex128)
+        Z[:h], Z[2*n - (n - h):] = X[:h], X[h:]
+        up = _line(np.fft.ifft(Z), 2*Fs, Fs/2.5, Fs/1.5, pad)
+        # Clear on its own (a weak true line beats noise up there), and a signal as wide as such a rate: a narrow one
+        # shows lines at Fs/2 that are no rate of its (a channel's own filtering)
+        if up[1] >= CLEAR_LINE and up[1] > got[1] and _width(X, Fs) >= 0.7*up[0]:
+            return up
+    return got
+
+def _width(X, Fs, share=0.9):
+    """The width [Hz] of the fewest bins of spectrum X (an FFT at Fs) that hold `share` of its power"""
+    P = np.sort(np.abs(X)**2)[::-1]
+    c = np.cumsum(P)
+    return (int(np.searchsorted(c, share*c[-1])) + 1)*Fs/len(X)
+
+def _line(x, Fs, lo, hi, pad):
+    """find_baud's search over [lo, hi] Hz: (baud, strength)"""
+    n = len(x)
     z = np.abs(x)**2
     z = (z - z.mean()) * np.hanning(n)
     spec = np.abs(np.fft.rfft(z, pad*n))

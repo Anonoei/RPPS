@@ -101,3 +101,23 @@ def test_acquire_keeps_its_decision_on_a_channelised_capture():
             det = (d + stage).meta.det or det
             i += b
         assert det.mod == "qpsk" and det.esn0 > 12
+
+@pytest.mark.parametrize("mod", ["qam/16qam", "psk/qpsk"])
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_signal_at_two_samples_a_symbol_locks_at_its_rate(mod, seed):
+    """At exactly 2 samples a symbol |x|^2 puts the rate line on Fs/2, where the search couldn't see it (a noise peak was
+    taken: 16QAM at 0.17-0.53 of its rate); interpolated to twice the rate it is found. 10 dB: the rate within 1e-5,
+    the modulation, Es/N0 within 1 dB (10.3-10.4 over 4 seeds)"""
+    from rpps.signal.filters.shaping import rrc_pulse
+    rng = np.random.default_rng(seed)
+    pts = np.asarray(rp.symbol.load(mod).points)
+    s = pts[rng.integers(0, len(pts), 6000)]
+    h = rrc_pulse(np.arange(-16, 17)/2, 0.35)
+    up = np.zeros(2*len(s), complex)
+    up[::2] = s
+    x = np.convolve(up, h/np.sqrt(np.sum(h**2)))[16:16 + len(up)]
+    x = x + np.sqrt(np.mean(np.abs(x)**2)*2/10)/np.sqrt(2)*(rng.normal(size=len(x)) + 1j*rng.normal(size=len(x)))
+    x = x*np.exp(2j*np.pi*0.001*np.arange(len(x)))
+    lk = rp.sync.Lock.find(x, 2e6)
+    assert abs(lk.det.baud/1e6 - 1) < 1e-5 and lk.det.mod == mod.split("/")[1]
+    assert abs(lk.quality.esn0_db - 10) < 1.0
