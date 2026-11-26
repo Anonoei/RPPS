@@ -192,6 +192,8 @@ coverage run -m pytest -n auto && coverage combine && coverage report
 
 `-n auto` runs on half the cores (every core where `CI` is set), and each worker keeps BLAS and RPPS's own pools to
 one thread (`tests/unit/conftest.py`), so the machine stays usable; `RPPS_TEST_WORKERS=4` chooses the workers.
+An idle worker takes tests queued on a busy one (`--dist=worksteal`, in `pyproject.toml`): a few tests take most of the
+time.
 
 | Marker | Meaning |
 |---|---|

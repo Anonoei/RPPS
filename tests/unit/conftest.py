@@ -10,7 +10,6 @@ import pytest
 import rpps as rp
 from rpps import _accel, _config
 
-@pytest.hookimpl(optionalhook=True) # only with pytest-xdist; the wheel tests run without it
 def pytest_xdist_auto_num_workers(config):
     """`-n auto`: half the cores, so the machine stays usable while the suite runs; every core on CI (where `CI` is set,
     as GitHub does). RPPS_TEST_WORKERS chooses"""

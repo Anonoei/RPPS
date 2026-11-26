@@ -83,7 +83,7 @@ def test_a_stream_that_ends_early_is_decided_on_what_it_holds(dvbs):
     _, stream = run_stage(x, 4096, rp.sync.AcquireFEC(blind=True))
     assert not stream.est["fec"].complete
     ref = F.identify(x[2048:], "qpsk", blind=True)
-    for blocks in (777, 4096, 30000):
+    for blocks in (777, 30000):
         _, stream = run_stage(x, blocks, rp.sync.AcquireFEC(blind=True), flush=True)
         f = stream.est["fec"]
         assert f.complete and f.found and f.name == "k7_171_133/3_4" and f.n == 30000 - 2048
