@@ -9,11 +9,11 @@ categories' contracts, the streaming rules) is [`rpps.base`](api/base.md); read 
 |---|---|
 | What a package, module or operator is and why (design, rules, contracts, method, references) | its docstring: the API pages render it |
 | How to use RPPS for a task (recommended ways, end to end) | a guide in `docs/guide/`, embedding a script from `examples/` with `--8<-- "examples/<name>.py"` |
-| A runnable, self-checking demonstration | `examples/<name>.py`, run by `tests/unit/test_examples.py` |
+| A runnable, self-checking demonstration | `examples/<name>.py`, run by `tests/unit/policy/test_examples.py` |
 | What agents need first | `AGENTS.md`; `llms.txt` / `llms-full.txt` are generated from it and the docstrings |
 | Definition file formats | `docs/guide/definitions.md` |
 
-Python blocks in README.md and `docs/` run in `tests/unit/test_docs.py` unless they hold `# docs: skip`. `python tools/builder.py
+Python blocks in README.md and `docs/` run in `tests/unit/policy/test_docs.py` unless they hold `# docs: skip`. `python tools/builder.py
 -d` builds the site with `--strict`, so a broken snippet path or docstring cross-reference fails the build.
 
 ## Setup and workflow
@@ -29,7 +29,7 @@ python tools/builder.py -t        # pytest
 bump and `-u` upload (both dry runs without `-r`; upload goes to TestPyPI without it).
 
 `pyproject.toml` is the only place that names a dependency, CI included: `[build-system]` (setuptools, numpy, pybind11),
-`dependencies` (numpy, pysdrlib), extras `viz` (matplotlib), `test` (pytest, pytest-xdist), `oracle` (scipy), `docs` (zensical, mkdocstrings-python),
+`dependencies` (numpy, pysdrlib), extras `viz` (matplotlib), `test` (pytest, pytest-xdist, coverage), `oracle` (scipy), `docs` (zensical, mkdocstrings-python),
 `dev` (all of them plus twine, build, bumpver). It also holds `[tool.cibuildwheel]`, `[tool.bumpver]` and the pytest markers.
 
 Branch from `dev`, merge back into it; `main` is released. Scratch scripts are not committed; worked examples that reuse
@@ -42,7 +42,8 @@ RPPS and may be upstreamed go in `projects/`.
 src/rpps/            the package: one sub-package per category (rpps, Where things are)
 csrc/rpps_native/    C++ kernels, built as rpps._native (optional)
 config/              JSON definitions, copied into the wheel as rpps/config
-tests/unit/          the test suite
+tests/unit/          the test suite, a folder per package
+tests/support/       helpers the tests share; tests/vectors/ reference vectors
 tests/run_wheel_tests.py  the unit tests against an installed wheel (cibuildwheel)
 examples/            one script per recommended way of doing a thing, each checking itself
 docs/                the guides (markdown; docs/api/ and the llms files are generated)
@@ -86,7 +87,7 @@ frame sync), bit-level work on hard bits (`bits.cpp`: the Hamming distance to a 
 tools' slow loops (`analysis.cpp`). Without a compiler the build warns and RPPS runs its Python loops.
 
 **The Python loop is the reference.** Every kernel's Python version stays in the stage that calls it, and tests compare the
-two (`test_native*.py`, `test_parallel.py`, `test_batch_kernels.py`): a kernel changes speed, never results beyond rounding.
+two (`tests/unit/native/`, `tests/unit/parallel/`): a kernel changes speed, never results beyond rounding.
 Stages look `rpps._accel.native` up when they run, so tests can switch it off.
 
 | Variable | Effect |
@@ -129,8 +130,8 @@ CUPY_INSTALL_USE_HIP=1 ROCM_HOME=/opt/rocm HCC_AMDGPU_TARGET=gfx1152 pip install
 ```
 
 The ROCm build needs hipcub, rocthrust, hiprand/rocrand and hipfft/rocfft installed; `HCC_AMDGPU_TARGET` is the GPU's
-`gfx` name (`rocminfo`). With CuPy present, `test_batch_kernels.py` and `test_parallel.py` run every kernel on the GPU as
-well as on the pretend device (`tests/unit/fakedevice.py`, which CI uses); `RPPS_DEVICE=none` leaves the GPU out.
+`gfx` name (`rocminfo`). With CuPy present, the tests in `tests/unit/parallel/` run every kernel on the GPU as
+well as on the pretend device (`tests/support/fakedevice.py`, which CI uses); `RPPS_DEVICE=none` leaves the GPU out.
 
 - **Array kernels** use only what numpy and cupy share (`xp`). **Device kernels** of their own (`LdpcDecode`,
   `BchDecode`, `Demap`) are portable CUDA C that NVRTC and hiprtc both compile (`rpps.base.kernel.device_functions`): no
@@ -167,11 +168,26 @@ Pitfalls found the hard way:
 
 ## Testing
 
+Where a test goes (`policy/test_test_layout.py` holds the folder rules):
+
+| Test of | Folder under `tests/unit/` |
+|---|---|
+| a package, `rpps.<name>` (and its sub-packages, as `analysis/spectrum/`) | `<name>/` |
+| definitions, parameters, the command line | `config/` |
+| a whole standard, received or built from its definitions | `standards/` |
+| a C++ kernel against its Python loop | `native/` |
+| a rule of the repository: layering, imports, contracts, docs, examples | `policy/` |
+
+File names are unique across the folders, and say the subject.
+
 ```
 python -m pytest -n auto -m "not slow"                       # the fast tests (CI runs this)
 RPPS_NO_NATIVE=1 python -m pytest -n auto -m "not slow and not kernels"   # the Python loops
 python -m pytest -m oracle                                   # the scipy comparisons (needs .[oracle])
-python -m pytest tests/unit/test_remez.py                    # one file
+python -m pytest tests/unit/sync                             # one package
+python -m pytest tests/unit/signal/test_remez.py             # one file
+python -m pytest -m native                                   # the C++ kernels against the Python reference
+coverage run -m pytest -n auto && coverage combine && coverage report
 ```
 
 `-n auto` runs on half the cores (every core where `CI` is set), and each worker keeps BLAS and RPPS's own pools to
@@ -181,11 +197,15 @@ one thread (`tests/unit/conftest.py`), so the machine stays usable; `RPPS_TEST_W
 |---|---|
 | `slow` | more than a few seconds even with the kernels; not run in CI |
 | `kernels` | over a minute without the kernels; left out of the no-kernel run |
+| `native` | everything in `tests/unit/native/` (set by its `conftest.py`); skipped without the kernels |
 | `oracle` | compares against scipy through `pytest.importorskip`; skipped without it |
 
-- **RPPS must not need scipy**; nothing under `src/` may import it (`test_numpy_only.py`).
-- `conftest.py` sets the Agg backend and gives `rng` (seeded), `bits`, `awgn`, `shaped`, `cpfsk`.
-- `test_contracts.py` runs every definition against its category's contract, so new definitions are covered automatically.
+- **RPPS must not need scipy**; nothing under `src/` may import it (`policy/test_numpy_only.py`).
+- `tests/unit/conftest.py` sets the Agg backend and gives the fixtures `rng` (seeded) and `config_layer` (a user config
+  directory for one test). A test that leaves a config layer or the kernel switch changed fails.
+- `tests/support/` holds what several files share, imported as `from support.signals import awgn`: signals, block
+  cuts, the kernel switch (`support.native`). No test file imports another.
+- `policy/test_contracts.py` runs every definition against its category's contract, so new definitions are covered automatically.
 - A statistical test asserts with a margin measured over many seeds, not one lucky seed.
 - `projects/tests` hold the worked examples' tests; they need no radio. Run them on their own (`pytest projects/tests`).
 

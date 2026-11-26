@@ -1,6 +1,6 @@
 """Batch kernels of the link operators: `HeaderDecode` of a framed header (rpps.parallel)
 
-Checked row for row against the operator run frame by frame (tests/unit/test_batch_kernels.py). The header bits of each
+Checked row for row against the operator run frame by frame (tests/unit/parallel/test_batch_kernels.py). The header bits of each
 row come to the host (a few bytes) to be read; the payloads are cut on whichever `xp` the batch is on
 """
 import numpy as np

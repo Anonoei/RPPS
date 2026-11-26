@@ -40,7 +40,7 @@ Known structure among the symbols of a frame (`rpps.symbol.frame`), restarted at
 
 ## Recipes
 
-Each is exercised in `tests/unit/test_recipes.py` and `tests/unit/test_wave.py`. Shaping needs the symbols' rate, so the
+Each is exercised in `tests/unit/wave/test_recipes.py` and `tests/unit/wave/test_wave.py`. Shaping needs the symbols' rate, so the
 bits say theirs: `bits = rp.Data(b, Fs=1e6, sps=1)`.
 
     # 802.11b 1 Mb/s: DBPSK, Barker-11, then 11 Mcps shaped as you like

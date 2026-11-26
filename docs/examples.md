@@ -2,7 +2,7 @@
 
 Each script in [examples/](https://github.com/Anonoei/RPPS/tree/main/examples) shows the way RPPS recommends doing one
 thing, and checks that it worked. Run them from the repository root (`python examples/<name>.py`). The ones in the first
-table make their own signals and need nothing else; `tests/unit/test_examples.py` runs them, and the guides show them in
+table make their own signals and need nothing else; `tests/unit/policy/test_examples.py` runs them, and the guides show them in
 full.
 
 | Script | Shows | In |

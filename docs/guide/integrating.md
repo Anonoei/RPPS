@@ -39,7 +39,7 @@ A display following one signal holds an `rp.sync.Lock`; a monitor decoding a ban
 ## Import cost, logging, definitions
 
 `import rpps` loads numpy and RPPS only (about 0.2 s): no scipy, matplotlib or pysdrlib until something asks for them
-(`rp.viz`, a source), so programs can import it at start-up (`tests/unit/test_import_cost.py`).
+(`rp.viz`, a source), so programs can import it at start-up (`tests/unit/policy/test_imports.py`).
 
 Logging is off until you ask: `rp.logger.enable("DEBUG")`. Definitions of your own load without touching the package:
 `rp.add_config_path("my_config")` or `RPPS_CONFIG` ([Definitions](definitions.md)).

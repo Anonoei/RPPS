@@ -27,7 +27,7 @@ Packages follow the categories of `rpps.base`; data goes samples -> symbols -> c
 | `rpps.base` | `Data`, `Pipe`, `Stage`, `BitStage`, `Pipeline`, `Stream`, `Tee`, type tags, control, kernels |
 | `rpps.math`, `rpps.utils`, `rpps.viz` | finite fields and GF(2) algebra; helpers; plots (`pip install rpps[viz]`) |
 
-Imports run down this list: nothing in the data path imports `analysis`, `profile` or `parallel` (`test_layering.py`;
+Imports run down this list: nothing in the data path imports `analysis`, `profile` or `parallel` (`tests/unit/policy/test_layering.py`;
 the one exception is `AcquireFEC`, which imports `analysis.identify` inside the call). `import rpps` loads numpy and
 RPPS only: no scipy, matplotlib or pysdrlib until something asks for them.
 

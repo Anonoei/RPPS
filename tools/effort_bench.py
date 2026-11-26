@@ -144,7 +144,7 @@ class Chain:
         return esn0 - 10*np.log10(self.bps*self.rate)
 
 def qpsk_matched(n, sps, delay, beta=0.35, seed=0):
-    """QPSK through RRC and its matched filter, delayed by `delay` samples (as tests/unit/test_effort.py)"""
+    """QPSK through RRC and its matched filter, delayed by `delay` samples (as tests/unit/math/test_effort.py)"""
     P = np.exp(1j*np.pi/4*(2*np.arange(4) + 1))
     s = P[np.random.default_rng(seed).integers(0, 4, n)]
     h = rp.signal.filters.ShapingRRC(None, sps, beta).pulse

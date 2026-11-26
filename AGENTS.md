@@ -55,13 +55,13 @@ Full design: the `rpps.base` docstring (model, rule, categories, contracts, grey
 | `csrc/rpps_native/` | C++17 kernels (pybind11); the Python loop in the calling stage is the reference |
 | `docs/` | the site: guides (`docs/guide/`), examples index, contributing, roadmap; `docs/api/` and `docs/llms*.txt` are generated |
 | `tools/` | `builder.py` (setup, kernels, tests, docs, release), `gen_docs.py` (API pages, llms files), benchmarks (`*_bench.py`, `tpc_ber.py`) |
-| `examples/` | one self-checking script per recommended usage; the guides embed them; `tests/unit/test_examples.py` runs them |
-| `tests/unit/` | the suite; `conftest.py` gives `rng`, `bits`, `awgn`, `shaped`, `cpfsk` |
+| `examples/` | one self-checking script per recommended usage; the guides embed them; `tests/unit/policy/test_examples.py` runs them |
+| `tests/unit/` | the suite, a folder per package (and `standards/`, `policy/`, `native/`); shared helpers in `tests/support/` |
 | `projects/` | worked receivers on real signals, each with a README |
 | `private/` | untracked captures and tooling: **never commit or quote it** |
 
-Imports run down the chain: nothing in the data path imports `analysis`, `profile` or `parallel` (`test_layering.py`).
-Nothing under `src/` may import scipy (`test_numpy_only.py`).
+Imports run down the chain: nothing in the data path imports `analysis`, `profile` or `parallel` (`policy/test_layering.py`).
+Nothing under `src/` may import scipy (`policy/test_numpy_only.py`).
 
 ## Where to read more
 
@@ -92,6 +92,6 @@ Nothing under `src/` may import scipy (`test_numpy_only.py`).
 - **Read the standard** when a decode does not work, instead of guessing.
 - **Statistical tests** assert with a margin measured over many seeds.
 - **Docs live with what they describe:** concepts in the package/module docstring, usage in a guide that embeds an
-  example script. Python blocks in README.md and `docs/` run in `tests/unit/test_docs.py` (mark untestable ones
+  example script. Python blocks in README.md and `docs/` run in `tests/unit/policy/test_docs.py` (mark untestable ones
   `# docs: skip`). User-facing changes go in CHANGELOG.md under Unreleased; renames and removals under **Breaking**.
 - Branch from `dev`; `main` is released.

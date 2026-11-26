@@ -91,4 +91,4 @@ the packet before), however the stream is cut.
 Without a radio, pysdrlib's simulated radios share an air (`pysdrlib.air`, pysdrlib 0.5.1):
 `rp.source.DeviceSink("sim", air="lab", transmit=True, ...)` sends into it, and
 `rp.source.Device("sim", air="lab", ...)` receives it, in this process or another, at its own frequency and rate (the
-loop `tests/unit/test_encoder.py` runs in real time).
+loop `tests/unit/profile/test_encoder.py` runs in real time).

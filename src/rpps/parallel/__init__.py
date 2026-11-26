@@ -14,7 +14,7 @@ The unit is the **batch**, not the thread: N frames through one program pays on 
       Kernel      a pure function over [N, L] arrays, run(xp, batch); LoopKernel runs frame by frame through the operators
 
 - An operator gives its kernel with `op.kernel(params, how)`; a step without one runs through `LoopKernel`, which is also
-  the oracle every kernel is checked against (`test_batch_kernels.py`). Kernels: `symbol.kernels` (`Demap`, `Rotate`,
+  the oracle every kernel is checked against (`tests/unit/parallel/`). Kernels: `symbol.kernels` (`Demap`, `Rotate`,
   `Gather`), `code.kernels` (`BlockDecode`, `LdpcDecode`, `BchDecode`, `Permute` of an interleaver, `Identity` of a code a
   frame switches off, `XorMask`), `sync.kernels` (`PilotLine`), `link.kernels` (`HeaderDecode` of a framed header); the
   protocol is `rpps.base.kernel`.
@@ -51,7 +51,7 @@ fork).
 - **Getting results back.** The download at the plan's end gives numpy; results are built on the host and the
   `Scheduler` puts them in order, as for any executor. A dedicated device executor (later) overlaps the next batch's
   upload with this one's work on device streams, with `Scheduler(eager=False)` so batches fill.
-- **Checked without a GPU.** `tests/unit/fakedevice.py` is numpy behind an array type that refuses what CuPy refuses
+- **Checked without a GPU.** `tests/support/fakedevice.py` is numpy behind an array type that refuses what CuPy refuses
   (no implicit conversion, no numpy array mixed in); every kernel and the DVB-S2 region run on it in the suite.
 - **Batches pay on a device.** A layer launch needs thousands of (check, codeword) threads to fill a GPU, so a device
   wins from about 16 frames a batch (`Parallel(max_batch=)`) and is even at one; measure with `tools/device_bench.py`.

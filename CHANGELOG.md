@@ -319,6 +319,8 @@ what to use instead.
 - **Made-up codes, filters and windows are tagged `example`** (`ldpc/3_6`, `ldpc/gallager_96_48`, seven filters, three
   windows). Those built on a published method cite it in `ref`; `ldpc/3_6`'s comment no longer calls it a (3,6)-regular
   code, which it is not.
+- **The tests are grouped by package**: `tests/unit/<package>/`, with `standards/`, `native/` and `policy/`, shared
+  helpers in `tests/support/` (Contributing, Testing).
 - **Definition files put on one line whatever fits in 120 columns** (`python -m rpps fmt`, `rp.save`): a profile's
   steps read one step a line (`{"sync": "carrier", "id": "carrier", "order": 8}`), `{"param": "sps"}` is one line, and
   config/ is a fifth shorter. Lists of numbers stay on one line; table `rows` one row a line.

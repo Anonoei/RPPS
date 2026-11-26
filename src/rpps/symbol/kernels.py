@@ -1,7 +1,7 @@
 """Batch kernels of the symbol operators: `Demap` of a constellation, `Rotate` of a phase scrambler, `Gather` of a pilot or
 header remover
 
-Checked row for row against the operator run frame by frame (tests/unit/test_batch_kernels.py); they use only what
+Checked row for row against the operator run frame by frame (tests/unit/parallel/test_batch_kernels.py); they use only what
 numpy and cupy share, so `xp` can be either (rpps.parallel). `Demap` on a GPU is a device kernel of its own (DEMAP_SOURCE)
 """
 import numpy as np

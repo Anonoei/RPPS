@@ -60,7 +60,7 @@ deinterleaving, Reed-Solomon, energy dispersal (code).
 
 ## Contracts
 
-`tests/unit/test_contracts.py` checks these over every registered implementation.
+`tests/unit/policy/test_contracts.py` checks these over every registered implementation.
 
 - **source**: produces blocks at any representation and says which, and which sync was already applied (for example
   timed, carrier not removed). Sets the rates it knows (`Fs`, `cf`, symbol rate) and each block's absolute position.
@@ -147,7 +147,7 @@ statistics. `data + rp.Tee(a=..., b=...)` runs each branch in its own stream (FM
 
 ## Streaming rules
 
-Tested by cutting the same input differently (`test_stream.py`, `test_position.py`, per-stage tests):
+Tested by cutting the same input differently (`tests/unit/base/`, per-stage tests):
 
 1. **Any block length, including 0**; never drop or repeat items across blocks.
 2. **State lives in the stream state**, so one stage can serve several streams.

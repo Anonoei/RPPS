@@ -59,7 +59,7 @@ were named just below the threshold):
   2.75 dB: the rate search, not the modulation, limits it there.
 - --confusion with --min-evidence 10: noise alone never named (it was named every time); wrong names at 8 dB: 8PSK as
   16PSK (7 in 50) and 16QAM as 64QAM (4 in 50), none at 12-16 dB; at 0-4 dB only 9-22% are named (the rest abstain).
-- tests/unit/test_modclass_threshold.py keeps these (Pc >= 0.85 at 2 dB above, < 0.9 at 4 dB below).
+- tests/unit/analysis/modulation/test_modclass_threshold.py keeps these (Pc >= 0.85 at 2 dB above, < 0.9 at 4 dB below).
 """
 import argparse
 import json
