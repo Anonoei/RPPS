@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Orientation for agents working in this repository. Read this first; it says where everything else is.
+Read this first: it says where everything is.
 
 RPPS (RF Parameter Processor Suite) is a Python library (numpy, optional C++ kernels) that generates and processes radio
 signals: filters, sync, modulation, FEC, framing, and whole standards (DVB-S/S2, 802.11b, 802.15.4, BLE, ADS-B, CCSDS,
@@ -18,7 +18,7 @@ python tools/builder.py -d      # docs: API pages + llms files (tools/gen_docs.p
 python -m rpps ls [resource]    # shipped definitions; also: show, steps, rx, tx, survey, profile, solve, fmt
 ```
 
-A stale `rpps._native` warns at import; rebuild with `python tools/builder.py -c` after touching `csrc/`.
+A stale `rpps._native` warns at import: rebuild (`-c`) after touching `csrc/`.
 
 ## The model in one screen
 
@@ -55,13 +55,13 @@ Full design: the `rpps.base` docstring (model, rule, categories, contracts, grey
 | `csrc/rpps_native/` | C++17 kernels (pybind11); the Python loop in the calling stage is the reference |
 | `docs/` | the site: guides (`docs/guide/`), examples index, contributing, roadmap; `docs/api/` and `docs/llms*.txt` are generated |
 | `tools/` | `builder.py` (setup, kernels, tests, docs, release), `gen_docs.py` (API pages, llms files), benchmarks (`*_bench.py`, `tpc_ber.py`) |
-| `examples/` | one self-checking script per recommended usage; the guides embed them; `tests/unit/policy/test_examples.py` runs them |
-| `tests/unit/` | the suite, a folder per package (and `standards/`, `policy/`, `native/`); shared helpers in `tests/support/` |
+| `examples/` | one self-checking script per recommended usage; the guides embed them and the tests run them |
+| `tests/unit/` | a folder per package, plus `standards/`, `policy/`, `native/`; helpers in `tests/support/` |
 | `projects/` | worked receivers on real signals, each with a README |
 | `private/` | untracked captures and tooling: **never commit or quote it** |
 
-Imports run down the chain: nothing in the data path imports `analysis`, `profile` or `parallel` (`policy/test_layering.py`).
-Nothing under `src/` may import scipy (`policy/test_numpy_only.py`).
+Imports run down the chain: nothing in the data path imports `analysis`, `profile` or `parallel` (`test_layering.py`).
+Nothing under `src/` may import scipy (`test_numpy_only.py`).
 
 ## Where to read more
 
@@ -76,7 +76,7 @@ Nothing under `src/` may import scipy (`policy/test_numpy_only.py`).
 | Parallel region, batch kernels | `rpps.parallel` |
 | Effort levels and measured gains | `rpps._effort` |
 | How to use it for a task | `docs/guide/*.md` |
-| Setup, testing markers, native kernel pitfalls, CI, releases | `docs/contributing.md` |
+| Setup, test markers, kernel pitfalls, CI, releases | `docs/contributing.md` |
 | Everything at once | `docs/llms-full.txt` (after `python tools/gen_docs.py`) |
 
 ## Conventions
@@ -92,6 +92,6 @@ Nothing under `src/` may import scipy (`policy/test_numpy_only.py`).
 - **Read the standard** when a decode does not work, instead of guessing.
 - **Statistical tests** assert with a margin measured over many seeds.
 - **Docs live with what they describe:** concepts in the package/module docstring, usage in a guide that embeds an
-  example script. Python blocks in README.md and `docs/` run in `tests/unit/policy/test_docs.py` (mark untestable ones
+  example script. Python blocks in README.md and `docs/` run in the tests (mark untestable ones
   `# docs: skip`). User-facing changes go in CHANGELOG.md under Unreleased; renames and removals under **Breaking**.
 - Branch from `dev`; `main` is released.
