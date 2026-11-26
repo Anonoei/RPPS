@@ -28,7 +28,7 @@ max), and a value set on an operator is that operator's base. `rpps rx --effort`
 | Max-log or exact (`maxlog`: demapper, BCJR, turbo) | max-log | exact, no extrinsic scaling |
 | Timing interpolation (`interp_taps`) | cubic | 12-tap windowed sinc (balanced: 8 taps below 4 sps, 12 below 2) |
 | Blind RS scan by decodes (`rs_decode_scan`) | off: zero syndromes only | on (as balanced): seconds a stream with no RS |
-| Blind profile retries (`retries`: the runner-up constellation, 2x and 1/2 the rate) | none (balanced: 2) | 4 |
+| Blind profile retries (`retries`: another constellation, 2x, 1/2 the rate) | none (balanced 2) | 4 |
 
 Measured (`tools/effort_bench.py`, FER 1e-1, one thread; Mbit/s at the threshold, where max iterates most):
 

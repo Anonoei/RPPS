@@ -160,8 +160,10 @@ def correct(y, pts, M, pad=4):
     return y1 * np.exp(-1j*phase), cfo, phase
 
 def drift(y, M, blocks=32, min_block=64, sigmas=4.0, segments=8, min_segment=256, offset=False):
-    """The curvature c (radians a symbol^2) of the phase left on symbols y after a frequency is taken off: phase(t) =
-    c (t - centre)^2, a carrier whose frequency moves 2c radians a symbol^2 (a Doppler rate, a drifting oscillator).
+    """The phase curvature c (radians a symbol^2) a drifting carrier leaves on symbols y.
+
+    phase(t) = c (t - centre)^2 after a frequency is taken off: the frequency moves 2c radians a symbol^2 (a Doppler
+    rate, a drifting oscillator).
     Coarse, from the M-th power's frequency in each of `segments` segments (an FFT peak each, unambiguous within
     +-1/(2M) cycles a symbol, whatever the phase does between them): the line through them; then fine, from the M-th
     power's phase in `blocks` blocks (at least `min_block` symbols each), unwrapped by 2 pi / M, a quadratic

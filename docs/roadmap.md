@@ -92,6 +92,9 @@ What is in each part of RPPS, and what is not yet.
     - [X] Codes (hard or soft): convolutional (mother code, puncturing, RSC and turbo, TCM), linear block, Reed-Solomon, polar, quasi-cyclic LDPC (generator and sparse checks); scramblers, interleavers, frame markers
     - [X] CRCs: generator, init, xorout and coverage from frames (`framing.crc`); header fields (`framing.fields`); randomness (NIST SP 800-22)
     - [X] Step by step through a receive chain to a profile, or what is still unsolved (`analysis.profile`, `rpps solve`)
+    - [X] Naming by evidence: a profile's own checks verify it, a deeper profile only when its layers do; one signal over
+      the survey's pieces (spread spectrum, OFDM); FSK, pulse and OFDM signals by the shipped profile that decodes them;
+      other readings of a lock no code fits; a drifting carrier (Doppler rate) measured and taken off
 - [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey, bursts and plans
 
 ## Not yet built
@@ -111,6 +114,15 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
   share the GIL, so two threads gain about 8% over one; `nr/downlink` keeps up at 7.68 MS/s); a first-class carrier estimator for
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
+- **Blind analysis:** a rate k/n and K > 7 convolutional scan; payload signatures (GSE, MPE/ULE, Ethernet, CCSDS TM
+  / AOS, AX.25) in `framing.payload`; chirp / CSS; the analog and VSB kinds in `waveform.classify`; multipath and ISI
+  diagnosis; a symbol map search for block and product codes in `identify`; a duo-binary turbo constituent; Reed-Muller;
+  8b10b / 4B5B line codes; SC-FDMA and STBC tests on an OFDM grid. Known gaps on `tools/ident_bench.py`: NR is named only
+  when its SS/PBCH block is within the cell search's +-60 kHz of the box (a partly loaded carrier's box is off it);
+  `sequence.spread` reads 802.11b's code period as 4 us (the Barker code repeats every 1); 802.15.4, 802.11b and DMR
+  carry no check a blind run can verify on random data (DMR's bursts give none even clean); an unknown FSK or pulse
+  signal no shipped profile decodes gets no bits or framing (fsk.analyze, a line code and HDLC, per burst); OFDM
+  carriers of one site, time aligned, a narrow gap apart, are taken for one.
 - **Links, sources, profiles:** MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
   block-coded headers; audio devices; transmitting packets that cross frames with a pointer inside the data (CCSDS space packets, MPE/ULE sections), DVB-S2 with null-packet deletion or ISSY; profiles for DMR voice, P25 phase 2 and voice, 802.11a/g/n, ATSC, GPS C/A,
   DAB, UMTS, CCSDS turbo (and `projects/` using the BLE, ADS-B and 802.11b profiles that exist); `dvbs2/normal` dummy frames;
