@@ -453,7 +453,7 @@ class Device(Source):
         from pysdrlib import err
         try:
             return get()
-        except (err.NotSupported, err.RemoteError): # a device (or a server) that doesn't answer it: no context
+        except (err.NotSupported, err.RemoteError): # a device that doesn't answer it (a server older than 0.5.1): no context
             return None
 
     def close(self):

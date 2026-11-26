@@ -86,6 +86,10 @@ what to use instead.
 
 ### Added
 
+- **What a carrier's frequency is worth.** The signal profile's `frequency` step gives each carrier and symbol rate
+  with its standard error from the receive context (pysdrlib's `ppm_accuracy` and a chain's `lo_accuracy`), and says
+  which is not known when one isn't. Measuring them is `projects/reference` (LTE cells: the radio's reference error and an
+  LNB's LO, and the pysdrlib calls that keep them), not the library's.
 - **Sources know how their samples were received.** A pysdrlib `RxContext` (pysdrlib 0.5.1: the chain in front of the
   radio and its LO, whether it inverts the spectrum, the reference correction and clock source, gains, antenna) is
   `stream.rx`: `Device` asks the radio, `SigMF` reads `pysdrlib:rx`, and `File` / `Memory` take `context=`. A chain

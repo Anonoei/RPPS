@@ -36,7 +36,9 @@ from ...math.bits import reflect
 from ..result import Guess
 
 class CRCFit:
-    """`search`: width, poly (without the x^w term), init, xorout (in the definition's convention: reflected when
+    """What `search` found: a CRC's parameters and where it sits
+
+    width, poly (without the x^w term), init, xorout (in the definition's convention: reflected when
     `refout`), refin, refout, start (first covered bit), end (bit after the field, frame length minus `tail`), tail,
     names (the config/crc definitions that match: bit streams cannot tell those differing in refin / refout only apart),
     name (the first of them, else None), ambiguous (init and xorout not separated: one frame

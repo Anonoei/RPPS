@@ -11,6 +11,7 @@ Worked examples of using RPPS (with [pysdrlib](https://github.com/Anonoei/pysdrl
 | beginner | [adsb/](adsb/) | 1090 MHz ADS-B / Mode S: pulse-position decoding, CRC, aircraft position |
 | intermediate | [wifi/](wifi/) | 802.11b DSSS and 802.11a/g OFDM receivers, MAC parser, access-point scanner |
 | intermediate | [spectrum/](spectrum/) | wideband sweeps, channel occupancy, allocation lookup, live sweep monitor, gain tuning |
+| intermediate | [reference/](reference/) | the radio's reference error and an LNB's LO from LTE cells: what its frequencies are worth |
 | intermediate | [tdoa/](tdoa/) | locating a transmitter from time differences between synchronised receivers (simulation-tested) |
 | advanced | [atsc/](atsc/) | ATSC 8VSB digital TV: equaliser, trellis, Reed-Solomon, MPEG transport stream, live monitor |
 | advanced | [lte/](lte/) | LTE downlink: cell search, MIB, SIB1 and SI messages, carrier scanner |

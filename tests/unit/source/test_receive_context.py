@@ -80,7 +80,20 @@ def test_the_profile_places_the_carrier_over_the_air(tmp_path):
     src = rp.source.Memory(np.conj(x), Fs=8e6, cf=3.9e9, context=ctx) # (as the radio gives it: mirrored)
     p = rp.analysis.profile(src, freq=1.7e6, blind=False)[0]
     f = next(s for s in p.steps if s.kind == "frequency")
-    assert abs(f.detail["freq"] - 3.9017e9) < 2e3 and f.status == "guess" and not f.detail["disciplined"]
+    assert abs(f.detail["freq"] - 3.9017e9) < 2e3 and f.status == "guess" and f.detail["ppm_accuracy"] is None
+    assert "the reference's accuracy and the LO's accuracy not known" in f.note
     spec = next(s for s in p.steps if s.kind == "spectrum")
     assert spec.what == "normal" and "conjugated at the source" in spec.note
     assert p.solved and p.profile_name == "dvbs/qpsk_3_4"
+
+def test_what_a_frequency_is_worth_comes_from_the_context():
+    """The reference's accuracy at the carrier's IF, and the LO's, added in quadrature; unknown parts named"""
+    from rpps.analysis.signal_profile._receive import accuracy
+    direct = pysdrlib.RxContext(freq=751e6, ppm=-14.0, ppm_accuracy=0.1)
+    sf, ppm_acc, unknown = accuracy(direct, 751e6)
+    assert sf == pytest.approx(75.1) and ppm_acc == 0.1 and unknown == []
+    lnb = pysdrlib.RxContext(freq=11.7e9, ppm_accuracy=0.5, chain=caps.Chain(lo=9.75e9, lo_accuracy=2e3))
+    sf, _, _ = accuracy(lnb, 11.7e9) # the IF is 1.95 GHz: 975 Hz from the reference, 2 kHz from the LO
+    assert sf == pytest.approx((975.0**2 + 2e3**2)**0.5)
+    assert accuracy(dataclasses.replace(lnb, chain=caps.Chain(lo=9.75e9)), 11.7e9)[2] == ["the LO's accuracy"]
+    assert accuracy(None, 1e9) == (None, None, ["the reference's accuracy"])

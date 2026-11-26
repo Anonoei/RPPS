@@ -28,7 +28,9 @@ UNGERBOECK_8PSK = {4: (0o5, 0o2, 0o0), 8: (0o11, 0o2, 0o4), 16: (0o23, 0o4, 0o16
 UNGERBOECK_4 = {4: (0o5, 0o2), 8: (0o13, 0o4), 16: (0o23, 0o6), 32: (0o45, 0o10), 64: (0o103, 0o024)}
 
 class Check:
-    """A parity check found: h (one polynomial per label bit, z^0 first, as ints whose bit d is the delay-d tap), nu
+    """A parity check found, and how well it holds
+
+    h (one polynomial per label bit, z^0 first, as ints whose bit d is the delay-d tap), nu
     (memory), labels ('natural', 'gray' or 'own'), rotation (points the decisions were turned by), conj, z (its bias
     over chance), holds (fraction of windows it holds on), match (the known code it is, or None), expected (how often a
     code's check of these taps would hold, given the label bit errors the symbols' noise makes), code (holds at least
