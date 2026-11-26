@@ -1,0 +1,23 @@
+{
+  "comment": [
+    "32APSK: rings of 4 + 12 + 16 points, at 45 + 90k, 15 + 30k and 22.5k degrees, the outer two `gamma1` and `gamma2`",
+    "times the inner's radius. Labelled as DVB-S2 (and S2X, CCSDS 131.2) label it"
+  ],
+  "ref": "EN 302 307-1 V1.2.1 5.4.4, figure 12",
+  "params": {
+    "gamma1": {"default": 2.64, "type": "float", "min": 1, "comment": "the middle ring's radius over the inner's"},
+    "gamma2": {"default": 4.64, "type": "float", "min": 1, "comment": "the outer ring's radius over the inner's"}
+  },
+  "rings": [
+    {"n": 4, "pha": 45},
+    {"n": 12, "pha": 15, "mag": {"param": "gamma1"}},
+    {"n": 16, "pha": 0, "mag": {"param": "gamma2"}}
+  ],
+  "maps": [
+    {
+      "map": [17, 21, 23, 19, 16, 0, 1, 5, 4, 20, 22, 6, 7, 3, 2, 18, 24, 8, 25, 9, 13, 29, 12, 28, 30, 14, 31, 15, 11, 27, 10, 26],
+      "comment": "DVB-S2",
+      "tags": ["dvb-s2"]
+    }
+  ]
+}

@@ -13,6 +13,9 @@ class CodeDetection:
     steps: profile steps from the timed symbols on; profile_name: the shipped profile that has the same ones, and
         profile_params the values of its params that make them (a variant: rp.profile.variants)
     target: the map the decoder uses; correction: (angle, conj) that turns the symbols to it (rp.sync.AcquireFEC applies it)
+    inverted: the spectrum's sense by the code, when a shipped profile names the map (a standard's labelling): True when
+        its map decodes the symbols only conjugated, False only as received, None when that can't tell (no profile: the
+        labelling is the blind tools' own, so a conjugate is just another map; or streams that decode either way)
     mismatch, baseline: re-encoding mismatch of a convolutional code, and what a wrong hypothesis gets
     slips: carrier turns and symbol slips rp.sync.AcquireFEC caught and put right; latency: seconds it held the symbols for
     report: the ranked hypotheses of the tier that decided (none did: of every tier)
@@ -22,7 +25,7 @@ class CodeDetection:
     """
     __slots__ = ("found", "complete", "mod", "kind", "name", "stream", "equivalent", "offset", "period", "inner",
                  "steps", "profile_name", "profile_params", "target", "correction", "z", "mismatch", "baseline", "report", "guesses", "n",
-                 "slips", "latency", "payload", "repeat")
+                 "slips", "latency", "payload", "repeat", "inverted")
 
     def __init__(self, **kw):
         for k in self.__slots__:

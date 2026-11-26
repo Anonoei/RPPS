@@ -33,11 +33,12 @@ def test_a_dvbs_capture_profiles_to_its_shipped_profile(dvbs_capture):
     assert p.solved and p.profile_name == "dvbs/qpsk_3_4"
     kinds = [s.kind for s in p.steps]
     assert kinds[:4] == ["channel", "acquire", "timing", "carrier"]
-    assert kinds[4:] == ["map", "demap", "puncture", "fec", "align", "deinterleave", "fec", "align", "descramble"]
+    assert kinds[4:] == ["spectrum", "map", "demap", "puncture", "fec", "align", "deinterleave", "fec", "align", "descramble"]
+    assert p.steps[4].what == "normal" and p.steps[4].status == "found" # DVB-S's code on its profile's map says so
     text = str(p)
     assert "QPSK at" in text and abs(p.det.baud - 1e6) < 100 and "rs/204_188" in text and "UNSOLVED" not in text
     d = json.loads(json.dumps(p.to_dict(), default=str))
-    assert d["solved"] and d["steps"][7]["kind"] == "fec"
+    assert d["solved"] and d["steps"][8]["kind"] == "fec" # (after the spectrum step)
 
 @pytest.mark.kernels
 def test_a_signal_short_of_symbols_reads_on(dvbs_capture):
@@ -101,15 +102,6 @@ def test_detection_keeps_the_rate_line_it_came_from():
     assert det.line > 5 # A clean signal's rate line stands far above the floor
     noise = (rng.standard_normal(32000) + 1j*rng.standard_normal(32000)).astype(np.complex64)
     assert rp.sync.detect(noise, 8e6).line < 5
-
-def test_the_preamble_turning_backwards_means_an_inverted_spectrum():
-    rng = np.random.default_rng(3)
-    pre = rp.symbol.load_header("dvbs2_pl").preamble
-    data = np.exp(1j*np.pi/4*(2*rng.integers(0, 4, 3000) + 1)) # QPSK: the same conjugated, says nothing on its own
-    z = np.concatenate([data[:1000], pre, data[1000:2000], pre, data[2000:]])
-    z = z*np.exp(2j*np.pi*0.003*np.arange(len(z)) + 0.7j) + 0.2*(rng.standard_normal(len(z)) + 1j*rng.standard_normal(len(z)))
-    assert SP.rotation(z, pre) is False and SP.rotation(np.conj(z), pre) is True
-    assert SP.rotation(data, pre) is None
 
 def test_the_carrier_offset_left_comes_from_the_preamble_steps():
     rng = np.random.default_rng(4)

@@ -1,5 +1,9 @@
 """Bit maps of a constellation: which value (bits, first bit most significant) each point carries, and the maps a receiver that
-does not know the carrier phase or the IQ sense has to try (every rotation the constellation allows, with and without spectral inversion)"""
+does not know the carrier phase or the IQ sense has to try (every rotation the constellation allows, with and without spectral inversion)
+
+An "Inverted" map is the labelling a conjugated stream reads right with: on its own it says nothing about the spectrum (a
+standard's map can be a conjugate of another, DVB-S2's QPSK is "R090 Grey Inverted"). The spectrum's sense is found by
+rpps.sync.Inversion (known symbols that turn) or a code on a standard's map (rpps.analysis.identify `CodeDetection.inverted`)."""
 import re
 
 import numpy as np

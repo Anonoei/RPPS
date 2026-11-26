@@ -70,7 +70,7 @@ def test_generated_names_and_errors():
     assert rp.symbol.generate("16QAM").order == 16
     assert rp.symbol.generate("QAM64").order == 64
     with pytest.raises(rp.errors.ConfigError, match="generate"): # load reads definitions only, and says where shapes are
-        rp.symbol.load("16QAM")
+        rp.symbol.load("64QAM")
     assert rp.symbol.PSK(16).order == 16
     assert rp.symbol.APSK(rings=(8, 8)).order == 16
     with pytest.raises(rp.errors.ConfigError):
@@ -102,7 +102,8 @@ def test_a_modulation_starts_on_its_first_map_and_can_pick_another():
 def test_every_generated_map_undoes_its_channel(name, rng):
     """A signal sent on the first map and turned (and spectrally inverted) by the channel decodes on the map that says so"""
     base = rp.symbol.load_or_generate(name)
-    maps = list(base.maps)
+    # The first map's turns, which come first (a labelling of its own after them, 16QAM's 3GPP, is not one)
+    maps = [m for m in base.maps if m.comment.startswith("R")]
     assert len({tuple(m.arr.tolist()) for m in maps}) == len(maps) # No duplicates
     assert sum(m.inverted for m in maps) in (0, len(maps)//2) or name in ("bpsk", "4ask")
     bits = rng.integers(0, 2, base.bits_per_symbol*400).astype(bool)
@@ -117,6 +118,6 @@ def test_the_map_counts_and_names():
     q = rp.symbol.load_or_generate("QPSK")
     names = [m.comment for m in q.maps]
     assert len(names) == 8 and names[0] == "R000 Grey Normal" and "R270 Grey Inverted" in names
-    assert len(rp.symbol.load_or_generate("8PSK").maps) == 16 and len(rp.symbol.load_or_generate("16QAM").maps) == 8
+    assert len(rp.symbol.load_or_generate("8PSK").maps) == 16 and len(rp.symbol.load_or_generate("16QAM").maps) == 9 # 8 turns + 3GPP's
     assert rp.symbol.load_or_generate("QPSK", "R090 Inverted").mapping.inverted
     assert not rp.symbol.load_or_generate("QPSK", "R090").mapping.inverted # Normal unless it says inverted

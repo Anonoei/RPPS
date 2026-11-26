@@ -78,7 +78,7 @@ A definition is referenced by its path below the category, without `.json`, case
 A definition can be another one with a few keys changed: `"extends"` names it, in the same resource (looked up below the
 child's own category first, so `"extends": "rs/p25"` in fec/block works). The child holds only what differs:
 ```json
-{"extends": "apsk/dvbs2_16apsk", "comment": "DVB-S2 16APSK for code rate 3/4: gamma = 2.85",
+{"extends": "apsk/16apsk", "comment": "16APSK with the outer ring at 2.85 times the inner",
  "params": {"gamma": 2.85}}
 ```
 - Dicts merge key by key, lists and values replace, `null` deletes a key the parent has.
@@ -139,7 +139,8 @@ lists it as `psk/qpsk (DVB-S2)`, the loaded map has them as `mapping.tags`, and 
 itself stays untagged: QPSK is still a generic set, whatever standards label it.
 
 A shape whose sizes follow another setting takes that setting as a choice param: `apsk/dvbs2_16apsk` and
-`dvbs2_32apsk` take the code `rate`, whose choice sets the radii (`{"param": "rate.gamma"}`),
+`dvbs2_32apsk` extend `apsk/16apsk` and `apsk/32apsk`, drop their free radii (`"gamma": null`) and take the code
+`rate`, whose choice sets them (`{"param": "rate.gamma"}`),
 `rp.symbol.load("apsk/dvbs2_16apsk", rate="3/4")`. A profile step or a table row gives them as `"params"`:
 `{"symbol": "constellation", "name": "apsk/dvbs2_16apsk", "params": {"rate": "3/4"}}`, and a header drives
 `{"name": ..., "mapping": ..., "params": ...}` (`config/table/dvbs2/modcod.json`).

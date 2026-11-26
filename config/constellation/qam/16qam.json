@@ -1,0 +1,31 @@
+{
+  "comment": [
+    "16QAM: a 4 x 4 square grid, I and Q at -3, -1, +1, +3, listed I outer then Q.",
+    "The first map is Gray on each axis, the first two bits on I and the last two on Q (as",
+    "rp.symbol.generate(\"16QAM\")); 3GPP's (LTE, NR) interleaves them: b0 the sign of I, b1 the sign of Q (0",
+    "positive), b2 and b3 their sizes (0 the inner)"
+  ],
+  "ref": "3GPP TS 36.211 7.1.3, TS 38.211 5.1.3 (3GPP)",
+  "points": [
+    [-3, -3],
+    [-3, -1],
+    [-3, 1],
+    [-3, 3],
+    [-1, -3],
+    [-1, -1],
+    [-1, 1],
+    [-1, 3],
+    [1, -3],
+    [1, -1],
+    [1, 1],
+    [1, 3],
+    [3, -3],
+    [3, -1],
+    [3, 1],
+    [3, 3]
+  ],
+  "maps": [
+    {"map": [0, 1, 3, 2, 4, 5, 7, 6, 12, 13, 15, 14, 8, 9, 11, 10], "comment": "Gray"},
+    {"map": [15, 14, 10, 11, 13, 12, 8, 9, 5, 4, 0, 1, 7, 6, 2, 3], "comment": "3GPP", "tags": ["lte", "nr"]}
+  ]
+}

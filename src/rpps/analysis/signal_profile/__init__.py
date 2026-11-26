@@ -15,6 +15,6 @@ rpps.analysis.result.Guess) or "unsolved", which ends the profile with what it m
 softmax over their z-scores (a clear leader near 100%, close calls shared).
 """
 from ._result import FOUND, GUESS, UNSOLVED, MIN_PAYLOAD, Step, SignalProfile, weights, _guess_steps
-from ._framed import framed, preamble_offset, rotation, _header_ids
+from ._framed import framed, preamble_offset, _header_ids
 from ._measures import RATE_WIDTH, STRONG, ESN0_GAP, NEAR, PM_OFFSET, CARRIER_SHARE, SYMS, esn0_gap, carrier_share, _strong
 from ._run import profile, _refit

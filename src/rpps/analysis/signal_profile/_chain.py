@@ -621,9 +621,8 @@ class _Chain:
         if fr:
             name, heads, n, inverted, params, ids = fr[0]
             p.profile_name, p.profile_params = name, params
-            if inverted:
-                p.add("spectrum", "inverted: conjugate the symbols before the profile",
-                      note="the frame preamble turns backwards, symbol to symbol")
+            p.add("spectrum", "inverted: the symbols conjugated before the profile" if inverted else "normal",
+                  note=f"the frame preamble turns {'backwards' if inverted else 'forwards'}, symbol to symbol")
             p.add("frame", f"{name}: {n} headers decoded")
             for hid, (sets, total) in heads.items():
                 if sets[0][1] == 1: # Every one different (a counter, a length): how many, and one of them

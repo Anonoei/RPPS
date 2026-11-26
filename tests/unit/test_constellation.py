@@ -89,11 +89,12 @@ def test_a_config_file_in_a_user_directory(tmp_path):
 def test_shapes_are_generated_and_definitions_loaded():
     assert rp.symbol.generate("16QAM").order == 16 and rp.symbol.generate("OOK").order == 2 and rp.symbol.generate("8PSK").bits_per_symbol == 3
     assert rp.symbol.load("8PSK").bits_per_symbol == 3 # psk/8psk, a definition
+    assert rp.symbol.load("16QAM").name == "16QAM" # qam/16qam, a definition (bare names match either case)
     with pytest.raises(rp.errors.ConfigError, match="generate"):
-        rp.symbol.load("16QAM")
+        rp.symbol.load("64QAM")
     with pytest.raises(rp.errors.ConfigError):
         rp.symbol.load("nonsense")
-    assert rp.symbol.load_or_generate("16QAM").order == 16 # Names from a detector, either kind
+    assert rp.symbol.load_or_generate("64QAM").order == 64 # Names from a detector, either kind
 
 def test_bpsk_is_on_the_real_axis_however_made():
     for c in (rp.symbol.PSK(2), rp.symbol.generate("BPSK"), rp.symbol.load("psk/bpsk")):
@@ -141,6 +142,26 @@ def test_dvbs2_apsk_radii_follow_the_rate():
     assert np.allclose(np.abs(b.points[[4, 16]])/np.abs(b.points[0]), [2.72, 4.87])
     with pytest.raises(rp.errors.ConfigError):
         rp.symbol.load("apsk/dvbs2_16apsk", rate="1/2")
+
+def test_dvbs2_apsk_is_the_generic_apsk_at_its_rates_radii():
+    for M, rate, radii in ((16, "3/4", {"gamma": 2.85}), (32, "4/5", {"gamma1": 2.72, "gamma2": 4.87})):
+        d, g = rp.symbol.load(f"apsk/dvbs2_{M}apsk", rate=rate), rp.symbol.load(f"apsk/{M}apsk", **radii)
+        assert np.allclose(d.points, g.points) and [m.arr.tolist() for m in d.maps] == [m.arr.tolist() for m in g.maps]
+    with pytest.raises(rp.errors.ConfigError): # the gammas are the rate's, not free
+        rp.symbol.load("apsk/dvbs2_16apsk", rate="3/4", gamma=3.0)
+
+def test_qam_definitions_are_the_generated_shapes():
+    for M in (16, 32):
+        d, g = rp.symbol.load(f"qam/{M}qam"), rp.symbol.generate(f"{M}QAM")
+        assert np.allclose(d.points, g.points) and d.mapping.arr.tolist() == g.mapping.arr.tolist()
+
+def test_16qam_3gpp_map_is_38_211():
+    from rpps.grid.nr import phy
+    bits = np.random.default_rng(1).integers(0, 2, 4000)
+    c = rp.symbol.load("qam/16qam", "3GPP")
+    assert c.mapping.tags == ["lte", "nr"] and np.allclose(c.modulate(bits), phy.qam(bits, 4), atol=1e-6)
+    llr = (rp.Data(bits.astype(bool)) * c / c).data
+    assert np.array_equal(llr < 0, bits.astype(bool))
 
 def test_control_takes_a_definitions_params():
     c = rp.symbol.load("psk/qpsk", "dvb-s2")

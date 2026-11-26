@@ -318,6 +318,22 @@ def _frame(m, ctx):
     h = symbol.load_header(m["header"])
     return sync.FrameSync(h.preamble, h.words() if m.get("words", True) else None, device=m.get("device", False), **kw)
 
+@_sync_one("inversion")
+def _inversion(m, ctx):
+    """Spectral inversion found by known symbols that turn, and the symbols conjugated back (rpps.sync.Inversion): the
+    preamble of a physical header ("header"), or a complex `sequence`; `window`, `threshold`, `evidence`, `hold`"""
+    from ... import sync, symbol
+    if ("header" in m) == ("sequence" in m):
+        raise ConfigError("sync inversion: a `header` or a complex `sequence`, one of the two")
+    if "header" in m:
+        known = symbol.load_header(m["header"]).preamble
+    else:
+        (_, kind, known, _), = frame_words({"sequence": m["sequence"]}, "sync inversion")
+        if kind != "symbols":
+            raise ConfigError(f"sync inversion: {m['sequence']!r} is a word of bits; it needs complex symbols")
+    return sync.Inversion(known, **{k: m[k] for k in ("window", "threshold", "evidence", "hold") if k in m},
+                          name=m.get("name", m.get("id", "inversion")))
+
 @_sync_one("delimit")
 def _delimit(m, ctx):
     """Frames by the word before them among bits: a link header's preamble word, a word sequence, or one given inline;

@@ -1,11 +1,11 @@
 {
-  "comment": [
-    "DVB-S2 32APSK: rings of 4 + 12 + 16 points; the outer radii depend on the code rate (`rate`), the labelling does",
-    "not"
-  ],
-  "ref": "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10",
+  "extends": "apsk/32apsk",
+  "comment": "DVB-S2 32APSK: the outer radii (gamma1, gamma2) follow the code rate (`rate`), the labelling does not",
+  "ref": "EN 302 307-1 V1.2.1 5.4.4, table 10",
   "tags": ["dvb-s2"],
   "params": {
+    "gamma1": null,
+    "gamma2": null,
     "rate": {
       "default": null,
       "example": "3/4",
@@ -25,11 +25,5 @@
     {"n": 4, "pha": 45},
     {"n": 12, "pha": 15, "mag": {"param": "rate.gamma1"}},
     {"n": 16, "pha": 0, "mag": {"param": "rate.gamma2"}}
-  ],
-  "maps": [
-    {
-      "map": [17, 21, 23, 19, 16, 0, 1, 5, 4, 20, 22, 6, 7, 3, 2, 18, 24, 8, 25, 9, 13, 29, 12, 28, 30, 14, 31, 15, 11, 27, 10, 26],
-      "comment": "DVB-S2 32APSK: label (b0b1b2b3b4) of each point, inner ring, middle, outer, by angle"
-    }
   ]
 }

@@ -83,20 +83,35 @@ def _finish(out, c, profiles, baud=None):
             continue
         out.target, out.correction = _target(out, c)
         if out.correction is not None:
+            out.inverted = _inverted(out, c) if out.profile_name else None
             return out
     out.found = False # (no turn of these symbols gives the map their own steps name: can't happen)
     return out
 
 
-def _target(out, c):
-    """(the map the steps decode with, the correction that turns the symbols to it, or None)"""
+def _inverted(out, c):
+    """Whether the symbols are spectrally inverted, by a standard's labelling: a shipped profile's map, which the code
+    decodes on only conjugated (True) or only as received (False). None when the streams that decode (the one found and
+    its equivalents: a code that can't tell inverted bits apart) need both senses"""
+    flips = set()
+    for key in [out.stream, *out.equivalent]:
+        t = _target(out, c, key)[1]
+        if t is not None:
+            flips.add(t[1])
+    return flips.pop() if len(flips) == 1 else None
+
+
+def _target(out, c, stream=None):
+    """(the map the steps decode with, the correction that turns the symbols to it, or None); stream: the bit stream
+    whose labels to start from (default the one found)"""
+    stream = out.stream if stream is None else stream
     spec = _symbol_steps(out.steps)[2][0]
     from ...profile.steps import constellation
     target = constellation(spec).mapping
-    if out.differential: # A phase change sees no turn of the carrier, only the IQ sense
-        alph = diff_alphabets(c)[out.stream[1]]
-        return target, _transform(alph.points, alph.maps[out.stream[2]].arr, target.arr, rotate=False)
-    t = _transform(c._base, c.blind_maps[out.stream[1]].arr, target.arr)
+    if stream[0] == "diff": # A phase change sees no turn of the carrier, only the IQ sense
+        alph = diff_alphabets(c)[stream[1]]
+        return target, _transform(alph.points, alph.maps[stream[2]].arr, target.arr, rotate=False)
+    t = _transform(c._base, c.blind_maps[stream[1]].arr, target.arr)
     if t is None or not target.turn:
         return target, t
     return target, ((t[0] + target.turn) % (2*np.pi), t[1]) # Then onto the points the target's map turns them to

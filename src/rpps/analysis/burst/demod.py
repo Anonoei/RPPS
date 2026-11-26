@@ -32,7 +32,9 @@ class BurstResult:
                 f"{100*self.evm:.1f}%{sl}>")
 
 class Bursts:
-    """`demodulate`: bursts [BurstResult], mod, baud, beta, preamble (symbols: the most common kind's), preambles (every
+    """What `demodulate` gives: the bursts and what they share
+
+    bursts [BurstResult], mod, baud, beta, preamble (symbols: the most common kind's), preambles (every
     kind's), offsets (each kind's known symbols from the bursts' start; negative: from their end), frame (s, None), slots
     (offsets within the frame, s), blind (no known symbols: each burst's phase only to the constellation's symmetry),
     period (symbols: a unique word repeating that often within each burst, at its own phase (offsets [None]); a burst's
@@ -128,9 +130,10 @@ def acquire(x, Fs, pre, baud, beta=0.35, search=None, steps=16):
     return t0, score, w, phase, gain
 
 def retime(x, c, sps, beta, anchor=0, window=256, skip=None, offset=False):
-    """Symbol centres c (samples of x, one a symbol) with the symbol clock's offset taken out, and that offset (the
-    symbol rate's, a fraction: positive when the symbols come faster than sps): the matched filter's energy peak
-    (best_tau) in each window of `window` symbols but those over the known symbols `skip` ((first, stop): a repeating
+    """Symbol centres c (samples of x, one a symbol) with the symbol clock's offset taken out, and that offset
+
+    The offset is the symbol rate's, a fraction: positive when the symbols come faster than sps. It is the matched
+    filter's energy peak (best_tau) in each window of `window` symbols but those over the known symbols `skip` ((first, stop): a repeating
     pattern's energy can peak between its symbols), unwrapped, a line through them (Theil-Sen: the median slope between
     windows) turned about symbol `anchor` (where the preamble set the timing; with `offset`, the timing there from the
     windows too, for an acquisition on a short word). c and 0 when fewer than three windows"""

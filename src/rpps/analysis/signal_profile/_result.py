@@ -133,6 +133,12 @@ def _describe(spec, fec, c):
 def _code_steps(p, fec, c):
     """The code's steps (bit map, demapping, decoding...) into p"""
     th, flip = fec.correction or (0.0, False)
+    if fec.inverted is None:
+        p.add("spectrum", "sense not observable", GUESS,
+              note="no known symbols that turn, and no standard's labelling to read it by: a conjugate is just another map")
+    else:
+        p.add("spectrum", "inverted: the symbols conjugated" if fec.inverted else "normal",
+              note=f"{fec.profile_name}'s map decodes them only {'conjugated' if fec.inverted else 'as received'}")
     p.add("map", f"turn {np.degrees(th):.0f} deg{', conjugate' if flip else ''} to {fec.target.comment}"
           + (f" (or {len(fec.equivalent)} equivalent: inverted bits, left to what follows)" if fec.equivalent else ""))
     for spec in fec.steps:

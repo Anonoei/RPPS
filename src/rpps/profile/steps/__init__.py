@@ -26,7 +26,8 @@ The kinds (`python -m rpps steps` lists them with the sync methods):
     sync     timing, carrier, equalize, agc (methods), frame (a physical header's preamble, a word or a complex
              sequence, or named alternatives / a Zadoff-Chu set; before, length, segments, scale, polarity, classify), delimit (a word among bits:
              word + bits, a word sequence, or a link header's preamble; length, keep, polarity, errors), align (a repeating
-             marker), puncture, pilots, squelch, quality (Es/N0 and EVM to est), ofdm
+             marker), puncture, pilots, squelch, quality (Es/N0 and EVM to est), ofdm, inversion (by a header's preamble
+             or a complex sequence)
     wave     shape (a pulse definition; symbol pulses get a matched filter), stagger, fm (h + sps: FSK; deviation: analog),
              am (the envelope; alpha null keeps its mean), ssb (bw, sideband), ofdm (n_fft, n_cp)
     symbol   constellation (name, mapping), differential, spread (a chip sequence), carriers, header, pilots, scramble,

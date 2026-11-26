@@ -27,6 +27,7 @@
   "steps": [
     {"wave": "shape", "pulse": {"param": "pulse"}, "sps": {"param": "sps"}},
     {"sync": "timing"},
+    {"sync": "inversion", "header": "dvbs2_pl", "window": 33282},
     {"sync": "carrier", "id": "carrier", "order": 8},
     {"sync": "frame", "header": "dvbs2_pl", "max_length": 33282},
     {"symbol": "header", "id": "pls", "name": "dvbs2_pl"},

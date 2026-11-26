@@ -17,6 +17,7 @@ and its rate across windows and gates outliers; the correction is evaluated per 
 | channel | `equalize.BlockLS`: least squares per window against decisions; `blind=True`: constant modulus by least squares until the eye opens | `equalize: ls` (default), `"blind": true` |
 | OFDM timing and frequency | `CPSync`: from the cyclic prefix | |
 | carrier phase per frame | `PilotPhase` (pilot blocks), `phase.FFCarrier` (Viterbi & Viterbi) | `carrier: pilots`, `carrier: ff` |
+| spectral inversion | `Inversion`, `inversion.sense` (known symbols turning backwards) | `inversion` |
 | frame starts | `FrameSync` (a preamble and the best word of a header code; or named alternatives, Zadoff-Chu sets, a word mid-burst, real levels, what the match says: word, scale, cfo, esn0, modulation), `Delimiter` (a word among bits) | `frame`, `delimit` |
 | alignment on bits | `Align` (markers, patterns, polarity), `Puncture` (puncture phase) | `align`, `puncture` |
 | modulation, rate, offset | `Acquire` (`detect` once), `Lock` (a snapshot: `Lock.find`, `lock.update`; contiguous blocks joined: `lock.follow`); code phase and Doppler: `acquire_code` | |
@@ -88,6 +89,8 @@ from . import loops
 from .code_acquire import acquire_code
 from .pilots import PilotEqualizer, PilotPhase
 from .frame import FrameSync, Delimiter, word_errors
+from . import inversion
+from .inversion import Inversion
 from .ofdm import CPSync
 from .burst import Burst, BurstTx
 from .tone import ToneLock

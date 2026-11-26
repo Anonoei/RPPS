@@ -7,6 +7,7 @@ what to use instead.
 ## Unreleased
 
 ### Breaking
+- **`rp.analysis.signal_profile.rotation` is `rp.sync.inversion.sense`**, returning the same (True inverted, False, None).
 - **The DVB-S2 constellations are four, not fifteen.** `psk/dvbs2_qpsk` is `rp.symbol.load("psk/qpsk", "dvb-s2")` and
   `psk/dvbs2_8psk` is `rp.symbol.load("psk/8psk", "dvb-s2")`: named maps on QPSK and 8PSK (a map's `"rotate"` turns the
   points while it is used: DVB-S2 8PSK sits at k*45 degrees; a map's own `"tags"` list it in `rp.tagged`, as
@@ -79,6 +80,18 @@ what to use instead.
 
 ### Added
 
+- **Spectral inversion is found and put right, not picked as a map.** `rp.sync.Inversion(known)` (profile step
+  `{"sync": "inversion", "header": ...}` or a complex `sequence`) matches a known sequence that turns (DVB-S2's
+  pi/2-BPSK SOF) forwards and backwards on the symbol steps, so before carrier and frame sync, decides the sense by
+  accumulated evidence and conjugates the stream back. `dvbs2/normal` and `dvbs2/mis` have it after timing: an inverted
+  DVB-S2 carrier decodes as is (the pool's 23.8 MBd group). `CodeDetection.inverted` says the sense by a code on a
+  standard's labelling (a shipped profile's map that decodes only conjugated, or only as received; None when that can't
+  tell), and a signal profile always has a `spectrum` step: inverted, normal, or not observable. Random data on a
+  constellation the same conjugated (every PSK, QAM, APSK) can't show the sense: only known structure or a code can.
+- **16QAM, 32QAM, 16APSK and 32APSK are definitions**: `qam/16qam` (Gray per axis, and the `3GPP` map LTE and NR
+  use), `qam/32qam` (the cross, quasi-Gray), `apsk/16apsk` and `apsk/32apsk` (the DVB-S2 labelling, free radii
+  `gamma` / `gamma1`, `gamma2`). `apsk/dvbs2_16apsk` and `dvbs2_32apsk` extend them, the `rate` setting the radii as
+  before. `rp.symbol.load("16QAM")` now finds `qam/16qam`; `generate` still makes any shape.
 - **The blind tools try turned constellation maps.** `Constellation.blind_maps` (`maps`, then each turn and inversion
   of the maps that turn the points, such as DVB-S2 8PSK on 8PSK) is what `rp.analysis.identify` searches; a code found
   on one gives a profile step naming that map, and a correction that turns the symbols onto its points.

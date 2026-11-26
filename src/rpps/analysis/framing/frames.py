@@ -337,7 +337,9 @@ def _guards(p, level, min_gap, ratio=3.0, q=95):
     return [(int(a), int(b)) for a, b in lows if b - a >= max(min_gap, ratio*typical)]
 
 def split(x, Fs, a, b, win=4e-6, min_len=64e-6, min_gap=2e-6, thr=None, bw=None, guards=True):
-    """Where bursts that touch (no gap the gate sees, or one shorter than its `hang`) meet in x[a:b]: [(start, stop)].
+    """Where touching bursts meet in x[a:b]: [(start, stop)]
+
+    Touching: no gap the gate sees, or one shorter than its `hang`. Found by
       - guard times: dips of the power (smoothed over a quarter of a symbol) 10 dB under the span's level, `min_gap`
         long at least and much longer than the bursts' own envelope dips (`_guards`)
       - power steps between transmitters' levels: binary segmentation of the power (dB) in windows of `win` (32 samples
