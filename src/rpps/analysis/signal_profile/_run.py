@@ -1,6 +1,7 @@
 """Profiling a capture: every signal through the chain, in parallel (rpps.analysis.signal_profile)"""
 import numpy as np
 
+from ._receive import receive_steps
 from ._chain import _Chain
 from ._result import GUESS, SignalProfile, Step, UNSOLVED
 
@@ -107,6 +108,7 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
             p = SignalProfile(name, s)
             p.add("profile", "building the profile", UNSOLVED, note=f"{type(e).__name__}: {e}")
             return p
+        receive_steps(p, source)
         if getattr(s, "refit", None) and p.steps:
             m0, w0 = s.refit
             p.steps.insert(1, Step("box", f"fitted to the signal: centre {(s.mid - m0)/1e3:+.1f} kHz, {s.width/1e3:.0f} kHz wide "

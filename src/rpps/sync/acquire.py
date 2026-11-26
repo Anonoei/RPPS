@@ -332,7 +332,7 @@ class Lock:
         with self._numbers():
             sps, tau = track_timing(x, d.sps, d.beta, self.span, rounds)
             det = Detection(mod=d.mod, baud=self.Fs/sps, sps=sps, beta=d.beta, tau=tau, M=d.M, scores=self.found.scores,
-                            line=self.found.line)
+                            line=self.found.line, rolloff=self.found.rolloff)
             lk = self._make(x, self.Fs, det, self.points, self.span, self.found, self.drop_db, self.drift, recheck)
         return self._made(lk, x, det, at)
 
@@ -364,7 +364,7 @@ class Lock:
             sps2, tau = track_timing(j, sps, d.beta, self.span, rounds)
             step = (tau - c0 + sps2/2) % sps2 - sps2/2 # the measured lattice nearest the predicted instant
             det = Detection(mod=d.mod, baud=self.Fs/sps2, sps=sps2, beta=d.beta, tau=c0 + step, M=d.M,
-                            scores=self.found.scores, line=self.found.line)
+                            scores=self.found.scores, line=self.found.line, rolloff=self.found.rolloff)
             # The carrier phase predicted at the first new symbol, len(centres) symbols after this lock's first
             phase = d.phase + 2*np.pi*d.cfo/d.baud*len(self.centres)
             lk = self._make(j, self.Fs, det, self.points, self.span, self.found, self.drop_db, self.drift, recheck,

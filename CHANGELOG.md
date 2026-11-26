@@ -86,6 +86,13 @@ what to use instead.
 
 ### Added
 
+- **Sources know how their samples were received.** A pysdrlib `RxContext` (pysdrlib 0.5.1: the chain in front of the
+  radio and its LO, whether it inverts the spectrum, the reference correction and clock source, gains, antenna) is
+  `stream.rx`: `Device` asks the radio, `SigMF` reads `pysdrlib:rx`, and `File` / `Memory` take `context=`. A chain
+  whose LO is above the signal is undone at the source (conjugated, `correct=False` to keep it; `stream.rx_conjugated`),
+  `SigMFSink` keeps the context (marked `undone`), and `Memory.capture` carries it. The signal profile adds a
+  `frequency` step (the carrier over the air, with what its reference is worth) and says whether an inverted spectrum
+  is upstream (the receive chain known) or could be our own path.
 - **Acquisition names QAM and APSK, and measures the roll-off.** `rp.sync.detect`, `Lock` and `Acquire` try the PSK, QAM
   and APSK definitions (`acquire.GROUPS`; children such as `dvbs2_16apsk` aren't other modulations), not only PSK. With
   `betas=None` (now the default) the roll-off is also read off the spectrum's edges (`rp.sync.rate.find_rolloff`: the

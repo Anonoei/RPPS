@@ -58,6 +58,9 @@ class Stream:
     est: what sync stages estimated, by name ({"align": {...}}), for whoever wants to know (det stays Acquire's)
     control: the control path (rpps.base.control.Control): fields header steps published, position anchors, and
         what a profile runner did with them (applied, re-run, dropped). None until a step publishes
+    rx: how the source's samples were received (a pysdrlib `RxContext`: the chain and its LO, whether it inverts, the
+        reference and its correction), None when the source doesn't know; rx_conjugated: the source conjugated them
+        because the chain inverts (rpps.source.Source). Both survive `restart`
 
     Threads (Blocks.threaded): each stage's state is used only by the thread running that stage. `det` and
     `src_sps` have one writer (Acquire); `gen` lets blocks already on their way pick up a new sps (Meta.refresh). `det`
@@ -65,7 +68,7 @@ class Stream:
     in another thread uses the detection its block went through with, not one made for a later block.
     """
     __slots__ = ("states", "det", "blocks", "src_Fs", "src_sps", "gen", "busy", "air", "dropped", "pos", "t0", "out_pos", "in_pos", "est", "control",
-                 "thread_of", "lanes", "_snaps")
+                 "thread_of", "lanes", "_snaps", "rx", "rx_conjugated")
     def __init__(self, Fs=None):
         self.states = {}
         self.det = None
@@ -85,6 +88,7 @@ class Stream:
         self.in_pos = {}
         self.est = {}
         self.control = None
+        self.rx, self.rx_conjugated = getattr(self, "rx", None), getattr(self, "rx_conjugated", False) # (kept by restart)
 
     SNAP = 0.02 # [s] of signal between the snapshots `load(window)` looks back through (1024 of them: 20 s)
 
