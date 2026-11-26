@@ -9,7 +9,8 @@ def _lte_cell(kind, spec, rep, ctx):
     from ...grid import lte
     if rep is not None and rep != Rep.SAMPLES:
         raise ConfigError(f"grid lte_cell: takes samples, not {rep}")
-    return [(STAGE, lte.LteCell(**_given(spec, ("offset", "span", "resolution", "acquire", "lose", "gate", "name"))))], [], Rep.SAMPLES
+    return [(STAGE, lte.LteCell(**_given(spec, ("offset", "span", "resolution", "acquire", "lose", "gate", "pci", "duplex",
+                                                "name"))))], [], Rep.SAMPLES
 
 @register_step("grid", "lte_grid")
 def _lte_grid(kind, spec, rep, ctx):
@@ -40,11 +41,12 @@ def _nr_cell(kind, spec, rep, ctx):
     from ...grid import nr
     if rep is not None and rep != Rep.SAMPLES:
         raise ConfigError(f"grid nr_cell: takes samples, not {rep}")
-    return [(STAGE, nr.NrCell(**_given(spec, ("offset", "span", "resolution", "period", "acquire", "lose", "gate", "fc", "name"))))], [], Rep.SAMPLES
+    return [(STAGE, nr.NrCell(**_given(spec, ("offset", "span", "resolution", "period", "acquire", "lose", "gate", "fc", "scs",
+                                              "pattern", "name"))))], [], Rep.SAMPLES
 
 @register_step("grid", "nr_grid")
 def _nr_grid(kind, spec, rep, ctx):
-    """Slots to grid frames (rpps.grid.nr.NrGrid)"""
+    """Slots to grid frames, one a subframe (rpps.grid.nr.NrGrid)"""
     from ...grid import nr
     return [(STAGE, nr.NrGrid(**_given(spec, ("cell", "period"))))], [], Rep.SYMBOLS
 
@@ -52,8 +54,9 @@ def _nr_channel(kind, spec, rep, ctx):
     """A channel on NR grid frames (rpps.grid.nr.channels)"""
     from ...grid.nr import channels as ch
     name = spec.get("id", kind)
-    op = {"nr_pbch": lambda: ch.PBCH(name=name), "nr_pdcch": lambda: ch.PDCCH(**_given(spec, ("rntis",)), name=name),
-          "nr_pdsch": lambda: ch.PDSCH(**_given(spec, ("fc",)), name=name)}[kind]()
+    op = {"nr_pbch": lambda: ch.PBCH(name=name),
+          "nr_pdcch": lambda: ch.PDCCH(**_given(spec, ("rntis", "min_bw")), name=name),
+          "nr_pdsch": lambda: ch.PDSCH(**_given(spec, ("fc", "min_bw")), name=name)}[kind]()
     return [(STAGE, op)], [], Rep.DATA
 
 for _k in ("nr_pbch", "nr_pdcch", "nr_pdsch"):

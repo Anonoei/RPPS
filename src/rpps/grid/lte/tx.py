@@ -2,17 +2,26 @@
 
     x = rp.grid.lte.tx.downlink(pci=77, ports=2, n_rb=15, frames=8, sib=bits)    # 3.84 MS/s, from subframe 0 of SFN 0
 
-Every subframe carries the reference signals of its ports and a PCFICH; subframes 0 and 5 the PSS and SSS; subframe 0
-the PBCH (the MIB of its frame's SFN); subframe 5 of every even frame a DCI 1A in the common search space and the
-transport block `sib` on the PDSCH it allocates (36.331 5.2.1.2: where SIB1 goes). Transmit diversity over the ports
-(6.3.4.3), each port's resource grid to samples by its own IFFT; `channel` puts each port through a gain of its own, sums
-them and adds a carrier offset, a delay and noise. FDD, normal cyclic prefix (3GPP TS 36.211, 36.212, 36.213).
+Every downlink subframe carries the reference signals of its ports and a PCFICH; the synchronization signals where
+the duplex mode puts them; subframe 0 the PBCH (the MIB of its frame's SFN); subframe 5 of every even frame a DCI (1A,
+localized or distributed, or 1C) in the common search space and the transport block `sib` on the PDSCH it allocates
+(36.331 5.2.1.2: where SIB1 goes). TDD: the uplink subframes of the uplink-downlink configuration are silent and the
+special ones carry only their control region and synchronization signals. Transmit diversity over the ports (6.3.4.3),
+each port's resource grid to samples by its own IFFT; `channel` puts each port through a gain of its own, sums them and
+adds a carrier offset, a delay and noise (cells on one carrier: the sum of their channels' outputs). Normal cyclic
+prefix (3GPP TS 36.211, 36.212, 36.213).
 """
 import numpy as np
 
 from . import phy
 from .cell import pss, sss
-from .channels import _conv, _conv_rm, _turbo, _turbo_rm, crc_bits, tbs_table
+from .channels import _conv, _conv_rm, _turbo, _turbo_rm, crc_bits
+
+# Uplink-downlink configurations (36.211 Table 4.2-2) and the PHICH's m_i in them (Table 6.9-1)
+TDD_CONFIGS = ("DSUUUDSUUU", "DSUUDDSUUD", "DSUDDDSUDD", "DSUUUDDDDD", "DSUUDDDDDD", "DSUDDDDDDD", "DSUUUDSUUD")
+TDD_MI = ((2, 1, 0, 0, 0, 2, 1, 0, 0, 0), (0, 1, 0, 0, 1, 0, 1, 0, 0, 1), (0, 0, 0, 1, 0, 0, 0, 0, 1, 0),
+          (1, 0, 0, 0, 0, 0, 0, 0, 1, 1), (0, 0, 0, 0, 0, 0, 0, 0, 1, 1), (0, 0, 0, 0, 0, 0, 0, 0, 1, 0),
+          (1, 1, 0, 0, 0, 1, 1, 0, 0, 1))
 
 def qpsk(bits):
     b = np.asarray(bits, float)
@@ -55,38 +64,68 @@ def tail_biting_encode(bits, E):
     c = _conv().encoder.encode(np.asarray(bits, np.uint8))
     return np.asarray(_conv_rm(len(bits), E).encode(c)).astype(np.uint8)
 
-def dci_1a(n_rb, first, count, mcs, rv=0, tpc=0):
-    """The DCI 1A payload bits for a localized allocation, padded to its size (36.212 5.3.3.1.3)"""
-    b = [1, 0] + _bits(riv(first, count, n_rb), phy.riv_bits(n_rb)) + _bits(mcs, 5) + _bits(0, 3) + [0] + _bits(rv, 2) + _bits(tpc, 2)
-    return np.array(b + [0]*(phy.dci_1a_size(n_rb) - len(b)), np.uint8)
+def dci_1a(n_rb, first, count, mcs, rv=0, tpc=0, distributed=0, gap=0, duplex="fdd"):
+    """DCI 1A's payload bits
 
-def subframe(pci, sf, sfn, n_rb, ports, cfi=1, phich_ng=1.0, dci=None, sib=None, rv=0, rnti=phy.SI_RNTI, cce=0, L=4):
-    """(ports, 14, 12 N_RB): the resource grid each port sends in subframe sf of frame sfn"""
+    For an allocation (first, count: virtual blocks), padded to its size (36.212 5.3.3.1.3)"""
+    tdd = duplex == "tdd"
+    b = ([1, distributed] + _bits(riv(first, count, n_rb), phy.riv_bits(n_rb)) + _bits(mcs, 5) + _bits(0, 4 if tdd else 3)
+         + [gap] + _bits(rv, 2) + _bits(tpc, 2) + ([0, 0] if tdd else []))
+    return np.array(b + [0]*(phy.dci_1a_size(n_rb, duplex) - len(b)), np.uint8)
+
+def dci_1c(n_rb, first, count, mcs, gap=0):
+    """DCI 1C's payload bits
+
+    first and count (virtual blocks) multiples of N_RB^step, mcs the TBS's row"""
+    step = phy.step_1c(n_rb)
+    if first % step or count % step:
+        raise ValueError(f"DCI 1C allocates in steps of {step}")
+    n = phy.gaps(n_rb)[1]//step
+    b = ([gap] if n_rb >= 50 else []) + _bits(riv(first//step, count//step, n), phy.dci_1c_size(n_rb) - 5 - (n_rb >= 50))
+    return np.array(b + _bits(mcs, 5), np.uint8)
+
+def subframe(pci, sf, sfn, n_rb, ports, cfi=1, phich_ng=1.0, dci=None, sib=None, rv=0, rnti=phy.SI_RNTI, cce=0, L=4,
+             fmt="1A", duplex="fdd", uldl=1, extended=False):
+    """(ports, 14, 12 N_RB): what each port sends in a subframe
+
+    fmt: the DCI's format; uldl: TDD's uplink-downlink configuration; extended: the PHICH's duration"""
     nsc = 12*n_rb
     X = np.zeros((ports, 14, nsc), complex)
-    for p in range(ports): # Reference signals
+    kind = TDD_CONFIGS[uldl][sf] if duplex == "tdd" else "D"
+    if kind == "U":
+        return X
+    for p in range(ports): # Reference signals (a special subframe's: those of its control region here)
         for slot in (0, 1):
             ns = 2*sf + slot
             for l in phy.CRS_SYMBOLS[p]:
-                X[p, slot*7 + l, (phy.crs_shift(p, ns, l) + pci) % 6::6] = phy.crs_values(pci, ns, l, n_rb)
-    if sf in (0, 5): # Synchronization signals, on port 0
-        k = 6*n_rb - 31 + np.arange(62)
+                if kind == "D" or slot*7 + l < 3:
+                    X[p, slot*7 + l, (phy.crs_shift(p, ns, l) + pci) % 6::6] = phy.crs_values(pci, ns, l, n_rb)
+    k = 6*n_rb - 31 + np.arange(62) # Synchronization signals, on port 0
+    if duplex == "fdd" and sf in (0, 5):
         X[0, 6, k] = pss((25, 29, 34)[pci % 3])
         X[0, 5, k] = sss(pci//3, pci % 3, sf // 5)
+    if duplex == "tdd" and sf in (0, 5):
+        X[0, 13, k] = sss(pci//3, pci % 3, sf // 5)
+    if duplex == "tdd" and sf in (1, 6):
+        X[0, 2, k] = pss((25, 29, 34)[pci % 3])
     def put(sym, k, l):
         X[:, l, k] += diversity(sym, ports)
     if sf == 0: # PBCH
-        m = mib(n_rb, sfn, phich_ng)
+        m = mib(n_rb, sfn, phich_ng, int(extended))
         crc = crc_bits(m, "crc16_xmodem") ^ np.array({1: [0]*16, 2: [1]*16, 4: [0, 1]*8}[ports], np.uint8)
         e = tail_biting_encode(np.concatenate((m, crc)), 1920) ^ phy.gold(pci, 1920)
         q = sfn % 4
         put(qpsk(e[q*480:(q + 1)*480]), *phy.pbch_res(pci, n_rb))
+    short = phy.short_phich(duplex, sf)
+    if extended: # (the control region holds the PHICH)
+        cfi = max(cfi, (2 if short else 3) - (n_rb <= 10))
     w = phy.CFI_WORDS[cfi] ^ phy.gold(((sf + 1)*(2*pci + 1) << 9) + pci, 32) # PCFICH
     put(qpsk(w), *phy.pcfich_res(pci, n_rb, ports))
     if dci is not None: # PDCCH: the DCI in CCEs cce..cce+L-1, the rest of the region <NIL>
-        regs = phy.control_regs(pci, n_rb, phy.control_symbols(cfi, n_rb), phy.phich_groups(phich_ng, n_rb), ports)
+        mi = TDD_MI[uldl][sf] if duplex == "tdd" else 1
+        regs = phy.control_regs(pci, n_rb, phy.control_symbols(cfi, n_rb), phy.phich_groups(phich_ng, n_rb, mi), ports,
+                                extended, short)
         M = len(regs)
-        K = len(dci)
         c = np.concatenate((dci, crc_bits(dci, "crc16_xmodem") ^ np.array(_bits(rnti, 16), np.uint8)))
         bits = np.zeros(8*M, np.uint8)
         bits[72*cce:72*(cce + L)] = tail_biting_encode(c, 72*L)
@@ -98,11 +137,10 @@ def subframe(pci, sf, sfn, n_rb, ports, cfi=1, phich_ng=1.0, dci=None, sib=None,
         w = quads[np.asarray(phy.subblock_perm(M))] # The quadruplet interleaver, then the shift by the cell
         wbar = w[(np.arange(M) + pci) % M]
         put(wbar.reshape(-1), *phy._res(regs, pci, ports))
-        del K
     if sib is not None: # PDSCH: the transport block the DCI allocated
-        p = phy.parse_1a(dci, n_rb)
-        first, count = phy.riv_decode(p["riv"], n_rb)
-        k, l = phy.pdsch_res(first, count, phy.control_symbols(cfi, n_rb), pci, sf, n_rb, ports)
+        d = phy.parse_1c(dci, n_rb) if fmt == "1C" else phy.parse_1a(dci, n_rb, duplex)
+        blocks, _ = phy.allocation({**d, "format": fmt}, n_rb)
+        k, l = phy.pdsch_res(blocks, phy.control_symbols(cfi, n_rb), pci, sf, n_rb, ports, duplex)
         tb = np.asarray(sib, np.uint8)
         c = np.concatenate((tb, crc_bits(tb, "crc24_lte_a")))
         K = len(c)
@@ -127,28 +165,42 @@ def modulate(X, nfft):
         out.append(np.concatenate((t[:, -c:], t), axis=1))
     return np.concatenate(out, axis=1)
 
-def downlink(pci=77, ports=2, n_rb=15, frames=4, sib=None, mcs=None, first=None, cfi=None, phich_ng=1.0, sfn0=0, L=4):
-    """(ports, samples) at the rate of n_rb's FFT (6 RB: 1.92 MS/s, 15: 3.84, 25: 7.68, 50: 15.36), from subframe 0 of
-    frame sfn0, `frames` radio frames. sib: the transport block in subframe 5 of every even frame (its length a TBS of the
-    1A table at N_PRB^1A 2: the mcs is found for it), on resource blocks from `first` (default the lowest); its DCI at
-    aggregation L. cfi: default the smallest whose control region holds L CCEs"""
+def downlink(pci=77, ports=2, n_rb=15, frames=4, sib=None, mcs=None, first=None, count=None, cfi=None, phich_ng=1.0,
+             sfn0=0, L=4, fmt="1A", distributed=False, gap=0, rv=0, duplex="fdd", uldl=1, extended=False):
+    """(ports, samples) of a downlink at the rate of n_rb's FFT
+
+    From subframe 0 of frame sfn0, `frames` radio frames (6 RB: 1.92 MS/s, 15: 3.84, 25: 7.68, 50: 15.36). sib: the
+    transport block in subframe 5 of every even frame: its length a TBS of the 1A table at N_PRB^1A 2, or of the 1C table
+    with fmt "1C" (the mcs is found for it), on `count` virtual blocks from `first` (distributed 1A and 1C: distributed
+    ones, over gap `gap`), redundancy version rv (a 1C does not say it); its DCI at aggregation L. cfi: default the smallest
+    whose control region holds L CCEs. duplex, uldl, extended: see `subframe`"""
     if cfi is None:
-        cfi = next(c for c in (1, 2, 3) if len(phy.control_regs(pci, n_rb, phy.control_symbols(c, n_rb), phy.phich_groups(phich_ng, n_rb),
-                                                              ports)) >= 9*L)
+        mi = TDD_MI[uldl][5] if duplex == "tdd" else 1
+        cfi = next(c for c in ((3,) if extended else (1, 2, 3))
+                   if len(phy.control_regs(pci, n_rb, phy.control_symbols(c, n_rb), phy.phich_groups(phich_ng, n_rb, mi),
+                                           ports, extended)) >= 9*L)
     nfft = {v: k for k, v in phy.N_RB.items()}[n_rb]
     dci = None
     if sib is not None:
-        tbs = tbs_table()
-        if mcs is None:
-            mcs = next(m for m, row in sorted(tbs.items()) if row[1] == len(sib))
-        count = 4 if n_rb > 6 else 2 # (the allocation holds the block at the table's N_PRB^1A of 2)
-        dci = dci_1a(n_rb, 0 if first is None else first, count, mcs)
+        step = phy.step_1c(n_rb) if fmt == "1C" else 1
+        if count is None: # (the allocation holds the block)
+            count = (2 if n_rb <= 6 else 4) if step == 1 else 2*step if n_rb > 6 else 2
+        first = 0 if first is None else first
+        if fmt == "1C":
+            if mcs is None:
+                mcs = next(m for m, row in sorted(phy.tbs_table("lte/tbs_1c").items()) if row[0] == len(sib))
+            dci = dci_1c(n_rb, first, count, mcs, gap)
+        else:
+            if mcs is None:
+                mcs = next(m for m, row in sorted(phy.tbs_table().items()) if row[1] == len(sib))
+            dci = dci_1a(n_rb, first, count, mcs, rv, 0, int(distributed), gap, duplex)
     grids = []
     for f in range(frames):
         sfn = (sfn0 + f) % 1024
         for sf in range(10):
             on = sib is not None and sf == 5 and sfn % 2 == 0
-            grids.append(subframe(pci, sf, sfn, n_rb, ports, cfi, phich_ng, dci if on else None, sib if on else None, L=L))
+            grids.append(subframe(pci, sf, sfn, n_rb, ports, cfi, phich_ng, dci if on else None, sib if on else None, rv,
+                                  L=L, fmt=fmt, duplex=duplex, uldl=uldl, extended=extended))
     return modulate(np.concatenate(grids, axis=1), nfft)
 
 def channel(y, gains=None, cfo=0.0, fs=None, delay=0, snr_db=None, seed=0):

@@ -41,12 +41,13 @@ def test_riv_round_trip(n_rb):
             assert phy.riv_decode(lte.tx.riv(first, count, n_rb), n_rb) == (first, count)
 
 def test_pdsch_avoids_reference_and_sync_signals():
-    k, l = phy.pdsch_res(20, 10, 1, 25, 0, 50, 4)
+    blocks = (np.arange(20, 30),)*2
+    k, l = phy.pdsch_res(blocks, 1, 25, 0, 50, 4)
     crs = phy.crs_mask(25, 50, 4)
     assert not crs[l, k].any() and l.min() == 1
     centre = (k >= 264) & (k < 336)
     assert not (centre & np.isin(l, (5, 6, 7, 8, 9, 10))).any() # Subframe 0: PSS, SSS and PBCH
-    k5, l5 = phy.pdsch_res(20, 10, 1, 25, 5, 50, 4)
+    k5, l5 = phy.pdsch_res(blocks, 1, 25, 5, 50, 4)
     assert len(k5) > len(k) # Subframe 5: no PBCH
 
 def test_diversity_undone(rng):
@@ -117,3 +118,78 @@ def test_a_capture_starting_anywhere(cut):
     outs, _ = received(6, 2, x=x, block=30000)
     pbch = est(outs, "pbch")
     assert (pbch["decoded"], pbch["failed"], pbch["last"]["sfn"]) == (8 if cut == 0 else 7, 0, 7)
+
+def messages(x, n_rb, block=20000, **params):
+    """({channel: its messages}, the transport blocks' bits) of the profile over x"""
+    rx, msgs, bits = rp.profile.load("lte/downlink", n_rb=n_rb, **params).rx(), [], []
+    for d in rp.source.Memory(x, Fs=FS[n_rb])(block):
+        bits.append(np.asarray(rx(d)["pdsch"].data).astype(np.uint8))
+        msgs += rx.take_messages()
+    return {k: [m for m in msgs if m.kind == k] for k in ("pbch", "pcfich", "pdcch", "pdsch")}, np.concatenate(bits)
+
+# ---- TDD, formats 1A and 1C, distributed blocks, extended PHICH
+
+def test_distributed_blocks_are_a_permutation_per_slot():
+    """36.211 6.2.3.2: every bandwidth and gap maps the virtual blocks to as many physical ones, in each slot"""
+    for n_rb in range(6, 111):
+        for second in (False, True) if n_rb >= 50 else (False,):
+            m = phy.dvrb_map(n_rb, second)
+            assert m.shape == (2, phy.gaps(n_rb, second)[1])
+            for slot in m:
+                assert len(set(slot)) == len(slot) and slot.min() >= 0 and slot.max() < n_rb
+
+def test_dci_sizes_and_tables():
+    assert [phy.dci_1a_size(n, "tdd") for n in (6, 25, 50, 100)] == [23, 27, 29, 31]
+    assert [phy.dci_1c_size(n) for n in (6, 25, 50, 100)] == [8, 12, 13, 15] # 36.212: N_VRB,gap1 in steps
+    t = phy.tbs_table("lte/tbs_1c")
+    assert len(t) == 32 and t[0] == [40] and t[31] == [1736]
+    assert phy.gaps(50) == (27, 46, 46) and phy.gaps(50, True) == (9, 36, 18) # Table 6.2.3.2-1
+
+CASES = [ # (N_RB, ports, duplex, DCI, distributed, extended PHICH)
+    (6, 1, "fdd", "1C", False, False), (15, 2, "tdd", "1A", False, False), (25, 1, "fdd", "1A", True, False),
+    (25, 4, "tdd", "1C", False, False), (25, 2, "fdd", "1A", False, True), (25, 4, "tdd", "1A", True, True),
+    (50, 2, "tdd", "1A", True, False), (50, 4, "fdd", "1C", False, True),
+]
+
+@pytest.mark.parametrize("n_rb,ports,duplex,fmt,distributed,extended", CASES)
+def test_profile_receives_every_layout(n_rb, ports, duplex, fmt, distributed, extended):
+    sib = np.random.default_rng(1).integers(0, 2, 224).astype(np.uint8)
+    gap = {"gap": 1} if n_rb >= 50 and (distributed or fmt == "1C") else {}
+    y = lte.tx.downlink(pci=77, ports=ports, n_rb=n_rb, frames=6, sib=sib, duplex=duplex, fmt=fmt,
+                        distributed=distributed, extended=extended, **gap)
+    x = lte.tx.channel(y, cfo=2.1e3, fs=FS[n_rb], delay=1234, snr_db=18, seed=2)
+    m, got = messages(x, n_rb)
+    mib = [b for b in m["pbch"] if b.crc_ok]
+    assert mib and all(b.fields["duplex"] == duplex and b.fields["ports"] == ports for b in mib)
+    assert m["pdsch"] and all(b.crc_ok for b in m["pdsch"])
+    assert {(d.fields["format"], d.fields.get("distributed", 1)) for d in m["pdcch"]} == {(fmt, int(distributed or fmt == "1C"))}
+    assert len(got) >= 2*len(sib) and np.array_equal(got, np.tile(sib, len(got)//len(sib)))
+
+# ---- cells sharing a carrier
+
+def two_cells(duplex, weak_db, delay):
+    sibs = [np.random.default_rng(i).integers(0, 2, 224).astype(np.uint8) for i in (1, 2)]
+    parts = [lte.tx.channel(lte.tx.downlink(pci=pci, ports=2, n_rb=25, frames=8, sib=s, duplex=duplex, first=first),
+                            cfo=cfo, fs=FS[25], delay=d, seed=seed)
+             for pci, s, first, cfo, d, seed in ((77, sibs[0], 0, 2e3, 1234, 2), (201, sibs[1], 10, 1.7e3, delay, 3))]
+    x = np.zeros(max(map(len, parts)), complex)
+    for part, g in zip(parts, (1.0, 10**(weak_db/20))):
+        x[:len(part)] += g*part
+    rng = np.random.default_rng(0)
+    x += 0.03*np.std(parts[0])*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))
+    return x.astype(np.complex64), sibs
+
+@pytest.mark.parametrize("duplex,weak_db,delay", [("fdd", -6, 1234), ("tdd", -6, 3000)])
+def test_two_cells_on_a_carrier(duplex, weak_db, delay):
+    x, sibs = two_cells(duplex, weak_db, delay)
+    found = lte.search(x, FS[25])
+    assert [c["pci"] for c in found] == [77, 201] and {c["duplex"] for c in found} == {duplex}
+    assert found[1]["level_db"] == pytest.approx(weak_db, abs=2)
+    for pci, sib in zip((77, 201), sibs):
+        m, got = messages(x, 25, 40000, pci=pci)
+        assert m["pbch"] and {b.fields["pci"] for b in m["pbch"]} == {pci}
+        assert len(got) >= 2*len(sib) and np.array_equal(got, np.tile(sib, len(got)//len(sib)))
+
+def test_noise_holds_no_cell(rng):
+    x = rng.standard_normal(80000) + 1j*rng.standard_normal(80000)
+    assert lte.search(x, 1.92e6) == []

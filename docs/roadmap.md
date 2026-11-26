@@ -75,8 +75,8 @@ What is in each part of RPPS, and what is not yet.
 - [ ] [Profiles](https://github.com/Anonoei/RPPS/tree/main/config/profile)
     - [X] DVB-S, DVB-S2 (normal and short frames, APSK), IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
     - [X] CCSDS concatenated (convolutional + Reed-Solomon)
-    - [X] LTE downlink to SIB1 (`lte/downlink`: MIB, CFI, DCI 1A, PDSCH, branches driving one another)
-    - [X] 5G NR downlink to SIB1 at 15 kHz, through LEO satellite Doppler (`nr/downlink`: SS/PBCH, MIB, CORESET 0, DCI 1_0, PDSCH)
+    - [X] LTE downlink to SIB1 (`lte/downlink`: FDD and TDD, MIB, CFI, DCI 1A / 1C, PDSCH, several cells on a carrier; branches driving one another)
+    - [X] 5G NR downlink to SIB1 at 15 and 30 kHz, through LEO satellite Doppler (`nr/downlink`: SS/PBCH, MIB, CORESET 0, DCI 1_0, PDSCH)
     - [X] DVB-S2 multiple input streams (`dvbs2/mis`)
     - [X] Bursts (`{"sync": "burst"}`, preambles) received and transmitted (placed, ramped, hopping); branches driving one another
     - [X] P25 phase 1 control channel (`p25/tsdu`), DMR bursts (`dmr/burst`)
@@ -104,8 +104,9 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
 - **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
   spread spectrum, space-time codes; a burst step in a parallel region; DVB-RCS (first generation) tables over MPEG-TS sections, DVB-RCS2's duo-binary turbo code and reference waveforms; a preamble `offset`
   with known timing `anchor` (the grid lands off); the transmit side of branches (and of `grid`:
-  `grid.lte.tx`, `grid.nr.tx` are test transmitters); NR at 30 kHz and above, NR VRB-to-PRB interleaving, several
-  code blocks a transport block, multiple antenna ports; LTE beyond SIB1 (unicast DCI formats, multiple code blocks, TDD, extended prefix); `lte/downlink` in
+  `grid.lte.tx`, `grid.nr.tx` are test transmitters); NR in FR2, several
+  code blocks a transport block, multiple antenna ports; LTE beyond SIB1 (unicast DCI formats, multiple code blocks,
+  TDD special subframes, extended prefix), cells of one N_ID2 and frame timing on a carrier; `lte/downlink` in
   real time at 15.36 MS/s in short blocks (pipelined, it keeps up from blocks of about 17 ms; the trunk and branches
   share the GIL, so two threads gain about 8% over one; `nr/downlink` keeps up at 7.68 MS/s); a first-class carrier estimator for
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as

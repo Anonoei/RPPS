@@ -3,7 +3,8 @@
 LteGrid takes what LteCell gives (whole half-frames from a subframe 0, carrier offset off) and gives one frame per
 subframe: a stream of complex items, `frame_len(n_rb)` a subframe, laid out as
 
-    HEAD items      the subframe's header: cell id, subframe number 0..9, N_RB, subframe count (as real values)
+    HEAD items      the subframe's header: cell id, subframe number 0..9, N_RB, subframe count, 1 for TDD
+                    (as real values)
     14 x 12 N_RB    the grid G[l, k]: symbol l, subcarrier k from the lowest (the DC subcarrier left out)
     4 x 14 x 12 N_RB  the channel H[p, l, k] of ports 0-3, from the cell-specific reference signals
 
@@ -35,7 +36,8 @@ def unpack(frame):
     f = np.asarray(frame)
     n_rb = int(round(f[2].real))
     nsc = 12*n_rb
-    head = {"pci": int(round(f[0].real)), "sf": int(round(f[1].real)), "n_rb": n_rb, "count": int(round(f[3].real))}
+    head = {"pci": int(round(f[0].real)), "sf": int(round(f[1].real)), "n_rb": n_rb, "count": int(round(f[3].real)),
+            "duplex": "tdd" if f[4].real > 0.5 else "fdd"}
     G = f[HEAD:HEAD + 14*nsc].reshape(14, nsc)
     H = f[HEAD + 14*nsc:HEAD + 5*14*nsc].reshape(4, 14, nsc)
     return head, G, H
@@ -77,11 +79,11 @@ class LteGrid(Stage):
         n = len(st.buf)//S
         out = np.zeros((n, F), np.complex64)
         cell = meta.stream.est.get(self.cell, {})
-        pci = cell.get("pci")
+        pci, tdd = cell.get("pci"), cell.get("duplex") == "tdd"
         for i in range(n):
             sf = st.count % 10
             G = phy.grid(st.buf[i*S:(i + 1)*S], nfft, n_rb)
-            out[i, :4] = (-1 if pci is None else pci), sf, n_rb, st.count
+            out[i, :5] = (-1 if pci is None else pci), sf, n_rb, st.count, tdd
             out[i, HEAD:HEAD + G.size] = G.reshape(-1)
             if pci is not None:
                 out[i, HEAD + G.size:] = phy.channel(G, pci, n_rb, sf).reshape(-1)

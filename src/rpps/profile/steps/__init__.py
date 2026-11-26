@@ -39,9 +39,10 @@ The kinds (`python -m rpps steps` lists them with the sync methods):
              control), uncoded
     link     crc, frame (HDLC), header (fields, crc, fcs, payload; select: the frames with those field values), gse
              (GSE packets of DVB-S2 data fields: protocols, each PDU a frame)
-    grid     resource grids (rpps.grid), receive only: lte_cell (offset, span, resolution, acquire, lose, gate), lte_grid
+    grid     resource grids (rpps.grid), receive only: lte_cell (offset, span, resolution, acquire, lose, gate, pci, duplex), lte_grid
              (n_rb), and the channels on its frames, lte_pbch, lte_pcfich, lte_pdcch (rntis), lte_pdsch; nr_cell (offset,
-             span, resolution, period, acquire, lose, gate, fc), nr_grid, nr_pbch, nr_pdcch (rntis), nr_pdsch
+             span, resolution, period, acquire, lose, gate, fc, scs, pattern), nr_grid, nr_pbch, nr_pdcch (rntis,
+             min_bw), nr_pdsch (fc, min_bw)
 """
 from ._core import (STAGE, DECODE, ENCODE, Step, REGISTRY, METHODS, register_step, register_sync_method, kinds, methods,
                     context, build)

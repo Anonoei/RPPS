@@ -7,6 +7,17 @@ what to use instead.
 ## Unreleased
 
 ### Breaking
+- **`rpps.grid.nr` takes either subcarrier spacing** (15 or 30 kHz), so its pieces changed shape:
+  - `NrGrid` gives one frame a subframe (was a slot): `16 + 960 + 14 x Fs / 15 kHz` items, and `nr.unpack(frame)` is
+    `(head, G, B)`: the grid of every slot `(2^mu, 14, nfft)` and the SS/PBCH block's own `(4, 240)`. The PDCCH publishes
+    `slot`, which the PDSCH needs (in `nr/downlink`'s controls).
+  - In `nr.phy`, `cp_lengths`, `symbol_starts`, `grid`, `modulate` and `symbol_phase` take the numerology `mu`,
+    `slot_len(nfft)` is a slot of either, `ssb_place(pattern, i_ssb)` replaces `ssb_place(pci, i_ssb)` and `SSB_SYMBOLS`,
+    `pbch_scramble` takes the scrambling's `v` (0-7), `pdsch_res(c0bin, prbs, s, l, mapping, dmrs_pos, blocks)` takes
+    the resource blocks and the SS/PBCH blocks' footprints, and `SCS` is `SPACINGS`.
+  - The sample rate is the block's spacing x a multiple of 256 (128 was accepted and could not hold the block).
+- **`rpps.grid.lte`**: `phy.pdsch_res(blocks, symbols, pci, sf, n_rb, ports, duplex)` takes each slot's resource blocks;
+  `tbs_table` is in `phy` (was in `channels`); grid frames carry the duplex mode in their header.
 - **A constellation file lists only labellings, not their turns**: `psk/qpsk`'s R090 / R180 / R270 maps and `psk/bpsk`'s
   R180 are gone from the files, and first maps drop their "R000" prefix. The code makes every turn and conjugate of the
   first map as before (`rpps.symbol.mapping.expand_maps`), with the same names, so `load("psk/qpsk", "R090")` is unchanged.
@@ -89,6 +100,18 @@ what to use instead.
 
 
 ### Added
+- **`lte/downlink` receives far more cells** (`rpps.grid.lte`):
+  - TDD as well as FDD: the SSS's place says which; TDD's DCI 1A, PHICH size (tried until a DCI checks) and
+    synchronization signals. PDSCH in the special subframe 1 is not received.
+  - DCI 1C, distributed virtual resource blocks (both gaps) and the extended PHICH duration; table `lte/tbs_1c`.
+  - Several cells on a carrier: `rpps.grid.lte.search` lists them, each found one's synchronization signals taken out
+    before the next is looked for, and the profile's `pci` (and `duplex`, `span`) says which to receive.
+  - `projects/lte/lte_sib.py` is a front end to these: every cell on the carrier through SIB1 and the SI messages (it
+    took 4-port FDD cells with a localized 1A); `lte_scan.py` reports TDD cells and the other PCIs on a carrier.
+- **`nr/downlink` at 15 and 30 kHz** (`rpps.grid.nr`): the SS/PBCH block at `scs` (patterns A, B, C; 4 or 8 candidate
+  blocks, told by the PBCH), control and SIB1 at the spacing the MIB names, so the four FR1 combinations; CORESET 0 of
+  TS 38.213 Tables 13-1 to 13-6 (`min_bw` for the 40 MHz ones) and interleaved VRB-to-PRB mapping. A block whose k_SSB
+  says it has no SIB1 is counted (`no_sib1`).
 
 - **DVB service information: the NIT, the time (TDT/TOT) and the rest of SI, with the PSI.** `header/link/dvb_si`
   reads (and builds) a section of every PSI/SI table: PAT, CAT, PMT, NIT, SDT, BAT, EIT, TDT, TOT, RST, ST, the CRC-32
@@ -426,6 +449,9 @@ what to use instead.
 
 
 ### Fixed
+- LTE cell search: a Zadoff-Chu peak at an offset whole subcarriers away could outscore and hide the true one (seen
+  with 1 and 4 transmit ports), so a cell was not acquired; every peak is now tried and the SSS decides. The DCI 1C size
+  was counted over the wrong number of resource blocks (the same sizes by coincidence).
 - **The `galois_right` register scrambles:** it shifted its feedback out before the output, so data went through
   unchanged after the first register length. It is now `galois_left` mirrored.
 - **The `tukey` and `planck_taper` windows take odd lengths** (they raised `IndexError`).

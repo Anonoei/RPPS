@@ -1,6 +1,7 @@
 # LTE: cell search and what comes next
 
-Working notes. The code is `projects/lte/lte_cell.py` (cell search), `projects/lte/lte_pbch.py` (PBCH -> MIB), `projects/lte/lte_sib.py` (PCFICH/PDCCH/PDSCH -> SIB1), `projects/lte/lte_turbo.py`, `projects/lte/lte_rrc.py`; capture with `record.py`, gain with `gain_search.py`.
+Working notes. `lte_sib.py` and `lte_scan.py` now receive through `rpps.grid.lte` (FDD and TDD, every port count, DCI 1A and 1C, several cells a carrier); where a section below
+names a function of the old `lte_sib.py` (`subframe_grid`, `diversity4`, `control_region`, `pdsch_res` ...), its counterpart is in `rpps.grid.lte.phy`. The code is `projects/lte/lte_cell.py` (cell search), `projects/lte/lte_pbch.py` (PBCH -> MIB), `projects/lte/lte_sib.py` (-> SIB1), `projects/lte/lte_turbo.py`, `projects/lte/lte_rrc.py`; capture with `record.py`, gain with `gain_search.py`.
 
 Specs used (3GPP, fetched from `3gpp.org/ftp/Specs/archive/36_series/<n>/<n>-j30.zip`, Rel-19 "j30"; the .docx text extracts with a ~10-line zipfile+regex script, but **equations are lost** in extraction, so formulas are from memory and confirmed on the data): TS 36.211 (6.6 PBCH, 6.10.1 CRS, 6.3.4.3 transmit diversity, 7.2 Gold sequence, 6.11 PSS/SSS), TS 36.212 (5.1.1 CRC, 5.1.3.1 tail-biting code, 5.1.4.2 rate matching, 5.3.1 BCH, table 5.3.1.1-1 CRC masks), TS 36.331 (6.2.2 MasterInformationBlock, PHICH-Config, the ASN.1), TS 36.213 (7.1 PDSCH, table 7.1.7.2.1-1).
 
@@ -69,7 +70,7 @@ The carrier offset and the sample-clock error are the same oscillator (the radio
 ## SIB1 (band 13, same capture): decoded
 
 `python projects/lte/lte_sib.py data/lte_b13.cf64 --fs 15.36 --cf 753 --carrier 751.0` (about 30 s). Chain: PCFICH -> PDCCH blind decode for SI-RNTI -> DCI 1A -> PDSCH (turbo)
--> CRC-24A -> ASN.1 (UPER) with `lte_rrc.py`. Modules: `lte_sib.py` (control channel + PDSCH), `lte_turbo.py` (turbo codec), `lte_rrc.py` (ASN.1).
+-> CRC-24A -> ASN.1 (UPER) with `lte_rrc.py`. Modules (as first written): `lte_sib.py` (control channel + PDSCH), `lte_turbo.py` (turbo codec), `lte_rrc.py` (ASN.1).
 
 | quantity | value |
 |---|---|

@@ -1,11 +1,13 @@
-"""5G NR downlink physical layer at 15 kHz subcarriers (mu = 0): SS/PBCH block, PBCH payload, CORESET 0, PDCCH, PDSCH
+"""5G NR downlink physical layer at 15 and 30 kHz subcarriers (FR1): SS/PBCH block, PBCH payload, CORESET 0, PDCCH, PDSCH
 
-3GPP TS 38.211 (signals, mapping), 38.212 (7.1 BCH, 7.3 DCI), 38.213 (13: CORESET 0 and Type0 search space), 38.214
-(5.1 PDSCH). A slot is 14 symbols in 1 ms, the cyclic prefixes LTE's (rpps.grid.lte.phy: the same numerology at mu = 0).
+3GPP TS 38.211 (signals, mapping), 38.212 (7.1 BCH, 7.3 DCI), 38.213 (4.1: block positions; 13: CORESET 0 and Type0
+search space), 38.214 (5.1 PDSCH). The numerology mu is 0 (15 kHz) or 1 (30 kHz): a slot is 14 symbols in 1 ms >> mu,
+and at a sample rate of scs x nfft it is 15 nfft samples; the first symbol of every half millisecond has the longer
+prefix. The SS/PBCH block and the channels it points to may differ in mu.
 
-The grid of a slot is (14, nfft): every FFT bin, lowest frequency first, with the SS/PBCH block's subcarrier 120 at bin
-nfft/2 (NrCell puts it there). So subcarrier k of the SS/PBCH block is bin nfft/2 - 120 + k, and every other channel is
-placed from it: CORESET 0 from the block's first resource block, k_SSB and the table's offset.
+The grid of a slot is (14, nfft): every FFT bin, lowest frequency first, with the SS/PBCH block's subcarrier 120 at 0 Hz
+(NrCell puts it there). So subcarrier k of the block is bin nfft/2 - 120 + k of a grid at its spacing, and every other
+channel is placed from it: CORESET 0 from the block's first subcarrier, k_SSB and the table's offset.
 """
 import functools
 
@@ -13,36 +15,70 @@ import numpy as np
 
 from ..lte import phy as lte_phy
 
-SCS = 15e3
-cp_lengths, symbol_starts, slot_len = lte_phy.cp_lengths, lte_phy.symbol_starts, lte_phy.subframe_len
-gold, sign = lte_phy.gold, lte_phy.sign
+SPACINGS = {15e3: 0, 30e3: 1} # Subcarrier spacing [Hz] -> mu
+gold, sign, ramp = lte_phy.gold, lte_phy.sign, lte_phy.ramp
 SI_RNTI = 0xFFFF
-SSB_SYMBOLS = (2, 8) # Case A: the first symbols of the two candidate blocks of a slot (38.213 4.1), blocks 0-3 in slots 0, 1
-LMAX = 4 # Candidate blocks in a half frame below 3 GHz
+# The first symbols of the candidate SS/PBCH blocks (38.213 4.1), counted from the half frame's start: the first ones,
+# and the symbols they repeat after
+SSB_PATTERNS = {"A": (0, (2, 8), 14), "B": (1, (4, 8, 16, 20), 28), "C": (1, (2, 8), 14)} # name -> (mu, symbols, period)
+SI_CORESET_MAX_K_SSB = 23 # (a larger k_SSB: no CORESET 0 for this block)
 
-def grid(x, nfft, early=None):
-    """The (14, nfft) grid of a slot's samples, lowest frequency first (the window `early` samples into the prefix, its
-    phase ramp taken off)"""
+def mu_of(scs):
+    """The numerology of a subcarrier spacing [Hz]"""
+    mu = SPACINGS.get(float(scs))
+    if mu is None:
+        raise ValueError(f"NR: subcarrier spacing {scs/1e3:g} kHz (15 or 30)")
+    return mu
+
+def cp_lengths(nfft, mu):
+    """(the long prefix, the others') in samples"""
+    cp = int(round(nfft*144/2048))
+    return cp + int(round(nfft*(16 << mu)/2048)), cp
+
+def slot_len(nfft):
+    """Samples of a slot, at either spacing"""
+    return 15*nfft
+
+@functools.lru_cache(maxsize=32)
+def symbol_starts(nfft, mu):
+    """The useful part's first sample of a slot's 14 symbols"""
+    long, cp = cp_lengths(nfft, mu)
+    out, pos = [], 0
+    for l in range(14):
+        c = long if l % (14 if mu else 7) == 0 else cp
+        out.append(pos + c)
+        pos += c + nfft
+    assert pos == slot_len(nfft)
+    out = np.array(out)
+    out.flags.writeable = False
+    return out
+
+def grid(x, nfft, mu, early=None):
+    """The (14, nfft) grid of a slot's samples, lowest frequency first
+
+    The window starts `early` samples into the prefix, its phase ramp taken off"""
     early = nfft//128 if early is None else early
-    st = symbol_starts(nfft) - early
+    st = symbol_starts(nfft, mu) - early
     W = np.fft.fft(np.asarray(x)[st[:, None] + np.arange(nfft)[None, :]], axis=1)
     f = np.fft.fftfreq(nfft, 1/nfft)
     W = W*np.exp(2j*np.pi*f*early/nfft)[None, :]
     return np.fft.fftshift(W, axes=1)
 
-def symbol_phase(fc, nfft):
-    """e^(j 2 pi fc t_l) for the 14 symbols of a slot: what undoes the phase NR's upconversion gives symbol l (38.211 5.4)
-    for a receiver whose 0 Hz is at fc (t_l: the useful part's start in the subframe; mu = 0, a slot is a subframe)"""
-    t = symbol_starts(nfft)/(SCS*nfft)
+def symbol_phase(fc, nfft, mu, slot=0):
+    """Undoes the upconversion phase
+
+    e^(j 2 pi fc t_l) (38.211 5.4) for a receiver whose 0 Hz is at fc (t_l: the useful part's start in the subframe; slot:
+    the slot's number, which in the subframe is slot mod 2^mu)"""
+    t = ((slot % (1 << mu))*slot_len(nfft) + symbol_starts(nfft, mu))/(15e3*(1 << mu)*nfft)
     return np.exp(2j*np.pi*((fc*t) % 1.0))
 
-def modulate(G, nfft):
+def modulate(G, nfft, mu):
     """Samples of slots from their grids (n*14, nfft), as `grid` reads them"""
-    cp0, cp = cp_lengths(nfft)
+    long, cp = cp_lengths(nfft, mu)
     out = []
     for i, row in enumerate(np.asarray(G)):
         t = np.fft.ifft(np.fft.ifftshift(row))*np.sqrt(nfft)
-        c = cp0 if i % 7 == 0 else cp
+        c = long if i % (14 if mu else 7) == 0 else cp
         out.append(np.concatenate((t[-c:], t)))
     return np.concatenate(out)
 
@@ -97,9 +133,64 @@ def ssb_bins(nfft):
     """Bin of each of the block's 240 subcarriers"""
     return nfft//2 - 120 + np.arange(240)
 
-def ssb_place(pci, i_ssb):
-    """(slot in the half frame, first symbol) of candidate block i_SSB"""
-    return i_ssb//2, SSB_SYMBOLS[i_ssb % 2]
+def ssb_place(pattern, i_ssb):
+    """(slot in the half frame, first symbol in it) of candidate block i_SSB"""
+    _, first, period = SSB_PATTERNS[pattern]
+    return divmod(first[i_ssb % len(first)] + period*(i_ssb//len(first)), 14)
+
+def equalize(G, data, dmrs, ref):
+    """(Y conj(H), |H|^2) of the data REs of a grid from the DM-RS
+
+    data: (bins, symbols); dmrs: (bins, symbols), their values `ref`. Least squares at each, linear in frequency within a
+    symbol, and linear in time between DM-RS symbols (constant past them)"""
+    db, ds = data
+    mb, ms = dmrs[0], dmrs[1]
+    ls = G[ms, mb]/ref
+    syms = np.unique(ms)
+    Hs = np.array([np.interp(db, mb[ms == s], ls[ms == s].real) + 1j*np.interp(db, mb[ms == s], ls[ms == s].imag)
+                   for s in syms]) # (DM-RS symbols, data REs)
+    if len(syms) == 1:
+        H = Hs[0]
+    else:
+        w = np.interp(ds, syms, np.arange(len(syms))) # Each data RE's place among the DM-RS symbols
+        i0 = np.minimum(np.floor(w).astype(np.int64), len(syms) - 2)
+        a = w - i0
+        j = np.arange(len(db))
+        H = Hs[i0, j]*(1 - a) + Hs[i0 + 1, j]*a
+    return G[ds, db]*np.conj(H), np.abs(H)**2
+
+@functools.lru_cache(maxsize=None)
+def _pbch_code():
+    from ... import code
+    return code.load("block/polar/nr_pbch")
+
+def _pbch_index(B, pci):
+    """i_SSB-bar (0-7) of a block's grid, from its PBCH DM-RS"""
+    pk, pl, dk, dl = ssb_map(pci)
+    kk = np.arange(56, 183)
+    h = B[0, kk]*pss(pci % 3) # (PSS values are +-1)
+    H = np.interp(dk, kk, h.real) + 1j*np.interp(dk, kk, h.imag)
+    r = B[dl, dk]*np.conj(H)
+    # Per symbol, the magnitude: a residual offset turns each symbol's phase from the PSS's by its own amount
+    score = [float(sum(np.abs(np.sum((r*np.conj(pbch_dmrs(pci, i)))[dl == l])) for l in (1, 2, 3))) for i in range(8)]
+    return int(np.argmax(score))
+
+def read_pbch(B, pci):
+    """The PBCH of a block's grid (4, 240), or None where the CRC fails
+
+    A dict (mib: its 24 bits, sfn, hrf, k_ssb_msb, i_ssb). The DM-RS says i_SSB-bar; the scrambling takes two bits of the
+    block's index where a half frame has 4 candidates (i_SSB-bar then carries the half frame in its third) and three where it
+    has more: both are tried, the CRC says which"""
+    pk, pl, dk, dl = ssb_map(pci)
+    ibar = _pbch_index(B, pci)
+    z, _ = equalize(B, (pk, pl), (dk, dl), pbch_dmrs(pci, ibar))
+    s = soft_bits(z, 2)
+    for i_ssb in sorted({ibar & 3, ibar}):
+        a, err = _pbch_code().decoder.decode(s*sign(pbch_scramble(pci, i_ssb)), status=True)
+        if err[0] >= 0:
+            mib, sfn, hrf, kmsb = payload_decode(np.asarray(a, np.uint8), pci)
+            return {"mib": mib, "sfn": sfn, "hrf": hrf, "k_ssb_msb": kmsb, "i_ssb": i_ssb}
+    return None
 
 # ---- PBCH payload (38.212 7.1)
 
@@ -165,9 +256,11 @@ def build_mib(scs_common=0, k_ssb=0, dmrs_pos=2, coreset0=0, ss0=0, barred=1, in
     return np.array([0] + [0]*6 + b(scs_common, 1) + b(k_ssb & 15, 4) + b(dmrs_pos - 2, 1) + b(coreset0, 4) + b(ss0, 4)
                     + b(barred, 1) + b(intra_freq, 1) + [0], np.uint8)
 
-def pbch_scramble(pci, i_ssb, n=864):
-    """The bits XORed onto the 864 coded PBCH bits of block i_SSB (38.211 7.3.3.1: c(i + v 864), v its 2 LSBs)"""
-    return gold(pci, 864*4)[(i_ssb & 3)*864:(i_ssb & 3)*864 + n]
+def pbch_scramble(pci, v, n=864):
+    """PBCH scrambling (38.211 7.3.3.1)
+
+    c(i + v 864), v the block index's two LSBs where a half frame has 4 candidates, three where it has more"""
+    return gold(pci, 864*8)[v*864:v*864 + n]
 
 # ---- CORESET 0 and its PDCCH (38.211 7.3.2, 7.4.1.3; 38.213 13)
 
@@ -177,8 +270,13 @@ def table(name):
     return t["columns"], t["rows"]
 
 @functools.lru_cache(maxsize=None)
-def coreset0(index):
-    cols, rows = table("nr/coreset0_15_15")
+def coreset0(index, scs=15e3, scs_common=15e3, min_bw=5):
+    """CORESET 0 (38.213 13)
+
+    For the SS/PBCH block's spacing, the CORESET's, and the band's minimum channel bandwidth [MHz] (5 or 10; 40: the tables
+    of its own where the block is at 30 kHz)"""
+    name = f"nr/coreset0_{int(scs/1e3)}_{int(scs_common/1e3)}" + ("_40" if min_bw >= 40 and scs == 30e3 else "")
+    cols, rows = table(name)
     r = next((dict(zip(cols, r)) for r in rows if r[0] == index), None)
     if r is None:
         raise ValueError(f"CORESET 0 index {index}: reserved")
@@ -189,19 +287,26 @@ def type0(index):
     cols, rows = table("nr/type0_fr1")
     return dict(zip(cols, next(r for r in rows if r[0] == index)))
 
-def coreset0_first_bin(nfft, k_ssb, offset):
-    """Bin of CORESET 0's subcarrier 0: the common RB holding the block's subcarrier 0 starts k_SSB before it, the
-    CORESET `offset` RBs below that"""
-    return nfft//2 - 120 - k_ssb - 12*offset
+def coreset0_first_bin(nfft, k_ssb, offset, scs=15e3, scs_common=15e3):
+    """CORESET 0's first bin, or None
 
-def type0_slots(ss0, i_ssb, coreset_symbols):
-    """(slots n0 and n0 + 1 of the frame, the parity of the frames, first symbol) of block i_SSB's Type0 occasions"""
+    The common resource block holding the SS/PBCH block's subcarrier 0 starts k_SSB subcarriers of 15 kHz before it, the
+    CORESET `offset` of its own blocks below that"""
+    below = (120*scs + k_ssb*15e3)/scs_common
+    if below != round(below):
+        return None
+    return nfft//2 - int(below) - 12*offset
+
+def type0_slots(ss0, i_ssb, coreset_symbols, mu=0):
+    """(slots n0, n0 + 1), frame parity, first symbol of Type0 occasions
+
+    For block i_SSB, at the PDCCH's mu; n0 + 1 past the frame's last slot is the next frame's first"""
     t = type0(ss0)
-    x = t["o"] + int(np.floor(i_ssb*t["m"]))
-    n0 = x % 10
+    x = (t["o"] << mu) + int(np.floor(i_ssb*t["m"]))
+    n = 10 << mu
     first = t["first"]
     first = (0 if i_ssb % 2 == 0 else coreset_symbols) if first == "alt" else int(first)
-    return (n0, n0 + 1), (x//10) % 2, first
+    return (x % n, x % n + 1), (x//n) % 2, first
 
 @functools.lru_cache(maxsize=256)
 def cce_regs(n_rb, symbols, pci, L=6, R=2):
@@ -247,6 +352,22 @@ def riv_decode(v, n):
     if S + L > n:
         L, S = n - L + 2, n - 1 - S
     return S, L
+
+@functools.lru_cache(maxsize=64)
+def vrb_interleaver(n_rb, bundle=2):
+    """VRB-to-PRB (38.211 7.3.1.6)
+
+    The SI-RNTI's in CORESET 0: bundles of `bundle` blocks, written into two rows"""
+    n = -(-n_rb//bundle)
+    cols = n//2
+    f = list(range(n))
+    for c in range(cols):
+        for r in range(2):
+            if c*2 + r < n - 1:
+                f[c*2 + r] = r*cols + c
+    out = np.array([bundle*f[v//bundle] + v % bundle for v in range(n_rb)])
+    out.flags.writeable = False
+    return out
 
 # ---- PDSCH (38.211 7.3.1, 7.4.1.1; 38.214 5.1)
 
@@ -296,23 +417,27 @@ def tbs(n_re_prb, n_prb, qm, rate, layers=1):
         return 8*C*int(np.ceil((nq + 24)/(8*C))) - 24
     return 8*int(np.ceil((nq + 24)/8)) - 24
 
-def pdsch_res(nfft, c0bin, first, count, s, l, mapping, dmrs_pos, ssb_slots):
-    """(bins, symbols) of the PDSCH's data REs in mapping order, and of its DM-RS (bins, symbols, sequence index): around
-    the DM-RS symbols, and the SS/PBCH block's REs where it is in the slot (ssb_slots: its first symbols here)"""
+def pdsch_res(c0bin, prbs, s, l, mapping, dmrs_pos, blocks=()):
+    """PDSCH data and DM-RS elements
+
+    (bins, symbols) and (bins, symbols, sequence index), on the resource blocks `prbs` (from CORESET 0's lowest, in the
+    virtual blocks' order), symbols s..s+l-1: around the DM-RS symbols, and the REs of the SS/PBCH blocks in the slot
+    (`blocks`: of each, (first symbol, the symbol past its last, first bin, the bin past its last))"""
     dm = dmrs_symbols(mapping, s, l, dmrs_pos)
-    sc = c0bin + 12*first + np.arange(12*count) # Subcarriers of the allocation
-    ssb = ssb_bins(nfft)
+    sc = (c0bin + 12*np.asarray(prbs)[:, None] + np.arange(12)).reshape(-1)
     bins, syms = [], []
     for sym in range(s, s + l):
         if sym in dm:
             continue
         keep = np.ones(len(sc), bool)
-        if any(l0 <= sym < l0 + 4 for l0 in ssb_slots):
-            keep &= ~((sc >= ssb[0]) & (sc <= ssb[-1]))
+        for first, end, low, high in blocks:
+            if first <= sym < end:
+                keep &= ~((sc >= low) & (sc < high))
         bins.append(sc[keep]); syms.append(np.full(int(keep.sum()), sym))
+    up = np.sort(sc)
     db, ds, di = [], [], []
     for sym in dm:
-        b = sc[(sc - c0bin) % 2 == 0]
+        b = up[(up - c0bin) % 2 == 0]
         db.append(b); ds.append(np.full(len(b), sym)); di.append((b - c0bin)//2)
     return (np.concatenate(bins), np.concatenate(syms)), (np.concatenate(db), np.concatenate(ds), np.concatenate(di))
 
