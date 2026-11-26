@@ -43,12 +43,14 @@ class Detection:
     beta: the roll-off of the matched filter that scored best; rolloff: the spectrum's (rate.find_rolloff), when measured
     mod: the modulation, None when detect was asked for `min_evidence` and the evidence is short (`best` the leader)
     how: how the candidates were scored: "given" (at the caller's esn0, `given`), "moments" (each at its M2M4 Es/N0) or
-        "fit" (each its own variance). null: the score of Gaussian noise of the symbols' power (see over_noise)"""
+        "fit" (each its own variance). null: the score of Gaussian noise of the symbols' power (see over_noise)
+    drift: the carrier's frequency rate over the symbols searched, Hz/s (a Doppler rate; 0.0 when none stands out:
+        `drift`), taken off before the symbols were scored"""
     __slots__ = (
         "mod", "baud", "sps", "beta", "tau",
         "cfo", "phase", "M", "gain",
         "scores", "n", "esn0", "ebn0", "line",
-        "best", "how", "given", "null", "rolloff"
+        "best", "how", "given", "null", "rolloff", "drift"
     )
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -137,7 +139,8 @@ def turned_candidates(names):
     return out
 
 def correct(y, pts, M, pad=4):
-    """Feed-forward frequency + phase correction for a candidate. Returns (symbols, cfo cycles/symbol, phase)"""
+    """Feed-forward frequency + phase correction for a candidate. Returns (symbols, cfo cycles/symbol, phase); a carrier
+    drifting over y (a Doppler rate: the frequency moving along) is taken off too (`drift`)"""
     n = len(y)
     cfo = 0.0
     if M > 1:
@@ -148,8 +151,61 @@ def correct(y, pts, M, pad=4):
     y1 = y * np.exp(-2j*np.pi*cfo*np.arange(n))
     phase = 0.0
     if M > 1:
+        c, w = drift(y1, M, offset=True)
+        if c:
+            t = np.arange(n) - (n - 1)/2
+            y1 = y1*np.exp(-1j*(c*t**2 + w*t))
+            cfo += w/(2*np.pi)
         phase = (np.angle(np.sum(y1**M)) - np.angle(np.mean(pts**M)))/M
     return y1 * np.exp(-1j*phase), cfo, phase
+
+def drift(y, M, blocks=32, min_block=64, sigmas=4.0, segments=8, min_segment=256, offset=False):
+    """The curvature c (radians a symbol^2) of the phase left on symbols y after a frequency is taken off: phase(t) =
+    c (t - centre)^2, a carrier whose frequency moves 2c radians a symbol^2 (a Doppler rate, a drifting oscillator).
+    Coarse, from the M-th power's frequency in each of `segments` segments (an FFT peak each, unambiguous within
+    +-1/(2M) cycles a symbol, whatever the phase does between them): the line through them; then fine, from the M-th
+    power's phase in `blocks` blocks (at least `min_block` symbols each), unwrapped by 2 pi / M, a quadratic
+    least-squares fit, on the symbols the coarse drift was taken off. Each counts only when `sigmas` standard errors off
+    0 (a steady carrier's segments and blocks only scatter); 0.0 with neither. offset: (c, w), w the frequency (radians a
+    symbol) still on y about its centre, which an FFT over a drifting carrier places off (its peak smeared)"""
+    n = len(y)
+    centre = (n - 1)/2
+    u = y/np.maximum(np.abs(y), 1e-30)
+    c = w = 0.0
+    L = n//segments
+    if L >= min_segment:
+        f, t = [], []
+        for k in range(segments):
+            z = u[k*L:(k + 1)*L]**M
+            spec = np.abs(np.fft.fft(z*np.hanning(L), 4*L))
+            i, d = peak(spec, circular=True)
+            v = (i + d)/(4*L)
+            f.append(((v + 0.5) % 1.0 - 0.5)/M) # cycles a symbol
+            t.append((k + 0.5)*L - centre)
+        f, t = np.asarray(f), np.asarray(t)
+        f = np.unwrap(f*2*np.pi*M)/(2*np.pi*M) # (a frequency moving across 1/(2M) wraps: unwrapped)
+        A = np.stack((t, np.ones(len(t))), axis=1)
+        coef, *_ = np.linalg.lstsq(A, f, rcond=None)
+        r = f - A @ coef
+        se = np.sqrt(max(float(np.sum(r**2))/max(len(t) - 2, 1), 1e-300)*np.linalg.pinv(A.T @ A)[0, 0])
+        if abs(coef[0]) > sigmas*se:
+            c, w = float(np.pi*coef[0]), float(2*np.pi*coef[1]) # (2 pi (a/2) t^2: a the slope in cycles a symbol^2)
+            u = u*np.exp(-1j*(c*(np.arange(n) - centre)**2 + w*(np.arange(n) - centre)))
+    B = max(min_block, n//blocks)
+    k = n//B
+    if k < 6:
+        return (c, w) if offset else c
+    s = (u[:k*B]**M).reshape(k, B).sum(axis=1)
+    ph = np.unwrap(np.angle(s))/M
+    t = (np.arange(k) + 0.5)*B - centre
+    A = np.stack((t**2, t, np.ones(k)), axis=1)
+    coef, *_ = np.linalg.lstsq(A, ph, rcond=None)
+    r = ph - A @ coef
+    var = float(np.sum(r**2))/max(k - 3, 1)
+    se = float(np.sqrt(max(var*np.linalg.pinv(A.T @ A)[0, 0], 1e-300)))
+    if abs(coef[0]) > sigmas*se:
+        c, w = c + float(coef[0]), w + float(coef[1])
+    return (c, w) if offset else c
 
 def score(y, pts, iters=8, esn0=None):
     """Mean log-likelihood per symbol of unit-rms y under equiprobable points with Gaussian noise: the variance fitted
@@ -245,11 +301,13 @@ def detect(x, Fs, names=None, betas=None, span=8, baud=None, esn0=None, min_evid
             M, cfo, phase = fits[top]
             q = measure(correct(y, cands[top], M)[0], cands[top])
             baud = Fs/sps
+            c = drift(y*np.exp(-2j*np.pi*cfo*np.arange(len(y))), M) if M > 1 else 0.0
             best = (scores[top], Detection(
                 mod=top, baud=baud, sps=sps, beta=beta, tau=tau,
                 cfo=cfo*baud, phase=phase, M=M, gain=gain,
                 scores=scores, n=len(y), esn0=q.esn0_db, ebn0=q.ebn0_db, line=line,
-                best=top, how=how, given=esn0, null=null_score(y), rolloff=rolloff
+                best=top, how=how, given=esn0, null=null_score(y), rolloff=rolloff,
+                drift=float(2*c/(2*np.pi)*baud**2) # (cycles a symbol^2 at baud^2: Hz/s)
             ))
     det = best[1]
     if min_evidence is not None and (det.over_noise < NULL_MARGIN or det.evidence < min_evidence):

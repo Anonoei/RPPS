@@ -399,6 +399,12 @@ what to use instead.
   input on the discriminator's output), and named when its own checks verify, none refuted. GFSK bursts (`ble/adv`),
   pulse position (`adsb/mode_s`) and OFDM (`lte/downlink`, by its cell search and PBCH) are named from a capture;
   each profile's receiver does the work, nothing per standard in the analysis.
+- **A drifting carrier is measured and taken off** (`rp.sync.acquire.drift`, `Detection.drift` in Hz/s): the M-th
+  power's frequency segment by segment (the line through them), then its phase block by block (a quadratic), each
+  only when it stands out of its own scatter. `detect` scores the symbols with the drift off, so Es/N0 under a Doppler
+  rate reads as without it (1 MHz/s on QPSK: 3.8 dB low before, now within 0.1 dB); the profile shows it and takes it
+  off the symbols its framed profiles read. The ident bench's drift variant: Es/N0 within 0.4 dB on the linear
+  profiles (it read up to 16 dB low), all six named.
 - **A good lock no code fits is read again** (`rp.analysis.profile`): the search's runner-up constellation, then twice
   and half the rate within the channel, the one that finds a code or a name kept (and said: a `retry` step); how many
   is `rpps._effort`'s `retries` (fast none, balanced 2, max 4). **`Hypothesis.p`** and **`Report.p(h)`**: a

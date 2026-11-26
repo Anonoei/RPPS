@@ -105,11 +105,16 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
     return rank(out)
 
 def _symbols(raw, det, skip=6000, max_symbols=400000, least=20000):
-    """Timed symbols from `skip` on, the carrier offset taken off and scaled to unit power; None under `least` of them"""
+    """Timed symbols from `skip` on, the carrier offset (and a drift: det.drift) taken off and scaled to unit power; None
+    under `least` of them"""
     z = np.asarray(raw)[skip:skip + max_symbols]
     if len(z) < least:
         return None
-    z = z*np.exp(-2j*np.pi*det.cfo/det.baud*np.arange(len(z)))
+    n = np.arange(len(z))
+    z = z*np.exp(-2j*np.pi*det.cfo/det.baud*n)
+    if getattr(det, "drift", None): # A drifting carrier (Hz/s): its curve off too, about the middle (the frequency
+        t = n - len(z)/2           # left there is the frame sync's and the carrier step's to take)
+        z = z*np.exp(-1j*np.pi*det.drift/det.baud**2*t**2)
     return (z/np.sqrt(np.mean(np.abs(z)**2))).astype(np.complex64)
 
 def _run(prof, z, Fs=None, sps=None):
