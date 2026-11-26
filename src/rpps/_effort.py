@@ -104,9 +104,10 @@ def get(name):
 
 def interp_taps(sps):
     """Taps of the timing interpolation at the level in force for `sps` samples per symbol: balanced keeps cubic (4) from 4
-    samples a symbol, where its error (-49 dB) is under the pulse's own truncation, and takes 8 under it (cubic: -26 dB at 2)"""
+    samples a symbol, where its error (-49 dB) is under the pulse's own truncation, takes 8 under it (cubic: -26 dB at 2),
+    and 12 under 2 samples a symbol (a band-limited signal sampled close to its width: 8 taps lose a few dB there)"""
     v = SETTINGS["interp_taps"][_level]
-    return v if v is not None else (4 if sps >= 4 else 8)
+    return v if v is not None else (4 if sps >= 4 else 8 if sps >= 2 else 12)
 
 def scale(name, base):
     """A count at the level in force ("iters", "list"): its own (`base`) scaled, at least 1"""

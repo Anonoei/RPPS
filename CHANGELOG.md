@@ -83,6 +83,10 @@ what to use instead.
 - **Keys nothing reads are reported** (`rp.errors.ConfigWarning`): a definition's when it loads; a profile's own, every
   step's, its `defaults` and the `sync` given to `load`, once built. A misspelling or a setting the method doesn't take
   no longer passes silently; a user definition that relied on that now warns.
+- **`rp.math.interp.doubled` is `rp.math.interp.upsampled(x, a, b, base, u)`**: any factor u dividing 32, `u=2` as before.
+- **`rp.analysis.signal_profile.framed` gives a seventh item**, the evidence (`{"verified", "refuted", "checks"}`), and
+  ranks by it.
+
 
 ### Added
 
@@ -344,7 +348,16 @@ what to use instead.
   Contributing, "Device kernels (GPU)".
 - **Benchmarks keep results per machine** (`--save`, `--update-baseline`, `--check`, `--compare`; `.benchmarks/`).
   New: `tools/finder_bench.py`, `tools/modclass_bench.py` (the Es/N0 modulation detection works from),
-  `tools/blind_bench.py` (what the blind code tools break, from how many symbols).
+  `tools/blind_bench.py` (what the blind code tools break, from how many symbols), `tools/ident_bench.py` (how far
+  `rp.analysis.profile` gets blind on each shipped profile's signal, placed in a wider capture: box, rate, code, name).
+- **Frames behind a sync marker, found blind** (`rp.analysis.framing.marked.layer`): a shipped profile's marker at one
+  period, each additive scrambler restarted per frame, and the Reed-Solomon code inside at its interleaving depth
+  (words that decode within t, against a random word's chance). `identify` runs it on channel bits and behind a Viterbi,
+  so `ccsds/tm_rs` and `ccsds/tm_concat` are named from their symbols, at any depth.
+- **`rp.profile.lineage(name)`**: the profiles a profile extends, nearest first.
+- **`tools/ident_bench.py` variants and seeds**: `--variants plain inverted pad neighbour drift`, `--seeds`, the stop
+  reasons tallied; DVB-S2 multistream, CCSDS TM packets, P25 and DMR signals.
+
 
 ### Changed
 - **Faster where a receive found or rebuilt structure.** `rp.sync.Align` scores every bit offset, polarity and pattern
@@ -399,6 +412,18 @@ what to use instead.
 - `analysis.profile` channelizes every signal with one `FFTBank`; `signal_profile.framed` returns the profile's header
   ids as a sixth item and ranks a profile whose payload decoded first; `match_profile` returns (name, steps, params).
 - `parallel_bench.py` and `resample_bench.py` take their positional arguments through argparse.
+- **A framed profile is named by what its own checks verify.** `analysis.profile` ranks the profiles whose frames it
+  finds by the steps whose check (CRC, FCS, a header's code) passed and those whose check kept failing, then the most
+  general (`rp.profile.lineage`): DVB-S2 at 8 dB was named `dvbrcs2/forward` (the first by name, every DVB-S2 profile
+  reading the same PL headers), a TS stream `dvbs2/ule`. A profile none of whose checks passes is not named.
+  `identify` names the most general of the profiles with the same code steps (`ccsds/tm_rs`, not `ccsds/tm_packets`).
+- **`rp.sync.phase.MPower` acquires from several windows** when one shows no M-th power line (`acquire`, 16384 symbols
+  by default): DVB-S2 (M = 8) at 8 dB Es/N0 with a carrier 4e-4 of the rate off decoded no frame; now all but the
+  first. Under 8 dB the pilots' phase still can't follow such an offset (a data-aided frequency is open).
+- **`rp.sync.time.OerderMeyr` times from a sample a symbol** (it needed 2): under 4 samples a symbol its window is
+  upsampled by the least power of 2 to 4 (`rp.math.interp.upsampled`) and the symbols read with the 12-tap sinc under 2.
+  A 30 MBd carrier in 50 MS/s (1.67 samples a symbol) receives as at 3.33, with no re-extraction.
+
 
 ### Fixed
 - **The `galois_right` register scrambles:** it shifted its feedback out before the output, so data went through
@@ -427,6 +452,9 @@ what to use instead.
 - A framed link header with no payload gave no frames, and a header whose last bit ended a block was lost at the end
   of a stream.
 - A profile's output joined decoded bits and passed-on LLRs as one array (the bits read as LLRs); it is all LLRs now.
+- **The configured Reed-Solomon scan read dual-basis codes in the conventional basis** (`identify`'s `scan_rs`):
+  CCSDS RS behind a Viterbi was never found.
+- **`analysis.signal_profile.framed` lost every profile's frames when one candidate failed to build.**
 
 ## 0.6.0 (2026-11-22)
 

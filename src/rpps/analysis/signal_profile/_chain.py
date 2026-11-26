@@ -3,7 +3,7 @@ import traceback
 
 import numpy as np
 
-from ._framed import framed
+from ._framed import framed, ties
 from ._measures import CARRIER_SHARE, ESN0_GAP, NEAR, PM_OFFSET, RATE_WIDTH, SYMS, _strong, _waveform_detail, carrier_share, esn0_gap
 from ._result import FOUND, GUESS, MIN_PAYLOAD, SignalProfile, Step, UNSOLVED, _code_steps, _guess_steps, weights
 
@@ -620,12 +620,20 @@ class _Chain:
         except Exception as e:
             fr = []
             p.add("frame", "framed profiles", UNSOLVED, note=f"{type(e).__name__}: {e}")
+        unverified = [t[0] for t in fr if not t[6]["verified"]]
+        fr = [t for t in fr if t[6]["verified"]] # Headers that only read are no evidence (a PLS code decodes any word)
         if fr:
-            name, heads, n, inverted, params, ids = fr[0]
+            name, heads, n, inverted, params, ids, ev = fr[0]
             p.profile_name, p.profile_params = name, params
             p.add("spectrum", "inverted: the symbols conjugated before the profile" if inverted else "normal",
                   note=f"the frame preamble turns {'backwards' if inverted else 'forwards'}, symbol to symbol")
-            p.add("frame", f"{name}: {n} headers decoded")
+            tied = [t[0] for t in ties(fr)[1:]]
+            checked = ", ".join(f"{k} {ps}/{ps + fs}" for k, (ps, fs) in sorted(ev["checks"].items()))
+            p.add("frame", f"{name}: {n} headers decoded", GUESS if tied else FOUND,
+                  candidates=[(t, 0.0, 0.0) for t in tied],
+                  note="; ".join(([f"checks passed: {checked}"] if checked else []) +
+                                 ([f"refuted: {', '.join(ev['refuted'])}"] if ev["refuted"] else []) +
+                                 ([f"nothing tells it from {', '.join(tied)}: the most general named"] if tied else [])) or None)
             for hid, (sets, total) in heads.items():
                 if sets[0][1] == 1: # Every one different (a counter, a length): how many, and one of them
                     p.add("header", f"{hid}: {total} decoded, all different, e.g. {sets[0][0]}")
@@ -671,5 +679,7 @@ class _Chain:
             return p
         p.add("fec", "no definition fits", UNSOLVED, candidates=cand,
               note=why + more + ("; the symbol rate is doubtful" if rate_doubt else "") +
-                   ("; the modulation itself is doubtful" if doubt else ""))
+                   ("; the modulation itself is doubtful" if doubt else "") +
+                   (f"; {', '.join(unverified)}: frame headers read, but none of the profile's checks passed"
+                    if unverified else ""))
         return p

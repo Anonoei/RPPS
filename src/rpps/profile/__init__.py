@@ -49,7 +49,7 @@ which needs the PCFICH, which needs the PBCH. A kind the profile doesn't give is
 """
 from .profile import Profile, load, ls
 from .message import Message
-from .catalogue import ProfileInfo, info, catalogue, variants, fits, candidates
+from .catalogue import ProfileInfo, info, catalogue, variants, fits, candidates, lineage
 from .decoder import Decoder
 from .encoder import Encoder
 from .runner import Runner

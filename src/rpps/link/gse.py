@@ -155,10 +155,10 @@ class GSE(Pipe):
             pdu = self._packet(st, s, e, lt, body, est, data.meta, at)
             if pdu is None:
                 continue
-            proto, label, payload, start = pdu
+            proto, label, payload, start, ok = pdu
             est["pdus"] += 1
             emit(data.meta, self, "gse", {"protocol": proto, "label": label.hex(), "length": len(payload)},
-                 np.unpackbits(np.frombuffer(payload, np.uint8)).astype(bool) if payload else np.zeros(0, bool), True, start)
+                 np.unpackbits(np.frombuffer(payload, np.uint8)).astype(bool) if payload else np.zeros(0, bool), ok, start)
             if self.protocols is None or proto in self.protocols:
                 bits = np.unpackbits(np.frombuffer(payload, np.uint8)).astype(bool)
                 publish(data.meta, self, {"frame": st["k"], "protocol": proto, "pdu_bits": len(bits)}, at=start, out=n_out)
@@ -170,7 +170,8 @@ class GSE(Pipe):
         return data.derive(y, self.CATEGORY, dtype.BITS, Digital, ctx, rep=Rep.DATA) # (PDUs: data a header after it reads)
 
     def _packet(self, st, s, e, lt, body, est, meta, at):
-        """(protocol, label, payload, start position) of a whole PDU this packet ends, or None"""
+        """(protocol, label, payload, start position, ok) of a whole PDU this packet ends, or None. ok: True for a PDU
+        put together from fragments whose CRC-32 passed; None for one sent whole (it has no check: GSE, TS 102 606), so a message's crc_ok never claims a check that didn't run"""
         frags = st["frags"]
         if s and e: # Whole
             proto = int.from_bytes(body[:2], "big")
@@ -178,7 +179,7 @@ class GSE(Pipe):
             label = body[2:2 + nl] if lt != 3 else st["label"]
             if lt in (0, 1):
                 st["label"] = label
-            return proto, label, body[2 + nl:], at
+            return proto, label, body[2 + nl:], at, None
         fid = body[0]
         if s: # First fragment: total length, protocol, label, the start of the data
             frags[fid] = {"total": int.from_bytes(body[1:3], "big"), "data": bytearray(body[3:]), "at": at, "lt": lt}
@@ -199,4 +200,4 @@ class GSE(Pipe):
             return None
         nl = LABEL_BYTES[f["lt"]]
         proto, label = int.from_bytes(data[:2], "big"), data[2:2 + nl]
-        return proto, label, data[2 + nl:], f["at"]
+        return proto, label, data[2 + nl:], f["at"], True

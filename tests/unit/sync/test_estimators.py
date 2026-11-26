@@ -84,6 +84,47 @@ def test_noise_alone_acquires_nothing():
     _, s = run(np.repeat(x, 4), lambda: [rp.sync.time.OerderMeyr(window=0)])
     assert s.est["timing"]["windows"] <= 2 # (a window can pass the gate by chance)
 
+@pytest.mark.parametrize("seed", [0, 3])
+def test_mpower_acquires_from_several_windows_when_one_shows_nothing(seed):
+    """8PSK at 8 dB under M = 8: one 1024-symbol window never shows the line (0 of 20 seeds); 16384 symbols together
+    acquire it, the frequency within 8e-7 cycles a symbol over 20 seeds (asserted at 1e-5), however the stream is cut"""
+    n, f = 60000, 4e-4
+    rng = np.random.default_rng(seed)
+    pts = np.exp(2j*np.pi*np.arange(8)/8)
+    s = pts[rng.integers(0, 8, n)].astype(np.complex64)
+    x = np.asarray((rp.Data(s, sps=1, Fs=1e6) + rp.signal.channel.CFO(f*1e6) + rp.signal.channel.PhaseOffset(0.5)
+                    + rp.signal.channel.AWGN(esn0_db=8.0, seed=seed)).data)
+    _, one = run(x, lambda: [rp.sync.phase.MPower(8, window=0, min_symbols=1024, acquire=1024)], sps=1, Fs=1e6)
+    assert one.est["carrier"]["frequency"] is None
+    y, st = run(x, lambda: [rp.sync.phase.MPower(8, window=0, min_symbols=1024)], sps=1, Fs=1e6)
+    assert abs(st.est["carrier"]["frequency"] - f) < 1e-5
+    z, _ = run(x, lambda: [rp.sync.phase.MPower(8, window=0, min_symbols=1024)], [7777]*7 + [n - 7*7777], sps=1, Fs=1e6)
+    assert np.allclose(y, z, atol=1e-5)
+
+@pytest.mark.parametrize("down", [5, 6]) # 2 and 1.67 samples a symbol (a 30 MBd carrier in 50 MS/s)
+def test_oerder_meyr_times_under_two_samples_a_symbol(down):
+    """Matched-filtered QPSK at 10 samples a symbol taken down to 10/down: the timing and the symbols as good as at 3.33
+    (EVM -37 dB at 40 dB SNR, asserted at -30), however the stream is cut"""
+    from rpps.signal.sample import resample_poly
+    from rpps.signal.filters.shaping import rrc_pulse
+    rng = np.random.default_rng(4)
+    n = 20000
+    sym = (rng.choice([-1, 1], n) + 1j*rng.choice([-1, 1], n))/np.sqrt(2)
+    up = np.zeros(n*10, complex)
+    up[::10] = sym
+    h = rrc_pulse(np.arange(-80, 81)/10, 0.35)
+    x = resample_poly(np.convolve(np.convolve(up, h, "same"), h, "same")/np.sum(h*h), 1, down)
+    x = (x + 0.01*(rng.normal(size=len(x)) + 1j*rng.normal(size=len(x)))).astype(np.complex64)
+    sps = 10/down
+    make = lambda: [rp.sync.time.OerderMeyr(window=0, min_symbols=2048)]
+    y, _ = run(x, make, Fs=1e6*sps, sps=sps)
+    z, _ = run(x, make, [7777]*(len(x)//7777) + [len(x) % 7777], Fs=1e6*sps, sps=sps)
+    assert len(y) == len(z) and np.allclose(y, z, atol=1e-4)
+    y = y[2000:]/np.sqrt(np.mean(np.abs(y[2000:])**2))
+    y = y*np.exp(-1j*(np.angle(np.mean(y**4)) - np.pi)/4)
+    pts = np.exp(1j*np.pi/4*np.array([1, 3, 5, 7]))
+    assert 10*np.log10(np.mean(np.min(np.abs(y[:, None] - pts[None, :]), axis=1)**2)) < -30
+
 def test_carrier_order_is_controlled_live():
     c = rp.sync.phase.MPower(4)
     c.control(order=8)

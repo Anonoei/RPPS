@@ -17,7 +17,7 @@ analysed, the way config/ and the implementation packages do:
    polar), interleave (block and Forney interleavers)
  - framing: how the stream is cut. frames (frame period and unique word on symbols), payload (what decoded bits carry),
    telemetry (PM telemetry end to end), crc (the CRC frames carry: generator, init, xorout, what it covers), fields
-   (what each bit of a header is)
+   (what each bit of a header is), marked (frames behind a sync marker, their scrambler and RS code)
  - code/conv/mother, framing/bits: a convolutional mother code's generators; sync markers, frame length and HDLC on bits
  - identify: which code a hard-bit stream carries, peeling layers (`identify`, which rp.sync.AcquireFEC runs, `solve`)
  - result: what the searches return (Hypothesis, Report, Guess) and `pick`
@@ -87,6 +87,7 @@ bits; strong codes at low SNR are beyond them on channel bits.
 |---|---|---|
 | frame period and unique word on symbols | `framing.frames.find`, `cut`, `bursts` | coherence per position over candidate periods |
 | sync markers, frame length, HDLC | `framing.bits.find_sync`, `frame_length`, `scan_hdlc` | hits at a period, autocorrelation, flags and FCS against chance |
+| frames behind a sync marker, their scrambler and code | `framing.marked.layer` | a marker at one period; scramblers restarted per frame; RS words decoding at each depth, against chance |
 | PM telemetry end to end | `framing.telemetry.analyze` | BPSK per subcarrier, line code, frame period, counters |
 | what each header bit is | `framing.fields.map` | constants, counters (either bit order, per terminal), ids, length fields, enums, random; a link header definition |
 | code blocks a burst is made of | `burst.units` | burst lengths as overhead + n units, the unit to a symbol or so |

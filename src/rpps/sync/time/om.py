@@ -83,12 +83,13 @@ class OerderMeyr(Stage):
     block-rate loop (rpps.sync.track) carries the phase and the clock's rate (ppm: the transmitter's clock fast by that much) from window to window, so a clock some ppm
     off is followed and each symbol's instant comes from the line, not a step per window. A window whose line is weaker
     than `gate` (its SNR, |X| / sum|x|^2 * sqrt(n): noise alone is about 1) is skipped, the loop coasting through it (a gap
-    between bursts). Symbols are interpolated (cubic) from the samples; any sps, fractional too, and any block cut.
+    between bursts). Symbols are interpolated from the samples (cubic, or a windowed sinc under 4 samples a symbol:
+    rpps._effort.interp_taps); any sps from 1, fractional too (under 2: a 30 MBd carrier in 50 MS/s), and any block cut.
 
     Latency: a window, as `latency` (seconds) in stream.est[name] with the phase, the rate (ppm) and the line's SNR.
     Nothing comes out before the first window that passes the gate. `device`: each window's sums and symbols on the GPU
     of `rpps._accel.device()` (CuPy, CUDA or ROCm/HIP; the host without one), the samples going up once a block; the
-    tracking is the host's, window by window (under 4 samples a symbol the doubled window is made on the host).
+    tracking is the host's, window by window (under 4 samples a symbol the upsampled window is made on the host).
     """
     CONTROLS = {}
     ACQUIRE = 4 # Windows the loop runs wide (bandwidth 0.6) while it pulls in, then `bw`
@@ -135,7 +136,7 @@ class OerderMeyr(Stage):
         xp, f, dx = self._held(st)
         if u == 1:
             src, off = dx, np.int64(a0 - st.base)
-        else: # (the doubled window, made on the host)
+        else: # (the upsampled window, made on the host)
             src, off = xp.asarray(np.ascontiguousarray(seg, dtype=np.complex64)), np.int64(0)
         starts, local = track.line_parts(*line, len(seg))
         part = xp.empty(5*self.BLOCKS, dtype=np.float32)
@@ -148,20 +149,23 @@ class OerderMeyr(Stage):
 
     def step(self, x, st, meta):
         sps = float(self.sps or meta.sps)
-        if sps < 2:
-            raise ValueError(f"OerderMeyr needs at least 2 samples per symbol, got {sps}")
+        if sps < 1:
+            raise ValueError(f"OerderMeyr needs a sample a symbol or more, got {sps}")
         out = []
         st.dx = None # (the held samples on the device: up again once this call's are in)
         W = max(int(round(self.window*meta.Fs)), int(np.ceil(self.min_symbols*sps)))
         for a0, b, seg in track.windows(st, x, meta, W):
             end = st.base + len(st.buf)
             if len(seg) >= 16*sps:
-                u = 1 if sps >= 4 else 2 # Under 4 samples a symbol |x|^2 reaches past Nyquist and its line at 1/T aliases onto
-                if u == 1:               # its mirror (at 2 they cancel at some phases): the line is taken at twice the rate
+                # Under 4 samples a symbol |x|^2 reaches past Nyquist and its line at 1/T aliases onto its mirror (at 2 they
+                # cancel at some phases): the line is taken at u times the rate, u the least power of 2 to 4 samples a symbol
+                # (under 2, a 30 MBd carrier in 50 MS/s: the samples hold the signal, its square wants more of them)
+                u = 1 if sps >= 4 else 1 << int(np.ceil(np.log2(4/sps)))
+                if u == 1:
                     if _accel.native is None or self._dev(st): # (C++ sums single precision samples in double as they are)
                         seg = seg.astype(np.complex128) # (held as it came, single precision; the line is summed in double)
-                else: # x at half samples, band limited, from what the window holds (so any block cut gives the same)
-                    seg = interp.doubled(st.buf, a0, b, st.base)
+                else: # x at 1/u samples, band limited, from what the window holds (so any block cut gives the same)
+                    seg = interp.upsampled(st.buf, a0, b, st.base, u)
                 X, first, second, energy = self._sums(st, seg, a0, u, sps)
                 st.snr = float(np.abs(X)/max(energy, 1e-30)*np.sqrt(len(seg)/u))
                 if st.snr >= self.gate:

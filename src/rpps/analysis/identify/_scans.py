@@ -237,6 +237,8 @@ def scan_rs(bits, names=None, interleavers=True):
             b = bits ^ pol
             for off in range(8):
                 B = np.packbits(b[off:][:(len(b)-off)//8*8]).astype(np.int64)
+                if getattr(code, "_from_dual", None) is not None: # Bytes in the dual basis (CCSDS): to the field's elements
+                    B = code._from_dual[B]
                 for iname, inter in inters:
                     if inter is None:
                         groups = [(0, B, range(n))]

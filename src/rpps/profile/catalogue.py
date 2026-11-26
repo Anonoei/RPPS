@@ -150,6 +150,21 @@ def candidates(names=None, baud=None, bw=None, Fs=None, seconds=None, input=None
     return [(n, v) for n in names for v in variants(n, limit)
             if fits(n, baud=baud, bw=bw, Fs=Fs, seconds=seconds, input=input, tol=tol, **v) is None]
 
+def lineage(name):
+    """The profiles `name` extends, nearest first (its file's "extends", as written): [] for one that extends none. Of two
+    profiles that read a signal alike, the one fewer levels down is the more general name"""
+    out = []
+    while name and len(out) < 16:
+        try:
+            parent = _config._head(_config.find("profile", name)).get("extends")
+        except Exception:
+            break
+        if not parent or parent in out: # (a cycle is the config's error: not followed)
+            break
+        out.append(parent)
+        name = parent
+    return out
+
 def variants(name, limit=64):
     """The param values a blind search tries for a profile: every combination of the choices of its params (but those
     marked "blind": false), the defaults first, at most `limit` of them; [{}] for a profile without choices. A variant

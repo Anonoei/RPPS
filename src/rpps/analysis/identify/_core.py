@@ -2,10 +2,11 @@
 import numpy as np
 
 from ...code.coding import puncture_period, cached
-from ..result import Report, pick
+from ..result import Hypothesis, Report, pick
 from ..code.conv.mother import scan_defined_conv, guess_conv
 from ..code.block.linear import recover_dual
 from ..framing.bits import frame_markers, MARKER_PERIODS, scan_hdlc
+from ..framing.marked import layer
 from ..code.block import linear as blind_block
 
 from ._blind import _blind, _llrs, solve
@@ -102,6 +103,18 @@ def _identify(symbols, constellation, names, blind, differential, profiles, baud
         rs_rep = Report(h, t, None)
         rs = rs_rep.verdict
         out.complete = rs is not None or not short # More symbols could still show a Reed-Solomon code inside
+        fl = layer(info) if rs is None else None # Frames behind a marker, the code inside them (CCSDS TM concatenated)
+        if rs is None and (fl is None or fl.code is None): # Long frames (10232 bits at depth 5) want more than the tail
+            more = decode_tail(bit_streams(y, c, differential, keys=[key])[key], cached("/".join(conv.coding)), fraction=0.95)
+            if len(more) > 1.3*len(info):
+                fl = layer(more)
+        if fl is not None and fl.code is not None:
+            out.inner.append(Hypothesis("frame", fl.code, fl.z, {"marker": fl.marker, "period": fl.period,
+                                        "scrambler": fl.scrambler, "interleaver": fl.interleaver, "depth": fl.depth,
+                                        "words_ok": fl.ok/fl.words}, ("block", fl.code)))
+            out.complete = True
+            out.steps = steps + fl.steps
+            return _finish(out, c, profiles, baud)
         if rs is None and blind:
             _attach(out, solve(info))
             if not out.inner: # Nothing inside: what the bits are like (random-looking: keyed or compressed, no layer)
@@ -121,6 +134,16 @@ def _identify(symbols, constellation, names, blind, differential, profiles, baud
                     steps += [{"code": "interleave", "name": p["interleaver"]}]
                 steps += [{"code": "block", "name": rs.name}]
         out.steps = steps
+        return _finish(out, c, profiles, baud)
+
+    found = _framed_layer(y, c, differential)
+    if found is not None:
+        key, fl = found
+        rep = Report([Hypothesis("frame", fl.code, fl.z, {"stream": key, "marker": fl.marker, "period": fl.period,
+                                                          "words_ok": fl.ok/fl.words}, ("block", fl.code))], 1, None)
+        out = CodeDetection(found=True, complete=True, mod=c.name, kind="block", name=fl.code, stream=key,
+                            offset=fl.first, period=fl.period, z=fl.z, report=rep, n=len(y))
+        out.steps = pre + symbol_steps(key) + fl.steps
         return _finish(out, c, profiles, baud)
 
     hyps, trials = scan_hdlc(head)
@@ -165,6 +188,20 @@ def _identify(symbols, constellation, names, blind, differential, profiles, baud
     out.report = Report([h for r in tried for h in r.hyps], sum(r.trials for r in tried), None)
     out.complete = len(y) >= CONV_SYMBOLS # The scans above look no further: more symbols would not change this
     return _blind_tiers(out, head, c, y) if blind else out
+
+
+def _framed_layer(y, c, differential):
+    """(stream key, Frames) of the first bit stream of y whose frames behind a sync marker carry a code that decodes
+    (rpps.analysis.framing.marked), the streams in bit_streams' order, a marker found in its own polarity first"""
+    streams = bit_streams(y, c, differential)
+    found = []
+    for key, bits in streams.items():
+        fl = layer(bits)
+        if fl is not None and fl.code is not None:
+            found.append((fl.inverted, -fl.ok/fl.words, len(found), key, fl))
+            if not fl.inverted:
+                break
+    return min(found)[3:] if found else None
 
 
 def _blind_tiers(out, head, c, y):

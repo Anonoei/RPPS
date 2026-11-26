@@ -18,6 +18,7 @@ def test_levels_set_and_nest():
         assert _effort.level() == "max"
     assert _effort.level() == "balanced" and _effort.scale("iters", 50) == 50 and _effort.choice("maxlog", True) is True
     assert _effort.interp_taps(2) == 8 and _effort.interp_taps(4) == 4 # balanced: cubic from 4 samples a symbol
+    assert _effort.interp_taps(1.67) == 12 # (a signal sampled close to its width: the long sinc)
     with pytest.raises(ValueError):
         rp.set_effort("extreme")
 
@@ -30,11 +31,15 @@ def test_fractional_is_band_limited(taps, floor):
         err = 20*np.log10(np.sqrt(np.mean(np.abs(interp.fractional(x, t, taps) - np.exp(2j*np.pi*f*t))**2)))
         assert err < floor, (f, err)
 
-def test_doubled_and_edges():
+@pytest.mark.parametrize("u", [2, 4, 8])
+def test_upsampled_and_edges(u):
+    """x at 1/u samples, band limited: a tone at 0.13 cycles a sample within 1e-3 at every phase"""
     x = np.exp(2j*np.pi*0.13*np.arange(500))
-    y = interp.doubled(x, 100, 300, 0)
-    assert len(y) == 2*(300 - interp.REACH - 100)
-    assert np.max(np.abs(y - np.exp(2j*np.pi*0.13*(100 + np.arange(len(y))/2)))) < 1e-3
+    y = interp.upsampled(x, 100, 300, 0, u)
+    assert len(y) == u*(300 - interp.REACH - 100)
+    assert np.max(np.abs(y - np.exp(2j*np.pi*0.13*(100 + np.arange(len(y))/u)))) < 1e-3
+    with pytest.raises(ValueError):
+        interp.upsampled(x, 100, 300, 0, 3) # (not a row of the sinc table)
     z = interp.fractional_edge(x[:20], np.array([0.5, 19.5]), 12) # beyond the ends: zeros
     assert np.all(np.isfinite(z))
 

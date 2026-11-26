@@ -6,6 +6,7 @@ import pytest
 
 import rpps as rp
 from rpps.analysis import signal_profile as SP
+from rpps.analysis.signal_profile import _framed as F
 from rpps.analysis.result import Hypothesis
 
 def capture(path, x, Fs, shift, rng, noise=0.05):
@@ -136,7 +137,7 @@ def test_framed_takes_the_carrier_offset_from_the_preamble():
     y = rp.Data(o.data, Fs=o.Fs, sps=o.sps, delay=o.delay, flush=True) + rp.wave.Matched(rp.signal.filters.load("pulse/rrc/0p35"))
     z = np.tile(np.asarray(y.data)[::o.sps], 3)
     z = z*np.exp(2j*np.pi*0.06*np.arange(len(z))) # 60 kHz at 1 MBd that the chain didn't see
-    got = {name: headers for name, _, headers, _, _, _ in SP.framed(z, SimpleNamespace(cfo=0.0, baud=1e6), skip=0)}
+    got = {name: headers for name, _, headers, _, _, _, _ in SP.framed(z, SimpleNamespace(cfo=0.0, baud=1e6), skip=0)}
     assert got and max(got.values()) >= 3
 
 def test_framed_reads_the_headers_of_a_profile_ending_in_branches():
@@ -149,8 +150,37 @@ def test_framed_reads_the_headers_of_a_profile_ending_in_branches():
     o = p.tx()(rp.Data(data, Fs=1e6, sps=1, flush=True), fields=frames)
     y = rp.Data(o.data, Fs=o.Fs, sps=o.sps, delay=o.delay, flush=True) + rp.wave.Matched(rp.signal.filters.load("pulse/rrc/0p35"))
     z = np.asarray(y.data)[::o.sps]
-    got = {name: headers for name, _, headers, _, _, _ in SP.framed(np.tile(z, 3), SimpleNamespace(cfo=0.0, baud=1e6), skip=0)}
+    got = {name: headers for name, _, headers, _, _, _, _ in SP.framed(np.tile(z, 3), SimpleNamespace(cfo=0.0, baud=1e6), skip=0)}
     assert "dvbs2/mis" in got and got["dvbs2/mis"] >= 3
+
+def test_a_checks_evidence():
+    """A step is verified when its check passed twice and at least as often as it failed; refuted when it kept failing"""
+    from types import SimpleNamespace as M
+    msgs = [M(kind="bb", crc_ok=True)]*3 + [M(kind="bb", crc_ok=False)] + [M(kind="sndu", crc_ok=False)]*5 + \
+           [M(kind="pls", crc_ok=None)]*9 + [M(kind="once", crc_ok=True)]
+    chk = F.checks(msgs)
+    assert chk == {"bb": (3, 1), "sndu": (0, 5), "once": (1, 0)}
+    assert F.evidence(chk) == (["bb"], ["sndu"])
+
+def test_lineage_follows_extends():
+    assert rp.profile.lineage("dvbs2/ule") == ["dvbs2/ts", "dvbs2/normal"]
+    assert rp.profile.lineage("dvbs2/normal") == [] and rp.profile.lineage("ccsds/tm_packets") == ["ccsds/tm_rs"]
+
+def _row(name, verified=(), refuted=(), heads=("frame", "pls"), n=8):
+    ids = [["pls"], ["bbheader"]]
+    return (name, {h: ([], n) for h in heads}, n, False, {}, ids,
+            {"verified": list(verified), "refuted": list(refuted), "checks": {}})
+
+def test_rank_names_what_the_checks_verify_then_the_most_general():
+    """DVB-S2's family shares the PL header: with nothing past it verified, the profile they all extend is named (not
+    the first by name); a layer that verifies wins; one whose check keeps failing loses to the profile without it"""
+    rows = [_row("dvbrcs2/forward"), _row("dvbs2/ule"), _row("dvbs2/normal"), _row("dvbs2/ts")]
+    assert F.rank(rows)[0][0] == "dvbs2/normal"
+    tied = [t[0] for t in F.ties(F.rank(rows))]
+    assert tied[0] == "dvbs2/normal" and set(tied) == {r[0] for r in rows} and tied[-1] == "dvbs2/ule" # (2 levels down)
+    rows = [_row("dvbs2/ule", ["bbheader", "ts"], ["sndu"]), _row("dvbs2/ts", ["bbheader", "ts"]),
+            _row("dvbs2/normal", ["bbheader"])]
+    assert F.rank(rows)[0][0] == "dvbs2/ts" and len(F.ties(F.rank(rows))) == 1
 
 @pytest.mark.kernels
 def test_progress_reports_each_stage(dvbs_capture):

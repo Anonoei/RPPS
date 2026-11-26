@@ -27,7 +27,7 @@ def test_gse_fragments_and_crc(rng, cuts):
     fields = gse.pack(pdus, 400)
     assert all(len(f) == 400 for f in fields) and len(fields) == 5
     msgs, out = _gse_rx(fields, cuts=cuts)
-    got = sorted((m.fields["protocol"], m.payload) for m in msgs if m.kind == "gse" and m.crc_ok)
+    got = sorted((m.fields["protocol"], m.payload) for m in msgs if m.kind == "gse" and m.crc_ok is not False) # (whole PDUs: None, no check)
     assert got == sorted((p, d) for p, d in pdus)
     # Only the PDUs of protocol 0x0082 come out, each whole, in the order they end (packed in order: the 12-byte one after
     # the last fragment of the 1500-byte one)

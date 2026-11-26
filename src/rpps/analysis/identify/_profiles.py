@@ -60,18 +60,22 @@ def _profiles(baud=None):
 
 
 def match_profile(steps, baud=None):
-    """A shipped profile (config/profile), or a variant of one, with the same code and symbol steps as `steps`:
-    (name, its steps, the params of the variant: {} for the defaults) or (None, None, None). baud: the symbol rate,
+    """A shipped profile (config/profile), or a variant of one, with the same code and symbol steps as `steps`, the most
+    general when several do (rp.profile.catalogue.lineage): (name, its steps, the params of the variant: {} for the
+    defaults) or (None, None, None). baud: the symbol rate,
     when known: a profile whose "requires" sets another isn't named"""
+    from ...profile.catalogue import lineage
     want = (_fec_steps(steps), _symbol_steps(steps)[:2])
+    hits = []
     for name, obj, params in _profiles(baud):
         try:
             got = (_fec_steps(obj["steps"]), _symbol_steps(obj["steps"])[:2])
         except Exception: # A profile whose steps a header names (no fixed code) can't match
             continue
         if got == want:
-            return name, obj["steps"], params
-    return None, None, None
+            hits.append((len(lineage(name)), len(hits), name, obj["steps"], params))
+    # The most general of those that match: ccsds/tm_packets extends ccsds/tm_rs with a link layer the code doesn't show
+    return min(hits)[2:] if hits else (None, None, None)
 
 
 def _finish(out, c, profiles, baud=None):

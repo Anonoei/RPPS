@@ -62,7 +62,8 @@ class MPower(Stage):
     alone is about 1) is skipped; after `relock` of those in a row the carrier is acquired again from the FFT. Acquiring
     wants `gate` more than the best of the FFT's N frequencies reaches on noise, sqrt(2 ln N): at an Es/N0 where the M-th
     power is lost in noise (DVB-S2 under 0 dB with M = 8) nothing is acquired and the symbols pass, for a preamble and
-    pilots to take the phase.
+    pilots to take the phase. acquire: a line one window can't show is tried on the last `acquire` symbols together,
+    once every that many windows (fixed positions): DVB-S2 at 8 dB under M = 8 wants about 8000.
 
     The phase is known modulo 2 pi / M: a preamble, a differential code or a polarity search takes the rest. order: M (a
     profile may change it with the modulation, live). offset: the angle of the constellation's mean point^M (0 for BPSK,
@@ -77,9 +78,10 @@ class MPower(Stage):
     THREADS, BLOCKS = 256, 32 # A measurement's launch: BLOCKS partial sums come back
 
     def __init__(self, order=4, offset=0.0, window=1e-3, min_symbols=1024, bw=0.25, gate=3.0, relock=4, name="carrier",
-                 device=False):
+                 device=False, acquire=16384):
         self.order, self.offset, self.window, self.min_symbols = int(order), float(offset), window, min_symbols
         self.bw, self.gate, self.relock, self.name, self.device = bw, gate, relock, name, bool(device)
+        self.acquire = int(acquire)
 
     def __str__(self):
         return f"MPower({self.order})"
@@ -106,22 +108,35 @@ class MPower(Stage):
         s = np.sum(z*np.exp(-2j*np.pi*M*f*(n - c)))
         return f, s, z
 
+    def _try_acquire(self, st, seg, a0, b):
+        """Acquire from seg ([a0, b)): True when its line stood out (the tracker set)"""
+        M, tr = self.order, st.tr
+        n = np.arange(a0, b)
+        c = (a0 + b)/2
+        f, s, z = self._acquire(seg, n, c)
+        st.snr = float(np.abs(s)/max(np.sum(np.abs(z)), 1e-30)*np.sqrt(len(seg)))
+        # The best of N frequencies: noise alone reaches about sqrt(2 ln N) there, so acquiring wants more
+        N = 4*(1 << int(np.ceil(np.log2(max(len(z), 2)))))
+        if st.snr < self.gate + np.sqrt(2*np.log(N)):
+            return False
+        tr.started = False
+        track.update(tr, (np.angle(s) - self.offset)/M, c, rate=2*np.pi*f)
+        return True
+
     def step(self, x, st, meta):
         M, out = self.order, []
         st.dx = None # (the held samples on the device: up again once this call's are in)
-        for a0, b, seg in track.windows(st, x, meta, max(int(round(self.window*meta.Fs)), int(self.min_symbols))):
-            n = np.arange(a0, b)
-            c = (a0 + b)/2
+        W = max(int(round(self.window*meta.Fs)), int(self.min_symbols))
+        group = max(1, -(-self.acquire//W)) # windows a long acquisition takes together
+        for a0, b, seg in track.windows(st, x, meta, W):
             tr = st.tr
+            c = (a0 + b)/2
             if len(seg) >= 8:
                 if not tr.started or tr.missed >= self.relock:
-                    f, s, z = self._acquire(seg, n, c)
-                    st.snr = float(np.abs(s)/max(np.sum(np.abs(z)), 1e-30)*np.sqrt(len(seg)))
-                    # The best of N frequencies: noise alone reaches about sqrt(2 ln N) there, so acquiring wants more
-                    N = 4*(1 << int(np.ceil(np.log2(max(len(z), 2)))))
-                    if st.snr >= self.gate + np.sqrt(2*np.log(N)):
-                        tr.started = False
-                        track.update(tr, (np.angle(s) - self.offset)/M, c, rate=2*np.pi*f)
+                    if (not self._try_acquire(st, seg, a0, b) and group > 1 and ((b - 1)//st.W + 1) % group == 0
+                            and b - st.base >= group*st.W): # The last `group` windows together, at fixed positions
+                        lo = b - group*st.W
+                        self._try_acquire(st, st.buf[lo - st.base:b - st.base], lo, b)
                 else:
                     s, mag = self._measure(st, a0, seg, track.at(tr, a0), tr.rate, M)
                     st.snr = float(np.abs(s)/max(mag, 1e-30)*np.sqrt(len(seg)))
@@ -132,7 +147,7 @@ class MPower(Stage):
                     else:
                         track.miss(tr, c)
             out.append(self._turn_back(st, a0, seg, track.at(tr, a0), tr.rate) if tr.started else seg.astype(np.complex64))
-        track.keep(st, st.k*st.W)
+        track.keep(st, (st.k - group + 1)*st.W) # (the windows a long acquisition takes with the next)
         W, tr = st.W, st.tr
         meta.stream.est[self.name] = dict(frequency=tr.rate/(2*np.pi) if tr.started else None,
                                           phase=float(tr.value % (2*np.pi/M)) if tr.started else None, snr=st.snr,
