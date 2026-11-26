@@ -15,6 +15,9 @@ what to use instead.
   `dvbs2_32apsk_9_10` are `rp.symbol.load("apsk/dvbs2_16apsk", rate="2/3")`: a `rate` choice sets the radii (no more
   `gamma`, `gamma1`, `gamma2` params). The `dvbs2/modcod` table has `mapping` and `params` columns, the constellation
   step and `Constellation.control` take `params`, and the turned maps are in `Constellation.turned`, not `maps`.
+- **The scramblers `feedthrough/fib` and `feedthrough/galois` are removed**: generic registers no standard or system
+  uses. `v35`, `g3ruh` and `ieee80211b` are the shipped feedthrough scramblers; write a definition of your own for
+  another polynomial.
 - **A definition file no longer says its `"base"`: the folder it is in does** (`fec/block/`, `filter/fir/`,
   `plan/builder/`..., else the resource: `crc/`, `profile/<family>/`). A file that writes `"base"` is refused:
   `python -m rpps fmt <your config dir>` takes out every `"base"` its folder says (and names a file in the wrong one). Definitions made in code still give `"base"`, and `rp.save`, the importers
@@ -313,6 +316,9 @@ what to use instead.
   to 4.6x (16APSK) faster. `OerderMeyr`'s window sums and the cubic interpolation (`interp.fractional`, 4 taps) run
   in C++: 62 to 157 Msamples/s.
 - `tools/profile_bench.py`: each profile's receive on a synthetic signal, its steps' load and the heaviest step kinds.
+- **Made-up codes, filters and windows are tagged `example`** (`ldpc/3_6`, `ldpc/gallager_96_48`, seven filters, three
+  windows). Those built on a published method cite it in `ref`; `ldpc/3_6`'s comment no longer calls it a (3,6)-regular
+  code, which it is not.
 - **Definition files put on one line whatever fits in 120 columns** (`python -m rpps fmt`, `rp.save`): a profile's
   steps read one step a line (`{"sync": "carrier", "id": "carrier", "order": 8}`), `{"param": "sps"}` is one line, and
   config/ is a fifth shorter. Lists of numbers stay on one line; table `rows` one row a line.

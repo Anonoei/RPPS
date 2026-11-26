@@ -1,5 +1,7 @@
 {
   "type": "gaussian",
   "comment": "Gaussian window, sigma 0.3",
+  "ref": "F. J. Harris, On the Use of Windows for Harmonic Analysis with the DFT, Proc. IEEE 66(1), 1978, 51-83",
+  "tags": ["example"],
   "params": {"sigma": 0.3}
 }

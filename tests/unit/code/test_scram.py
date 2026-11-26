@@ -24,7 +24,7 @@ def test_scram_whitens_constant_input(folder, name):
     scr = np.asarray(s.encode(np.zeros(8*204*8, dtype=bool)))
     assert 0.4 < scr.mean() < 0.6
 
-@pytest.mark.parametrize("name", ["v35", "galois", "fib", "g3ruh"])
+@pytest.mark.parametrize("name", ["v35", "g3ruh", "ieee80211b"])
 def test_fdt_keystream_follows_polynomial(name):
     """The keystream is an LFSR sequence: s[n-N] = s[n] ^ (xor of s[n-t] for the other taps t)"""
     s = rp.code.scram.load(name)
@@ -35,7 +35,7 @@ def test_fdt_keystream_follows_polynomial(name):
     for i in range(N, len(y)):
         assert y[i-N] == y[i] ^ np.bitwise_xor.reduce([y[i-t] for t in taps if t < N])
 
-FDT_DELAYS = {"g3ruh": (12, 17), "v35": (3, 20), "galois": (11, 13, 14, 16), "fib": (11, 13, 14, 16)}
+FDT_DELAYS = {"g3ruh": (12, 17), "v35": (3, 20), "ieee80211b": (4, 7)}
 
 @pytest.mark.parametrize("name", FDT_DELAYS)
 def test_fdt_is_self_synchronizing(name, rng):

@@ -7,7 +7,7 @@ import pytest
 import rpps as rp
 
 CODES = [("block", "hamming/7_4"), ("block", "hamming/15_11"), ("block", "repeat/3")]
-SCRAMS = ["v35", "fib"]
+SCRAMS = ["v35", "ieee80211b"]
 MODS = ["bpsk", "qpsk", "8psk"]
 
 def build(code, scram, mod):

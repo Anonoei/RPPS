@@ -1,5 +1,7 @@
 {
   "type": "taps",
   "comment": "4-point moving average (boxcar), unity gain at DC",
+  "ref": "S. W. Smith, The Scientist and Engineer's Guide to Digital Signal Processing, ch. 15",
+  "tags": ["example"],
   "taps": [0.25, 0.25, 0.25, 0.25]
 }

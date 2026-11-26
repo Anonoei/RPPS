@@ -1,6 +1,8 @@
 {
   "type": "biquad",
   "comment": "RBJ notch at 0.1 of the sample rate, Q 30",
+  "ref": "R. Bristow-Johnson, Audio EQ Cookbook (W3C): notch",
+  "tags": ["example"],
   "shape": "notch",
   "f0": 0.1,
   "q": 30

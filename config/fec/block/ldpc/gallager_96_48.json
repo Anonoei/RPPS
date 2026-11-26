@@ -1,6 +1,8 @@
 {
   "type": "ldpc",
   "comment": "Gallager (96,48) LDPC example",
+  "ref": "R. G. Gallager, Low-Density Parity-Check Codes, IRE Trans. IT-8(1), 1962, 21-28: the (n, 3, 6) ensemble",
+  "tags": ["example"],
   "gallager": {"n": 96, "wc": 3, "wr": 6, "seed": 1},
   "iters": 50,
   "alpha": 0.8
