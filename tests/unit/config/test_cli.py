@@ -169,8 +169,6 @@ def test_gen_ldpc_turns_address_tables_into_definitions(generated):
     obj = json.loads((generated/"fec"/"block"/"ldpc"/"dvbs2_64800_3_5.json").read_text())
     assert (obj["n"], obj["k"], obj["group"], obj["table"]) == (8, 4, 2, [[0, 1, 2], [3, 1]])
 
-@pytest.mark.xfail(strict=True, raises=rp.errors.ConfigError, reason="gen-ldpc still writes \"base\", which a definition file "
-                   "may no longer hold")
 def test_a_generated_ldpc_definition_loads(generated, config_layer):
     config_layer(generated)
     code = rp.code.load("block/ldpc/dvbs2_64800_3_5")

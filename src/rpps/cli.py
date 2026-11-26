@@ -397,7 +397,7 @@ def cmd_gen_ldpc(args):
 
     The input is xdsopl/LDPC's dvb_s2_tables.hh (https://github.com/xdsopl/LDPC). It is read as data, never executed.
     """
-    from rpps._config import PATH_CONFIG
+    from rpps._config import PATH_CONFIG, format_json
     tables = _ldpc_parse(Path(args.tables).read_text())
     root = Path(args.out) if args.out else PATH_CONFIG / "fec" / "block" / "ldpc"
     root.mkdir(parents=True, exist_ok=True)
@@ -406,10 +406,11 @@ def cmd_gen_ldpc(args):
         r = _ldpc_rows(t)
         assert len(r) * t["M"] == t["K"], (i, len(r), t["K"])
         name = f"dvbs2_64800_{_LDPC_RATES[i]}"
-        (root / f"{name}.json").write_text(json.dumps({
-            "base": "block", "type": "ldpc", "n": t["N"], "k": t["K"], "group": t["M"], "systematic": "head", "iters": 50, "alpha": 0.8,
-            "comment": f"DVB-S2 normal frame LDPC rate {_LDPC_RATES[i].replace('_', '/')}: parity address table B.{i[1:]} of EN 302 307",
-            "table": r}, separators=(",", ":")))
+        obj = {"extends": "dvbs2_64800",
+               "comment": f"DVB-S2 normal frame LDPC rate {_LDPC_RATES[i].replace('_', '/')}: parity address table B.{i[1:]} of EN 302 307",
+               "k": t["K"], "table": r}
+        obj.update({key: v for key, v, parent in (("n", t["N"], 64800), ("group", t["M"], 360)) if v != parent})
+        (root / f"{name}.json").write_text(format_json(obj) + "\n")
         print(name, "rows", len(r), "k", t["K"])
     return 0
 

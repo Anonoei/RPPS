@@ -3,9 +3,9 @@ import numpy as np
 import pytest
 
 import rpps as rp
-from rpps.sequence.lfsr import fibonacci, galois_left
+from rpps.sequence.lfsr import fibonacci, galois_left, galois_right
 
-REGISTERS = [fibonacci, galois_left]
+REGISTERS = [fibonacci, galois_left, galois_right]
 
 def register(cls):
     return cls(np.array([1, 0, 0, 0], bool), np.array([4, 3])) # x^4 + x^3 + 1: primitive
@@ -35,9 +35,7 @@ def feedthrough(register, poly=(7, 4)):
     return rp._config.load_obj("scramble", "t", {"base": "scramble", "type": "feedthrough", "register": register,
                                                  "poly": list(poly), "seed": [1, 0, 1, 1, 0, 0, 1]})
 
-@pytest.mark.parametrize("register", ["fibonacci", "galois_left",
-    pytest.param("galois_right", marks=pytest.mark.xfail(strict=True, reason="galois_right shifts its feedback out of the "
-                 "register before it reaches the output: no delays, so the data is unscrambled after the first register length"))])
+@pytest.mark.parametrize("register", ["fibonacci", "galois_left", "galois_right"])
 def test_every_register_form_scrambles_with_the_polynomials_delays(register, rng):
     s = feedthrough(register)
     data = rng.integers(0, 2, 400).astype(bool)
@@ -45,3 +43,8 @@ def test_every_register_form_scrambles_with_the_polynomials_delays(register, rng
     assert s.delays() == [4, 7]
     assert np.mean(y[7:] != data[7:]) > 0.3
     assert np.array_equal(np.asarray(feedthrough(register).decode(y)).astype(bool), data)
+
+def test_the_two_galois_forms_mirror_each_other():
+    seed, taps = np.array([1, 0, 1, 1, 0, 0, 0], bool), np.array([7, 4])
+    left, right = galois_left(seed, taps), galois_right(seed[::-1], taps)
+    assert output(left, 200) == output(right, 200)

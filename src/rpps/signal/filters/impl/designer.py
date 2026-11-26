@@ -26,13 +26,12 @@ def _sinc(taps):
     f = f * np.hanning(taps)
     return f
 
+_SHAPES = {"sinc": _sinc, "exp": _exp, "sqr": _sqr}
+
 def lowpass(taps, name="sinc"):
-    if name == "sinc":
-        f = _sinc(taps)
-    elif name == "exp":
-        f = _exp(taps)
-    elif name == "sqr":
-        f = _sqr(taps)
+    if name not in _SHAPES:
+        raise ValueError(f"no filter shape {name!r} (have {', '.join(_SHAPES)})")
+    f = _SHAPES[name](taps)
     f = f / np.sum(f) # normalize values to 1
     return f
 

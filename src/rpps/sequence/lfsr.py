@@ -101,8 +101,8 @@ class galois_right(Galois):
     name = "Galois Right"
     def get_bit(self):
         msb = self.lfsr[-1]
-        self.lfsr[:-1] = self.lfsr[1:]  # clock LFSR
-        self.lfsr[-1] = 0
+        self.lfsr[1:] = self.lfsr[:-1]  # clock LFSR towards the output end
+        self.lfsr[0] = 0
 
         if msb:
             self.lfsr = np.bitwise_xor(self.lfsr, self.toggle)
@@ -111,8 +111,8 @@ class galois_right(Galois):
     def advance(self, bit, descramble=False):
         out = bool(bit) ^ bool(self.lfsr[-1])
         fed = bool(bit) if descramble else out
-        self.lfsr[:-1] = self.lfsr[1:]
-        self.lfsr[-1] = 0
+        self.lfsr[1:] = self.lfsr[:-1]
+        self.lfsr[0] = 0
         if fed:
             self.lfsr = np.bitwise_xor(self.lfsr, self.toggle)
         return out

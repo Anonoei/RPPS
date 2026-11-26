@@ -6,13 +6,10 @@ import rpps as rp
 from rpps.signal.filters import Window
 
 NAMES = Window.s()
-ODD_FAILS = {"tukey", "planck_taper"} # built as two halves of N//2
 
 @pytest.mark.parametrize("name", NAMES)
 @pytest.mark.parametrize("N", [64, 65])
-def test_window_is_a_bounded_symmetric_taper(name, N, request):
-    if N % 2 and name in ODD_FAILS:
-        request.applymarker(pytest.mark.xfail(strict=True, raises=IndexError, reason="an odd length raises"))
+def test_window_is_a_bounded_symmetric_taper(name, N):
     w = np.asarray(Window.get(name)(N), float)
     assert w.shape == (N,) and np.all(np.isfinite(w))
     assert w.max() <= 1 + 1e-6 and w.max() > 0.98 and w.min() > -0.08 # (flat-top dips below zero)
@@ -20,6 +17,13 @@ def test_window_is_a_bounded_symmetric_taper(name, N, request):
     periodic = np.max(np.abs(w[1:] - w[1:][::-1])) # as an FFT window: symmetric about sample N/2
     assert min(symmetric, periodic) < 1e-9
     assert np.mean(w[N//4:-N//4]) >= np.mean(w) - 1e-9 # weight in the middle, not at the ends
+
+@pytest.mark.parametrize("name", ["tukey", "planck_taper"])
+def test_a_window_built_from_halves_takes_any_length(name):
+    for N in (1, 2, 3, 7, 33):
+        w = Window.get(name)(N)
+        assert len(w) == N and np.array_equal(w, w[::-1])
+        assert N > 1 or w[0] == 1
 
 @pytest.mark.parametrize("name,numpy", [("hann", np.hanning), ("hamming_orig", np.hamming), ("blackman", np.blackman),
                                         ("bartlett", np.bartlett)])

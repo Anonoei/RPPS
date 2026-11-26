@@ -71,3 +71,8 @@ def test_prototype_low_and_high_pass_split_the_band(shape):
     assert np.sum(low) == pytest.approx(1.0) and np.sum(high) == pytest.approx(0.0, abs=1e-9)
     assert abs(np.sum(low*(-1)**np.arange(64))) < 0.2 < abs(np.sum(high*(-1)**np.arange(64)))
 
+@pytest.mark.parametrize("build", ["lowpass", "highpass"])
+def test_an_unknown_prototype_shape_is_refused_by_name(build):
+    from rpps.signal.filters.impl import designer
+    with pytest.raises(ValueError, match="no filter shape 'box' .have sinc, exp, sqr"):
+        getattr(designer, build)(64, "box")

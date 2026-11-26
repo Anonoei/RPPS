@@ -359,6 +359,12 @@ what to use instead.
 - `parallel_bench.py` and `resample_bench.py` take their positional arguments through argparse.
 
 ### Fixed
+- **The `galois_right` register scrambles:** it shifted its feedback out before the output, so data went through
+  unchanged after the first register length. It is now `galois_left` mirrored.
+- **The `tukey` and `planck_taper` windows take odd lengths** (they raised `IndexError`).
+- **`rpps gen-ldpc` writes definitions that load:** no `"base"`, and the shipped files' form (extending `dvbs2_64800`).
+- **The `lowpass`/`highpass` filter prototypes name their shapes** when given an unknown one (`ValueError`, not
+  `UnboundLocalError`).
 - `Mat` could put a refined timing's first symbol's support before its buffer (numpy wrapped round to the block's end).
 - `signal_profile.framed` failed on profiles that end in branches (`dvbs2/mis`), ending the framed pass for every
   profile.

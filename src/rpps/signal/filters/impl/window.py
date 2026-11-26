@@ -173,9 +173,15 @@ def gen_gaussian(N, sigma=0.2, p=2): # Generalized Gaussian
     w = np.exp(-( (n-N/2)/(sigma*N/2) )**p)
     return w
 
+def _mirror(half, N):
+    """A symmetric window of N samples from its first ceil(N/2): an odd N has one middle sample"""
+    return np.concat((half, half[:N//2][::-1]))
+
 def tukey(N, a=0.5):
-    w = np.zeros(N//2)
+    if N == 1:
+        return np.ones(1)
     n = np.arange(0, N/2)
+    w = np.zeros(len(n))
 
     n1i = (0 <= n) & (n < (a*N)/2)
     n2i = ((a*N)/2 <= n) & (n <= N/2)
@@ -185,12 +191,13 @@ def tukey(N, a=0.5):
 
     w[n1i] = w1
     w[n2i] = w2
-    w = np.concat((w, w[::-1]))
-    return w
+    return _mirror(w, N)
 
 def planck_taper(N, e=0.25):
-    w = np.zeros(N//2)
+    if N == 1:
+        return np.ones(1)
     n = np.arange(0, N/2)
+    w = np.zeros(len(n))
 
     n1i = (1 <= n) & (n < e*N)
     n2i = (e*N <= n) & (n <= N/2)
@@ -200,8 +207,7 @@ def planck_taper(N, e=0.25):
 
     w[n1i] = w1
     w[n2i] = w2
-    w = np.concat((w, w[::-1]))
-    return w
+    return _mirror(w, N)
 
 def kaiser(N, a=2):
     return np.kaiser(N, a)
