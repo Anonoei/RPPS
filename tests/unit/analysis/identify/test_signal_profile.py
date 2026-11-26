@@ -458,3 +458,43 @@ def test_a_box_off_its_signal_is_fitted_to_it():
     assert p.solved and p.profile_name == "dvbs/qpsk_3_4", p
     assert abs(p.signal.mid - 1.0e6) < 50e3 and 1.0e6 < p.signal.width < 1.6e6
     assert any(s.kind == "box" for s in p.steps)
+
+@pytest.mark.parametrize("walk", [0.002, 0.005])
+def test_relock_on_the_unique_word_recovers_the_payload(walk):
+    """Framed BPSK (32-symbol word, 400-symbol frames) at 12 dB, its carrier 2e-4 cycles a sample off and wandering
+    (phase noise): re-locked frame by frame on the words, the payload passes the gate and every decision is the one sent"""
+    from types import SimpleNamespace
+    from support.signals import shaped
+    from rpps.analysis.framing import frames
+    from rpps.analysis.modulation.quality import gate
+    from rpps.analysis.signal_profile._chain import _Chain
+    rng = np.random.default_rng(1)
+    P, U, F = 400, 32, 60
+    uw = 1 - 2.0*rng.integers(0, 2, U)
+    sent = 1 - 2.0*rng.integers(0, 2, (F, P - U))
+    x, _ = shaped(rng, [1, -1], F*P, 4, esn0_db=12, tau=0.3,
+                  sym=np.concatenate([np.concatenate((uw, sent[k])) for k in range(F)]))
+    n = np.arange(len(x))
+    x = (x*np.exp(1j*(2*np.pi*2e-4*n + np.cumsum(rng.normal(0, walk, len(x)))))).astype(np.complex64)
+    fr = frames.Frame(period=P, uw_start=0, uw_length=U, coherence=1.0, floor=0.0, uw=None, frames=F)
+    ch = _Chain.__new__(_Chain)
+    ch.near, ch.ch = [x], SimpleNamespace(Fs=4e6)
+    f = ch._relock(fr, np.tile(np.concatenate((uw, np.zeros(P - U))), (F, 1)).astype(complex),
+                   SimpleNamespace(baud=1e6, beta=0.35, M=2, mod="bpsk"))
+    pay = f[:, U:]
+    assert len(f) >= F - 4 and gate(pay[:40].ravel(), np.array([1, -1])).ok
+    dec = np.sign(pay.real)
+    agree = max(np.mean(dec[:F - o - 1] == s*sent[o:o + len(dec)][:F - o - 1]) for o in range(4) for s in (1, -1))
+    assert agree == 1.0
+
+def test_cut_keeps_each_constellation_on_its_points():
+    """BPSK cut on QPSK's grid sat 45 degrees off its points (the gate's "turned +44.6 deg"); on its own grid it doesn't"""
+    from rpps.analysis.framing import frames
+    assert {m: frames.grid_of(m) for m in ("bpsk", "qpsk", "8psk", "16qam")} == {"bpsk": 2, "qpsk": 4, "8psk": 8, "16qam": 4}
+    rng = np.random.default_rng(2)
+    P, U = 200, 16
+    uw = 1 - 2.0*rng.integers(0, 2, U)
+    y = np.concatenate([np.concatenate((uw, 1 - 2.0*rng.integers(0, 2, P - U))) for _ in range(30)])*np.exp(0.4j)
+    fr = frames.Frame(period=P, uw_start=0, uw_length=U, coherence=1.0, floor=0.0, uw=None, frames=30)
+    pay = frames.cut(y, fr, grid=frames.grid_of("bpsk"))[:, U:]
+    assert np.max(np.abs(pay.imag)) < 1e-6

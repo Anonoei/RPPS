@@ -430,7 +430,7 @@ class _Chain:
             return
         if fr is None:
             return
-        cut = frames.cut(y, fr)
+        cut = frames.cut(y, fr, grid=frames.grid_of(det.mod))
         bits = frames.payload_bits(cut, fr, det.mod)
         rep, same = frames.repeats(bits, agree=0.95)
         p.add("frame", str(fr), GUESS, detail={"period": fr.period, "uw_start": fr.uw_start, "uw_length": fr.uw_length,
@@ -453,10 +453,20 @@ class _Chain:
         from ... import symbol
         from ..modulation.quality import gate
         g = gate(pay, symbol.load_or_generate(det.mod).points)
+        if not g.ok: # Bit errors the noise doesn't explain fill the rank: re-lock on the unique word, frame by frame
+            why, relocked = g.why, self._relock(fr, cut, det)
+            if relocked is not None:
+                g2 = gate(relocked[:400, fr.uw_length:].ravel(), symbol.load_or_generate(det.mod).points)
+                if g2.ok:
+                    cut, g = relocked, g2
+                    bits = frames.payload_bits(cut, fr, det.mod)
+                    whole = len(bits) >= n + 48
+                    p.add("timing", "re-locked on the unique word", GUESS,
+                          note=f"the continuous lock's decisions couldn't be trusted ({why}); each "
+                               "frame timed and phased from its own word (rpps.analysis.framing.frames.pilot_frames)")
         if not g.ok: # Bit errors the noise doesn't explain fill the rank: a full rank then says nothing
             p.add("fec", "block code on the frame-aligned payload: not tried", UNSOLVED,
-                  note=f"the hard decisions can't be trusted ({g.why}): fix the symbols (a pilot-aided sync, "
-                       "rpps.analysis.framing.frames.pilot_frames) before a rank test")
+                  note=f"the hard decisions can't be trusted ({g.why}), re-locked on the unique word or not")
             return
         if whole:
             found, where = solve_block(bits.ravel(), n=n, offset=0), "the frame-aligned payload"
@@ -489,6 +499,25 @@ class _Chain:
             p.add("fec", h.name, GUESS, detail={"z": h.z, **{k: str(v) for k, v in h.params.items()}},
                   note=f"blind, on {where}: {g!r}" if g is not None else f"blind, on {where}")
         return any(h.params.get("kind") not in ("frame", "recurrence", "fill") for h, _ in found)
+
+    def _relock(self, fr, cut, det, min_frames=8):
+        """The frames again from the channel's samples, each timed and phased on its own unique word
+        (rpps.analysis.framing.frames.pilot_frames), cut on the constellation's symmetry: frames x period, or None when
+        too few were found (or the samples aren't kept)"""
+        from ..framing import frames
+        if not self.near or det is None:
+            return None
+        try:
+            uw = cut[:, :fr.uw_length].mean(axis=0) # (the word averaged over the frames: one frame's is as noisy as data)
+            f, _ = frames.pilot_frames(np.concatenate(self.near), self.ch.Fs, uw, det.baud, fr.period,
+                                       beta=det.beta or 0.35, M=det.M or 4)
+        except Exception:
+            return None
+        if len(f) < min_frames:
+            return None
+        at0 = type(fr)(**{**{k: getattr(fr, k) for k in fr.__slots__}, "uw_start": 0}) # (each row starts at its word)
+        relocked = frames.cut(np.asarray(f).ravel(), at0, grid=frames.grid_of(det.mod))
+        return relocked
 
     def _tcm(self, p, det):
         """No code on the bits: a trellis code on the labels (rpps.analysis.code.conv.tcm: Ungerboeck, pragmatic), when one holds"""

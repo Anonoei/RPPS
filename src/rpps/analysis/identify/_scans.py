@@ -116,10 +116,12 @@ def whiteness(bits, max_lag=4096):
             "autocorr_lag": int(np.argmax(np.abs(ac))+1), "lags": max_lag}
 
 
-def detect_fec(streams, ks=range(3, 8), rates=(2, 3), periods=(), blocks=True, descramble=False, max_offsets=256):
+def detect_fec(streams, ks=range(3, 8), rates=(2, 3), periods=(), blocks=True, descramble=False, max_offsets=256,
+               llrs=None):
     """Identify the FEC of unknown bit streams
 
     streams: bits, or {tag: bits} when the bit mapping is ambiguous (see `bit_streams`)
+    llrs: {tag: LLRs} of the streams that have them: the convolutional scan weighs each bit by its reliability
     Returns a Report
     """
     if not isinstance(streams, dict):
@@ -139,7 +141,7 @@ def detect_fec(streams, ks=range(3, 8), rates=(2, 3), periods=(), blocks=True, d
             t = (tag, dname) if dname else tag
             if facts is None:
                 facts = whiteness(b)
-            h, n = scan_conv(b, ks, rates, periods, t)
+            h, n = scan_conv(b, ks, rates, periods, t, llr=(llrs or {}).get(tag) if not dname else None)
             hyps += h
             trials += n
             for name, folder, cfg, bn, r, fails in block_codes:
@@ -168,16 +170,16 @@ def _label_configs(hyps):
                     h.coding = ("conv", name)
 
 
-RS_WORDS = 12 # Words a Reed-Solomon hypothesis is scored on (each passes by chance 256^-nroots of the time)
+RS_WORDS = 12 # Words a Reed-Solomon hypothesis is scored on
 
 
-_RS_PROBE = 8 # Words tried first at every phase: a random word has zero syndromes 256^-nroots of the time
+_RS_PROBE = 8 # Words tried first at every phase (zero syndromes)
+_RS_DECODE_PROBE = 3 # (decodes: a decode costs ~6 us; two of three decoding by chance ~3e-10 for RS(204,188))
 
 
 def _rs_zero(code, seg, n, phases, words):
-    """Zero-syndrome words among the last `words` whole codewords at each phase of seg: (len(phases),) counts
-
-    The last ones: the start of a window is where the sync before it was still settling"""
+    """Zero-syndrome words among the last `words` whole codewords at each phase of seg: (len(phases),) counts. A random
+    word has zero syndromes 256^-nroots of the time"""
     first = (len(seg) - max(phases) - 1)//n - words # Codewords from each phase that fit, less those used
     rows = np.stack([seg[p + first*n:p + (first + words)*n].reshape(words, n) for p in phases])
     flat_rows = rows.reshape(-1, n)
@@ -189,6 +191,20 @@ def _rs_zero(code, seg, n, phases, words):
     zero = zero.reshape(len(phases), words)
     flat = (rows == rows[:, :, :1]).all(axis=2) # One value repeated (idle, a dead carrier) is a codeword of any RS code
     return (zero & ~flat).sum(axis=1)
+
+
+def _rs_ok(code, seg, n, phases, words):
+    """Words that decode (within the code's t errors, rpps.code: errors >= 0) among the last `words` whole codewords at
+    each phase of seg (field elements): (len(phases),) counts. A word of errors decodes as well as a clean one, so a
+    code behind a Viterbi at a few errors a word is still seen; a random word decodes 1e-14 of the time (RS(255,223))
+    to 1e-5 (RS(204,188)). The last words: the start of a window is where the sync before it was still settling"""
+    first = (len(seg) - max(phases) - 1)//n - words # Codewords from each phase that fit, less those used
+    rows = np.stack([seg[p + first*n:p + (first + words)*n].reshape(words, n) for p in phases])
+    flat_rows = rows.reshape(-1, n)
+    _, err = code._decode(flat_rows.reshape(-1), symbols=True)
+    ok = (np.asarray(err)[:len(flat_rows)] >= 0).reshape(len(phases), words)
+    flat = (rows == rows[:, :, :1]).all(axis=2) # One value repeated (idle, a dead carrier) is a codeword of any RS code
+    return (ok & ~flat).sum(axis=1)
 
 
 def decode_tail(bits, code, fraction=0.5, probe=4000, settle=16384):
@@ -210,13 +226,30 @@ def decode_tail(bits, code, fraction=0.5, probe=4000, settle=16384):
 def scan_rs(bits, names=None, interleavers=True):
     """Find a Reed-Solomon code (config/fec/block type rs), optionally behind a Forney interleaver (config/interleave/forney)
 
-    Every polarity, bit offset and codeword phase is probed on a few words; the phases where any word has zero syndromes
-    are scored on RS_WORDS words. Both are the last words of the stream (its start is where the sync was settling). Behind an interleaver the deinterleaver runs once per commutator phase, and codewords start
-    on its branch 0 (as the interleaver's definition has them).
+    Every polarity, bit offset and codeword phase is probed on a few words, and the phases where two of them are
+    codewords are scored on RS_WORDS words: first by zero syndromes (cheap, and enough for clean bits), then, when no
+    phase stands out that way, by words that decode within t errors (a code behind a Viterbi at a few errors a word),
+    against a random word's chance to decode (rpps.analysis.framing.marked.chance; not at effort "fast": seconds a stream
+    with no RS in it). Both are the last words of the stream
+    (its start is where the sync was settling). Behind an interleaver the deinterleaver runs once per commutator phase,
+    and codewords start on its branch 0 (as the interleaver's definition has them).
     Returns (hypotheses, trials, short): short is True when some combination had too few bits to be tried.
     params: polarity, bit_offset, byte_phase (where a codeword starts in the bytes as given, before deinterleaving),
-        interleaver (its config name or None), words_ok
+        interleaver (its config name or None), words_ok, decoded (scored on decodes, not zero syndromes)
     """
+    from ..framing.marked import chance
+    from ...math.prob import z_critical
+    hyps, trials, short = _scan_rs(bits, names, interleavers, _rs_zero, lambda code: 256.0**-code.nroots, False, _RS_PROBE)
+    from ... import _effort
+    if _effort.choice("rs_decode_scan", True) and not any(h.z > z_critical(max(trials, 1)) for h in hyps):
+        more, _, _ = _scan_rs(bits, names, interleavers, _rs_ok, chance, True, _RS_DECODE_PROBE)
+        hyps += more
+    return hyps, trials, short
+
+
+def _scan_rs(bits, names, interleavers, count, chance_of, decoded, probe_words):
+    """scan_rs with one word test: count(code, seg, n, phases, words) -> codewords at each phase, chance_of(code) a
+    random word passing it"""
     from ... import code as coding
     names = names or coding.names("block", "rs")
     inters = [(None, None)]
@@ -232,7 +265,7 @@ def scan_rs(bits, names=None, interleavers=True):
         if getattr(code, "m", 8) != 8: # The search runs on bytes: codes over other fields (P25's GF(64)) don't apply
             continue
         n = code.den
-        p0 = 256.0**-code.nroots
+        p0 = chance_of(code)
         for pol in (0, 1):
             b = bits ^ pol
             for off in range(8):
@@ -252,13 +285,14 @@ def scan_rs(bits, names=None, interleavers=True):
                             short = True
                             continue
                         trials += len(phases)
-                        probe = _rs_zero(code, seg, n, phases, _RS_PROBE)
+                        probe = count(code, seg, n, phases, probe_words)
                         for ph in [p for p, k in zip(phases, probe) if k >= 2]:
-                            zero = int(_rs_zero(code, seg, n, [ph], RS_WORDS)[0])
-                            z = float(deviance_z(zero, RS_WORDS, p0))
+                            ok = int(count(code, seg, n, [ph], RS_WORDS)[0])
+                            z = float(deviance_z(ok, RS_WORDS, p0))
                             # seg[ph] was sent at B[c + ph]
                             hyps.append(Hypothesis("rs", name, z, {"polarity": pol, "bit_offset": off,
-                                "byte_phase": (c + ph) % n, "interleaver": iname, "words_ok": zero/RS_WORDS}, ("block", name)))
+                                "byte_phase": (c + ph) % n, "interleaver": iname, "words_ok": ok/RS_WORDS,
+                                "decoded": decoded}, ("block", name)))
     return hyps, trials, short
 
 

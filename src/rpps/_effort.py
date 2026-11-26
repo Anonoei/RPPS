@@ -26,7 +26,8 @@ max), and a value set on an operator is that operator's base. `rpps rx --effort`
 | Polar list (`list`) | x0.5 | x4 (successive cancellation lists 4) |
 | TPC Chase-II bits (`chase`) | -1 | +1 |
 | Max-log or exact (`maxlog`: demapper, BCJR, turbo) | max-log | exact, no extrinsic scaling |
-| Timing interpolation (`interp_taps`) | cubic | 12-tap windowed sinc (balanced: 8 taps below 4 sps) |
+| Timing interpolation (`interp_taps`) | cubic | 12-tap windowed sinc (balanced: 8 taps below 4 sps, 12 below 2) |
+| Blind RS scan by decodes (`rs_decode_scan`) | off: zero syndromes only | on (as balanced): seconds a stream with no RS |
 
 Measured (`tools/effort_bench.py`, FER 1e-1, one thread; Mbit/s at the threshold, where max iterates most):
 
@@ -55,7 +56,8 @@ Other decoding behaviour worth knowing:
   (`data.errors`, not carried further) and sets `data.failed` from them (the last code with a verdict decides); later
   steps carry `failed`, and a link header drops a frame with any failed item whatever its CRC says. The parallel region
   drops such rows.
-- Under 4 sps Oerder & Meyr takes its square-law line at twice the rate (at 2 sps it aliased onto its mirror).
+- Under 4 sps Oerder & Meyr takes its square-law line at 2, 4... times the rate, to 4 samples a symbol (at 2 sps it
+  aliased onto its mirror); it times from 1 sample a symbol.
 """
 import contextlib
 import os
@@ -70,6 +72,7 @@ SETTINGS = {
     "check": {"fast": None, "balanced": None, "max": "sumproduct"}, # LDPC layered check update: the definition's (min-sum), or sum-product
     "maxlog": {"fast": True, "balanced": None, "max": False},      # demapping and turbo: max-log (True), exact (False), the definition's (None)
     "interp_taps": {"fast": 4, "balanced": None, "max": 12},        # timing interpolation: 4 = cubic, else windowed sinc taps; None: by sps
+    "rs_decode_scan": {"fast": False, "balanced": True, "max": True}, # blind RS scan: words that decode within t when none are clean
 }
 
 def _check(level):

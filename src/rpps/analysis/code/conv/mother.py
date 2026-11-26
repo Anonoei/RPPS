@@ -32,6 +32,24 @@ def _convolve_all(c, polys, K):
                 out[i] ^= shifted
     return out
 
+def _sum_all(r, polys, K):
+    """sum of r over each generator's taps (r * g as a real sum), at length len(r)-K+1: (P, N)"""
+    n = len(r)
+    out = np.zeros((len(polys), n-K+1), dtype=np.float64)
+    for k in range(K):
+        shifted = r[K-1-k:n-k]
+        for i, g in enumerate(polys):
+            if g[k]:
+                out[i] += shifted
+    return out
+
+def _soft_z(s, logmag):
+    """z of parity relations s (P, N) weighted by their reliability exp(logmag) (P, N): sum x / sqrt(sum x^2), x the
+    relation's sign times the product of tanh(|L|/2) over its bits. Under no code each x is as likely + as -, so z is
+    about standard normal whatever the LLRs' scale (a miscalibrated scale costs power, never false alarms)"""
+    x = (1.0 - 2.0*s)*np.exp(logmag)
+    return x.sum(axis=1)/np.sqrt(np.maximum((x*x).sum(axis=1), 1e-300))
+
 def _fold_z(s, T):
     """Per row of s (R, L): how non-uniform the relation is over the phase of a period-T pattern (chi^2 as z)"""
     m = s.shape[1]//T*T
@@ -54,27 +72,39 @@ def _period(s, z_min=7.0):
     z = float(spec[k]/np.sqrt(np.mean(spec[3:]**2) + 1e-30))/1.5
     return (len(s)/k, z) if z > z_min else None
 
-def scan_conv(bits, ks=range(3, 8), rates=(2, 3), periods=(), tag=None):
-    """Rate 1/n convolutional code scan on one bit stream. Returns (hypotheses, number of trials)"""
+def scan_conv(bits, ks=range(3, 8), rates=(2, 3), periods=(), tag=None, llr=None):
+    """Rate 1/n convolutional code scan on one bit stream. Returns (hypotheses, number of trials)
+
+    Every generator pair's parity relation (c_a * g_b) ^ (c_b * g_a) against chance. llr: the bits' LLRs (log P0/P1,
+    as long as bits): each relation bit weighted by the product of tanh(|L|/2) over the bits it combines (`_soft_z`),
+    so noisy bits count for less (the hard count weighs them all alike: soft reaches lower SNR)"""
     hyps, trials = [], 0
     bits = np.asarray(bits, dtype=np.uint8)
+    rel = None
+    if llr is not None:
+        rel = np.log(np.clip(np.tanh(np.abs(np.asarray(llr, dtype=np.float64)[:len(bits)])/2), 1e-12, 1.0))
     for n in rates:
         offsets = range(n) if n == 2 else (0,)
         for off in offsets:
             b = bits[off:]
             m = len(b)//n
             streams = [b[i:m*n:n] for i in range(n)]
+            rs = [rel[off:][i:m*n:n] for i in range(n)] if rel is not None else None
             for K in ks:
                 polys = _polys(K)
                 shared = _shared(polys)
                 conv = [_convolve_all(c, polys, K) for c in streams]
+                sums = [_sum_all(r, polys, K) for r in rs] if rs is not None else None
                 for a, bb in itertools.combinations(range(n), 2):
                     for ia, ga in enumerate(polys):
                         # relation (c_a * g_b) ^ (c_b * g_a) for every g_b at once
                         s = conv[a] ^ conv[bb][ia]
-                        k = s.sum(axis=1, dtype=np.int64)
                         # polys[ib] is g_b: relation uses c_a*g_b with c_b*g_a: here conv[a][ib], conv[bb][ia]
-                        z = np.where(shared[ia], 0.0, deviance_z(k, s.shape[1]))
+                        if sums is not None:
+                            z = np.where(shared[ia], 0.0, _soft_z(s, sums[a] + sums[bb][ia]))
+                        else:
+                            k = s.sum(axis=1, dtype=np.int64)
+                            z = np.where(shared[ia], 0.0, deviance_z(k, s.shape[1]))
                         trials += len(polys)
                         j = int(np.argmax(np.abs(z)))
                         if abs(z[j]) > 3.0:

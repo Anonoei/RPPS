@@ -59,7 +59,9 @@ def _symbol(kind, spec, rep, ctx):
     from ... import symbol, sequence
     if kind == "constellation":
         make = lambda: constellation(spec)
-        return _pair(make(), make(), Rep.CHANNEL)
+        pair = _pair(make(), make(), Rep.CHANNEL)
+        ctx["objects"]["constellation"] = pair[0][0][1] # (the decoder's: a puncture sync turns its labels, rp.sync.Puncture)
+        return pair
     if kind == "differential":
         d = symbol.Differential()
         return [(DECODE, d)], [(ENCODE, symbol.Differential())], Rep.SYMBOLS

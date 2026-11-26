@@ -42,6 +42,29 @@ def test_acquire_any_block_cut(mod, esn0):
             assert got == ref, name
             assert np.array_equal(out, ref_out), name
 
+def test_acquire_measures_from_where_the_signal_comes_on():
+    """QPSK at 15 dB after 5000 samples of the noise alone (a carrier switched on after the recording started): the
+    Es/N0 is the signal's (it read 10.8 dB with the noise counted), the timing on the same grid as without the lead,
+    and every block cut decides the same"""
+    rng = np.random.default_rng(5)
+    x0, _ = shaped(rng, symbol.load_or_generate("QPSK").points, 12000, 4, tau=0.4)
+    lead = 5000
+    var = np.mean(np.abs(x0)**2)*4/10**1.5 # Es/N0 15 dB: Es = mean |x|^2 * sps
+    noise = np.sqrt(var/2)*(rng.standard_normal(lead + len(x0)) + 1j*rng.standard_normal(lead + len(x0)))
+    x = (np.concatenate((np.zeros(lead), x0)) + noise).astype(np.complex64)
+    assert rp.sync.acquire.onset(x) == lead//256*256 + 256 or rp.sync.acquire.onset(x) == lead//256*256
+    ref = None
+    for name, blocks in cuts(len(x)).items():
+        _, det = stream(x, blocks, rp.sync.Acquire)
+        got = (det.mod, det.baud, det.tau, det.esn0)
+        if ref is None:
+            ref = got
+            assert det.mod.lower() == "qpsk" and abs(det.esn0 - 15.0) < 0.5
+            _, d0 = stream((x0 + noise[lead:]).astype(np.complex64), [len(x0)], rp.sync.Acquire)
+            assert abs(((det.tau - lead - d0.tau + 2) % 4) - 2) < 0.05 # (the same instants, the lead's samples on)
+        else:
+            assert got == ref, name
+
 def test_acquire_decides_at_the_stream_end():
     """A stream shorter than the next decision position is decided on all of it when it ends"""
     rng = np.random.default_rng(4)

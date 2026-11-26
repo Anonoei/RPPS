@@ -107,7 +107,7 @@ def _blind(head, c, y=None):
     # A convolutional code no definition has, before block codes: a convolutional code is a linear code over any block
     # length too, and the block search would name it one (scan_conv relabels short periodic checks as linear-block)
     sub = {k: v for k, v in head.items() if k[0] == "abs"}
-    cv = detect_fec(sub, blocks=False, max_offsets=32).verdict
+    cv = detect_fec(sub, blocks=False, max_offsets=32, llrs=_llrs(y, c, sub) if y is not None else None).verdict
     if cv is not None and cv.kind == "conv":
         g = guess_conv(cv)
         if g is not None:

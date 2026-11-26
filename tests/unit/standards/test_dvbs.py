@@ -59,3 +59,28 @@ def test_dvbs_finds_the_puncture_phase():
     i, k = first_match(got, pk)
     assert i is not None and len(got) - i >= len(pk) - 16
     assert np.array_equal(got[i:], pk[k:k + len(got) - i])
+
+@pytest.mark.parametrize("deg", [0, 30, 90, 150, 210, 300])
+def test_dvbs_decodes_at_any_carrier_phase(deg):
+    """The carrier's 4-fold phase is what an M-th power can't tell: the puncture sync tries the constellation's turns too
+    (rp.symbol.mapping.bit_rotations), so every packet comes out whatever the phase (it decoded 5 of 12 phases before)"""
+    rng = np.random.default_rng(7)
+    p = rp.profile.load("dvbs/qpsk")
+    pk = ts(rng, 8*24)
+    wave = p.tx()(rp.Data(pk.reshape(-1), Fs=1e6, sps=1, flush=True))
+    x = (np.asarray(wave.data)*np.exp(1j*np.radians(deg))).astype(np.complex64)
+    x = x + (0.05*(rng.standard_normal(len(x)) + 1j*rng.standard_normal(len(x)))).astype(np.complex64)
+    out = rp.profile.load("dvbs/qpsk").rx()(rp.Data(x, Fs=wave.Fs, sps=wave.sps, delay=wave.delay, flush=True))
+    got = dvbs_packets(out)
+    i, k = first_match(got, pk, startup=2)
+    assert i is not None and len(got) - i >= len(pk) - 20
+    assert np.array_equal(got[i:], pk[k:k + len(got) - i])
+
+def test_bit_rotations_of_gray_qpsk():
+    """QPSK's four turns are bit swaps and inversions (the identity first); BPSK's two an inversion"""
+    from rpps.symbol.mapping import bit_rotations
+    q = rp.symbol.load("qpsk")
+    rots = bit_rotations(q.points, q.mapping.arr, 2)
+    assert len(rots) == 4 and rots[0] == ((0, 1), (False, False)) and ((0, 1), (True, True)) in rots
+    b = rp.symbol.load("bpsk")
+    assert bit_rotations(b.points, b.mapping.arr, 1) == [((0,), (False,)), ((0,), (True,))]

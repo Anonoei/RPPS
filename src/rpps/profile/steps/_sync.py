@@ -206,7 +206,15 @@ def _align(m, ctx):
 @_sync_one("puncture")
 def _puncture(m, ctx):
     from ... import sync, code
-    return sync.Puncture(code.load(f'conv/{_need(m, "conv", "puncture")}'), m.get("window", 4000)) # {"sync": "puncture", "conv": "k7_171_133/3_4"}
+    c = ctx["objects"].get("constellation") # The constellation step's: its turns tried with the offsets (an M-th power
+    rot = None                               # carrier leaves the M-fold phase)
+    if c is not None and m.get("rotations", True):
+        from ...symbol.mapping import bit_rotations
+        try:
+            rot = bit_rotations(c.points, c.mapping.arr, c.bits_per_symbol)
+        except Exception:
+            rot = None
+    return sync.Puncture(code.load(f'conv/{_need(m, "conv", "puncture")}'), m.get("window", 4000), rotations=rot) # {"sync": "puncture", "conv": "k7_171_133/3_4"}
 
 @_sync_one("pilots")
 def _pilot_eq(m, ctx):

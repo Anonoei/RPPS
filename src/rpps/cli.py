@@ -344,7 +344,7 @@ def cmd_solve(args):
             lab = np.asarray(c.mapping.arr)[np.argmin(np.abs(x[:, None]/np.sqrt(np.mean(np.abs(x)**2)) - pts[None]), axis=1)]
             bits = ((lab[:, None] >> np.arange(c.bits_per_symbol - 1, -1, -1)) & 1).ravel().astype(np.uint8)
         else:
-            fb = A.framing.frames.payload_bits(A.framing.frames.cut(x, fr), fr, args.mod)
+            fb = A.framing.frames.payload_bits(A.framing.frames.cut(x, fr, grid=A.framing.frames.grid_of(args.mod)), fr, args.mod)
             rep, same = A.framing.frames.repeats(fb, agree=0.95)
             print(f"  payload {fb.shape[1]} bits a frame, {len(fb)} frames" + (f"; frames repeat every {rep}" if rep else ""))
             if len(fb) >= fb.shape[1] + 48:

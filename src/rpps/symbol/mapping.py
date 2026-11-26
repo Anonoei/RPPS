@@ -89,6 +89,29 @@ def symmetries(points):
                 out.append((th, flip, q))
     return out
 
+def bit_rotations(points, labels, bits):
+    """A constellation's turns that are bit swaps and inversions. Rotations (no conjugate) acting on its labels as a
+    permutation and inversion of the bits: [(perm, flip)] with bit j of a turned point's label = bit perm[j] of the point's label, inverted where flip[j]
+    (Gray QPSK's 90 degree turns: a swap and one bit inverted). Rotations that don't (8PSK's, most QAM's) are left out.
+    On LLRs the same turn is new[j] = old[perm[j]] * (-1 if flip[j]): what a receive tries when the carrier's M-fold
+    phase is unknown (rp.sync.Puncture). The identity is first."""
+    import itertools
+    pts = np.asarray(points, dtype=np.complex128)
+    lab = np.asarray(labels, dtype=np.int64)
+    B = ((lab[:, None] >> np.arange(bits - 1, -1, -1)) & 1).astype(bool) # (points, bits): bit j of point i's label
+    out = []
+    for th, flip, q in symmetries(pts):
+        if flip:
+            continue
+        T = B[q] # the turned point's label bits
+        for perm in itertools.permutations(range(bits)):
+            f = T[0] ^ B[0][list(perm)]
+            if np.array_equal(T, B[:, list(perm)] ^ f[None, :]):
+                out.append((tuple(perm), tuple(bool(v) for v in f)))
+                break
+    ident = (tuple(range(bits)), (False,)*bits)
+    return [ident] + [r for r in dict.fromkeys(out) if r != ident]
+
 def expand_maps(points, maps):
     """The given maps, then the first one turned by every rotation the constellation allows and spectrally inverted
     (conjugated) with each. The point is a receiver that doesn't know the carrier phase or the IQ sense: one of

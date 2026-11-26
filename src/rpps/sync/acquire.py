@@ -548,6 +548,23 @@ class Lock:
     def __repr__(self):
         return f"<Lock {self.det}{', stale: ' + self.stale if self.stale else ''}>"
 
+ONSET_BLOCK = 256 # Samples a block of `onset`'s power profile
+ONSET_LEVEL = 0.25 # A block under this share of the median block's power is before the signal comes on
+
+def onset(x, block=ONSET_BLOCK, level=ONSET_LEVEL):
+    """Where a signal comes on in x. The first block whose power reaches `level` of the median block's (0 when the
+    first does, or when x is short). A stretch of nothing or of noise well under the signal at x's start is left out of
+    an estimate made on x (a burst, a carrier switched on after the recording started); at low SNR the noise before the
+    signal is not that far under it, and x is taken whole. A signal on for under half of x is not found this way (the
+    median is the noise's): a later, longer x finds it"""
+    x = np.asarray(x)
+    k = len(x)//block
+    if k < 4:
+        return 0
+    p = (np.abs(x[:k*block])**2).reshape(k, block).mean(axis=1)
+    on = np.flatnonzero(p >= level*np.median(p))
+    return int(on[0])*block if len(on) else 0
+
 class Acquire(Stage):
     """Detect as soon as the signal is there, then keep refining as the stream grows
 
@@ -615,19 +632,24 @@ class Acquire(Stage):
         return samples
 
     def _decide(self, x, st, meta):
-        """The decision at one position: x is the stream's first P samples"""
+        """The decision at one position: x is the stream's first P samples, from where the signal comes on (`onset`:
+        what holds only the noise or nothing before it isn't measured, so a signal starting after the stream does keeps
+        its Es/N0 and modulation scores; tau is then shifted back to x's start)"""
         P = len(x)
+        s = onset(x)
+        y = x[s:]
         try:
             if st.lock is None: # Not there yet: a line `lock` strong, or any line after max_wait
-                st.lock = Lock.find(x, meta.Fs, self.names, self.betas, baud=self.baud, min_samples=self.min_samples,
-                                    lock=self.lock if P < self.max_wait else None)
+                lk = Lock.find(y, meta.Fs, self.names, self.betas, baud=self.baud, min_samples=self.min_samples,
+                               lock=self.lock if P < self.max_wait else None)
             elif not st.settled: # The full search again on twice the samples: settled when it agrees
-                lk = Lock.find(x, meta.Fs, self.names, self.betas, baud=self.baud, min_samples=self.min_samples,
+                lk = Lock.find(y, meta.Fs, self.names, self.betas, baud=self.baud, min_samples=self.min_samples,
                                lock=None)
                 st.settled = (lk.det.mod, lk.det.beta) == (st.lock.det.mod, st.lock.det.beta)
-                st.lock = lk
             else: # Same modulation and roll-off, the rate searched again
-                st.lock = st.lock.refine(x, baud=self.baud and st.lock.det.baud)
+                lk = st.lock.refine(y, baud=self.baud and st.lock.det.baud)
+            lk.det.tau += s
+            st.lock = lk
         except NoLock:
             return
         if P >= self.history:

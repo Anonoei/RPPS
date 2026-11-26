@@ -212,7 +212,7 @@ def _blind_tiers(out, head, c, y):
         _attach(out, found)
         return out
     sub = {k: v for k, v in head.items() if k[0] == "abs"}
-    brep = detect_fec(sub, max_offsets=32)
+    brep = detect_fec(sub, max_offsets=32, llrs=_llrs(y[:CONV_SYMBOLS], c, sub))
     out.report = brep
     v = brep.verdict
     if v is not None:

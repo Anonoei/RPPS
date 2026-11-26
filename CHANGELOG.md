@@ -380,6 +380,9 @@ what to use instead.
 - **`rp.profile.lineage(name)`**: the profiles a profile extends, nearest first.
 - **`tools/ident_bench.py` variants and seeds**: `--variants plain inverted pad neighbour drift`, `--seeds`, the stop
   reasons tallied; DVB-S2 multistream, CCSDS TM packets, P25 and DMR signals.
+- **`rp.symbol.mapping.bit_rotations`**: a constellation's turns that act on its labels as bit swaps and inversions
+  (Gray QPSK's 90 degrees); **`rp.analysis.framing.frames.grid_of`**: the turns a constellation is symmetric under;
+  **`rp.sync.acquire.onset`**: where a signal comes on in a block.
 
 
 ### Changed
@@ -446,6 +449,15 @@ what to use instead.
 - **`rp.sync.time.OerderMeyr` times from a sample a symbol** (it needed 2): under 4 samples a symbol its window is
   upsampled by the least power of 2 to 4 (`rp.math.interp.upsampled`) and the symbols read with the 12-tap sinc under 2.
   A 30 MBd carrier in 50 MS/s (1.67 samples a symbol) receives as at 3.33, with no re-extraction.
+- **Blind code scans reach lower SNR.** `identify`'s Reed-Solomon scan scores words that decode within t when no phase
+  has clean words (`rs_decode_scan`, off at effort "fast"): RS(204,188) behind a DVB-S Viterbi is found at 6 dB Es/N0
+  (8 before). The blind convolutional scan weighs each parity relation by its bits' LLRs: an unknown K=6 code is found
+  at 0 dB from 8192 symbols, where the hard count found none, its false alarms unchanged.
+- **`rp.sync.Acquire` measures from where the signal comes on** (`onset`): 4000 samples of noise before a carrier read
+  15 dB as 8.4 and lost its decode; now within 0.3 dB.
+- **`analysis.profile` re-locks on a frame's unique word** when the continuous lock's decisions fail the gate
+  (`framing.frames.pilot_frames`, frame by frame) instead of stopping there; frames are cut on their constellation's own
+  symmetry (`grid_of`): BPSK was turned 45 degrees off its points.
 
 
 ### Fixed
@@ -481,6 +493,10 @@ what to use instead.
 - **The configured Reed-Solomon scan read dual-basis codes in the conventional basis** (`identify`'s `scan_rs`):
   CCSDS RS behind a Viterbi was never found.
 - **`analysis.signal_profile.framed` lost every profile's frames when one candidate failed to build.**
+- **A convolutional profile decoded at only some carrier phases** (`dvbs/qpsk`: 5 of 12): nothing resolved the 90 degree
+  ambiguity an M-th power carrier leaves. `rp.sync.Puncture` tries the constellation's turns (`bit_rotations`) with its
+  offsets and applies the one that decodes; and it decides on the first window where one hypothesis clearly wins, not on
+  the stream's first (where timing and carrier were still settling and every offset decoded badly).
 
 ## 0.6.0 (2026-11-22)
 

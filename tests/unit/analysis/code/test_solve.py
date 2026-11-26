@@ -162,3 +162,42 @@ def test_a_code_laid_out_from_each_frames_start():
     n, d = BK.frame_units([r ^ (rng.random(len(r)) < 1e-3) for r in rows]) # bit errors: n + 48 words at a time
     assert n == 63 and 0 < d <= 12
     assert BK.frame_units([rng.integers(0, 2, 1000).astype(np.uint8) for _ in range(40)]) == (None, 0)
+
+@pytest.mark.parametrize("seed", [0, 5])
+def test_soft_conv_scan_reaches_further_and_keeps_its_false_alarm(seed):
+    """A K=6 code no definition has, BPSK at 0 dB, 16384 coded bits. Over 12 seeds the true pair's z is 17-22 hard and
+    25-30 soft (asserted: soft 5 over hard); on noise alone soft's best is 4.0 at most, under the 4.7 of its 512 trials"""
+    from rpps.analysis.code.conv.mother import scan_conv
+    from rpps.math.prob import z_critical
+    K6 = [[1, 1, 0, 1, 0, 1], [1, 0, 1, 1, 1, 1]]
+    code = conv(Logger().Child("t", 0), 1, 2, K6, 6, [[1]]*2)
+    want = {tuple(K6[0]), tuple(K6[1])}
+    rng = np.random.default_rng(seed)
+    c = np.asarray(code.encode(rng.integers(0, 2, 8192).astype(bool))).astype(np.uint8)
+    sigma = np.sqrt(0.5)
+    y = (1 - 2.0*c) + sigma*rng.standard_normal(len(c))
+    true = lambda hyps: max([h.z for h in hyps if h.kind == "conv" and set(h.params["g"].values()) == want], default=0.0)
+    hard, trials = scan_conv((y < 0).astype(np.uint8), ks=[6], rates=(2,))
+    soft, _ = scan_conv((y < 0).astype(np.uint8), ks=[6], rates=(2,), llr=2*y/sigma**2)
+    assert true(soft) > true(hard) + 5
+    n = sigma*rng.standard_normal(len(c))
+    noise, _ = scan_conv((n < 0).astype(np.uint8), ks=[6], rates=(2,), llr=2*n/sigma**2)
+    assert max([h.z for h in noise], default=0.0) < z_critical(trials)
+
+def test_rs_scan_finds_words_with_errors_by_decoding_them(rng):
+    """RS(204,188) words each with 3 byte errors (behind a Viterbi at a few dB): none has zero syndromes, all decode;
+    the scan finds the code at its phase by decodes. At effort "fast" it only looks for clean words"""
+    from rpps.analysis.identify._scans import scan_rs
+    from rpps.code.coding import cached
+    from rpps.math.prob import z_critical
+    code = cached("block/rs/204_188").encoder
+    cw = np.asarray(code.encode(rng.integers(0, 256, 188*40), symbols=True)).reshape(40, 204)
+    for w in cw:
+        w[rng.choice(204, 3, replace=False)] ^= rng.integers(1, 256, 3)
+    bits = np.concatenate((rng.integers(0, 2, 8*57), np.unpackbits(cw.astype(np.uint8).reshape(-1)))).astype(np.uint8)
+    hyps, trials, _ = scan_rs(bits, names=["rs/204_188"], interleavers=False)
+    best = max(hyps, key=lambda h: h.z)
+    assert best.z > z_critical(trials) and best.params["decoded"] and best.params["byte_phase"] == 57 % 204
+    with rp.effort("fast"):
+        hyps, trials, _ = scan_rs(bits, names=["rs/204_188"], interleavers=False)
+    assert not any(h.z > z_critical(trials) for h in hyps)

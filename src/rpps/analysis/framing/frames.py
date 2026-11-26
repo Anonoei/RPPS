@@ -178,6 +178,19 @@ def find(y, mod=None, max_lag=20000, min_frames=8, threshold=0.5, false_alarm=1e
             best = f
     return best
 
+def grid_of(constellation):
+    """The turns a constellation is symmetric under. The largest M of 2, 4, 8, 16 that turns its points onto
+    themselves by 360/M degrees (BPSK 2, QPSK and square QAM 4, 8PSK 8), 1 for none. `cut`'s grid"""
+    from ... import symbol
+    c = symbol.load_or_generate(constellation) if isinstance(constellation, str) else constellation
+    pts = np.asarray(c.points, dtype=np.complex128)
+    best = 1
+    for M in (2, 4, 8, 16):
+        turned = pts*np.exp(2j*np.pi/M)
+        if np.all(np.min(np.abs(turned[:, None] - pts[None, :]), axis=1) < 1e-6*np.max(np.abs(pts))):
+            best = M
+    return best
+
 def cut(y, fr, M=None, grid=4):
     """Frames x period symbols starting at the unique word, each turned onto the others by its unique word
 
@@ -185,7 +198,8 @@ def cut(y, fr, M=None, grid=4):
     passes: frames turned onto the first frame's word by multiples of 90 degrees, averaged, then every frame onto that
     average. M=None: by the angle measured (also takes off a carrier phase drifting frame to frame); M: by the nearest
     multiple of 360/M degrees only (the ambiguity alone). Then the whole set is turned so the payload sits on a
-    `grid`-fold symmetric constellation (QPSK points at 45 + 90k degrees, as rpps.symbol's), by its grid-th power."""
+    `grid`-fold symmetric constellation (QPSK points at 45 + 90k degrees, as rpps.symbol's), by its grid-th power: the
+    constellation's own symmetry (`grid_of`; 4 on BPSK turns it 45 degrees off its points)."""
     y = _normalized(y)
     F = (len(y) - fr.uw_start)//fr.period
     f = y[fr.uw_start:fr.uw_start + F*fr.period].reshape(F, fr.period)
