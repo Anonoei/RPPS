@@ -154,13 +154,16 @@ def test_framed_reads_the_headers_of_a_profile_ending_in_branches():
     assert "dvbs2/mis" in got and got["dvbs2/mis"] >= 3
 
 def test_a_checks_evidence():
-    """A step is verified when its check passed twice and at least as often as it failed; refuted when it kept failing"""
+    """A step is verified when its check passed twice and in a tenth of the frames or more (weak symbols: a CRC passing
+    28 times in 149 is no chance); refuted when it kept failing"""
     from types import SimpleNamespace as M
     msgs = [M(kind="bb", crc_ok=True)]*3 + [M(kind="bb", crc_ok=False)] + [M(kind="sndu", crc_ok=False)]*5 + \
-           [M(kind="pls", crc_ok=None)]*9 + [M(kind="once", crc_ok=True)]
+           [M(kind="pls", crc_ok=None)]*9 + [M(kind="once", crc_ok=True)] + \
+           [M(kind="pdu", crc_ok=True)]*28 + [M(kind="pdu", crc_ok=False)]*121 + \
+           [M(kind="few", crc_ok=True)]*2 + [M(kind="few", crc_ok=False)]*40
     chk = F.checks(msgs)
-    assert chk == {"bb": (3, 1), "sndu": (0, 5), "once": (1, 0)}
-    assert F.evidence(chk) == (["bb"], ["sndu"])
+    assert chk == {"bb": (3, 1), "sndu": (0, 5), "once": (1, 0), "pdu": (28, 121), "few": (2, 40)}
+    assert F.evidence(chk) == (["bb", "pdu"], ["few", "sndu"])
 
 def test_lineage_follows_extends():
     assert rp.profile.lineage("dvbs2/ule") == ["dvbs2/ts", "dvbs2/normal"]
@@ -531,3 +534,34 @@ def test_a_profile_built_on_the_code_is_named_when_its_own_layer_verifies():
     assert got[2]["checks"]["space"][0] >= 10 and not got[2]["refuted"]
     z, det = _tm_symbols(rng, [rng.bytes(223) for _ in range(len(frames))])
     assert F.deeper("ccsds/tm_rs", {"depth": 1}, z, det, skip=0) is None
+
+def test_a_good_lock_no_code_fits_is_read_again():
+    """The retries a lock with no code gets (rpps._effort "retries"): the search's runner-up constellation, then twice
+    and half the rate, within the channel; none for a doubtful lock, a found code or a name"""
+    from types import SimpleNamespace as N
+    from rpps.analysis.signal_profile._chain import _Chain
+    from rpps.analysis.signal_profile._result import SignalProfile
+    det = N(baud=1e6, scores={"qpsk": 0.4, "8psk": 0.1, "bpsk": -1.0})
+    ch = _Chain.__new__(_Chain)
+    ch.sig, ch.ch = N(width=1.35e6), N(Fs=8e6)
+    ch.stream = N(det=det, est={"fec": N(found=False, complete=True)})
+    p = SignalProfile("s", ch.sig)
+    p.add("acquire", "QPSK at 1 MBd")
+    assert ch.retries(p, 4) == [(1e6, ["8psk"]), (5e5, None)] # (twice the rate: wider than the box)
+    ch.sig.width = 2.7e6 # (a box twice the rate's: locked at half its rate, maybe)
+    assert ch.retries(p, 4) == [(1e6, ["8psk"]), (2e6, None), (5e5, None)]
+    assert ch.retries(p, 2) == [(1e6, ["8psk"]), (2e6, None)] and ch.retries(p, 0) == []
+    p.steps[0].note = "fit doubtful: ..."
+    assert ch.retries(p, 4) == []
+
+@pytest.mark.kernels
+def test_a_retry_at_another_rate_replaces_a_reading_that_found_no_code(dvbs_capture, monkeypatch):
+    """The first reading at half the rate (a hint) finds no code; read again at twice it, the code and the profile are
+    found, and the profile says it was a retry"""
+    from rpps.analysis.signal_profile._chain import _Chain
+    monkeypatch.setattr(_Chain, "retries", lambda self, p, n: [(2*self.stream.det.baud, None)]
+                        if self.stream.det is not None and not p.profile_name and abs(self.stream.det.baud - 5e5) < 1e3 else [])
+    fresh = lambda: rp.source.File("ci16t", dvbs_capture.path, Fs=8e6)
+    half = lambda s: {"baud": 5e5, "blind": False} if abs(s.mid - 1.7e6) < 2e5 else None
+    p = min(rp.analysis.profile(fresh(), blind=False, hint=half), key=lambda p: abs(p.signal.mid - 1.7e6) - p.signal.width)
+    assert p.profile_name == "dvbs/qpsk_3_4" and p.steps[1].kind == "retry" and "2x" in p.steps[1].what

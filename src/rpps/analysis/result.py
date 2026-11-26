@@ -14,6 +14,12 @@ class Hypothesis:
         self.coding = coding # (folder, config name) when it is in config/fec
         self.guess = guess # The Guess (definition to save) a blind find comes with
 
+    @property
+    def p(self):
+        """The chance of a z this high from chance alone (one-sided Gaussian tail)"""
+        from math import erfc, sqrt
+        return 0.5*erfc(float(self.z)/sqrt(2))
+
     def __repr__(self):
         c = f" [{self.coding[0]}/{self.coding[1]}]" if self.coding else ""
         return f"<{self.kind} {self.name} z={self.z:.1f}{c} {self.params}>"
@@ -36,9 +42,15 @@ class Report:
         """The best hypothesis if it stands out from chance, else None"""
         return self.best if self.best and self.best.z > self.z_crit else None
 
+    def p(self, h=None):
+        """h's p-value (the best's by default) over every hypothesis tried (Bonferroni: its own times `trials`, at
+        most 1): what the z_crit threshold tests at 0.01"""
+        h = self.best if h is None else h
+        return None if h is None else min(1.0, h.p*max(1, self.trials))
+
     def __str__(self):
         out = [f"{self.trials} hypotheses tried, significance threshold z>{self.z_crit:.1f}"]
-        out += [f"  {h}" for h in self.hyps[:5]]
+        out += [f"  {h} p {self.p(h):.2g}" for h in self.hyps[:5]]
         out.append(f"verdict: {self.verdict if self.verdict else 'no FEC structure found'}")
         return "\n".join(out)
 

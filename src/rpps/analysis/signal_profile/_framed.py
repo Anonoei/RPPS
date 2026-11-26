@@ -6,7 +6,7 @@ from ...profile.catalogue import lineage
 
 import numpy as np
 
-VERIFIED = 2 # Frames a step's check must pass (and pass at least as often as it fails) for the step to count as verified
+VERIFIED = 2 # Frames a step's check must pass (and pass a tenth of the time or more) for the step to count as verified
 REFUTED = 3 # Frames a step's check must fail, passing under a tenth as often, for the step to count against the profile
 
 def checks(messages, est=None):
@@ -26,11 +26,12 @@ def checks(messages, est=None):
     return out
 
 def evidence(chk):
-    """(verified, refuted) step ids of `checks`. Verified: its check passed VERIFIED times and at
-    least as often as it failed (a check passing by chance is rare: a CRC-8 1 in 256); refuted when it failed REFUTED
-    times and passed under a tenth as often (frames this profile reads that aren't this profile's)"""
-    ver = sorted(k for k, (p, f) in chk.items() if p >= VERIFIED and p >= f)
-    ref = sorted(k for k, (p, f) in chk.items() if f >= REFUTED and 10*p < f)
+    """(verified, refuted) step ids of `checks`. Verified: its check passed VERIFIED times and in a tenth of the frames
+    or more (a check passing by chance is rare: a CRC-8 1 in 256, so weak symbols that fail most frames still verify
+    on the ones they pass); refuted when it failed REFUTED times and passed in under a tenth of them (frames this profile
+    reads that aren't this profile's)"""
+    ver = sorted(k for k, (p, f) in chk.items() if p >= VERIFIED and 10*p >= p + f)
+    ref = sorted(k for k, (p, f) in chk.items() if f >= REFUTED and 10*p < p + f)
     return ver, ref
 
 def rank(found):
@@ -93,7 +94,7 @@ def framed(raw, det, skip=6000, max_symbols=400000, min_headers=3):
         got = _run(prof, zz)
         if got is None: # A profile that can't run on these symbols isn't this signal
             continue
-        heads, chk = got
+        heads, chk, _ = got
         if max((len(v) for v in heads.values()), default=0) >= min_headers:
             summary = {k: ([(json.loads(f), n) for f, n in Counter(v).most_common(4)], len(v)) for k, v in heads.items()}
             ids = _header_ids(prof.obj["steps"])
@@ -111,20 +112,27 @@ def _symbols(raw, det, skip=6000, max_symbols=400000, least=20000):
     z = z*np.exp(-2j*np.pi*det.cfo/det.baud*np.arange(len(z)))
     return (z/np.sqrt(np.mean(np.abs(z)**2))).astype(np.complex64)
 
-def _run(prof, z):
-    """A profile's receive on symbols z: ({header step id: [its fields as JSON]}, checks(...)), None when it fails"""
+def _run(prof, z, Fs=None, sps=None):
+    """A profile's receive on symbols z (or, with `Fs`, on samples z at that rate, `sps` a symbol: from its first
+    step): ({header step id: [its fields as JSON]}, checks(...), produced(...)), None when it fails"""
     from ...base import Data
     from ...base.types import Rep
-    data = Data(z, sps=1, flush=True)
+    data = Data(z, sps=1, flush=True) if Fs is None else Data(z, Fs=Fs, sps=sps or 1, flush=True)
     try:
-        rx = prof.rx(start=Rep.SYMBOLS)
+        rx = prof.rx(start=Rep.SYMBOLS) if Fs is None else prof.rx()
         res = rx(data)
         msgs = rx.take_messages() if hasattr(rx, "take_messages") else []
     except Exception:
         return None
     # A profile ending in branches gives {branch: output}: its trunk publishes in the input's stream, each branch in
-    # its own
-    streams = {id(s): s for s in [data.stream] + [o.stream for o in (res.values() if isinstance(res, dict) else [res])]}
+    # its own; bursts each their own
+    def outs(r): # (a profile ending in branches gives a dict, one of bursts a list)
+        if isinstance(r, dict):
+            return [o for v in r.values() for o in outs(v)]
+        if isinstance(r, (list, tuple)):
+            return [o for v in r for o in outs(v)]
+        return [r] if hasattr(r, "stream") else []
+    streams = {id(s): s for s in [data.stream] + [o.stream for o in outs(res)]}
     heads, est = {}, {}
     own = {s.get("id", "inversion") for s in prof.obj["steps"] if s.get("sync") == "inversion"} # (the profile's own
     for st in streams.values():                                              # inversion step: the symbols are put right here)
@@ -132,14 +140,20 @@ def _run(prof, z):
             if step not in own:
                 heads.setdefault(step, []).append(json.dumps(fields, sort_keys=True, default=str))
         est.update(st.est)
-    return heads, checks(msgs, est)
+    return heads, checks(msgs, est), produced(msgs, heads, est)
+
+def produced(msgs, heads, est):
+    """The step ids that gave anything: a message, a header read, or packets cut (rpps.link.packets' est)"""
+    out = {m.kind for m in msgs} | set(heads)
+    out |= {k for k, v in est.items() if isinstance(v, dict) and v.get("packets")}
+    return out
 
 def deeper(name, params, raw, det, inverted=False, skip=6000, max_symbols=400000):
     """A profile extending `name` (at any depth: rp.profile.catalogue.lineage) whose added layers verify on the timed
     symbols: (its name, its params, evidence as in framed), or None. A code names the most general profile with its steps
     (identify.match_profile: ccsds/tm_rs for ccsds/tm_packets, whose packet layer the code doesn't show); this runs
     the ones built on it and names the deepest whose own steps' checks pass (a packet layer: its lengths meeting the
-    frames' pointers), none of its checks refuted. params: the variant of `name` the code matched (kept where the
+    frames' pointers), none of its checks refuted, and every link layer it adds gave something. params: the variant of `name` the code matched (kept where the
     deeper profile has them too)"""
     from ... import _config, profile
     kids = [f"{fam}/{m}" for fam, modes in profile.ls(blind=True).items() for m in modes]
@@ -169,8 +183,9 @@ def deeper(name, params, raw, det, inverted=False, skip=6000, max_symbols=400000
             continue
         ver, ref = evidence(got[1])
         new = [k for k in ver if k not in base]
-        if not new or ref:
-            continue
+        added = [st["id"] for st in prof.obj["steps"] if st.get("id") and st.get("link") and st["id"] not in base]
+        if not new or ref or any(a not in got[2] for a in added): # (a layer of its own that gave nothing isn't there:
+            continue                                               # dvbs/si's sections on transport packets of no table)
         key = (len(new), len(lineage(kid)))
         if best is None or key > best[0]:
             best = (key, kid, own, {"verified": ver, "refuted": ref, "checks": got[1]})
@@ -183,6 +198,98 @@ def _inherited(name):
     for parent in lineage(name):
         out |= set(_config.read(_config.find("profile", parent)).get("params") or {})
     return out
+
+def shipped(x, Fs, mid, width, budget=2**22):
+    """The shipped profiles of a fixed rate a signal may be (rp.profile.candidates: its box `width` no wider than their
+    channel), each run from its first step on its own channel: the capture's samples x (at Fs) shifted by -`mid`,
+    filtered to the profile's bandwidth and resampled to its rate (an audio input, FM's, ax25/afsk1200, on the channel's
+    real part and on its FM discriminator's output); at most `budget` capture samples, or what the profile's
+    min_samples needs. [(name, params, evidence as in framed, with "at" and "width": the band decoded, Hz)] of those
+    whose own checks verify, none refuted, the most
+    verified first, then the most checks passed, then the most general. How the waveforms the linear chain doesn't take
+    are named (FSK and GFSK bursts, pulse position, spread spectrum, OFDM: each profile's own receiver, a cell search,
+    a burst's preamble), with nothing kept here per standard; a box may be far narrower than its signal (the survey
+    takes a pulse train's centre line for it)"""
+    from fractions import Fraction
+    from ... import profile
+    from ...signal.sample import resample_poly
+    from ...wave import FMDemod
+    from ...base import Data
+    x = np.asarray(x)
+    out = []
+    for name, params in profile.candidates(bw=width):
+        try:
+            r = profile.info(name, **params).requires
+        except Exception:
+            continue
+        if r["baud"] is None or r["Fs"] is None or r["bw"] is None or abs(mid) + r["bw"]/2 > Fs/2:
+            continue # (an open rate is the linear chain's; a channel the capture doesn't hold can't be tried)
+        need = int(min(len(x), max(budget, 2*(r["min_samples"] or 0)*Fs/r["Fs"])))
+        c, w = _centre(x[:need], Fs, mid, r["bw"])
+        at = mid + c
+        if abs(at) + r["bw"]/2 > Fs/2:
+            continue
+        y = x[:need]*np.exp(-2j*np.pi*at/Fs*np.arange(need))
+        Y = np.fft.fft(y)
+        Y[np.abs(np.fft.fftfreq(need, 1/Fs)) > r["bw"]/2] = 0
+        y = np.fft.ifft(Y).astype(np.complex64)
+        f = Fraction(float(r["Fs"])/Fs).limit_denominator(1000)
+        if f.numerator < 1 or abs(float(f)*Fs/r["Fs"] - 1) > 1e-3:
+            continue
+        try:
+            prof = profile.load(name, **params)
+        except Exception:
+            continue
+        inputs = [y]
+        if r["input"] == "audio":
+            fm = np.asarray((Data(y, Fs=Fs, flush=True) + FMDemod(gain=1.0)).data, np.float32)
+            inputs = [y.real.astype(np.float32), fm]
+        for v in inputs:
+            v = resample_poly(v, f.numerator, f.denominator) if f != 1 else v
+            got = _run(prof, v, Fs=float(r["Fs"]), sps=float(r["Fs"])/float(r["baud"]))
+            if got is None:
+                continue
+            ver, ref = evidence(got[1])
+            if ver and not ref:
+                out.append((name, params, {"verified": ver, "refuted": ref, "checks": got[1], "at": at,
+                                           "width": w or width}))
+                break
+    def key(t):
+        n = sum(p for p, _ in t[2]["checks"].values())
+        return (-len(t[2]["verified"]), -n, len(lineage(t[0])))
+    return sorted(out, key=key)
+
+def _centre(x, Fs, mid, bw, bins=256, over=6.0):
+    """(where the band holding `mid` is centred, from mid [Hz], within +-bw/2; its width [Hz]): the run of a spectrum's
+    bins (`bins` across 2 bw about mid) over the floor by `over` dB that holds mid, or the strongest bin near it; (0.0,
+    None) with none. A box the survey made of a line inside a wide signal (an LTE carrier's) is off its centre by up to
+    half the signal"""
+    n = 1 << int(np.ceil(np.log2(max(64, bins*Fs/(2*bw)))))
+    m = len(x)//n
+    if m < 4:
+        return 0.0, None
+    seg = np.asarray(x[:m*n]).reshape(m, n)*np.exp(-2j*np.pi*mid/Fs*np.arange(m*n)).reshape(m, n)*np.hanning(n)
+    P = np.fft.fftshift(np.mean(np.abs(np.fft.fft(seg, axis=1))**2, axis=0))
+    f = np.fft.fftshift(np.fft.fftfreq(n, 1/Fs))
+    near = np.abs(f) <= bw
+    if near.sum() < 8:
+        return 0.0, None
+    db = 10*np.log10(P[near] + 1e-30)
+    fn = f[near]
+    on = db > np.percentile(10*np.log10(P + 1e-30), 10) + over
+    k = int(np.argmin(np.abs(fn)))
+    if not on[k]:
+        cand = np.flatnonzero(on & (np.abs(fn) <= bw/2))
+        if not len(cand):
+            return 0.0, None
+        k = int(cand[np.argmax(db[cand])])
+    a = b = k
+    while a > 0 and on[a - 1]:
+        a -= 1
+    while b < len(on) - 1 and on[b + 1]:
+        b += 1
+    c = 0.5*(fn[a] + fn[b])
+    return float(np.clip(c, -bw/2, bw/2)), float(min(fn[b] - fn[a] + (fn[1] - fn[0]), bw))
 
 def preamble_offset(z, preamble, threshold=0.6, top=16, sigmas=3.0):
     """The carrier offset left on symbols z, in radians a symbol (within +-pi), from where a known preamble is: the phase

@@ -22,7 +22,7 @@ Variants (`--variants`, each a case set of its own):
   drift      a clock 20 ppm off and the carrier ramping 2e-3 of the sample rate over the capture (a Doppler rate)
 
 Each case records the stages it got through, each 1 or 0:
-  box     the survey found a signal there
+  box     the box profiled covers it (the survey's, or the profile's union of the pieces it split it into)
   rate    the symbol rate within 0.1% (only the linear single-carrier profiles, whose rate is Fs/sps)
   code    the code found (rp.sync.AcquireFEC), or a framed profile of the right family named (a wrong name is not)
   named   the profile named is the one that sent it (`family`: one of the same family, as dvbs2/ts for dvbs2/normal)
@@ -162,11 +162,15 @@ def case(name, esn0, variant, seconds, wide, at, seed):
     sv = list(rp.analysis.survey(rp.source.Memory(z, Fs=Fc)))
     out = {"signals": len(sv), "box": 0, "rate": None, "code": 0, "named": 0, "family": 0, "esn0_err": None,
            "named_as": None, "stop": "", "stop_kind": "box"}
-    near = [s for s in sv if abs(s.mid - off) <= max(s.width/2, 0.05*Fs)]
+    covers = lambda s: abs(s.mid - off) <= max(s.width/2, 0.05*Fs)
+    # The survey's box nearest where it was placed, within the signal's band (a piece of a signal the survey split: the
+    # profile may take the pieces together); `box` is whether the box profiled covers it
+    near = [s for s in sv if abs(s.mid - off) <= 0.5*Fs]
     if near:
-        out["box"], out["stop_kind"] = 1, ""
         q = rp.analysis.profile(rp.source.Memory(z, Fs=Fc), survey=sv,
                                 signals=[min(near, key=lambda s: abs(s.mid - off))], blind=True)[0]
+        if covers(q.signal):
+            out["box"], out["stop_kind"] = 1, ""
         det = q.det
         if name in LINEAR:
             true = Fs/sps
@@ -185,6 +189,8 @@ def case(name, esn0, variant, seconds, wide, at, seed):
             out["stop_kind"] = u.kind
         elif not out["named"]:
             out["stop_kind"] = "misnamed" if named else "unnamed"
+        if not out["box"]:
+            out["stop_kind"] = "box"
     out["seconds"] = time.perf_counter() - t
     return out
 

@@ -140,7 +140,7 @@ def test_mf_tdma_carriers_in_one_slot():
 
 def test_hopping_carrier():
     obj = rp._config.read(rp._config.find("profile", "ble/adv"))
-    obj["steps"][0].update({"Fs": 12e6, "hop": [-4e6, 0.0, 4e6]})
+    next(st for st in obj["steps"] if st.get("sync") == "burst").update({"Fs": 12e6, "hop": [-4e6, 0.0, 4e6]})
     p, pdus = rp._config.load_obj("profile", "ble/hop", obj), ble_pdus(3)
     tx = p.tx()
     x = np.asarray(tx([rp.Data(pdu, Fs=1e6, sps=1) for pdu in pdus], flush=True).data)
@@ -151,7 +151,7 @@ def test_hopping_carrier():
 
 def test_bad_hop():
     obj = rp._config.read(rp._config.find("profile", "ble/adv"))
-    obj["steps"][0]["hop"] = []
+    next(st for st in obj["steps"] if st.get("sync") == "burst")["hop"] = []
     with pytest.raises(ConfigError, match="hop"):
         rp._config.load_obj("profile", "ble/hop", obj).tx()
 

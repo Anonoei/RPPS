@@ -48,6 +48,7 @@ bits; strong codes at low SNR are beyond them on channel bits.
 | TDMA bursts, frame and slots | `burst.demodulate` | each burst on its shared preamble, mid-amble or postamble (`shared_segments`), data-aided carrier and phase; its symbol clock followed; LLRs (`Bursts.llrs`); blind when nothing is shared |
 | two co-channel signals of equal power | `spectrum.separate.estimate`, `separate` | each one's carrier, timing and phase; joint sequence estimate |
 | which named system | `catalogue.match`, `features` | measured features against systems from their standards, weighted |
+| which shipped profile (FSK, pulses, OFDM) | `profile` | each fixed-rate profile's own receive on its channel; named when its checks verify |
 | PM, residual carrier, subcarriers | `modulation.pm.analyze`, `subcarrier`, `nrz` | carrier tracked, phase around it |
 | DSSS | `sequence.spread.period`, `chip_rate`, `code`, `despread` | windowed autocorrelation variance; code from eigenvectors |
 | frequency hopping | `spectrum.hopping.track`, `dehop` | short-time spectrum clustered into channels and dwells |

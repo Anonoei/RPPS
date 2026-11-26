@@ -9,14 +9,15 @@ from ._result import FOUND, GUESS, MIN_PAYLOAD, SignalProfile, Step, UNSOLVED, _
 
 class _Chain:
     """A signal's chain over the blocks of its capture, and what it keeps for the profile"""
-    def __init__(self, sig, Fs, blind, baud=None, ch=None, codes=None):
+    def __init__(self, sig, Fs, blind, baud=None, ch=None, codes=None, mods=None):
         """ch: the channel an rp.signal.FFTBank brings this signal to baseband in (its samples are given to `step` at
-        ch.Fs); None: the chain channelizes the capture's samples itself (sig.channel())"""
+        ch.Fs); None: the chain channelizes the capture's samples itself (sig.channel()). mods: the constellations
+        Acquire tries (None: all it does)"""
         from ... import sync
         from ...base import Stream
-        self.sig, self.Fs, self.baud, self.banked = sig, Fs, baud, ch is not None
+        self.sig, self.Fs, self.baud, self.banked, self.mods = sig, Fs, baud, ch is not None, mods
         self.errors = []
-        self.acq, self.mat, self.ff = sync.Acquire(baud=baud), sync.time.Mat(), sync.phase.FFCarrier()
+        self.acq, self.mat, self.ff = sync.Acquire(baud=baud, names=mods), sync.time.Mat(), sync.phase.FFCarrier()
         self.fec = sync.AcquireFEC(blind=blind, names=codes)
         self.raw, self.nsym, self.dead = [], 0, False
         self.near, self.nnear = [], 0 # The channel's first NEAR samples, for rpps.analysis.spectrum.waveform
@@ -103,8 +104,8 @@ class _Chain:
         this chain's own channel samples, as Signals of the capture (each at most (1 + beta) x baud wide); [] otherwise,
         and when more pieces than carriers at this rate fit in the box are found"""
         import copy
-        if not self.near or (1 + beta)*baud >= fill*self.sig.width:
-            return []
+        if not self.near or (1 + beta)*baud >= fill*self.sig.width or getattr(self.sig, "merged", None):
+            return [] # (a box _merge made: one spread signal, its rate far under its width by what it is)
         from ..spectrum.signal import survey
         from ...source import Memory
         try:
@@ -193,6 +194,27 @@ class _Chain:
         if f.baud > 1.2*self.sig.width: # (not a symbol rate: wider than the band the signal takes up)
             return None
         return f.baud
+
+    def retries(self, p, n):
+        """Other readings of a good lock no code fits, at most `n` (rpps._effort "retries"): [(baud, constellations)],
+        the runner-up constellation of the search first (by its score), then twice and half the rate (a rate locked an
+        octave off still shows a line; the symbols then repeat or smear, and no code fits them). None when the lock is
+        doubtful (its own steps say what else to try), named, or a code was found"""
+        det = self.stream.det
+        fec = self.stream.est.get("fec") if det is not None else None
+        acq = next((st for st in p.steps if st.kind == "acquire"), None)
+        if (n <= 0 or det is None or p.profile_name or fec is None or fec.found or not fec.complete or acq is None
+                or acq.status == UNSOLVED or "doubtful" in (acq.note or "")):
+            return []
+        out = []
+        ranked = sorted((det.scores or {}).items(), key=lambda t: -t[1])
+        if len(ranked) > 1:
+            out.append((det.baud, [ranked[1][0]]))
+        for f in (2.0, 0.5):
+            b = f*det.baud
+            if 1.35*b <= 1.3*self.sig.width and self.ch is not None and b < self.ch.Fs/2.5 and b > self.ch.Fs/64:
+                out.append((b, None))
+        return out[:n]
 
     def profile(self, name):
         p = self._linear(name)
@@ -667,7 +689,9 @@ class _Chain:
             fr = []
             p.add("frame", "framed profiles", UNSOLVED, note=f"{type(e).__name__}: {e}")
         unverified = [t[0] for t in fr if not t[6]["verified"]]
-        fr = [t for t in fr if t[6]["verified"]] # Headers that only read are no evidence (a PLS code decodes any word)
+        # Headers that only read are no evidence (a PLS code decodes any word); a check that keeps failing is evidence
+        # against (DVB-S2's PLS read 11 of 12 times on 802.15.4 chips, its BBHEADER CRC never)
+        fr = [t for t in fr if t[6]["verified"] and not t[6]["refuted"]]
         if fr:
             name, heads, n, inverted, params, ids, ev = fr[0]
             p.profile_name, p.profile_params = name, params

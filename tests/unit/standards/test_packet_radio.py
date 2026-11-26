@@ -52,7 +52,7 @@ def ble_signal():
 
 def test_ble_builds_the_pairs(ble_signal):
     p = ble_signal[0]
-    assert names(p.rx()) == ["+Burst", "+FMDemod", "+Matched", "+Preamble", "+Known", "/Constellation", "+Delimiter", "/Marker",
+    assert names(p.rx()) == ["+Designed", "+Burst", "+FMDemod", "+Matched", "+Preamble", "+Known", "/Constellation", "+Delimiter", "/Marker",
                              "/additive/ble_whiten", "/Header"]
     assert names(p.tx()) == ["*Header", "*additive/ble_whiten", "*Marker", "*Constellation", "+Shape", "+FM", "+BurstTx"]
 

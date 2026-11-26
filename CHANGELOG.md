@@ -388,6 +388,21 @@ what to use instead.
   preamble to the next; what it leaves (`cfo_left`) drives `rp.sync.PilotPhase(left=)`, which takes it off before its
   pilot line. The DVB-S2 profiles use it: with a 4e-4 or 2e-3 Rs carrier offset QPSK 1/2 decodes from 10 down to 2 dB
   Es/N0 (it decoded nothing at 6 dB and below: the 8th power never locks there, and the pilots alone alias).
+- **One signal the survey cut into several boxes is profiled as one** (`rp.analysis.profile`): adjacent boxes whose
+  cyclic spectra show one rate far under their widths (a spreading code's period: 802.11b's two halves either side of
+  its Barker dip, 802.15.4's four pieces), or that are OFDM on one subcarrier grid and one symbol clock (pieces between
+  empty subcarriers), are taken together; carriers side by side, each filling its own box or keeping its own clock,
+  stay apart. The bench's `box` stage grades the box profiled.
+- **Signals the linear chain doesn't take are named by the shipped profile that decodes them**
+  (`rp.analysis.profile`): an unnamed signal is tried against each fixed-rate profile its box fits, on that profile's
+  own channel of the capture (centred on the band the box sits in, filtered and resampled to its rate; an FM audio
+  input on the discriminator's output), and named when its own checks verify, none refuted. GFSK bursts (`ble/adv`),
+  pulse position (`adsb/mode_s`) and OFDM (`lte/downlink`, by its cell search and PBCH) are named from a capture;
+  each profile's receiver does the work, nothing per standard in the analysis.
+- **A good lock no code fits is read again** (`rp.analysis.profile`): the search's runner-up constellation, then twice
+  and half the rate within the channel, the one that finds a code or a name kept (and said: a `retry` step); how many
+  is `rpps._effort`'s `retries` (fast none, balanced 2, max 4). **`Hypothesis.p`** and **`Report.p(h)`**: a
+  hypothesis's p-value, alone and over every hypothesis tried (the z_crit threshold tests at 0.01).
 - **A profile built on the one a code names is named when its own layer verifies** (`rp.analysis.profile`): a packet
   layer's check is its packets' lengths meeting the frames' pointers (`rp.link.packets` counts `aligned`), so
   `ccsds/tm_packets` is named for space packets and `ccsds/tm_rs` for frames of other data.
@@ -509,6 +524,12 @@ what to use instead.
 - **A signal at 2 samples a symbol locked at a wrong rate** (`rp.sync.rate.find_baud`, `Lock.find`): |x|^2 put its
   rate line on Fs/2, outside the search, and a noise peak was taken (16QAM at 0.17-0.53 of its rate). With no clear line,
   x is interpolated to twice its rate and searched to Fs/1.5, a line there taken when clear and the signal as wide as it.
+- **`ble/adv` filters to its channel before the discriminator**: over 4 MHz of noise it fell under FM's threshold
+  (15 dB Es/N0: 18 of 123 packets; now 116 of 153, every one at 20 dB).
+- **A profile's checks verify it when they pass in a tenth of its frames or more** (`analysis.signal_profile`; was: as
+  often as they fail): a CRC-24 passing on 28 of 149 weak packets is no chance. And a profile built on the one a code
+  names isn't taken when a layer of its own gives nothing (`dvbs/si` on transport packets that carry no tables), nor a
+  framed profile one of whose checks is refuted (DVB-S2's PLS read on 802.15.4 chips, its BBHEADER CRC never).
 - **`rp.analysis.burst.shared_segments` raised a math domain error** on hundreds of bursts (a weak or absent network):
   the chance of them agreeing underflowed to 0. It is no shared segment, and the bursts are demodulated blind.
 - **A convolutional profile decoded at only some carrier phases** (`dvbs/qpsk`: 5 of 12): nothing resolved the 90 degree

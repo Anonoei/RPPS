@@ -3,7 +3,7 @@ import numpy as np
 
 from ._receive import receive_steps
 from ._chain import _Chain
-from ._result import GUESS, SignalProfile, Step, UNSOLVED
+from ._result import FOUND, GUESS, SignalProfile, Step, UNSOLVED
 
 def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True, survey=None, symbols=2**18,
             max_blocks=None, progress=None, jobs=1, hint=None):
@@ -46,6 +46,11 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
     if jobs > 1 and len(picked) > 1:
         return _parallel(source, picked, sv, jobs, tell, dict(blocks=blocks, block=block, blind=blind, symbols=symbols,
                                                                max_blocks=max_blocks, hint=hint))
+    merged = _merge(source, picked, sv) # (one spread signal over several boxes: their union)
+    for m in merged:
+        if getattr(m, "merged", None) and id(m) not in index:
+            index[id(m)] = min((i for i, b in enumerate(sv) if (b.mid, b.width) in m.merged[0]), default=None)
+    picked = merged
     refit = _refit(source, picked) # (each process its own: the survey's boxes are what it is given)
     for old, new in zip(picked, refit):
         if new is not old:
@@ -54,21 +59,22 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
 
     cap = max(blocks, max_blocks if max_blocks is not None else 8*blocks)
 
-    def chains_for(sigs, bauds):
+    def chains_for(sigs, bauds, mods=None):
         """Chains for these signals, their channels from one rp.signal.FFTBank (one FFT of the capture a hop for all
-        of them), and which bank channel each reads"""
+        of them), and which bank channel each reads; mods: the constellations each one's Acquire tries (None: all)"""
         from ...signal import FFTBank
         from ..spectrum.signal import Channel
         live = [s for s in sigs if not getattr(s, "holds", 0)]
         bank = FFTBank(source.Fs, [(s.mid, s.width) for s in live]) if live else None
         slot, out = {}, []
-        for s, b in zip(sigs, bauds):
+        for s, b, m in zip(sigs, bauds, mods or [None]*len(sigs)):
             ch = None
             if bank is not None and not getattr(s, "holds", 0):
                 j = len(slot)
                 ch = Channel(None, bank.Fs_out[j], bank.D[j], 0.0, 0)
             h = (hint(s) if hint is not None else None) or {}
-            c = _Chain(s, source.Fs, blind and h.get("blind", True), baud=b or h.get("baud"), ch=ch, codes=h.get("codes"))
+            c = _Chain(s, source.Fs, blind and h.get("blind", True), baud=b or h.get("baud"), ch=ch, codes=h.get("codes"),
+                       mods=m)
             if ch is not None:
                 slot[id(c)] = j
             out.append(c)
@@ -109,6 +115,12 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
             p.add("profile", "building the profile", UNSOLVED, note=f"{type(e).__name__}: {e}")
             return p
         receive_steps(p, source)
+        if getattr(s, "merged", None) and p.steps:
+            parts, R = s.merged
+            why = (f"each shows one rate, {R/1e3:.6g} kHz, far under its width (a spreading code's period)" if R else
+                   "OFDM on one subcarrier grid and one symbol clock across them")
+            p.steps.insert(1, Step("box", f"{len(parts)} of the survey's boxes as one signal, {s.width/1e3:.0f} kHz wide: {why}",
+                                   GUESS, note="boxes " + ", ".join(f"{m/1e6:+.3f} MHz {w/1e3:.0f} kHz" for m, w in parts)))
         if getattr(s, "refit", None) and p.steps:
             m0, w0 = s.refit
             p.steps.insert(1, Step("box", f"fitted to the signal: centre {(s.mid - m0)/1e3:+.1f} kHz, {s.width/1e3:.0f} kHz wide "
@@ -126,7 +138,7 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
     again, parts, extra = {}, {}, []
     notched = set() # Boxes split at notches a fine spectrum shows: carriers, each listed
     for k, (ch, p) in enumerate(zip(chains, out)):
-        subs = ch.carriers() if not ch.dead else []
+        subs = ch.carriers() if not ch.dead and not getattr(ch.sig, "merged", None) else [] # (a merged box: its dips are its own)
         if subs:
             parts[k] = [(s, None) for s in subs]
             notched.add(k)
@@ -177,9 +189,228 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
                                        GUESS, note="the first pass found " + (out[k].steps[1].what if len(out[k].steps) > 1
                                                                               else "nothing")))
                 out[k] = q
-    return out + extra
+    # A good lock no code fits: other readings of it (the runner-up constellation, 2x and 1/2 the rate), the one that
+    # gets furthest kept (rpps._effort "retries")
+    from ... import _effort
+    tries = [(k, b, m) for k, ch in enumerate(chains) if k not in again and k not in parts
+             for b, m in ch.retries(out[k], _effort.get("retries"))]
+    if tries:
+        redo, bank3, slot3 = chains_for([chains[k].sig for k, _, _ in tries], [b for _, b, _ in tries],
+                                        [m for _, _, m in tries])
+        run(redo, bank3, slot3, stage="retry")
+        for j, ((k, b, m), c) in enumerate(zip(tries, redo)):
+            q = build(c)
+            tell("build retry", j + 1, len(tries), len(tries) - j - 1)
+            if (q.solved or q.profile_name) and _further(q, out[k]): # (a code or a name: no more steps before the same end)
+                what = f"{m[0].upper()} instead" if m else f"{b/1e3:.6g} kBd ({b/chains[k].stream.det.baud:g}x the rate first read)"
+                q.steps.insert(1, Step("retry", what, GUESS, note="the first reading locked but no code fit: " +
+                                       (out[k].unsolved.what if out[k].unsolved is not None else "")))
+                out[k] = q
+    out = _named(source, out + extra)
+    return out
+
+def _named(source, profs, samples=2**22):
+    """Each profile no definition named, tried against the shipped profiles of a fixed rate its box may be
+    (_framed.shipped: each on its own channel, named when its own checks verify): a new profile from its channel step
+    on, the one whose checks verified named (the linear chain's reading as a note)"""
+    from ._framed import shipped
+    todo = [k for k, p in enumerate(profs) if not p.profile_name and p.signal is not None
+            and not getattr(p.signal, "holds", 0) and getattr(p.signal, "width", None)]
+    if not todo or not hasattr(source, "peek"):
+        return profs
+    try:
+        x = np.asarray(source.peek(samples))
+    except Exception:
+        return profs
+    for k in todo:
+        p = profs[k]
+        try:
+            got = shipped(x, float(source.Fs), p.signal.mid, p.signal.width, budget=samples)
+        except Exception as e:
+            p.add("profile", "the shipped profiles of a fixed rate", UNSOLVED, note=f"{type(e).__name__}: {e}")
+            continue
+        if not got:
+            continue
+        name, params, ev = got[0]
+        import copy
+        sig = copy.copy(p.signal) # (the band the profile decoded, which the box may be a piece of)
+        sig.mid, sig.width = float(ev["at"]), float(ev["width"])
+        sig.lo, sig.hi = sig.mid - sig.width/2, sig.mid + sig.width/2
+        q = SignalProfile(p.name, sig)
+        q.symbols, q.det, q.fec = p.symbols, p.det, p.fec
+        q.steps = [st for st in p.steps if st.kind in ("channel", "box", "split")][:3] or p.steps[:1]
+        checked = ", ".join(f"{s} {ps}/{ps + fs}" for s, (ps, fs) in sorted(ev["checks"].items()))
+        others = [t[0] for t in got[1:]]
+        q.add("profile", f"{name}: its own receive, from the capture's samples, verifies ({sig.mid/1e6:+.4f} MHz, "
+                         f"{sig.width/1e3:.0f} kHz: the band it decoded; the box {p.signal.mid/1e6:+.4f} MHz, "
+                         f"{p.signal.width/1e3:.0f} kHz)", FOUND,
+              candidates=[(t, 0.0, 0.0) for t in others],
+              note=f"checks passed: {checked}" + (f"; the linear chain read: {p.unsolved.kind}: {p.unsolved.what}"
+                                                   if p.unsolved is not None else ""))
+        q.profile_name, q.profile_params = name, params
+        profs[k] = q
+    return profs
 
 _JOB = None # What a forked worker of `_parallel` profiles (inherited, not pickled)
+
+def _band(x, Fs, mid, width):
+    """x shifted by -mid, filtered to `width` (in frequency) and decimated to about 1.3 x width: (samples, their rate)"""
+    y = x*np.exp(-2j*np.pi*mid/Fs*np.arange(len(x)))
+    Y = np.fft.fft(y)
+    Y[np.abs(np.fft.fftfreq(len(y), 1/Fs)) > width/2] = 0
+    D = max(1, int(Fs/(1.3*width)))
+    return np.fft.ifft(Y)[::D], Fs/D
+
+def _merge(source, sigs, sv, samples=2**20, gap=0.25, same=0.01, spread=2.0, ofdm_gap=0.5):
+    """One spread signal the survey cut into several boxes, profiled as one: the run of adjacent boxes (of the survey `sv`:
+    gaps under `gap` of the narrower) round each signal of `sigs` whose cyclic spectra (rpps.analysis.spectrum.cyclic)
+    show one rate, the same within `same`, at under 1/`spread` of each box's width. A linear carrier's box is about 1.2
+    to 1.35 x its rate; a direct-sequence signal's spectrum has dips (an 802.11b Barker code sums to -1: a dip at its
+    centre) the survey splits it at, and every piece shows the spreading code's period (1 MHz, its 11 Mchip/s 4.4 x
+    narrower than a piece). Carriers side by side at one rate each fill their own box, and stay apart. Returns `sigs`, a
+    signal in such a run as a copy over the union (`merged`: the boxes' (mid, width) and the rate), once. Or OFDM on
+    one subcarrier grid and symbol clock (`_one_ofdm`; gaps up to `ofdm_gap` of the wider: subcarriers left empty;
+    `merged` then holds no rate)"""
+    import copy
+    if not sigs or not hasattr(source, "peek") or len(sv) < 2:
+        return list(sigs)
+    boxes = sorted((s for s in sv if getattr(s, "width", None) and not getattr(s, "holds", 0)), key=lambda s: s.mid)
+    def cut(bs, g, of=min):
+        out, cur = [], bs[:1]
+        for b in bs[1:]:
+            a = cur[-1]
+            if b.lo - a.hi < g*of(a.width, b.width):
+                cur.append(b)
+            else:
+                out.append(cur)
+                cur = [b]
+        return out + ([cur] if cur else [])
+    keys = {(s.mid, s.width) for s in sigs}
+    runs = [r for r in cut(boxes, ofdm_gap, max) if len(r) > 1 and any((q.mid, q.width) in keys for q in r)]
+    if not runs:
+        return list(sigs)
+    try:
+        x = np.asarray(source.peek(samples), dtype=np.complex128)
+    except Exception:
+        return list(sigs)
+    if len(x) < 8192:
+        return list(sigs)
+    Fs = float(source.Fs)
+    union = {}
+    for r in runs:
+        got = _one_ofdm(x, Fs, r)
+        if got is not None:
+            for part in got:
+                m = copy.copy(max(part, key=lambda b: getattr(b, "snr", None) or 0.0))
+                m.lo, m.hi = min(b.lo for b in part), max(b.hi for b in part)
+                m.mid, m.width = (m.lo + m.hi)/2, m.hi - m.lo
+                m.merged = ([(b.mid, b.width) for b in part], None)
+                for b in part:
+                    union[(b.mid, b.width)] = m
+            continue
+        for r in cut(r, gap):
+            if len(r) < 2:
+                continue
+            _spread(x, Fs, r, same, spread, union)
+    out, seen = [], set()
+    for s in sigs:
+        m = union.get((s.mid, s.width))
+        if m is None:
+            out.append(s)
+        elif id(m) not in seen:
+            seen.add(id(m))
+            out.append(m)
+    return out
+
+def _spread(x, Fs, r, same, spread, union):
+    """_merge's spread-spectrum test on a run of boxes: into `union` when they show one rate far under their widths"""
+    import copy
+    from ..spectrum.cyclic import features
+    rates = []
+    for b in r:
+        y, F = _band(x, Fs, b.mid, b.width)
+        try:
+            f = features(y, F)
+        except ValueError:
+            f = None
+        rates.append(None if f is None else f.baud)
+    if any(v is None for v in rates):
+        return
+    R = float(np.median(rates))
+    if all(abs(v/R - 1) < same for v in rates) and all(b.width > spread*R for b in r):
+        m = copy.copy(max(r, key=lambda b: getattr(b, "snr", None) or 0.0))
+        m.lo, m.hi = min(b.lo for b in r), max(b.hi for b in r)
+        m.mid, m.width = (m.lo + m.hi)/2, m.hi - m.lo
+        m.merged = ([(b.mid, b.width) for b in r], R)
+        for b in r:
+            union[(b.mid, b.width)] = m
+
+def _one_ofdm(x, Fs, run, grid=0.05, clock=0.05, bin_s=0.5e-6):
+    """The runs of `run` (adjacent boxes, in order) that are one OFDM signal: [[boxes]] of two or more, None when no two
+    are. Each box's cyclic prefix (rpps.analysis.spectrum.waveform.ofdm) gives its Tu (a system's, when one fits), and
+    its correlation at Tu (an exact lag: a phase ramp in frequency) the subcarriers' offset, modulo their spacing, from
+    the capture's centre (the box's shift added back), and when its symbols start: that correlation's magnitude pulses
+    in each prefix. Boxes of one signal share the Tu, the offset (to `grid` of a spacing) and the pulses (their
+    envelopes, in `bin_s` bins, correlate over `clock`). Carriers side by side keep their own grid (a channel raster of
+    100 kHz on 15 kHz subcarriers, of 10 MHz LTE carriers 9.9 MHz apart, keeps one grid: the clock tells them) and,
+    from different transmitters, their own symbol clock. Not told apart: carriers of one site, time aligned, a gap
+    narrower than the gap _merge allows between them. A box between two that agree, too narrow to show a prefix, goes
+    with them"""
+    from ..spectrum.waveform import ofdm, SYSTEMS
+    rows = {name: (tu*1e-6, cp*1e-6) for name, tu, cp in SYSTEMS}
+    reads = []
+    for b in run:
+        y, F = _band(x, Fs, b.mid, b.width)
+        try:
+            o = ofdm(y, F)
+        except Exception:
+            o = None
+        if o is None or not o.tcp or len(y) < 4*o.tu*F:
+            reads.append(None)
+            continue
+        sys_ = rows.get(o.systems[0][0]) if o.systems else None
+        tu, tcp = sys_ if sys_ is not None and abs(sys_[0]/o.tu - 1) < 0.005 else (o.tu, o.tcp)
+        f = np.fft.fftfreq(len(y), 1/F)
+        later = np.fft.ifft(np.fft.fft(y)*np.exp(2j*np.pi*f*tu)) # y(t + Tu)
+        c = (y*np.conj(later))[:len(y) - int(np.ceil(tu*F))]
+        off = (-np.angle(np.sum(c))/(2*np.pi*tu) + b.mid) % (1/tu)
+        C = max(1, int(round(tcp*F)))
+        env = np.abs(np.convolve(c, np.ones(C)/C, mode="same")) # (in a prefix it adds up, elsewhere it doesn't)
+        k = (np.arange(len(env))/F/bin_s).astype(np.int64)
+        e = np.bincount(k, env)/np.maximum(np.bincount(k), 1)
+        reads.append((tu, off, sys_ is not None, e))
+    def same(a, b):
+        if a is None or b is None or abs(a[0]/b[0] - 1) > 0.01:
+            return False
+        if a[2] and b[2]: # (the grid, with a system's exact Tu; an estimated one turns the phase across the box)
+            df = 1/a[0]
+            if abs((a[1] - b[1] + df/2) % df - df/2)*a[0] >= grid:
+                return False
+        n = min(len(a[3]), len(b[3])) - 2
+        if n < 64:
+            return False
+        u, v = a[3][1:n] - a[3][1:n].mean(), b[3][1:n] - b[3][1:n].mean()
+        r = float(np.dot(u, v)/max(np.sqrt(np.dot(u, u)*np.dot(v, v)), 1e-300))
+        return r > clock
+    out, cur, last = [], [], None
+    def close():
+        while cur and reads[run.index(cur[-1])] is None:
+            cur.pop()
+        if len(cur) > 1:
+            out.append(list(cur))
+    for b, rd in zip(run, reads):
+        if rd is None:
+            if cur:
+                cur.append(b) # (held: kept if a box that agrees follows)
+            continue
+        if cur and last is not None and same(last, rd):
+            cur.append(b)
+        else:
+            close()
+            cur[:] = [b]
+        last = rd
+    close()
+    return out or None
 
 def _refit(source, sigs, samples=2**21, nfft=2**18, drop=10.0, q=95, move=0.08, widths=(0.8, 1.3)):
     """The survey's boxes fitted to their signals in a fine spectrum of the capture: `samples` read once (source.peek),
@@ -214,7 +445,7 @@ def _refit(source, sigs, samples=2**21, nfft=2**18, drop=10.0, q=95, move=0.08, 
     f = np.fft.fftshift(np.fft.fftfreq(n, 1/Fs))
     out = []
     for s in sigs:
-        if getattr(s, "holds", 0) or not getattr(s, "width", None):
+        if getattr(s, "holds", 0) or not getattr(s, "width", None) or getattr(s, "merged", None):
             out.append(s)
             continue
         span = np.flatnonzero(np.abs(f - s.mid) <= 1.5*s.width)
