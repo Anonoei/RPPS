@@ -1,11 +1,12 @@
 {
   "comment": [
     "P25 phase 1 control channel: Trunking Signalling Data Units of one to three TSBKs, C4FM at 4800 symbols a second",
-    "(4FSK, h 0.25: the levels +-1, +-3 at +-600, +-1800 Hz).",
-    "The discriminator's levels are timed, each data unit found by its 24-symbol frame sync among them (matched in",
-    "phase: the sense of a discriminator is known; the levels scaled by the sync's +-3) and read to the next one (at",
-    "most 360 symbols, three TSBKs), a status symbol after every 35 dropped, the dibits read, the sync stripped.",
-    "The 64-bit NID (BCH (63,16) and its DUID bit) gives the NAC and DUID;",
+    "(4FSK, h 0.25: the levels +-1, +-3 at +-600, +-1800 Hz). Filtered to the channel first (5.5 kHz:",
+    "a discriminator over wider noise falls under its threshold; 20 dB Es/N0 at 48 kS/s passed 3 of 9 TSBKs without",
+    "it, 9 with it). The discriminator's levels are timed, each data unit found by its 24-symbol frame sync among them",
+    "(matched in phase: the sense of a discriminator is known; the levels scaled by the sync's +-3) and read to the",
+    "next one (at most 360 symbols, three TSBKs), a status symbol after every 35 dropped, the dibits read, the sync",
+    "stripped. The 64-bit NID (BCH (63,16) and its DUID bit) gives the NAC and DUID;",
     "the whole 196-bit blocks after it, as many as the frame holds (null bits after the last are left), are each",
     "deinterleaved, trellis decoded and checked by their CRC-16, as OP25 reads them.",
     "Out come the NID and the TSBKs as messages. The capture is the channel at `sps` samples a symbol, its carrier",
@@ -29,6 +30,7 @@
     }
   },
   "steps": [
+    {"signal": "lowpass", "cutoff": 5500.0, "transition": 3000.0, "atten_db": 40},
     {"wave": "fm", "h": 0.25, "sps": {"param": "sps"}},
     {"wave": "shape", "pulse": "rc/0p20_frequency", "sps": {"param": "sps"}},
     {"sync": "timing"},

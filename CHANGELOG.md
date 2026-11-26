@@ -530,8 +530,9 @@ what to use instead.
 - **A signal at 2 samples a symbol locked at a wrong rate** (`rp.sync.rate.find_baud`, `Lock.find`): |x|^2 put its
   rate line on Fs/2, outside the search, and a noise peak was taken (16QAM at 0.17-0.53 of its rate). With no clear line,
   x is interpolated to twice its rate and searched to Fs/1.5, a line there taken when clear and the signal as wide as it.
-- **`ble/adv` filters to its channel before the discriminator**: over 4 MHz of noise it fell under FM's threshold
-  (15 dB Es/N0: 18 of 123 packets; now 116 of 153, every one at 20 dB).
+- **`ble/adv`, `p25/tsdu` and `dmr/burst` filter to their channel before the discriminator**: over wider noise it fell
+  under FM's threshold (BLE at 15 dB Es/N0: 18 of 123 packets, now 116 of 153; P25 at 20 dB: 3 of 9 TSBKs, now 9, and 7
+  at 15 dB; the ident bench names P25 from a capture).
 - **A profile's checks verify it when they pass in a tenth of its frames or more** (`analysis.signal_profile`; was: as
   often as they fail): a CRC-24 passing on 28 of 149 weak packets is no chance. And a profile built on the one a code
   names isn't taken when a layer of its own gives nothing (`dvbs/si` on transport packets that carry no tables), nor a
