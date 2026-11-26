@@ -20,7 +20,7 @@ A constellation is a set of points and the ways of labelling them with bits. PSK
 power unless `"normalize": false`. The first map is also turned by every rotation the points allow, with and without
 spectral inversion (`rp.symbol.load("psk/qpsk", "R090 inverted")`): the maps a receiver has to try when it does not know
 the carrier phase or the IQ sense. Shapes and definitions are separate: DVB-S2's 16APSK is
-`rp.symbol.load("apsk/dvbs2_16apsk_3_4")`, not `generate("16APSK")`.
+`rp.symbol.load("apsk/dvbs2_16apsk", rate="3/4")`, not `generate("16APSK")`.
 
 ## Differential coding
 

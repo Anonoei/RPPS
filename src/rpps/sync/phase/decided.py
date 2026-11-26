@@ -43,7 +43,7 @@ def residual(y, points, iters=2):
 class DDCarrier(Stage):
     """Carrier phase and frequency from decisions on any constellation, block estimation tracked across windows
 
-        symbols + rp.sync.phase.DDCarrier(rp.symbol.load("apsk/dvbs2_16apsk_2_3").points)
+        symbols + rp.sync.phase.DDCarrier(rp.symbol.load("apsk/dvbs2_16apsk", rate="2/3").points)
 
     First class (rpps.sync); see the module. Symbols in (one a symbol), the same out. `window` symbols a window, `bw` the
     tracker's (rpps.sync.track), wide for the first windows while it pulls in. 32 symbols: on 16APSK with a

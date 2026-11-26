@@ -72,19 +72,19 @@ def root() -> Path:
     """Directory holding the coding definitions"""
     return _config.find_config("fec")
 
-def ls(path=None, examples=True):
+def ls(path=None, blind=False):
     """List available FEC definitions by family: {"block/rs": [names], "conv/dvbs": [names], ...}
 
-    examples: False leaves out the definitions tagged "example" (what the blind tools do)"""
-    return {**_config.ls("fec", path, examples=examples),
-            **{f"interleave/{k}" if k != "interleave" else k: v for k, v in _config.ls("interleave", path, examples=examples).items()}}
+    blind: only what the blind tools try (rp._config.ls): no definitions tagged "example", and only the selected tags (rp.select_tags)"""
+    return {**_config.ls("fec", path, blind=blind),
+            **{f"interleave/{k}" if k != "interleave" else k: v for k, v in _config.ls("interleave", path, blind=blind).items()}}
 
-def names(kind: str, sub=None, path=None, examples=True):
+def names(kind: str, sub=None, path=None, blind=False):
     """References of the definitions of a kind ("block", "conv", "interleave"), as `load(kind, ref)` takes them ("rs/204_188"), across families or just one
 
-    examples: False leaves out the definitions tagged "example" (what the blind tools do)"""
+    blind: only what the blind tools try (rp._config.ls): no definitions tagged "example", and only the selected tags (rp.select_tags)"""
     out = []
-    for key, v in ls(path, examples).items():
+    for key, v in ls(path, blind).items():
         k, _, family = key.partition("/")
         if k == kind and (sub is None or family == sub):
             out += [f"{family}/{n}" if family else n for n in v]

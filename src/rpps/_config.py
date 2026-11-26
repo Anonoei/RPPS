@@ -1,3 +1,4 @@
+import copy
 import os
 import re
 import sys
@@ -13,17 +14,59 @@ BYTE_ORDER = ">" if sys.byteorder == "big" else "<"
 # Definitions (mod/coding/scram/encap/chain) ship with the package. A directory in $RPPS_CONFIG, or
 # one added with `add_config_path`, is searched first, so a project can add or override definitions.
 # In a checkout that's config/ next to src/; an installed package carries a copy next to its modules (setup.py puts it there)
+# $RPPS_CONFIG_SHIPPED=0 (`use_shipped(False)`) leaves the shipped ones out: only the user's directories are searched.
+# $RPPS_CONFIG_TAGS=dvb-s2,lte (`select_tags`) narrows what the blind tools try (`ls(..., blind=True)`) to those tags.
 _HERE = Path(__file__).resolve().parent
 PATH_CONFIG = _HERE.parents[1] / "config" if (_HERE.parents[1] / "config").is_dir() else _HERE / "config"
 _EXTRA: list = [Path(p) for p in os.environ.get("RPPS_CONFIG", "").split(os.pathsep) if p]
+_SHIPPED = os.environ.get("RPPS_CONFIG_SHIPPED", "1").strip().lower() not in ("0", "false", "no", "off")
+_SELECTED = tuple(t.strip().lower() for t in os.environ.get("RPPS_CONFIG_TAGS", "").split(",") if t.strip()) or None
+_CHECKED = False # The selected tags checked against tags() (an environment variable's are checked at first use)
 
 def add_config_path(path):
     """Search `path` (laid out like the shipped config/) before the packaged definitions"""
     _EXTRA.insert(0, Path(path))
 
+def use_shipped(on: bool = True):
+    """Search the definitions shipped with RPPS (on, the default), or only the directories added with `add_config_path` /
+    $RPPS_CONFIG (off; $RPPS_CONFIG_SHIPPED=0 at start). Off, a shipped name is not found and the blind tools try only
+    the user's definitions; code that loads a shipped definition by name (the NR grid's codes, a profile's pulses) needs
+    the user's directory to hold it"""
+    global _SHIPPED
+    _SHIPPED = bool(on)
+
+def select_tags(tags=None):
+    """What the blind tools try (identify, survey, solve, the catalogue: `ls(..., blind=True)`): only the definitions
+    carrying one of `tags` (["dvb-s2", "lte"]), plus the untagged generic ones (a CRC-32, a K=7 code). None: every one
+    ($RPPS_CONFIG_TAGS, comma separated, at start). A definition loads by name whichever tags are selected"""
+    global _SELECTED, _CHECKED
+    sel = None if tags is None else tuple(dict.fromkeys(str(t).strip().lower() for t in ([tags] if isinstance(tags, str) else tags)))
+    if sel is not None:
+        _check_tags(sel)
+    _SELECTED, _CHECKED = sel or None, True
+
+def selected_tags():
+    """The tags `select_tags` chose (a tuple), or None for every one"""
+    if _SELECTED is not None and not _CHECKED:
+        select_tags(_SELECTED)
+    return _SELECTED
+
+def _check_tags(sel):
+    unknown = sorted(set(sel) - set(tags()))
+    if unknown:
+        raise ConfigError(f"select_tags: no tag {unknown} ($RPPS_CONFIG_TAGS or rp.select_tags), have {sorted(tags())}")
+
+def roots():
+    """The config directories searched, highest priority first: the user's, then the shipped one (unless `use_shipped(False)`)"""
+    return [*_EXTRA, *([PATH_CONFIG] if _SHIPPED else [])]
+
+def state():
+    """What the definitions found and tried depend on: the directories, the shipped switch, the selected tags (a cache key)"""
+    return (tuple(_EXTRA), _SHIPPED, _SELECTED)
+
 def layers(kind):
     """Directories holding definitions of a kind ("constellation", "fec", ...), highest priority first"""
-    return [d / kind for d in (*_EXTRA, PATH_CONFIG) if (d / kind).is_dir()]
+    return [d / kind for d in roots() if (d / kind).is_dir()]
 
 def find_file(kind, *parts):
     """First existing config/<kind>/<parts...> across the layers, or None"""
@@ -71,12 +114,15 @@ def _roots(domain, path):
 
 EXAMPLE = "example" # The tag of a made-up definition (a demo, a docs example): loadable by name, never a blind candidate
 
-def ls(domain, path=None, all=False, examples=True):
+def ls(domain, path=None, all=False, blind=False):
     """Definitions of a domain: {"<category>[/<group>]": [names]}, merged across layers (files straight in the domain are under the domain's name).
-    all: also the abstract parents (definitions only children load). examples: also the definitions tagged "example"
-    (made up to show a feature, no system uses them): the blind tools (identify, survey, solve, catalogue) leave them out"""
+    all: also the abstract parents (definitions only children load).
+    blind: only what the blind tools (identify, survey, solve, the catalogue) try: not the definitions tagged "example"
+    (made up to show a feature, no system uses them), and under `select_tags` only the tagged ones carrying a selected
+    tag (untagged generic ones stay: QPSK, whose DVB-S2 map is tagged, is still a generic set)"""
     out: dict = {}
     seen = set() # (a name a higher layer has decides, as `locate` does)
+    sel = set(selected_tags() or ()) if blind else set()
     for root in _roots(domain, path):
         for f in _files(root):
             rel = f.parent.relative_to(root).as_posix()
@@ -86,8 +132,10 @@ def ls(domain, path=None, all=False, examples=True):
             seen.add((key, f.stem))
             if not all and _head(f).get("abstract"):
                 continue
-            if not examples and EXAMPLE in file_tags(f):
-                continue
+            if blind:
+                t = file_tags(f)
+                if EXAMPLE in t or (sel and t and not sel & {*t, *(x for _, ts in map_tags(f) for x in ts)}):
+                    continue
             out.setdefault(key, set()).add(f.stem)
     return {k: sorted(v) for k, v in sorted(out.items())}
 
@@ -104,6 +152,11 @@ def _files(base):
     return out
 
 _INDEX = {} # str(directory) -> its definitions by path and by name
+@functools.lru_cache(maxsize=4096)
+def _real(path) -> Path:
+    """Path(path).resolve(), once a path: resolving is a stat a part, and loading a step reads the same files again"""
+    return Path(path).resolve()
+
 _LOCATED: dict = {} # str(resolved file) -> (domain, parts): where `locate` found it, for files below a `path` given to it
 
 def _index(base, fresh=False):
@@ -144,7 +197,7 @@ def locate(domain, ref, category=None, path=None):
             hit = _lookup(domain, ref, ref_l, base, True)
         if hit is not None:
             parts = hit.relative_to(root).with_suffix("").parts
-            _LOCATED[str(hit.resolve())] = (domain, parts)
+            _LOCATED[str(_real(str(hit)))] = (domain, parts)
             return hit, parts
     return None, None
 
@@ -246,16 +299,18 @@ def _head(f):
                 raise ConfigError(f"{f}: the variant {name!r} is also a file, {vf}")
             _VARIANTS[str(vf)] = (f, child)
         _KIDS[key] = [str(f.parent / f"{name}.json") for name in kids]
-        hit = (mt, {k: raw[k] for k in ("abstract", "tags", "extends") if k in raw} | ({"variants": list(kids)} if kids else {}))
+        maps = {"maps": [[m.get("comment", ""), list(m["tags"])] for m in raw["maps"] if isinstance(m, dict) and m.get("tags")]} \
+            if isinstance(raw.get("maps"), list) else {} # (a constellation's maps that carry tags of their own)
+        hit = (mt, {k: raw[k] for k in ("abstract", "tags", "extends") if k in raw} | ({"variants": list(kids)} if kids else {}) | maps)
         _HEAD[key] = hit
     return hit[1]
 
 def place(path):
     """(domain, parts below the domain without ".json") of a definition file, or (None, None) outside every config layer"""
-    path = Path(path).resolve()
+    path = _real(str(path))
     for root in (*_EXTRA, PATH_CONFIG):
         try:
-            rel = path.relative_to(Path(root).resolve())
+            rel = path.relative_to(_real(str(root)))
         except ValueError:
             continue
         if len(rel.parts) > 1:
@@ -409,10 +464,31 @@ def join_comments(v, where="definition"):
         return [join_comments(x, where) for x in v]
     return v
 
+_EXPANDED: dict = {} # str(file) -> (what it depends on: the config state and each file's of its chain mtime, the definition)
+
+def _stamp(path):
+    """When a definition file last changed (a variant's: its parent's)"""
+    v = _variant(path)
+    try:
+        return Path(v[0] if v is not None else path).stat().st_mtime_ns
+    except OSError:
+        return None
+
 def expand(path, _chain=()):
     """The definition in a file with its "extends" chain applied (abstract or not), comments one string each, and its
-    "base" from the folder it is in (`base_of`)"""
-    path = Path(path)
+    "base" from the folder it is in (`base_of`). Worked out once and kept until a file of its chain or the config
+    directories change (a step built per burst or per frame reads its definitions again): each call gets its own copy"""
+    key = str(path)
+    hit = _EXPANDED.get(key)
+    if hit is not None and hit[0][0] == state() and all(_stamp(f) == t for f, t in hit[0][1]):
+        return copy.deepcopy(hit[1])
+    files = []
+    obj = _expand(Path(path), _chain, files)
+    _EXPANDED[key] = ((state(), tuple(files)), obj)
+    return copy.deepcopy(obj)
+
+def _expand(path, _chain, files):
+    files.append((str(path), _stamp(path)))
     raw = read_raw(path)
     base = file_base(path)
     if "base" in raw:
@@ -422,11 +498,11 @@ def expand(path, _chain=()):
     if ref is None:
         return obj
     parent = _parent(path, ref)
-    chain = (*_chain, path.resolve())
-    if parent.resolve() in chain:
-        raise ConfigError(f"extends loops: {' -> '.join(str(p) for p in (*chain, parent.resolve()))}")
+    chain = (*_chain, _real(str(path)))
+    if _real(str(parent)) in chain:
+        raise ConfigError(f"extends loops: {' -> '.join(str(p) for p in (*chain, _real(str(parent))))}")
     try:
-        return {**merge(expand(parent, chain), obj), "base": base}
+        return {**merge(_expand(Path(parent), chain, files), obj), "base": base}
     except ConfigError as e:
         if str(path) in str(e):
             raise
@@ -435,7 +511,8 @@ def expand(path, _chain=()):
 # ---- Tags: who uses a definition (a standard, a system), from the list in config/tags.json
 
 def tags():
-    """{tag: {"comment", "ref"}} of every config layer's tags.json (user layers win)"""
+    """{tag: {"comment", "ref"}} of every config layer's tags.json (user layers win). The shipped one is read even with
+    `use_shipped(False)`: it names tags, it holds no definitions"""
     out: dict = {}
     for root in (PATH_CONFIG, *reversed(_EXTRA)):
         f = Path(root) / "tags.json"
@@ -454,11 +531,26 @@ def file_tags(f, _chain=()):
         return own
     return list(dict.fromkeys([*file_tags(parent, (*_chain, Path(f).resolve())), *own]))
 
+def map_tags(f, _chain=()):
+    """[(map name, its tags)] of the maps of a definition file that carry tags of their own (a constellation map a
+    standard labels the set by: `{"map": [...], "comment": "DVB-S2", "tags": ["dvb-s2"]}`); a child that writes no
+    "maps" has its parent's"""
+    h = _head(f)
+    if "maps" in h:
+        return [tuple(m) for m in h["maps"]]
+    if "extends" not in h:
+        return []
+    parent = _parent(f, h["extends"])
+    if Path(parent).resolve() in _chain:
+        return []
+    return map_tags(parent, (*_chain, Path(f).resolve()))
+
 def tagged(tag=None, all=False):
     """Definitions carrying `tag`: {resource: [refs below it]}. No tag: {tag: {resource: [refs]}} for every tag in use.
+    A map that carries a tag of its own lists as "<ref> (<map>)", e.g. "psk/qpsk (DVB-S2)": `rp.symbol.load(ref, map)`.
     all: abstract parents too"""
     found: dict = {}
-    for root in (*_EXTRA, PATH_CONFIG):
+    for root in roots():
         root = Path(root)
         if not root.is_dir():
             continue
@@ -467,10 +559,11 @@ def tagged(tag=None, all=False):
                 if not all and _head(f).get("abstract"):
                     continue
                 ref = f.relative_to(d).with_suffix("").as_posix()
-                for t in file_tags(f):
+                own = [(ref, t) for t in file_tags(f)] + [(f"{ref} ({name})", t) for name, ts in map_tags(f) for t in ts]
+                for r, t in own:
                     lst = found.setdefault(t, {}).setdefault(d.name, [])
-                    if ref not in lst:
-                        lst.append(ref)
+                    if r not in lst:
+                        lst.append(r)
     if tag is None:
         return dict(sorted(found.items()))
     t = str(tag).lower()

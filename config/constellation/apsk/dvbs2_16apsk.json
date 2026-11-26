@@ -1,33 +1,29 @@
 {
   "comment": [
-    "DVB-S2 16APSK: rings of 4 + 12 points; the outer radii depend on the code rate (the rate files below give them),",
-    "the labelling does not"
+    "DVB-S2 16APSK: rings of 4 + 12 points; the outer radius depends on the code rate (`rate`), the labelling does not"
   ],
-  "ref": "EN 302 307-1 V1.2.1 5.4.3",
+  "ref": "EN 302 307-1 V1.2.1 5.4.3, figure 11, table 9",
   "tags": ["dvb-s2"],
   "params": {
-    "gamma": {
+    "rate": {
       "default": null,
-      "example": 3.15,
-      "comment": "radius of ring 2 over the innermost (table 9/10 of EN 302 307-1 for each code rate)"
+      "example": "2/3",
+      "comment": "the LDPC code rate, which sets gamma, ring 2's radius over ring 1's (EN 302 307-1 table 9)",
+      "choices": {
+        "2/3": {"gamma": 3.15},
+        "3/4": {"gamma": 2.85},
+        "4/5": {"gamma": 2.75},
+        "5/6": {"gamma": 2.7},
+        "8/9": {"gamma": 2.6},
+        "9/10": {"gamma": 2.57}
+      }
     }
   },
-  "rings": [{"n": 4, "pha": 45}, {"n": 12, "pha": 15, "mag": {"param": "gamma"}}],
+  "rings": [{"n": 4, "pha": 45}, {"n": 12, "pha": 15, "mag": {"param": "rate.gamma"}}],
   "maps": [
     {
       "map": [12, 14, 15, 13, 4, 0, 8, 10, 2, 6, 7, 3, 11, 9, 1, 5],
       "comment": "DVB-S2 16APSK: label (b0b1b2b3) of each point, inner ring then outer, by angle"
     }
-  ],
-  "variants": {
-    "columns": ["name", "params.gamma", "comment", "ref"],
-    "rows": [
-      ["dvbs2_16apsk_2_3", 3.15, "DVB-S2 16APSK for code rate 2/3: gamma = 3.15", "EN 302 307-1 V1.2.1 5.4.3, figure 11, table 9"],
-      ["dvbs2_16apsk_3_4", 2.85, "DVB-S2 16APSK for code rate 3/4: gamma = 2.85", "EN 302 307-1 V1.2.1 5.4.3, figure 11, table 9"],
-      ["dvbs2_16apsk_4_5", 2.75, "DVB-S2 16APSK for code rate 4/5: gamma = 2.75", "EN 302 307-1 V1.2.1 5.4.3, figure 11, table 9"],
-      ["dvbs2_16apsk_5_6", 2.7, "DVB-S2 16APSK for code rate 5/6: gamma = 2.7", "EN 302 307-1 V1.2.1 5.4.3, figure 11, table 9"],
-      ["dvbs2_16apsk_8_9", 2.6, "DVB-S2 16APSK for code rate 8/9: gamma = 2.6", "EN 302 307-1 V1.2.1 5.4.3, figure 11, table 9"],
-      ["dvbs2_16apsk_9_10", 2.57, "DVB-S2 16APSK for code rate 9/10: gamma = 2.57", "EN 302 307-1 V1.2.1 5.4.3, figure 11, table 9"]
-    ]
-  }
+  ]
 }

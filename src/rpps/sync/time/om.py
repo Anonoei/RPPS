@@ -125,6 +125,9 @@ class OerderMeyr(Stage):
         """(X, sum of the first half, of the second, sum |x|^2) of p = |x|^2 e^{-j 2 pi n / (sps u)} over the window"""
         line = (2*np.pi*a0/sps, 2*np.pi/(sps*u))
         h = len(seg)//2
+        if not self._dev(st) and len(seg) and _accel.native is not None: # One pass in C++ (the lines below are its reference)
+            first, second, energy = _accel.native.om_sums(np.ascontiguousarray(seg), *line, h)
+            return first + second, first, second, float(energy)
         if not self._dev(st) or not len(seg):
             p = (seg.real**2 + seg.imag**2)*track.line_phasor(*line, len(seg)) # |x|^2 e^{-j 2 pi n / sps}
             first, second = np.sum(p[:h]), np.sum(p[h:])
@@ -155,7 +158,8 @@ class OerderMeyr(Stage):
             if len(seg) >= 16*sps:
                 u = 1 if sps >= 4 else 2 # Under 4 samples a symbol |x|^2 reaches past Nyquist and its line at 1/T aliases onto
                 if u == 1:               # its mirror (at 2 they cancel at some phases): the line is taken at twice the rate
-                    seg = seg.astype(np.complex128) # (held as it came, single precision; the line is summed in double)
+                    if _accel.native is None or self._dev(st): # (C++ sums single precision samples in double as they are)
+                        seg = seg.astype(np.complex128) # (held as it came, single precision; the line is summed in double)
                 else: # x at half samples, band limited, from what the window holds (so any block cut gives the same)
                     seg = interp.doubled(st.buf, a0, b, st.base)
                 X, first, second, energy = self._sums(st, seg, a0, u, sps)

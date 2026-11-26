@@ -93,7 +93,7 @@ def test_effort_change_mid_stream_and_any_cut():
     assert len(mixed) == len(whole)
 
 def test_ldpc_and_turbo_follow_the_level():
-    c = rp.symbol.load("dvbs2_qpsk")
+    c = rp.symbol.load("psk/qpsk", "dvb-s2")
     ld = rp.code.load("block/ldpc/dvbs2_64800_1_2").decoder
     rng = np.random.default_rng(5)
     s = np.asarray((rp.Data(np.zeros(ld.den, bool))*c).data)

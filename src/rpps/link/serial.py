@@ -46,11 +46,11 @@ def root() -> Path:
     """Directory holding the encapsulation definitions"""
     return _config.find_config("crc")
 
-def ls(path=None, examples=True):
+def ls(path=None, blind=False):
     """List available definitions: {category: [names]}
 
-    examples: False leaves out the definitions tagged "example" (what the blind tools do)"""
-    return {k: sorted(n for names in _config.ls(k, path, examples=examples).items() if k != "header" or names[0] == "link" for n in names[1])
+    blind: only what the blind tools try (rp._config.ls): no definitions tagged "example", and only the selected tags (rp.select_tags)"""
+    return {k: sorted(n for names in _config.ls(k, path, blind=blind).items() if k != "header" or names[0] == "link" for n in names[1])
             for k in KINDS}
 
 def load(ref: str, path=None, **params):

@@ -265,3 +265,17 @@ def test_the_blind_tools_skip_a_rate_acquire_only_guessed():
         return stream.est["fec"]
     assert any(g.kind == "conv" for g in run(12.0).guesses)
     assert not run(3.0).guesses
+
+@pytest.mark.kernels
+def test_a_code_on_a_turned_map_is_identified_and_decodes():
+    """DVB-S2 8PSK labels (8PSK turned onto k*45 degrees) received on 8PSK's own grid, a quarter turn off and inverted:
+    the blind map search tries the turned map's turns (Constellation.blind_maps), and the profile decodes"""
+    rng = np.random.default_rng(3)
+    bits = rng.integers(0, 2, 3*40000).astype(bool)
+    sym = np.asarray((rp.Data(bits, flush=True) * rp.code.load("conv/k7_171_133/1_2") * rp.symbol.load("psk/8psk", "dvb-s2")).data)
+    rx = noisy(np.conj(sym*np.exp(1j*(np.pi/8 + np.pi/2))), rng, 0.05)
+    f = F.identify(rx[:2**16], "psk/8psk")
+    assert f.found and f.name == "k7_171_133/1_2"
+    assert {"symbol": "constellation", "name": "psk/8psk", "mapping": "DVB-S2"} in f.steps
+    out = np.asarray(f.rx()(rp.Data(f.correct(rx), sps=1, Fs=1e6, flush=True)).data).astype(bool)
+    assert np.array_equal(out, bits)

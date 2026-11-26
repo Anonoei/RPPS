@@ -6,17 +6,20 @@ import numpy as np
 
 class Mapping:
     """Constellation map"""
-    __slots__ = ("arr", "_comment", "_inv", "rotation")
+    __slots__ = ("arr", "_comment", "_inv", "rotation", "turn", "aka", "tags")
 
-    def __init__(self, map=None, comment=""):
+    def __init__(self, map=None, comment="", turn=0.0, tags=()):
         self._comment = comment
         self.rotation = 0.0 # Radians the channel turns the constellation by for this map to be the right one
+        self.turn = float(turn) # Radians the points sit turned by while this map is used (a standard's labelling of a turned set)
+        self.aka = "" # A standard's name for this map, where one is given that is the same labels ("DVB-S2")
+        self.tags = list(tags) # The standards that label the points by this map (a definition map's "tags")
         self.arr = np.array([], dtype=np.int64) if map is None else np.array(map)
         self._inv = False
 
     def copy(self):
-        m = Mapping(self.arr.copy(), self._comment)
-        m.rotation, m._inv = self.rotation, self._inv
+        m = Mapping(self.arr.copy(), self._comment, self.turn, self.tags)
+        m.rotation, m._inv, m.aka = self.rotation, self._inv, self.aka
         return m
 
     def str(self):
@@ -48,9 +51,8 @@ class Mapping:
 
     @property
     def comment(self):
-        if self._inv:
-            return f"{self._comment} Inverted"
-        return f"{self._comment} Normal"
+        out = f"{self._comment} {'Inverted' if self._inv else 'Normal'}"
+        return f"{out} ({self.aka})" if self.aka else out
 
 
 def _perm(points, fn):
@@ -86,17 +88,31 @@ def symmetries(points):
 def expand_maps(points, maps):
     """The given maps, then the first one turned by every rotation the constellation allows and spectrally inverted
     (conjugated) with each. The point is a receiver that doesn't know the carrier phase or the IQ sense: one of
-    these is the map that decodes. Named R<degrees> <comment> Normal|Inverted. Returns a new list of new maps
+    these is the map that decodes. Named R<degrees> <comment> Normal|Inverted. A later map with a name of its own (not
+    R<degrees>: a standard's labelling, "DVB-S2") that is one of these gives it that name too ("R000 Grey Inverted
+    (DVB-S2)"), so either picks it; one that is none of them (a map that turns the points) comes last, as given.
+    Returns a new list of new maps
     """
     maps = [m.copy() for m in maps] # The caller's maps are not touched
     base = maps[0]
     if not re.match(r"^R\d+", base._comment):
         base._comment = f"R000 {base._comment}".strip() # The map as given is the unrotated one
     rest = re.sub(r"^R\d+(\.\d+)?\s*", "", base._comment).strip()
+    named = {} # labels -> a map with a name of its own, the points unturned
+    rest_named = [] # Those that turn the points: never one of the turned maps
     out, seen = [], {}
-    for m in maps:
+    for i, m in enumerate(maps):
+        key = tuple(np.asarray(m.arr).tolist())
+        if i and not re.match(r"^R\d+", m._comment):
+            if m.turn:
+                rest_named.append(m)
+            elif key in seen:
+                seen[key].aka, seen[key].tags = m._comment, [*seen[key].tags, *m.tags]
+            else:
+                named[key] = m
+            continue
         out.append(m)
-        seen[tuple(np.asarray(m.arr).tolist())] = m
+        seen[key] = m
     for th, flip, q in symmetries(points):
         arr = np.empty_like(np.asarray(base.arr))
         arr[q] = np.asarray(base.arr) # The point p moved to q, carrying its label
@@ -106,12 +122,15 @@ def expand_maps(points, maps):
             continue
         deg = np.degrees(th)
         tag = f"R{deg:03.0f}" if abs(deg - round(deg)) < 1e-6 else f"R{deg:05.1f}"
-        m = Mapping(arr, f"{tag} {rest}".strip())
+        m = Mapping(arr, f"{tag} {rest}".strip(), base.turn) # (a turned map's turns use its points turned too)
         m.inverted = flip
         m.rotation = th
+        if key in named:
+            n = named.pop(key)
+            m.aka, m.tags = n._comment, list(n.tags)
         seen[key] = m
         out.append(m)
-    return out
+    return out + list(named.values()) + rest_named
 
 def hard_bits(y, pts, labels):
     """Hard bits of symbols y: the labels (values, first bit most significant) of the nearest points, as uint8 bits"""

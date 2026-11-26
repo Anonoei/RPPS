@@ -120,11 +120,12 @@ class FrameSync(Stage):
         only matches in phase, where the sense is known and alternatives are each other inverted (DMR voice / data).
     classify: constellation names; each frame's symbols after its preamble are scored against them (rpps.sync.acquire)
         at the Es/N0 the preamble measured, and the best published as `modulation` (when it leads by `margin` nats a
-        symbol over at least `min_symbols`; otherwise the last one stays, reported).
+        symbol over at least `min_symbols`; otherwise the last one stays, reported), with `mapping`: the name of the map
+        whose turned points fit (the preamble set the phase: DVB-S2 8PSK is told from 8PSK), None for the points as defined.
 
     Each frame start publishes {"frame": k, "metric", "phase", "scale", "esn0" (dB: the frame's power less the noise
     the residual after its preamble measured, over that noise), "cfo" (cycles a symbol, from the phase between the preamble's halves; complex input), "word" and its fields
-    (alternatives), "modulation" (classify)}. Estimates in stream.est[name]: the same of the last frame.
+    (alternatives), "modulation" and "mapping" (classify)}. Estimates in stream.est[name]: the same of the last frame.
     """
     CONTROLS = {"length": "live"}
 
@@ -477,7 +478,7 @@ class FrameSync(Stage):
         if self.classify:
             mod = self._classify(y, st.p - st.start, info["esn0"], st, meta)
             if mod is not None:
-                fields["modulation"] = mod
+                fields["modulation"], fields["mapping"] = mod
         out.append(y)
         publish(meta, self, fields, at=st.start, out=n_out)
         anchor(meta, self, st.start, n_out)
@@ -486,9 +487,11 @@ class FrameSync(Stage):
         return len(y)
 
     def _classify(self, y, off, esn0, st, meta):
-        """The constellation of `classify` this frame's symbols after (and before) its preamble fit best, at the preamble's
-        Es/N0; the last one when the frame is too short or no candidate leads by `margin`"""
-        from .acquire import candidates, score
+        """(constellation, map) of `classify` this frame's symbols after (and before) its preamble fit best, at the
+        preamble's Es/N0: each candidate as defined (map None) and as each of its maps that turns the points uses them
+        (the preamble set the phase, so a turned set is told apart: DVB-S2 8PSK from 8PSK); the last one when the frame is
+        too short or no candidate leads by `margin`"""
+        from .acquire import turned_candidates, score
         from ..base.control import of
         pay = np.concatenate((y[:off], y[off + self.L:])).astype(np.complex128)
         if len(pay) < self.min_symbols:
@@ -496,13 +499,14 @@ class FrameSync(Stage):
                                             "note": f"{len(pay)} symbols (classify needs {self.min_symbols})"})
             return st.modulation
         pay = pay/np.sqrt(max(np.mean(np.abs(pay)**2), 1e-30))
-        s = {n: score(pay, pts, esn0=esn0) for n, pts in candidates(self.classify).items()}
+        s = {n: score(pay, pts, esn0=esn0) for n, pts in turned_candidates(self.classify).items()}
         ranked = sorted(s, key=s.get, reverse=True)
         if len(ranked) == 1 or s[ranked[0]] - s[ranked[1]] >= self.margin:
             st.modulation = ranked[0]
         else:
             of(meta.stream).reports.append({"what": "unclassified", "step": self.name, "frame": st.k,
-                                            "note": f"{ranked[0]} leads {ranked[1]} by {s[ranked[0]] - s[ranked[1]]:.3f}"})
+                                            "note": f"{' '.join(filter(None, ranked[0]))} leads {' '.join(filter(None, ranked[1]))} "
+                                                    f"by {s[ranked[0]] - s[ranked[1]]:.3f}"})
         return st.modulation
 
 class Delimiter(BitStage):

@@ -39,7 +39,7 @@ belongs in, and what each category may take and give) is in [`rpps.base`](../api
 - **Bit order is most significant first** (bytes, constellation labels, RS symbols, markers), except HDLC bytes on the
   wire (least significant first), recurrence `init` integers (`lsb` unless `"order": "msb"`) and headers that say `"lsb"`.
 - **Shapes and definitions are separate.** `rp.symbol.load("psk/qpsk")` reads a definition; `rp.symbol.generate("16QAM")`
-  makes a shape; DVB-S2's 16APSK is `rp.symbol.load("apsk/dvbs2_16apsk_3_4")`, not `generate("16APSK")`.
+  makes a shape; DVB-S2's 16APSK is `rp.symbol.load("apsk/dvbs2_16apsk", rate="3/4")`, not `generate("16APSK")`.
 - **Shaping needs a symbol rate.** `rp.Data(bits, Fs=1e6, sps=1)` before a pulse: a pulse is designed from the stream's
   samples per symbol.
 

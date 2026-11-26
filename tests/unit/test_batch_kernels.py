@@ -72,18 +72,23 @@ def noisy_symbols(c, n, rows, noise, seed):
         out.append(s + noise*(rng.normal(size=len(s)) + 1j*rng.normal(size=len(s))))
     return np.array(out, np.complex64)
 
-@pytest.mark.parametrize("name,noise", [("QPSK", 0.2), ("8PSK", 0.15), ("16QAM", 0.1), ("dvbs2_qpsk", 0.3), ("dvbs2_8psk", 0.1)])
+@pytest.mark.parametrize("name,noise", [("QPSK", 0.2), ("8PSK", 0.15), ("16QAM", 0.1), ("psk/qpsk dvb-s2", 0.3), ("psk/8psk dvb-s2", 0.1)])
 @pytest.mark.parametrize("rows", [1, 5])
 def test_demap(name, noise, rows):
-    c = rp.symbol.load_or_generate(name)
+    c = named(name)
     X = noisy_symbols(c, 700, rows, noise, 3)
     both(c, DECODE, X, form(rp.Category.SYMBOL, rp.dtype.SYMBOLS, rp.Rep.SYMBOLS))
 
+def named(name):
+    """A shape ("8PSK"), or a definition and its map ("psk/8psk dvb-s2")"""
+    ref, _, mapping = name.partition(" ")
+    return rp.symbol.load_or_generate(ref, mapping or None)
+
 def test_demap_max_log_and_a_controlled_constellation():
-    c = rp.symbol.load("dvbs2_qpsk")
+    c = rp.symbol.load("psk/qpsk", "dvb-s2")
     c.maxlog = True
-    X = noisy_symbols(rp.symbol.load("dvbs2_8psk"), 300, 3, 0.1, 4)
-    k, got, _ = both(c, DECODE, X, form(rp.Category.SYMBOL, rp.dtype.SYMBOLS, rp.Rep.SYMBOLS), live={"name": "dvbs2_8psk"})
+    X = noisy_symbols(rp.symbol.load("psk/8psk", "dvb-s2"), 300, 3, 0.1, 4)
+    k, got, _ = both(c, DECODE, X, form(rp.Category.SYMBOL, rp.dtype.SYMBOLS, rp.Rep.SYMBOLS), live={"name": "psk/8psk", "mapping": "dvb-s2"})
     assert got.x.shape == (3, 900) and k.describe(300)["out"] == 900
 
 def test_demap_rows_do_not_see_each_other():
@@ -300,10 +305,10 @@ def reference_llr(c, syms):
     lab = c.labels().astype(bool)
     return np.stack([logsumexp(logp[:, ~lab[:, j]]) - logsumexp(logp[:, lab[:, j]]) for j in range(c.bits_per_symbol)], axis=1).reshape(-1)
 
-@pytest.mark.parametrize("name,noise", [("QPSK", 0.3), ("8PSK", 0.12), ("16QAM", 0.08), ("dvbs2_8psk", 0.1)])
+@pytest.mark.parametrize("name,noise", [("QPSK", 0.3), ("8PSK", 0.12), ("16QAM", 0.08), ("psk/8psk dvb-s2", 0.1)])
 def test_llr_is_the_definition(name, noise):
     """The shared implementation against the plain log-sum-exp, which it replaced"""
-    c = rp.symbol.load_or_generate(name)
+    c = named(name)
     x = noisy_symbols(c, 600, 1, noise, 9)[0]
     np.testing.assert_allclose(c.llr(x), reference_llr(c, x), rtol=1e-5, atol=1e-4)
 
@@ -377,12 +382,19 @@ def numpy_demap(monkeypatch):
         return a, b
     return both_
 
-@pytest.mark.parametrize("name,noise", [("QPSK", 0.2), ("8PSK", 0.1), ("16QAM", 0.06), ("dvbs2_8psk", 0.1), ("32APSK", 0.05)])
+@pytest.mark.parametrize("name,noise", [("QPSK", 0.2), ("8PSK", 0.1), ("16QAM", 0.06), ("psk/8psk dvb-s2", 0.1), ("32APSK", 0.05)])
 @pytest.mark.parametrize("kw", [{}, {"maxlog": True}, {"noise_var": 0.05}])
 def test_native_demap_equals_numpy(numpy_demap, name, noise, kw):
-    c = rp.symbol.load_or_generate(name)
+    c = named(name)
     a, b = numpy_demap(noisy_symbols(c, 500, 3, noise, 11).astype(np.complex128), c, **kw)
     assert a.shape == b.shape and a.dtype == b.dtype == np.float32
+    np.testing.assert_allclose(a, b, rtol=1e-5, atol=1e-4)
+
+@pytest.mark.parametrize("name", ["psk/qpsk dvb-s2", "8PSK", "32APSK"])
+def test_native_demap_of_long_rows_equals_numpy(numpy_demap, name):
+    """Rows longer than EM_SYMBOLS (the noise from every em_stride-th symbol) and than a C++ task (split over threads)"""
+    c = named(name)
+    a, b = numpy_demap(noisy_symbols(c, 10007, 2, 0.08, 12).astype(np.complex128), c)
     np.testing.assert_allclose(a, b, rtol=1e-5, atol=1e-4)
 
 def test_native_demap_where_the_sums_underflow_and_per_row_noise(numpy_demap):

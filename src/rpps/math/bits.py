@@ -46,6 +46,36 @@ def find(bits, word, errors=0):
     """Where `word` starts in `bits` with at most `errors` bits wrong"""
     return np.nonzero(distance(bits, word) <= errors)[0]
 
+def _units(bits, unit):
+    """The value of the `unit` bits (most significant first) starting at each position of `bits`"""
+    b = np.asarray(bits).astype(np.int64) & 1
+    if len(b) < unit:
+        return np.zeros(0, np.int64)
+    return np.lib.stride_tricks.sliding_window_view(b, unit) @ (1 << np.arange(unit - 1, -1, -1))
+
+def periodic_scores(bits, span, unit, allowed, periods=None, polarity=True):
+    """Periodic marker fit.
+
+    The fraction of periods that start with an `allowed` unit, at every (polarity, bit offset, pattern position).
+    span: bits a period; unit: bits a marker unit; allowed: [pattern position, unit value] booleans. Returns
+    (2 or 1, span, len(allowed)); its first maximum is what rpps.sync.Align locks on"""
+    allowed = np.asarray(allowed, dtype=bool)
+    L = len(allowed)
+    b = np.asarray(bits).astype(bool)
+    n = (len(b) - span)//span if periods is None else int(periods)
+    out = np.zeros((2 if polarity else 1, span, L))
+    if n <= 0:
+        return out
+    v = _units(b[:n*span + unit - 1] if span >= unit else b, unit)
+    heads = np.empty((span, n), np.int64)
+    k = np.arange(n)
+    heads[:] = v[np.arange(span)[:, None] + k[None, :]*span] # [offset, period]: the unit starting each period
+    pos = (np.arange(L)[:, None] + k[None, :]) % L # [first position, period]: the pattern position of each period
+    top = (1 << unit) - 1
+    for f, h in enumerate((heads, top - heads) if polarity else (heads,)): # (inverted bits: every unit's complement)
+        out[f] = allowed[pos[None, :, :], h[:, None, :]].mean(axis=2)
+    return out
+
 def unstuff(bits, starts, ends, stuff=5):
     """Bit destuffing (HDLC's: after `stuff` ones a 0 is dropped, `stuff` + 1 ones abort) of the spans [starts[i], ends[i])
     of `bits`, each span's bits then packed into bytes least significant bit first. Returns (status per span: 0 whole

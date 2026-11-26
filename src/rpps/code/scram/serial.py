@@ -30,11 +30,11 @@ def _load(name, obj):
 
 DOMAIN = _config.register_domain("scramble", {"scramble": _load})
 
-def ls(examples=True):
+def ls(blind=False):
     """The scramblers there are: {type: [names]}
 
-    examples: False leaves out the definitions tagged "example" (what the blind tools do)"""
-    return _config.ls("scramble", examples=examples)
+    blind: only what the blind tools try (rp._config.ls): no definitions tagged "example", and only the selected tags (rp.select_tags)"""
+    return _config.ls("scramble", blind=blind)
 
 def init(name: str, obj: dict) -> scrambler.Scram:
     """A scrambler from a definition object"""

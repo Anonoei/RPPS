@@ -7,6 +7,8 @@
      "controls": {"<header step id>": {...}}              optional: header-driven control (see rpps.profile.control)
      "parallel": "<step id>"                              optional: the first step that runs frame by frame (see rpps.profile.parallel)
 """
+import copy
+
 from .. import _config
 from ..base.types import Rep
 from ..errors import ConfigError
@@ -359,8 +361,13 @@ class Profile:
         if sum(st.kind == "burst" and st.category == "sync" for st in steps) > 1:
             raise ConfigError(f"{where}: one burst step")
         pre = Runner(self._slots(steps[:k]), f"{self.name} rx", self.controls, "rx", profile=self.name) if k else None
+        made = []
         def make_post():
-            post = build()[k + 1:]
+            """The steps after the burst step, a copy of them built once: a burst's controls change its own operators,
+            and copying is many times cheaper than building from the definitions (a burst can be a millisecond)"""
+            if not made:
+                made.append(build()[k + 1:])
+            post = copy.deepcopy(made[0])
             return Runner(self._slots(post), f"{self.name} rx (burst)", self.controls, "rx", profile=self.name)
         return BurstRunner(pre, steps[k].obj, make_post, f"{self.name} rx", self.controls.get(steps[k].id))
 
@@ -456,10 +463,10 @@ def load(name, sync=None, **params):
     resolved = _config.resolve(_config.read(file), params, f"profile/{name}")
     return Profile(name, resolved, sync=sync, params=_config.declared(resolved))
 
-def ls(examples=True):
+def ls(blind=False):
     """The profiles there are: {family: [modes]}
 
-    examples: False leaves out the definitions tagged "example" (what the blind tools do)"""
-    return _config.ls("profile", examples=examples)
+    blind: only what the blind tools try (rp._config.ls): no definitions tagged "example", and only the selected tags (rp.select_tags)"""
+    return _config.ls("profile", blind=blind)
 
 DOMAIN = _config.register_domain("profile", {"profile": Profile.load})

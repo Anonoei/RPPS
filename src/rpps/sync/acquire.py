@@ -92,12 +92,12 @@ def candidates(names=None):
     search path (a Lock rechecks them every block: finding the files would cost more than scoring them)"""
     from .. import symbol  # Late: symbol imports after sync
     from .. import _config
-    where = tuple(_config._EXTRA)
+    where = _config.state()
     if names is None: # The PSK family's own point sets: a child (a labelling or a rotation of a parent) is not another modulation
         names = _CANDIDATES.get((where, None))
         if names is None:
             names = _CANDIDATES[(where, None)] = tuple(
-                n for n in symbol.ls(examples=False).get("psk", []) if "extends" not in _config.read_raw(_config.find("constellation", f"psk/{n}")))
+                n for n in symbol.ls(blind=True).get("psk", []) if "extends" not in _config.read_raw(_config.find("constellation", f"psk/{n}")))
     out = {}
     for name in names:
         pts = _CANDIDATES.get((where, name))
@@ -107,6 +107,29 @@ def candidates(names=None):
             pts.flags.writeable = False
             _CANDIDATES[(where, name)] = pts
         out[name] = pts
+    return out
+
+def turned_candidates(names):
+    """Turned candidates.
+
+    {(name, map): unit-rms points} of each constellation `names` gives, as defined (map None) and as each of its maps
+    that turns the points uses them (map: that map's name, "DVB-S2"): what symbols whose carrier phase a known word set
+    are scored against (rp.sync.FrameSync's classify), where a turned set is another constellation"""
+    from .. import symbol
+    from .. import _config
+    where, out = _config.state(), {}
+    for name in names:
+        hit = _CANDIDATES.get((where, name, "turned"))
+        if hit is None:
+            c = symbol.load_or_generate(name)
+            hit = {}
+            for m in [None] + c.turned:
+                pts = c._base*np.exp(1j*m.turn) if m is not None else c._base
+                pts = np.asarray(pts, dtype=np.complex128)/np.sqrt(np.mean(np.abs(pts)**2))
+                pts.flags.writeable = False
+                hit[(name, None if m is None else m._comment)] = pts
+            _CANDIDATES[(where, name, "turned")] = hit
+        out.update(hit)
     return out
 
 def correct(y, pts, M, pad=4):

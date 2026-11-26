@@ -14,14 +14,12 @@ def diff_alphabets(constellation):
     """Phase-change alphabets a differential receiver of `constellation` would demap against: {name: Constellation}
 
     The PSK definitions with as many points (config/constellation/psk: QPSK is the pi/4-DQPSK alphabet, qpsk_axes 802.11b's;
-    labelling variants such as the DVB-S2 maps are skipped), and the constellation itself when 1 is one of its points
+    a standard's labelling is a named map on them, not another file), and the constellation itself when 1 is one of its points
     (DBPSK is BPSK)."""
     from ... import symbol
     c = _constellation(constellation)
     out = {}
-    for stem in symbol.ls(examples=False).get("psk", []):
-        if stem.startswith("dvbs2_"):
-            continue
+    for stem in symbol.ls(blind=True).get("psk", []):
         d = symbol.load(f"psk/{stem}")
         if d.order == c.order and np.allclose(np.abs(d.points), 1, atol=1e-6):
             out[stem] = d
@@ -33,7 +31,9 @@ def diff_alphabets(constellation):
 def bit_streams(symbols, constellation, differential=True, keys=None):
     """Hard bits of symbols under every map a receiver that doesn't know the carrier phase or the IQ sense has to try
 
-    ("abs", i): the constellation's map i (its `maps`: every rotation, with and without spectral inversion)
+    ("abs", i): the constellation's map i of `blind_maps`: every rotation, with and without spectral inversion, then each
+        turn of a map that labels the points turned (DVB-S2 8PSK on 8PSK): symbols a carrier put on the points as given
+        carry its labels just the same, the turn being a carrier phase
     ("diff", name, i): phase changes y[n]/y[n-1] demapped with map i of a differential alphabet (`diff_alphabets`), only its
         unrotated maps (a phase change doesn't see the carrier phase, only the IQ sense)
     keys: only these. Returns {key: bits}
@@ -41,9 +41,9 @@ def bit_streams(symbols, constellation, differential=True, keys=None):
     c = _constellation(constellation)
     y = np.asarray(symbols, dtype=np.complex128)
     out = {}
-    for i, m in enumerate(c.maps):
+    for i, m in enumerate(c.blind_maps):
         if keys is None or ("abs", i) in keys:
-            out[("abs", i)] = hard_bits(y, c.points, m.arr)
+            out[("abs", i)] = hard_bits(y, c._base, m.arr)
     if differential and len(y) > 1:
         r = y[1:]/np.where(np.abs(y[:-1]) < 1e-12, 1.0, y[:-1])
         r = r/np.maximum(np.abs(r), 1e-12)

@@ -24,6 +24,21 @@ python -m rpps ls sequence scramble   # some resources
 --8<-- "examples/own_definitions.py"
 ```
 
+## Only your definitions, or only some standards
+The shipped definitions are many, and the blind tools (survey, identify, solve, the catalogue) try every one that fits.
+Where most of those signals never appear, that time buys nothing. Two switches narrow it:
+
+- **Only your directories**: `RPPS_CONFIG=/my/config RPPS_CONFIG_SHIPPED=0`, or in code
+  `rp.add_config_path("/my/config"); rp.use_shipped(False)`. Nothing shipped is found or tried. Copy in what you use
+  (`python -m rpps show <ref>` prints a definition): a profile's codes, tables, pulses and headers, and what any of
+  them `extends`. Code that loads a shipped definition by name (the NR grid's polar and LDPC codes, LTE's tables)
+  needs it in your directory too. The shipped `tags.json` is still read, so your files can use its tags.
+- **Only some standards, blind**: `RPPS_CONFIG_TAGS=dvb-s2,lte`, or `rp.select_tags(["dvb-s2", "lte"])`
+  (`rp.select_tags(None)` for all again). The blind tools then try only the definitions tagged with one of them, plus
+  the untagged generic ones (a CRC-32, the K=7 code, QPSK). Everything still loads by name.
+
+`python -m rpps ls` says when either is on; `python -m rpps ls --blind` lists what the blind tools try.
+
 ## Resources
 
 | Resource | Holds | Example | Load | Keys |
@@ -100,12 +115,34 @@ to the parent's would have), the others the keys a child file would write, a dot
 be a file. A child with large values (an LDPC table) or its own standard's `ref`, tags and notes (the punctured rates of
 `fec/conv/<mother>/`) reads better as a file of its own.
 
-Families written this way: `constellation/psk` (QPSK, 8PSK as rings; the DVB-S2 labellings and `qpsk_axes` are child
-files), `constellation/apsk/dvbs2_16apsk` and `dvbs2_32apsk` (the radii as params, a row per code rate),
+Families written this way: `constellation/psk` (QPSK, 8PSK as rings; `qpsk_axes` a child file),
 `fec/conv/<mother>.json` (the generators; every rate in `<mother>/`, the unpunctured 1/n too, is a child file adding its
 `puncture`), `fec/block/ldpc` (a file per rate), `bch/dvbs2_normal` and `dvbs2_short` (a row per rate),
 `turbo/ccsds`, `rs/p25*`, `interleave/block/dvbs2_8psk_210`, `profile/dvbs/qpsk` (the rate a `code` param, a row per
 rate).
+
+### A standard's labelling is a map, its sizes a choice
+A standard that labels a shipped point set its own way adds a named map to that set, not a file:
+`{"map": [0, 2, 3, 1], "comment": "DVB-S2"}` in `psk/qpsk.json` is `rp.symbol.load("psk/qpsk", "dvb-s2")` (it is one of
+QPSK's turned maps, which then lists as `R090 Grey Inverted (DVB-S2)`). A map that labels the set turned says by how
+much, `"rotate"` in degrees, and uses the points turned while it is chosen: DVB-S2 8PSK is
+`{"map": [...], "rotate": -22.5, "comment": "DVB-S2"}` on `psk/8psk`, its points at k*45 degrees. Such a map is in the
+constellation's `turned`, not its `maps` (the ones a receiver that does not know the phase tries).
+
+The blind tools try turned maps too. `identify` searches `blind_maps`: `maps`, then every turn and inversion of each
+turned map (`R045 DVB-S2`), on symbols a carrier put on the points as defined; the profile it writes names the turned
+map (`"mapping": "DVB-S2"`) and its correction turns the symbols onto those points. Behind a known word the phase is
+absolute, so `FrameSync(classify=[...])` scores each candidate's turned point sets as well and publishes the one that fits
+as `mapping` next to `modulation`, for a control to drive the constellation step with both.
+A map can carry `"tags"` of its own (`{"map": [0, 2, 3, 1], "comment": "DVB-S2", "tags": ["dvb-s2"]}`): `rp.tagged`
+lists it as `psk/qpsk (DVB-S2)`, the loaded map has them as `mapping.tags`, and a tag selection matches them. The file
+itself stays untagged: QPSK is still a generic set, whatever standards label it.
+
+A shape whose sizes follow another setting takes that setting as a choice param: `apsk/dvbs2_16apsk` and
+`dvbs2_32apsk` take the code `rate`, whose choice sets the radii (`{"param": "rate.gamma"}`),
+`rp.symbol.load("apsk/dvbs2_16apsk", rate="3/4")`. A profile step or a table row gives them as `"params"`:
+`{"symbol": "constellation", "name": "apsk/dvbs2_16apsk", "params": {"rate": "3/4"}}`, and a header drives
+`{"name": ..., "mapping": ..., "params": ...}` (`config/table/dvbs2/modcod.json`).
 
 ## Variants: choices and "when"
 A param can list its `"choices"`, each a bundle of fields that one choice sets together; a step names a field as
@@ -207,7 +244,7 @@ rp.tagged("ccsds")                    # {resource: [refs]}
 A definition made up to show a feature (a demo profile, a docs example, a test word) carries `"tags": ["example"]`,
 as its children then do. It loads by name and `ls` lists it, but the blind tools never try it: `identify`, the survey's
 framed profiles, `solve`, the catalogue and the CRC, scrambler, convolutional code and PSK searches all list with
-`examples=False` (`rp.profile.ls(examples=False)`, `rp.code.names("conv", examples=False)`...). Keep the shipped
+`blind=True` (`rp.profile.ls(blind=True)`, `rp.code.names("conv", blind=True)`...). Keep the shipped
 `profile/demo/`, `plan/demo/`, `table/demo/` and `demo_*` definitions that way, so they cost a blind search nothing.
 
 ## Differential modulation

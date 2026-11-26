@@ -71,6 +71,10 @@ def fractional(x, t, taps=4):
     taps 8, 12...: a windowed sinc over x[i+1-taps/2 .. i+taps/2] (a band-limited interpolator: the error of the matched
     filter's output at 2 samples per symbol is -44 dB with 8 taps and -56 dB with 12, against -26 dB cubic)"""
     t = np.asarray(t, dtype=np.float64)
+    if taps == 4 and len(t) and np.asarray(x).dtype in (np.complex64, np.complex128):
+        from .. import _accel
+        if _accel.native is not None: # The four products a position in C++, in double (the lines below are its reference)
+            return _accel.native.cubic_read(np.ascontiguousarray(x), np.ascontiguousarray(t))
     i = np.floor(t).astype(np.int64)
     u = t - i
     if taps == 4:

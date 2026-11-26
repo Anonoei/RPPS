@@ -50,7 +50,7 @@ def solve(bits, rs_lengths=None, max_taps=2, exhaustive=False, block=True):
         return [(ha[0], ga)]
     if not h: # Bits that stay white: maybe RS-coded random payload behind a known scrambler (RS structure is algebraic)
         from ... import code
-        for name in code.scram.ls(examples=False).get("feedthrough", []):
+        for name in code.scram.ls(blind=True).get("feedthrough", []):
             obj = cached_scrambler(f"feedthrough/{name}")
             found = code_layer(Feedthrough.descramble(bits, obj["poly"]), with_block=False)
             if found:
@@ -78,15 +78,17 @@ def _llrs(y, c, head):
         if key[0] != "abs":
             continue
         try:
-            out[key] = symbol.load_or_generate(c.name, mapping=key[1]).llr(y)[:len(bits)]
+            m = c.blind_maps[key[1]].copy()
+            m.turn = 0.0 # (its labels on the points as the symbols sit: the turn is a carrier phase here)
+            out[key] = symbol.load_or_generate(c.name, mapping=m).llr(y)[:len(bits)]
         except Exception: # A map the constellation can't take by index: that stream is scored hard only
             continue
     return out
 
 def _distinct(head, c):
     """The coherent bit streams that differ by more than inverted bits: maps whose turn is below 180 degrees"""
-    keys = [k for k in head if k[0] == "abs" and np.angle(np.exp(1j*c.maps[k[1]].rotation)) >= -1e-9
-            and np.angle(np.exp(1j*c.maps[k[1]].rotation)) < np.pi - 1e-9]
+    keys = [k for k in head if k[0] == "abs" and np.angle(np.exp(1j*c.blind_maps[k[1]].rotation)) >= -1e-9
+            and np.angle(np.exp(1j*c.blind_maps[k[1]].rotation)) < np.pi - 1e-9]
     return {k: head[k] for k in keys} or {k: v for k, v in head.items() if k[0] == "abs"}
 
 

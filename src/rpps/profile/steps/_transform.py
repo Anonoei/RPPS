@@ -48,12 +48,12 @@ def _pair(op_rx, op_tx, gives):
 
 def constellation(spec):
     """The constellation of a {"symbol": "constellation"} step: "name", a definition ("psk/qpsk"), or "shape", a generated one
-    ("OOK", "16QAM"); "mapping" picks a map"""
+    ("OOK", "16QAM"); "mapping" picks a map; "params" are the definition's ({"name": "apsk/dvbs2_16apsk", "params": {"rate": "3/4"}})"""
     from ... import symbol
     if "shape" in spec:
         c = symbol.generate(spec["shape"])
         return c if spec.get("mapping") is None else c.set_mapping(spec["mapping"])
-    return symbol.load(_need(spec, "name", "symbol constellation"), spec.get("mapping"))
+    return symbol.load(_need(spec, "name", "symbol constellation"), spec.get("mapping"), **(spec.get("params") or {}))
 
 def _symbol(kind, spec, rep, ctx):
     from ... import symbol, sequence

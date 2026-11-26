@@ -18,14 +18,14 @@ import numpy as np
 import rpps as rp
 
 N, SYMBOLS = 63, 420 # Preamble length; symbols of a frame after it (a whole number of Hamming words in every mode)
-MODES = [[25, "psk/qpsk", "hamming/7_4", SYMBOLS*2*4//7],
-         [29, "psk/8psk", "hamming/7_4", SYMBOLS*3*4//7],
-         [34, "apsk/dvbs2_16apsk_3_4", None, SYMBOLS*4]]
+MODES = [[25, "psk/qpsk", None, "hamming/7_4", SYMBOLS*2*4//7],
+         [29, "psk/8psk", None, "hamming/7_4", SYMBOLS*3*4//7],
+         [34, "apsk/dvbs2_16apsk", {"rate": "3/4"}, None, SYMBOLS*4]]
 
 DEFINITIONS = {
     "table/demo/zc_modes": {
         "comment": "Zadoff-Chu root -> the frame's constellation, code and data bits",
-        "key": "root", "columns": ["root", "constellation", "code", "bits"], "rows": MODES},
+        "key": "root", "columns": ["root", "constellation", "params", "code", "bits"], "rows": MODES},
     "profile/demo/zc_modes": {
         "comment": "Demo: frames of 420 symbols, each after a 63-symbol Zadoff-Chu preamble whose root says its "
                    "modulation and code (table demo/zc_modes). The input is symbols, one a sample",
@@ -37,10 +37,10 @@ DEFINITIONS = {
             {"code": "block", "id": "fec", "name": "hamming/7_4"}],
         "controls": {
             "fs": {"table": "demo/zc_modes", "key": "root",
-                   "drive": {"pre": {"frame": "frame"}, "map": {"name": "constellation"}, "fec": {"name": "code"}}},
+                   "drive": {"pre": {"frame": "frame"}, "map": {"name": "constellation", "params": "params"}, "fec": {"name": "code"}}},
             "pre": {"on": "tx", "table": "demo/zc_modes", "key": "root", "frame": "bits",
                     "schedule": [{"root": 25}, {"root": 29}, {"root": 34}],
-                    "drive": {"pre": {"root": "root"}, "map": {"name": "constellation"}, "fec": {"name": "code"}}}}},
+                    "drive": {"pre": {"root": "root"}, "map": {"name": "constellation", "params": "params"}, "fec": {"name": "code"}}}}},
 }
 
 def main():
@@ -53,7 +53,7 @@ def main():
 
     p = rp.profile.load("demo/zc_modes")
     rng = np.random.default_rng(0)
-    per = [m[3] for m in MODES]*3 # nine frames: the schedule three times over
+    per = [m[4] for m in MODES]*3 # nine frames: the schedule three times over
     data = rng.integers(0, 2, sum(per)).astype(bool)
     sym = np.asarray(p.tx()(rp.Data(data, sps=1, flush=True)).data)
     assert len(sym) == 9*(N + SYMBOLS)

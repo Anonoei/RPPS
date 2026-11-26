@@ -1,10 +1,16 @@
 {
-  "comment": "QPSK, Gray, four rotations: one ring of 4 at 45 + 90k degrees",
+  "comment": [
+    "QPSK, Gray, four rotations: one ring of 4 at 45 + 90k degrees.",
+    "DVB-S2's labelling (the first bit on I, the second on Q, a 0 positive) is one of the turned maps, R090 inverted:",
+    "named DVB-S2"
+  ],
+  "ref": "EN 302 307-1 5.4.1 (DVB-S2)",
   "rings": [{"n": 4, "pha": 45}],
   "maps": [
     {"map": [0, 1, 3, 2], "comment": "R000 Grey"},
     {"map": [2, 0, 1, 3], "comment": "R090 Grey"},
     {"map": [3, 2, 0, 1], "comment": "R180 Grey"},
-    {"map": [1, 3, 2, 0], "comment": "R270 Grey"}
+    {"map": [1, 3, 2, 0], "comment": "R270 Grey"},
+    {"map": [0, 2, 3, 1], "comment": "DVB-S2", "tags": ["dvb-s2"]}
   ]
 }

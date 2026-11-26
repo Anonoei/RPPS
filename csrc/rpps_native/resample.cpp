@@ -199,12 +199,47 @@ py::array_t<cf32> fractional_read(carray<cf32> x_a, carray<double> t_a, carray<d
     return out;
 }
 
+// x at fractional positions t by cubic Lagrange through x[i-1 .. i+2], i = floor(t) (rpps.math.interp.fractional, taps 4),
+// in double; every position must have its four samples inside x
+template <typename C>
+py::array_t<std::complex<double>> cubic_read(carray<C> x_a, carray<double> t_a, int threads) {
+    const long long S = x_a.size(), K = t_a.size();
+    const C *x = x_a.data();
+    const double *t = t_a.data();
+    for (long long k = 0; k < K; k++) {
+        const long long i = static_cast<long long>(std::floor(t[k]));
+        if (!(t[k] == t[k]) || i - 1 < 0 || i + 2 >= S) throw std::invalid_argument("cubic_read: a position outside the signal");
+    }
+    py::array_t<std::complex<double>> out(static_cast<py::ssize_t>(K));
+    std::complex<double> *o = out.mutable_data();
+    constexpr long long CHUNK = 8192;
+    {
+        py::gil_scoped_release nogil;
+        parallel_for((K + CHUNK - 1)/CHUNK, threads, [&](long long blk) {
+            const long long end = std::min(K, (blk + 1)*CHUNK);
+            for (long long k = blk*CHUNK; k < end; k++) {
+                const double fl = std::floor(t[k]), u = t[k] - fl;
+                const long long i = static_cast<long long>(fl);
+                const double c0 = -u*(u - 1)*(u - 2)/6, c1 = (u + 1)*(u - 1)*(u - 2)/2, c2 = -(u + 1)*u*(u - 2)/2,
+                             c3 = (u + 1)*u*(u - 1)/6;
+                const C &a = x[i - 1], &b = x[i], &c = x[i + 1], &d = x[i + 2];
+                o[k] = std::complex<double>(c0*a.real() + c1*b.real() + c2*c.real() + c3*d.real(),
+                                            c0*a.imag() + c1*b.imag() + c2*c.imag() + c3*d.imag());
+            }
+        });
+    }
+    return out;
+}
+
 } // namespace
 
 void register_resample(py::module_ &m) {
     const char *doc = "polyphase_read(buf, table float32 (phases + 1, taps), pos0, step, count, threads) -> out[k] = sum_j table[nearest phase][j] buf[floor(pos0 + k step) - taps/2 + 1 + j]";
     m.def("polyphase_read", &polyphase_read<float>, doc, py::arg("buf").noconvert(), py::arg("table"), py::arg("pos0"), py::arg("step"), py::arg("count"), py::arg("threads") = 0);
     m.def("polyphase_read", &polyphase_read<cf32>, doc, py::arg("buf").noconvert(), py::arg("table"), py::arg("pos0"), py::arg("step"), py::arg("count"), py::arg("threads") = 0);
+    const char *cubic_doc = "cubic_read(x complex, t float64, threads) -> x at t (complex128), cubic Lagrange through x[i-1 .. i+2]";
+    m.def("cubic_read", &cubic_read<cf32>, cubic_doc, py::arg("x").noconvert(), py::arg("t"), py::arg("threads") = 0);
+    m.def("cubic_read", &cubic_read<cf64>, cubic_doc, py::arg("x"), py::arg("t"), py::arg("threads") = 0);
     m.def("fractional_read", &fractional_read, "fractional_read(x complex64, t float64, table (phases + 1, taps), n0, threads) -> x at t (complex64)",
           py::arg("x").noconvert(), py::arg("t"), py::arg("table"), py::arg("n0"), py::arg("threads") = 0);
     m.def("rotate_into", &rotate_into, "rotate_into(x complex64, out complex64, phase0, w, threads) -> phase after len(x): out = x exp(j (phase0 + w i))",

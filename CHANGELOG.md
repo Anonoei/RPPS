@@ -7,6 +7,13 @@ what to use instead.
 ## Unreleased
 
 ### Breaking
+- **The DVB-S2 constellations are four, not fifteen.** `psk/dvbs2_qpsk` is `rp.symbol.load("psk/qpsk", "dvb-s2")` and
+  `psk/dvbs2_8psk` is `rp.symbol.load("psk/8psk", "dvb-s2")`: named maps on QPSK and 8PSK (a map's `"rotate"` turns the
+  points while it is used: DVB-S2 8PSK sits at k*45 degrees; a map's own `"tags"` list it in `rp.tagged`, as
+  `psk/qpsk (DVB-S2)`). The rate names `apsk/dvbs2_16apsk_2_3` ...
+  `dvbs2_32apsk_9_10` are `rp.symbol.load("apsk/dvbs2_16apsk", rate="2/3")`: a `rate` choice sets the radii (no more
+  `gamma`, `gamma1`, `gamma2` params). The `dvbs2/modcod` table has `mapping` and `params` columns, the constellation
+  step and `Constellation.control` take `params`, and the turned maps are in `Constellation.turned`, not `maps`.
 - **A definition file no longer says its `"base"`: the folder it is in does** (`fec/block/`, `filter/fir/`,
   `plan/builder/`..., else the resource: `crc/`, `profile/<family>/`). A file that writes `"base"` is refused:
   `python -m rpps fmt <your config dir>` takes out every `"base"` its folder says (and names a file in the wrong one). Definitions made in code still give `"base"`, and `rp.save`, the importers
@@ -72,16 +79,27 @@ what to use instead.
 
 ### Added
 
+- **The blind tools try turned constellation maps.** `Constellation.blind_maps` (`maps`, then each turn and inversion
+  of the maps that turn the points, such as DVB-S2 8PSK on 8PSK) is what `rp.analysis.identify` searches; a code found
+  on one gives a profile step naming that map, and a correction that turns the symbols onto its points.
+  `FrameSync(classify=...)` scores each candidate's turned point sets behind its word (the phase is absolute there) and
+  publishes `mapping` with `modulation`.
+- **Only your definitions, or only some standards**: `RPPS_CONFIG_SHIPPED=0` / `rp.use_shipped(False)` searches only
+  the directories of `RPPS_CONFIG` / `rp.add_config_path`, so nothing shipped loads or is tried;
+  `RPPS_CONFIG_TAGS=dvb-s2,lte` / `rp.select_tags([...])` has the blind tools (survey, identify, solve, the catalogue)
+  try only definitions carrying one of those tags, plus the untagged generic ones. `python -m rpps ls` says when either
+  is on, `ls --blind` lists what is tried.
 - **The `example` tag: definitions made up to show a feature load and list, but no blind tool tries them.**
   `identify`, the survey's framed profiles, `solve`, the system catalogue and the CRC, scrambler, convolutional code
-  and PSK searches list with `examples=False` (new on `rp.profile.ls`, `rp.code.ls`/`names`, `rp.link.ls`,
+  and PSK searches list with `blind=True` (new on `rp.profile.ls`, `rp.code.ls`/`names`, `rp.link.ls`,
   `rp.code.scram.ls`, `rp.symbol.ls`). The shipped demos (`profile/demo/*`, `plan/demo/mftdma`, `table/demo/*`,
   `header/link/demo_*`, `sequence/word/demo_uw*`) carry it, so `profile.candidates()` no longer tries the two demo
   profiles. A user layer's file decides how its name lists, over a shipped one.
 - **A parent can hold its children as rows, `"variants"`** (`{"columns": ["name", ...], "rows": [...]}`, a dotted
   column a key inside a dict: `params.gamma`): each row loads, lists, tags and is extended as the child file it stands
   for, by the same name. The DVB-S2 BCH codes (`bch/dvbs2_normal`, `dvbs2_short`), the CCSDS turbo rates, the DVB-S2
-  16/32APSK radii and the DVB-S punctured-rate profiles are rows now: 41 files fewer, every name as before.
+  16/32APSK radii and the DVB-S punctured-rate profiles are rows now: 41 files fewer, every name as before (the APSK
+  radii since moved to a `rate` param: see Breaking).
 
 **Packets: Wireshark, interfaces, transmitting**
 - **Decoded frames live in Wireshark.** A profile's `"capture"` rules (`rpps.link.capture`) make each message kind a
@@ -271,6 +289,17 @@ what to use instead.
   `tools/blind_bench.py` (what the blind code tools break, from how many symbols).
 
 ### Changed
+- **Faster where a receive found or rebuilt structure.** `rp.sync.Align` scores every bit offset, polarity and pattern
+  position at once (`rp.math.bits.periodic_scores`): an acquisition attempt 2 ms instead of 165 ms,
+  so DVB-S keeps up (4.1x to 0.67x real time in `tools/profile_bench.py`). A burst profile builds the steps after its
+  burst step once and copies them per burst (BLE advertising 4.7x to 1.1x). A definition is expanded once and kept
+  until a file of its `extends` chain changes, and config paths are resolved once.
+- **Faster demapping and timing.** The LLRs share one exponential per point (the bit sums made from them), symbols go
+  in cache-sized tiles, a long row splits over threads, and a row's noise comes from at most 4096 of its symbols
+  (`rpps.math.demap.EM_SYMBOLS`, evenly strided, the same on the host, in numpy and on a device): one thread 2x (QPSK)
+  to 4.6x (16APSK) faster. `OerderMeyr`'s window sums and the cubic interpolation (`interp.fractional`, 4 taps) run
+  in C++: 62 to 157 Msamples/s.
+- `tools/profile_bench.py`: each profile's receive on a synthetic signal, its steps' load and the heaviest step kinds.
 - **Definition files put on one line whatever fits in 120 columns** (`python -m rpps fmt`, `rp.save`): a profile's
   steps read one step a line (`{"sync": "carrier", "id": "carrier", "order": 8}`), `{"param": "sps"}` is one line, and
   config/ is a fifth shorter. Lists of numbers stay on one line; table `rows` one row a line.

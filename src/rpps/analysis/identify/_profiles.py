@@ -34,9 +34,13 @@ def _symbol_steps(steps):
     return diff, [constellation(s).name for s in cons], cons
 
 
-@functools.lru_cache(maxsize=None)
 def _profile_codes():
-    """The names of the convolutional codes shipped profiles decode with"""
+    """The names of the convolutional codes the profiles the blind tools try decode with"""
+    from ... import _config
+    return _codes_of(_config.state())
+
+@functools.lru_cache(maxsize=None)
+def _codes_of(state):
     out = set()
     for name, obj, _ in _profiles():
         out |= {st["name"] for st in obj.get("steps", []) if st.get("code") == "conv" and isinstance(st.get("name"), str)}
@@ -92,4 +96,7 @@ def _target(out, c):
     if out.differential: # A phase change sees no turn of the carrier, only the IQ sense
         alph = diff_alphabets(c)[out.stream[1]]
         return target, _transform(alph.points, alph.maps[out.stream[2]].arr, target.arr, rotate=False)
-    return target, _transform(c.points, c.maps[out.stream[1]].arr, target.arr)
+    t = _transform(c._base, c.blind_maps[out.stream[1]].arr, target.arr)
+    if t is None or not target.turn:
+        return target, t
+    return target, ((t[0] + target.turn) % (2*np.pi), t[1]) # Then onto the points the target's map turns them to

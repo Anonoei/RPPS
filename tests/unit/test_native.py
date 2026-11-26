@@ -221,3 +221,25 @@ def test_shift_freq_matches_python(cut):
     assert nat.dtype == py.dtype == np.complex64
     np.testing.assert_allclose(nat, py, atol=1e-5)
     assert st_n.phase == pytest.approx(st_p.phase, abs=1e-9)
+
+def test_oerder_meyr_sums_and_cubic_reads_are_the_python_ones(rng):
+    """OerderMeyr's window sums and the cubic interpolation in C++ give the numpy lines they replaced, and the stage the
+    same symbols either way, across a cut into blocks"""
+    from rpps.math import interp
+    from rpps.sync import track
+    x = (rng.normal(size=50000) + 1j*rng.normal(size=50000)).astype(np.complex64)
+    line = (0.3, 2*np.pi/4.0007)
+    f, s, e = _accel.native.om_sums(x, *line, 20000)
+    xd = x.astype(np.complex128)
+    p = (xd.real**2 + xd.imag**2)*track.line_phasor(*line, len(x))
+    assert np.allclose([f, s, e], [p[:20000].sum(), p[20000:].sum(), np.sum(np.abs(xd)**2)], rtol=1e-10, atol=0)
+    t = rng.uniform(1, len(x) - 3, 5000)
+    i, u = np.floor(t).astype(np.int64), t - np.floor(t)
+    ref = (-u*(u - 1)*(u - 2)/6*x[i - 1] + (u + 1)*(u - 1)*(u - 2)/2*x[i] - (u + 1)*u*(u - 2)/2*x[i + 1]
+           + (u + 1)*u*(u - 1)/6*x[i + 2])
+    assert np.allclose(interp.fractional(x, t, 4), ref, rtol=0, atol=1e-12)
+    sig = psk(rng, 40000, 4)
+    y = np.convolve(np.repeat(sig, 4), np.ones(4)/4)[:160000].astype(np.complex64)
+    a, _ = run(lambda: rp.sync.time.OerderMeyr(), y, [160000], True, Fs=4e6, sps=4)
+    b, _ = run(lambda: rp.sync.time.OerderMeyr(), y, [33333, 77777, 160000 - 111110], False, Fs=4e6, sps=4)
+    assert len(a) == len(b) and np.allclose(a, b, atol=1e-4)

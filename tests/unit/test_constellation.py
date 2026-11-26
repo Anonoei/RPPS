@@ -117,3 +117,34 @@ def test_rings_and_rotate_build_points(tmp_path):
         assert np.allclose(np.abs(rp.symbol.load("x/two").points), [1]*4 + [2]*12)
     finally:
         rp._config._EXTRA.remove(tmp_path)
+
+def test_a_standards_labelling_is_a_named_map():
+    """DVB-S2 QPSK is one of QPSK's turned maps under another name; DVB-S2 8PSK labels 8PSK turned onto k*45 degrees"""
+    q = rp.symbol.load("psk/qpsk", "dvb-s2")
+    assert np.array_equal(q.mapping.arr, rp.symbol.load("psk/qpsk", "R090 inverted").mapping.arr)
+    assert np.array_equal(q.mapping.arr, [0, 2, 3, 1]) and q.mapping.comment == "R090 Grey Inverted (DVB-S2)"
+    assert len({tuple(m.arr.tolist()) for m in q.maps}) == len(q.maps) # The name joins a map, adds none
+    e = rp.symbol.load("psk/8psk", "dvb-s2")
+    assert np.allclose(np.angle(e.points, deg=True) % 360, np.arange(8)*45)
+    bits = np.random.default_rng(0).integers(0, 2, 3*200).astype(bool)
+    assert np.array_equal((rp.Data(bits) * e / e).bits(), bits)
+    e.set_mapping(0) # Back to the Gray map: the points as defined
+    assert np.allclose(e.points, rp.symbol.load("psk/8psk").points)
+    assert q.mapping.tags == rp.symbol.load("psk/8psk", "dvb-s2").mapping.tags == ["dvb-s2"] and rp.symbol.load("psk/qpsk").mapping.tags == []
+    assert {"psk/qpsk (DVB-S2)", "psk/8psk (DVB-S2)"} <= set(rp.tagged("dvb-s2")["constellation"]) # the maps' own tags
+
+def test_dvbs2_apsk_radii_follow_the_rate():
+    for rate, gamma in (("2/3", 3.15), ("9/10", 2.57)):
+        a = rp.symbol.load("apsk/dvbs2_16apsk", rate=rate)
+        assert np.isclose(np.abs(a.points[4])/np.abs(a.points[0]), gamma)
+    b = rp.symbol.load("apsk/dvbs2_32apsk", rate="4/5")
+    assert np.allclose(np.abs(b.points[[4, 16]])/np.abs(b.points[0]), [2.72, 4.87])
+    with pytest.raises(rp.errors.ConfigError):
+        rp.symbol.load("apsk/dvbs2_16apsk", rate="1/2")
+
+def test_control_takes_a_definitions_params():
+    c = rp.symbol.load("psk/qpsk", "dvb-s2")
+    c.control(name="apsk/dvbs2_16apsk", params={"rate": "3/4"})
+    assert np.allclose(c.points, rp.symbol.load("apsk/dvbs2_16apsk", rate="3/4").points)
+    c.control(name="psk/8psk", mapping="dvb-s2")
+    assert np.allclose(c.points, rp.symbol.load("psk/8psk", "dvb-s2").points)

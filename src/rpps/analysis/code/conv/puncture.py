@@ -36,7 +36,7 @@ def mothers():
     """Rate 1/2 mother codes in config: {(K, generators): name}, both output orders"""
     from .... import code
     out = {}
-    for name in code.names("conv", examples=False):
+    for name in code.names("conv", blind=True):
         e = code.load(f"conv/{name}").encoder
         if e.den != 2 or e.num != 1:
             continue

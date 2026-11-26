@@ -111,3 +111,32 @@ def test_refuses_samples_and_stays_out_of_signals():
         rp.Data(np.zeros(8, np.complex64)) + rp.sync.Align(4, markers=(0x47,))
     with pytest.raises(StreamError):
         rp.Data(np.zeros(8, bool)) + rp.signal.sample.down.Decimate(2) # signal stages still refuse bits
+
+def _estimate_loop(a, bits):
+    """The search as it was written, offset by offset: the reference for rpps.math.bits.periodic_scores"""
+    best, P = (0.0, 0, False, 0), a.span
+    n = (len(bits) - P)//P
+    for flip in ((False, True) if a.polarity else (False,)):
+        b = ~bits if flip else bits
+        for off in range(P):
+            heads = b[off:off + n*P].reshape(n, P)[:, :a.unit].astype(np.int64) @ a._w
+            for first in range(a.length):
+                frac = float(a._expected(heads, first).mean())
+                if frac > best[0]:
+                    best = (frac, off, flip, first)
+    return best
+
+@pytest.mark.parametrize("seed", range(4))
+def test_the_vectorized_search_is_the_loop(seed):
+    rng = np.random.default_rng(seed)
+    for a in (rp.sync.Align(204, pattern=DVBS), rp.sync.Align(64, markers=(0x7E,)), rp.sync.Align(20, markers=(0x7E,), polarity=False)):
+        need = (a.acquire + 1)*a.span
+        bits = rng.integers(0, 2, need).astype(bool)
+        assert a._estimate(bits) == _estimate_loop(a, bits) # noise: the same best, ties broken the same way
+        off = int(rng.integers(0, a.span))
+        x = rng.integers(0, 256, need//8 + a.period).astype(np.uint8)
+        x[off//8::a.period][:] = 0x47 if a.length > 1 else 0x7E
+        bits = np.unpackbits(x)[off % 8:][:need].astype(bool)
+        if seed % 2:
+            bits = ~bits
+        assert a._estimate(bits) == _estimate_loop(a, bits)

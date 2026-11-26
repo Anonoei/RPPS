@@ -72,10 +72,10 @@ _SYSTEMS = {}
 
 def systems(fresh=False):
     """Every system in config/system (user layers too), loaded once: [dict], in reference order"""
-    key = tuple(str(p) for p in _config.layers("system"))
+    key = _config.state()
     if fresh or key not in _SYSTEMS:
         _SYSTEMS.clear()
-        _SYSTEMS[key] = [_config.load("system", f"{cat}/{n}") for cat, names in _config.ls("system", examples=False).items()
+        _SYSTEMS[key] = [_config.load("system", f"{cat}/{n}") for cat, names in _config.ls("system", blind=True).items()
                          for n in names]
     return _SYSTEMS[key]
 

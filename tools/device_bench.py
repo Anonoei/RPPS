@@ -47,7 +47,7 @@ def bch_case(name, rows, flips, seed=3):
     return code, np.array(X), Form(Digital, rp.Category.CODE, rp.dtype.BITS, rp.Rep.CHANNEL, 1e6, 1, 0.0, 0.0)
 
 def demap_case(rows, seed=2):
-    c = rp.symbol.load("dvbs2_8psk")
+    c = rp.symbol.load("psk/8psk", "dvb-s2")
     rng = np.random.default_rng(seed)
     pts = np.asarray(c.points)
     X = pts[rng.integers(0, len(pts), (rows, 21600))] + 0.1*(rng.normal(size=(rows, 21600)) + 1j*rng.normal(size=(rows, 21600)))

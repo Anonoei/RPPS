@@ -9,7 +9,7 @@ import numpy as np
 from ..base.data import Mod
 from ..base.kernel import Form, Kernel, device_functions, has_device_kernels
 from ..base.types import Category, Rep, dtype
-from ..math.demap import llr_rows, mask_matrix
+from ..math.demap import llr_rows, mask_matrix, em_stride
 
 
 # The demapper on a device, as `rpps.math.demap.llr_rows` and the C++ demap_llr: a thread a symbol. demap_em gives each
@@ -107,14 +107,17 @@ class Demap(Kernel):
         y = xp.ascontiguousarray(y, dtype=np.complex64)
         T = self.THREADS
         grid = ((n*L + T - 1)//T,)
-        term = xp.empty((n, L), dtype=np.float32)
-        dmin = xp.empty((n, L), dtype=np.float32)
-        args = lambda iv: (y, px, py, P, np.int32(L), np.int32(n), iv, term, dmin)
-        f["demap_em"](grid, (T,), args(xp.zeros(n, dtype=np.float32)))
-        var = dmin.sum(axis=1, dtype=np.float64)/L/2 + self.floor
+        ys = xp.ascontiguousarray(y[:, ::em_stride(L)]) # The noise from every em_stride-th symbol, as on the host
+        Ls = ys.shape[1]
+        gs = ((n*Ls + T - 1)//T,)
+        term = xp.empty((n, Ls), dtype=np.float32)
+        dmin = xp.empty((n, Ls), dtype=np.float32)
+        args = lambda iv: (ys, px, py, P, np.int32(Ls), np.int32(n), iv, term, dmin)
+        f["demap_em"](gs, (T,), args(xp.zeros(n, dtype=np.float32)))
+        var = dmin.sum(axis=1, dtype=np.float64)/Ls/2 + self.floor
         for _ in range(self.iters):
-            f["demap_em"](grid, (T,), args((0.5/var).astype(np.float32)))
-            var = xp.maximum(term.sum(axis=1, dtype=np.float64)/(2*L), self.floor)
+            f["demap_em"](gs, (T,), args((0.5/var).astype(np.float32)))
+            var = xp.maximum(term.sum(axis=1, dtype=np.float64)/(2*Ls), self.floor)
         nv = xp.maximum(2*var, 2*self.floor)
         out = xp.empty((n, L*self.bps), dtype=np.float32)
         f["demap_llr"](grid, (T,), (y, px, py, lab, P, np.int32(self.bps), np.int32(L), np.int32(n), (1.0/nv).astype(np.float32),

@@ -177,6 +177,18 @@ def test_dvbs2_from_raw_samples():
     assert np.array_equal(got, data)
     assert abs(st.est["timing"]["ppm"] - 20) < 5 and abs(st.est["carrier"]["frequency"] - 0.009) < 1e-4
 
+def test_dvbs2_every_constellation():
+    """A frame of each DVB-S2 constellation: QPSK and 8PSK by their DVB-S2 maps, 16APSK and 32APSK by their rates"""
+    p = rp.profile.load("dvbs2/normal")
+    frames = [{"modcod": m, "pilots": 1} for m in (4, 13, 19, 26, 4)]
+    t = rp.profile.table("dvbs2/modcod")
+    data = np.random.default_rng(0).integers(0, 2, sum(t.row({**f, "short": 0})["kbch"] - 80 for f in frames)).astype(bool)
+    o = p.tx()(rp.Data(data, Fs=4e6, sps=1, flush=True), fields=frames)
+    x = rp.Data(np.concatenate((np.zeros(4000, np.complex64), o.data, np.zeros(4000, np.complex64))), Fs=o.Fs, sps=4, flush=True)
+    x = x + ch.CFO(2000) + ch.PhaseOffset(1.1) + ch.AWGN(esn0_db=20, power=float(np.mean(np.abs(o.data)**2)), seed=3)
+    got, _ = receive(p, np.asarray(x.data), o.Fs)
+    assert np.array_equal(got, data)
+
 def test_80211b_from_raw_samples():
     p = rp.profile.load("ieee80211b/long")
     rng = np.random.default_rng(1)

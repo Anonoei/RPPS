@@ -55,6 +55,10 @@ def _show(title, groups, width):
 def cmd_ls(args):
     import rpps as rp
     width = min(shutil.get_terminal_size((100, 20)).columns, 120)
+    if not rp._config._SHIPPED:
+        print(f"Only the user's definitions ($RPPS_CONFIG_SHIPPED=0): {', '.join(str(r) for r in rp._config.roots()) or 'none'}")
+    if rp._config.selected_tags():
+        print(f"The blind tools try only tags {', '.join(rp._config.selected_tags())} and untagged definitions ($RPPS_CONFIG_TAGS)")
     if args.tags:
         used = rp.tagged()
         _show("Tags  (python -m rpps ls --tag <tag>)", {t: [f"{v.get('comment', '')} ({sum(len(r) for r in used.get(t, {}).values())})"]
@@ -63,9 +67,9 @@ def cmd_ls(args):
     if args.tag:
         _show(f"Tagged {args.tag}  (rp.tagged({args.tag!r}))", rp.tagged(args.tag, all=args.all), width)
         return 0
-    if args.all:
+    if args.all or args.blind:
         for name in args.category or [c for c in CATEGORIES if c in rp._config.domains()]:
-            _show(name, rp._config.ls(name, all=True), width)
+            _show(name, rp._config.ls(name, all=args.all, blind=args.blind), width)
         return 0
     for name in args.category or CATEGORIES:
         title, fn = CATEGORIES[name]
@@ -418,6 +422,8 @@ def main(argv=None):
     p_ls.add_argument("--tag", help="only the definitions with this tag (a standard or system: dvb-s2, ccsds, ...), across every resource")
     p_ls.add_argument("--tags", action="store_true", help="list the tags and how many definitions carry each")
     p_ls.add_argument("--all", action="store_true", help="also the abstract parents other definitions extend")
+    p_ls.add_argument("--blind", action="store_true",
+                      help="only what the blind tools (survey, identify, solve) try: no examples, only the selected tags ($RPPS_CONFIG_TAGS)")
     p_ls.set_defaults(fn=cmd_ls)
 
     p_steps = sub.add_parser("steps", help="list the step kinds and sync methods a profile can use")

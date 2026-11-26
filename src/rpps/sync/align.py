@@ -76,18 +76,12 @@ class Align(BitStage):
 
     def _estimate(self, bits):
         """Best (fraction, bit offset, polarity flipped, pattern position of the first period) over a window of hard bits"""
-        best = (0.0, 0, False, 0)
-        P = self.span
-        n = (len(bits) - P)//P # whole periods every offset sees
-        for flip in ((False, True) if self.polarity else (False,)):
-            b = ~bits if flip else bits
-            for off in range(P):
-                heads = b[off:off + n*P].reshape(n, P)[:, :self.unit].astype(np.int64) @ self._w
-                for first in range(self.length):
-                    frac = float(self._expected(heads, first).mean())
-                    if frac > best[0]:
-                        best = (frac, off, flip, first)
-        return best
+        from ..math.bits import periodic_scores
+        sc = periodic_scores(bits, self.span, self.unit, self._allowed, polarity=self.polarity)
+        if not sc.size or sc.max() <= 0:
+            return (0.0, 0, False, 0)
+        flip, off, first = np.unravel_index(int(np.argmax(sc)), sc.shape)
+        return (float(sc[flip, off, first]), int(off), bool(flip), int(first))
 
     def step(self, x, st, meta):
         x = np.asarray(x)

@@ -2,7 +2,7 @@
 config/header/physical/<name>.json, `rp.symbol.load_header("dvbs2_pl")`
 
 `load` only loads definitions; the usual shapes by name ("16QAM", "64QAM", "16APSK", "4ASK", "OOK") come from `generate`, so a
-DVB-S2 16APSK (`load("apsk/dvbs2_16apsk_2_3")`) is never confused with the generic one (`generate("16APSK")`).
+DVB-S2 16APSK (`load("apsk/dvbs2_16apsk", rate="2/3")`) is never confused with the generic one (`generate("16APSK")`).
 
     constellation   {"base": "constellation",
                      "points": [{"mag": 1, "pha": 45}, {"re": 0.7, "im": -0.7}, [-0.7, 0.7], ...],   where the points are: phase in degrees
@@ -34,11 +34,11 @@ def load_header(name: str, **params) -> Header:
     h = _config.load("header", name, "physical", params=params)
     return h
 
-def ls(examples=True):
+def ls(blind=False):
     """List available modulation types: {category: [names]}
 
-    examples: False leaves out the definitions tagged "example" (what the blind tools do)"""
-    return _config.ls("constellation", examples=examples)
+    blind: only what the blind tools try (rp._config.ls): no definitions tagged "example", and only the selected tags (rp.select_tags)"""
+    return _config.ls("constellation", blind=blind)
 
 
 def load_or_generate(name: str, mapping=None) -> Constellation:
@@ -76,7 +76,7 @@ def generate(name: str) -> Constellation:
     return {"PSK": PSK, "QAM": QAM, "APSK": APSK, "ASK": ASK}[kind](M)
 
 def load(ref: str, mapping=None, **params) -> Constellation:
-    """Load a constellation definition, config/constellation/<group>/<name>.json: `load("psk/qpsk")`, `load("apsk/dvbs2_16apsk", gamma=2.85)`
+    """Load a constellation definition, config/constellation/<group>/<name>.json: `load("psk/qpsk")`, `load("apsk/dvbs2_16apsk", rate="3/4")`
     (a bare name works while unique). For the usual shapes by name use `generate("16QAM")`.
 
     mapping: which bit map, if not the first: an index, or a word of its comment (`load("psk/qpsk", "R090")`)

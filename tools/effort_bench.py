@@ -55,8 +55,8 @@ import _bench
 
 # name: (code ref, load params, constellation, words a batch, starting bracket of Es/N0 (dB))
 CHAINS = {
-    "ldpc_64800_1_2_qpsk": ("block/ldpc/dvbs2_64800_1_2", {}, "dvbs2_qpsk", 4, (0.0, 3.0)),
-    "ldpc_16200_3_5_8psk": ("block/ldpc/dvbs2_16200_3_5", {}, "dvbs2_8psk", 8, (4.0, 8.0)),
+    "ldpc_64800_1_2_qpsk": ("block/ldpc/dvbs2_64800_1_2", {}, "psk/qpsk dvb-s2", 4, (0.0, 3.0)),
+    "ldpc_16200_3_5_8psk": ("block/ldpc/dvbs2_16200_3_5", {}, "psk/8psk dvb-s2", 8, (4.0, 8.0)),
     "turbo_lte_6144_qpsk": ("block/turbo/lte", {"K": 6144}, "qpsk", 2, (-3.0, 1.0)),
     "turbo_lte_40_qpsk": ("block/turbo/lte", {"K": 40}, "qpsk", 64, (-1.0, 4.0)),
     "polar_dci_qpsk": ("block/polar/nr_dci", {"K": 63, "E": 432}, "qpsk", 64, (-6.0, 0.0)),
@@ -70,7 +70,7 @@ class Chain:
     def __init__(self, name, seed=1):
         ref, params, const, self.W, self.bracket = CHAINS[name]
         self.name, self.code = name, rp.code.load(ref, **params)
-        self.c = rp.symbol.load(const)
+        self.c = rp.symbol.load(*const.split(" ")) # a definition and its map
         enc = self.code.encoder
         self.conv = ref.startswith("conv/")
         self.k = 2000 if self.conv else enc.num # message bits a word

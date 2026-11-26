@@ -117,6 +117,29 @@ def test_classify_names_the_constellation(rng):
     _, pubs = _run(fs, y, 0, rng)
     assert [p["modulation"] for p in pubs] == truth
 
+def test_classify_tells_a_turned_map_by_the_words_phase(rng):
+    """Behind a Zadoff-Chu word the phase is known: 8PSK on DVB-S2's turn (k*45 degrees) is told from 8PSK (22.5 + k*45),
+    published as its map, and that map decodes the frame"""
+    pre = rp.sequence.zadoff_chu(25, 63)
+    plain, dvb = rp.symbol.load("psk/8psk"), rp.symbol.load("psk/8psk", "dvb-s2")
+    seq, truth, sent = [], [], []
+    for k in range(6):
+        c = dvb if k % 2 else plain
+        bits = rng.integers(0, 2, 900).astype(bool)
+        seq += [pre, np.asarray((rp.Data(bits) * c).data)]
+        truth.append(("psk/8psk", "DVB-S2" if k % 2 else None))
+        sent.append(bits)
+    y = np.concatenate(seq)*np.exp(0.7j) # (an unknown carrier phase: the word takes it off)
+    y = (y + (rng.normal(size=len(y)) + 1j*rng.normal(size=len(y)))*np.sqrt(10**(-20/10)/2)).astype(np.complex64)
+    fs = rp.sync.FrameSync(pre, length=363, classify=["psk/qpsk", "psk/8psk"], threshold=0.5)
+    r = rp.Data(y, sps=1, flush=True) + fs
+    pubs = [p[1] for p in of(r.meta.stream).published if "modulation" in p[1]]
+    assert [(p["modulation"], p["mapping"]) for p in pubs] == truth
+    frames = np.asarray(r.data).reshape(-1, 363)[:, 63:]
+    for f, p, bits in zip(frames, pubs, sent):
+        c = rp.symbol.load(p["modulation"], p["mapping"] or 0)
+        assert np.array_equal(c.llr(f) < 0, bits)
+
 def test_classify_keeps_the_last_when_a_frame_is_short(rng):
     pre = rp.sequence.zadoff_chu(25, 63)
     y = np.concatenate([pre, np.exp(1j*np.pi/4)*np.ones(20), pre, np.ones(20)]).astype(np.complex64)

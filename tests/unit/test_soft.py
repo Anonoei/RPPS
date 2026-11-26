@@ -9,9 +9,9 @@ from rpps.code.types import Trellis
 from conftest import bits, awgn
 
 def modem(name):
-    m = rp.symbol.load(name)
-    m.set_mapping(m.maps[0])
-    return m
+    """A definition on its first map, or the map named after it ("psk/8psk dvb-s2")"""
+    ref, _, mapping = name.partition(" ")
+    return rp.symbol.load(ref, mapping or 0)
 
 # --- LLRs from the demodulator ---------------------------------------------------------------------
 
@@ -23,7 +23,7 @@ def test_bpsk_llr_is_closed_form(rng):
     sign = 1.0 if m.points[m.mapping.arr.tolist().index(0)].real > 0 else -1.0
     assert np.allclose(llr, sign*4*y.real/var, rtol=1e-4, atol=1e-4)
 
-@pytest.mark.parametrize("name", ["bpsk", "qpsk", "8psk", "dvbs2_8psk"])
+@pytest.mark.parametrize("name", ["bpsk", "qpsk", "8psk", "psk/8psk dvb-s2"])
 def test_llr_sign_is_the_hard_decision(name, rng):
     m = modem(name)
     msg = bits(rng, 3*4000)

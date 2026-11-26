@@ -69,7 +69,7 @@ class Table:
 
         {"base": "table", "comment": "...", "key": "modcod",                 or a list of key columns
          "columns": ["modcod", "constellation", "ldpc"],
-         "rows": [[4, "dvbs2_qpsk", "ldpc/dvbs2_64800_1_2"], ...]}
+         "rows": [[4, "psk/qpsk", "ldpc/dvbs2_64800_1_2"], ...]}
 
     only: {field: value}: the rows apply only where the fields have these values (a field not given counts as its value),
         e.g. DVB-S2's MODCODs, and not a DVB-S2X header's (its "s2x" bit set): no row then

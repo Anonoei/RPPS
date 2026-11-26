@@ -88,7 +88,7 @@ def test_tags_say_which_standard():
     assert "conv/k7_171_133/3_4" in _config.tagged("dvb-s")["fec"] and "conv/k7_133_171/1_2" in _config.tagged("iess-308")["fec"]
     dvbs2 = _config.tagged("dvb-s2")
     assert {"constellation", "fec", "interleave", "header", "table", "profile"} <= set(dvbs2)
-    assert "apsk/dvbs2_16apsk_3_4" in dvbs2["constellation"] # inherited from its parent
+    assert "apsk/dvbs2_16apsk" in dvbs2["constellation"]
     assert _config.find("fec", "rs.204_188", "block") is None # no family.name guess
 
 def test_a_loaded_code_is_named_by_its_ref():

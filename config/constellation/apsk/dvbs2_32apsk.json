@@ -1,41 +1,35 @@
 {
   "comment": [
-    "DVB-S2 32APSK: rings of 4 + 12 + 16 points; the outer radii depend on the code rate (the rate files below give",
-    "them), the labelling does not"
+    "DVB-S2 32APSK: rings of 4 + 12 + 16 points; the outer radii depend on the code rate (`rate`), the labelling does",
+    "not"
   ],
-  "ref": "EN 302 307-1 V1.2.1 5.4.4",
+  "ref": "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10",
   "tags": ["dvb-s2"],
   "params": {
-    "gamma1": {
+    "rate": {
       "default": null,
-      "example": 2.84,
-      "comment": "radius of ring 2 over the innermost (table 9/10 of EN 302 307-1 for each code rate)"
-    },
-    "gamma2": {
-      "default": null,
-      "example": 5.27,
-      "comment": "radius of ring 3 over the innermost (table 9/10 of EN 302 307-1 for each code rate)"
+      "example": "3/4",
+      "comment": [
+        "the LDPC code rate, which sets gamma1 and gamma2, rings 2 and 3's radii over ring 1's (EN 302 307-1 table 10)"
+      ],
+      "choices": {
+        "3/4": {"gamma1": 2.84, "gamma2": 5.27},
+        "4/5": {"gamma1": 2.72, "gamma2": 4.87},
+        "5/6": {"gamma1": 2.64, "gamma2": 4.64},
+        "8/9": {"gamma1": 2.54, "gamma2": 4.33},
+        "9/10": {"gamma1": 2.53, "gamma2": 4.3}
+      }
     }
   },
   "rings": [
     {"n": 4, "pha": 45},
-    {"n": 12, "pha": 15, "mag": {"param": "gamma1"}},
-    {"n": 16, "pha": 0, "mag": {"param": "gamma2"}}
+    {"n": 12, "pha": 15, "mag": {"param": "rate.gamma1"}},
+    {"n": 16, "pha": 0, "mag": {"param": "rate.gamma2"}}
   ],
   "maps": [
     {
       "map": [17, 21, 23, 19, 16, 0, 1, 5, 4, 20, 22, 6, 7, 3, 2, 18, 24, 8, 25, 9, 13, 29, 12, 28, 30, 14, 31, 15, 11, 27, 10, 26],
       "comment": "DVB-S2 32APSK: label (b0b1b2b3b4) of each point, inner ring, middle, outer, by angle"
     }
-  ],
-  "variants": {
-    "columns": ["name", "params.gamma1", "params.gamma2", "comment", "ref"],
-    "rows": [
-      ["dvbs2_32apsk_3_4", 2.84, 5.27, "DVB-S2 32APSK for code rate 3/4: gamma1 = 2.84, gamma2 = 5.27", "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10"],
-      ["dvbs2_32apsk_4_5", 2.72, 4.87, "DVB-S2 32APSK for code rate 4/5: gamma1 = 2.72, gamma2 = 4.87", "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10"],
-      ["dvbs2_32apsk_5_6", 2.64, 4.64, "DVB-S2 32APSK for code rate 5/6: gamma1 = 2.64, gamma2 = 4.64", "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10"],
-      ["dvbs2_32apsk_8_9", 2.54, 4.33, "DVB-S2 32APSK for code rate 8/9: gamma1 = 2.54, gamma2 = 4.33", "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10"],
-      ["dvbs2_32apsk_9_10", 2.53, 4.3, "DVB-S2 32APSK for code rate 9/10: gamma1 = 2.53, gamma2 = 4.3", "EN 302 307-1 V1.2.1 5.4.4, figure 12, table 10"]
-    ]
-  }
+  ]
 }

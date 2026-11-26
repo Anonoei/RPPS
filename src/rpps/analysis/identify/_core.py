@@ -59,7 +59,9 @@ def _identify(symbols, constellation, names, blind, differential, profiles, baud
             d = diff_alphabets(c)[key[1]]
             return [{"symbol": "differential"}, {"symbol": "constellation", "name": key[1], "mapping": d.maps[key[2]].comment}]
         from ... import _config
-        return [{"symbol": "constellation", **({"name": c.name} if _config.find("constellation", c.name) else {"shape": c.name})}]
+        turned = c.turned_name(c.blind_maps[key[1]]) # A turned map's labels: the step names it (the correction turns the symbols)
+        return [{"symbol": "constellation", **({"name": c.name} if _config.find("constellation", c.name) else {"shape": c.name}),
+                 **({"mapping": turned} if turned else {})}]
 
     tried = [] # Every tier's hypotheses: the report when nothing stands out
     same = prior is not None and prior.n is not None and prior.n >= CONV_SYMBOLS and len(y) >= CONV_SYMBOLS \

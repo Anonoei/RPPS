@@ -333,9 +333,40 @@ py::tuple equalize(carray<cf32> buf_a, carray<cf32> w_a, long long n, int sps, d
     return py::make_tuple(o, wo, n, count);
 }
 
+// Oerder & Meyr's sums over a window (rpps.sync.time.OerderMeyr._sums): p = |x|^2 e^{-j (phi0 + rate n)}, the sum over the
+// first half, over the second, and the energy sum |x|^2, in double. The phasor steps by e^{-j rate} and starts again from an
+// exact exponential every BLOCK items (as track.line_phasor does), so it agrees with the exponential to about 1e-13.
+template <typename C>
+py::tuple om_sums(carray<C> x_a, double phi0, double rate, long long half) {
+    const long long n = x_a.size();
+    const C *x = x_a.data();
+    constexpr long long BLOCK = 1024;
+    double fr = 0.0, fi = 0.0, sr = 0.0, si = 0.0, en = 0.0;
+    {
+        py::gil_scoped_release nogil;
+        const double cr = std::cos(rate), ci = -std::sin(rate); // e^{-j rate}
+        for (long long a = 0; a < n; a += BLOCK) {
+            const long long z = std::min(n, a + BLOCK);
+            double pr = std::cos(phi0 + rate*a), pi = -std::sin(phi0 + rate*a);
+            for (long long k = a; k < z; k++) {
+                const double xr = x[k].real(), xi = x[k].imag(), e = xr*xr + xi*xi;
+                en += e;
+                if (k < half) { fr += e*pr; fi += e*pi; } else { sr += e*pr; si += e*pi; }
+                const double nr = pr*cr - pi*ci;
+                pi = pr*ci + pi*cr;
+                pr = nr;
+            }
+        }
+    }
+    return py::make_tuple(std::complex<double>(fr, fi), std::complex<double>(sr, si), en);
+}
+
 } // namespace
 
 void register_sync(py::module_ &m) {
+    const char *om_doc = "om_sums(x, phi0, rate, half) -> (sum of |x|^2 e^-j(phi0 + rate n) over n < half, over the rest, sum |x|^2)";
+    m.def("om_sums", &om_sums<cf32>, om_doc, py::arg("x").noconvert(), py::arg("phi0"), py::arg("rate"), py::arg("half"));
+    m.def("om_sums", &om_sums<cf64>, om_doc, py::arg("x"), py::arg("phi0"), py::arg("rate"), py::arg("half"));
     const char *costas_doc = "costas(x, pha, freq, alpha, beta, order, offset) -> (y, pha, freq)";
     m.def("costas", &costas<float>, costas_doc, py::arg("x").noconvert(), py::arg("pha"), py::arg("freq"), py::arg("alpha"), py::arg("beta"), py::arg("order"), py::arg("offset"));
     m.def("costas", &costas<double>, costas_doc, py::arg("x"), py::arg("pha"), py::arg("freq"), py::arg("alpha"), py::arg("beta"), py::arg("order"), py::arg("offset"));

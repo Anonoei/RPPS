@@ -175,12 +175,43 @@ def test_examples_load_and_list_but_are_never_blind_candidates(layer):
     layer("crc/ex_child", {"extends": "ex_crc", "comment": "a child of one is one too"})
     layer("profile/ex/beacon", {"extends": "ax25/afsk1200", "comment": "made up", "tags": ["example"]})
     assert {"ex_crc", "ex_child"} <= set(rp.link.ls()["crc"]) and "beacon" in rp.profile.ls()["ex"]
-    assert not {"ex_crc", "ex_child"} & set(rp.link.ls(examples=False)["crc"])
-    assert "ex" not in rp.profile.ls(examples=False) and not [n for n, _ in candidates() if n.startswith("ex/")]
+    assert not {"ex_crc", "ex_child"} & set(rp.link.ls(blind=True)["crc"])
+    assert "ex" not in rp.profile.ls(blind=True) and not [n for n, _ in candidates() if n.startswith("ex/")]
     assert rp.link.load("crc/ex_child") is not None and rp.profile.load("ex/beacon") is not None
-    for family, modes in rp.profile.ls(examples=False).items(): # (the shipped demos too)
+    for family, modes in rp.profile.ls(blind=True).items(): # (the shipped demos too)
         assert family != "demo", modes
 
 def test_a_higher_layer_decides_what_a_name_lists_as(layer):
     layer("crc/crc16_arc", {"extends": "crc16_xmodem", "comment": "mine, made up", "tags": ["example"]})
-    assert "crc16_arc" in rp.link.ls()["crc"] and "crc16_arc" not in rp.link.ls(examples=False)["crc"]
+    assert "crc16_arc" in rp.link.ls()["crc"] and "crc16_arc" not in rp.link.ls(blind=True)["crc"]
+
+def test_only_the_users_definitions(layer, monkeypatch):
+    """use_shipped(False): only the user's directories are searched; a shipped name is not found"""
+    layer("crc/mine_only", {"comment": "mine", "width": 8, "poly": 7, "init": 0, "refin": False, "refout": False, "xorout": 0})
+    layer("profile/mine/beacon", {"comment": "mine", "steps": [{"symbol": "constellation", "name": "mine_bpsk"}]})
+    layer("constellation/psk/mine_bpsk", {"comment": "mine", "rings": [{"n": 2, "pha": 0}]})
+    monkeypatch.setattr(_config, "_SHIPPED", False)
+    assert rp.link.ls()["crc"] == ["mine_only"] and rp.profile.ls() == {"mine": ["beacon"]}
+    assert rp.symbol.ls() == {"psk": ["mine_bpsk"]} and rp.link.load("crc/mine_only") is not None
+    with pytest.raises(Exception):
+        rp.symbol.load("psk/qpsk")
+    assert "dvb-s2" in _config.tags() # The shipped tags still name tags
+    assert "crc16_xmodem" not in str(_config.tagged())
+
+def test_selected_tags_narrow_what_the_blind_tools_try(monkeypatch):
+    from rpps.profile.catalogue import candidates
+    monkeypatch.setattr(_config, "_SELECTED", None)
+    every = {n for n, _ in candidates()}
+    rp.select_tags(["dvb-s2"])
+    try:
+        tagged = set(_config.tagged("dvb-s2")["profile"])
+        assert {f"{f}/{m}" for f, ms in rp.profile.ls(blind=True).items() for m in ms} == tagged and len(rp.profile.ls()) > 5
+        assert {n for n, _ in candidates()} == every & tagged
+        untagged = [n for n in rp.link.ls()["crc"] if not _config.file_tags(_config.find("crc", n))]
+        assert untagged and set(untagged) <= set(rp.link.ls(blind=True)["crc"]) # the untagged generic ones stay
+        assert rp.profile.load("lte/downlink") is not None # loads by name whatever is selected
+        with pytest.raises(ConfigError, match="no tag"):
+            rp.select_tags(["not-a-tag"])
+    finally:
+        rp.select_tags(None)
+    assert {n for n, _ in candidates()} == every

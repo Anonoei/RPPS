@@ -1,10 +1,11 @@
 // Soft demapping of symbols to bit LLRs (rpps/math/demap.py): the noise level of each row estimated by EM over the
 // constellation points, then log(P(bit=0)/P(bit=1)) per bit. Rows (frames) are independent: they run on several threads.
 //
-// Same arithmetic as the numpy reference, with the terms that cannot change a sum in double precision left out: an
-// exponential of less than e^-40 (4e-18) of the largest term of its sum. The EM sums take the nearest point's distance out
-// of the exponent; each LLR sum takes out its own bit value's nearest point, so no sum underflows and nothing needs a
-// second way round.
+// Same arithmetic as the numpy reference. The noise comes from at most `em_symbols` of a row (every stride-th), by EM whose
+// sums take the nearest point's distance out of the exponent and leave out terms under e^-40 (4e-18) of it. The LLRs share
+// one exponential a point, shifted by the symbol's nearest (kept down to e^-700): every bit's sums are made of them, the
+// shift cancelling in the ratio; a sum that underflows is done again with its own value's nearest point. Symbols go in
+// tiles that stay in the cache, a long row in chunks over the threads.
 #include "common.hpp"
 #include "parallel.hpp"
 
@@ -69,37 +70,84 @@ static double em_step(const double *dp, const double *dmin, long long L, long lo
     return acc;
 }
 
-// LLR of bit j for every symbol: (m1 - m0)/nv + log(s0) - log(s1), the sums over the points with that bit value 0 / 1, each
-// shifted by the value's nearest point (m0, m1)
+constexpr double FAR = 700.0;   // a point's term exp(-(d - dmin)/nv) is kept down to e^-700 (a normal double): one shared shift
+constexpr double TINY = 1e-250; // a bit value's sum below this (its nearest point that far beyond the symbol's): done again
+constexpr long long TILE = 256; // symbols a tile: its distances and terms stay in the cache
+constexpr long long CHUNK = 4096; // symbols a task: a long row is split over the threads
+
+// Distances of symbols y[0..T) from the points, dp[p*T + l], and each symbol's nearest
 RPPS_CLONES
-static void bit_llr(const double *dp, const uint8_t *lab, long long L, long long P, long long B, long long j, double inv,
-                    bool maxlog, double *m0, double *m1, double *s0, double *s1, float *o) {
-    for (long long l = 0; l < L; l++) { m0[l] = INFINITY; m1[l] = INFINITY; }
+static void tile_distances(const cf64 *y, const cf64 *pts, long long T, long long P, double *dp, double *dmin) {
+    for (long long l = 0; l < T; l++) dmin[l] = INFINITY;
     for (long long p = 0; p < P; p++) {
-        const double *d = dp + p*L;
-        double *m = lab[p*B + j] ? m1 : m0;
-        for (long long l = 0; l < L; l++) m[l] = d[l] < m[l] ? d[l] : m[l];
-    }
-    if (maxlog) {
-        for (long long l = 0; l < L; l++) o[l*B + j] = static_cast<float>((m1[l] - m0[l])*inv);
-        return;
-    }
-    for (long long l = 0; l < L; l++) { s0[l] = 0.0; s1[l] = 0.0; }
-    for (long long p = 0; p < P; p++) {
-        const double *d = dp + p*L;
-        double *s = lab[p*B + j] ? s1 : s0;
-        const double *m = lab[p*B + j] ? m1 : m0;
-        for (long long l = 0; l < L; l++) {
-            const double e = (d[l] - m[l])*inv;
-            s[l] += (e < CUT) ? expneg(e < CUT ? e : CUT) : 0.0;
+        double *d = dp + p*T;
+        const double pr = pts[p].real(), pi = pts[p].imag();
+        for (long long l = 0; l < T; l++) {
+            const double dr = y[l].real() - pr, di = y[l].imag() - pi;
+            d[l] = dr*dr + di*di;
+            dmin[l] = d[l] < dmin[l] ? d[l] : dmin[l];
         }
     }
-    for (long long l = 0; l < L; l++)
-        o[l*B + j] = static_cast<float>((m1[l] - m0[l])*inv + std::log(s0[l]) - std::log(s1[l]));
+}
+
+// Each point's term exp(-(d - dmin)/nv), shared by every bit's sums (the shift cancels in the ratio): ep[p*T + l]
+RPPS_CLONES
+static void tile_terms(const double *dp, const double *dmin, long long T, long long P, double inv, double *ep) {
+    for (long long p = 0; p < P; p++) {
+        const double *d = dp + p*T;
+        double *e = ep + p*T;
+        for (long long l = 0; l < T; l++) {
+            const double x = (d[l] - dmin[l])*inv;
+            e[l] = (x < FAR) ? expneg(x < FAR ? x : FAR) : 0.0;
+        }
+    }
+}
+
+// The LLRs of one tile: o[l*B + j]. Exact: log(sum over the points with bit j 0) - log(sum over those with 1) of the shared
+// terms; a sum that underflows (a symbol so far beyond every point of a bit value) is the log-sum-exp done the long way.
+// Max-log: the nearest point of each value
+static void tile_llr(const double *dp, const double *dmin, const double *ep, const uint8_t *lab, long long T, long long P,
+                     long long B, double inv, bool maxlog, double *s0, double *s1, float *o) {
+    for (long long j = 0; j < B; j++) {
+        if (maxlog) {
+            for (long long l = 0; l < T; l++) { s0[l] = INFINITY; s1[l] = INFINITY; }
+            for (long long p = 0; p < P; p++) {
+                const double *d = dp + p*T;
+                double *m = lab[p*B + j] ? s1 : s0;
+                for (long long l = 0; l < T; l++) m[l] = d[l] < m[l] ? d[l] : m[l];
+            }
+            for (long long l = 0; l < T; l++) o[l*B + j] = static_cast<float>((s1[l] - s0[l])*inv);
+            continue;
+        }
+        for (long long l = 0; l < T; l++) { s0[l] = 0.0; s1[l] = 0.0; }
+        for (long long p = 0; p < P; p++) {
+            const double *e = ep + p*T;
+            double *s = lab[p*B + j] ? s1 : s0;
+            for (long long l = 0; l < T; l++) s[l] += e[l];
+        }
+        for (long long l = 0; l < T; l++) {
+            if (s0[l] >= TINY && s1[l] >= TINY) {
+                o[l*B + j] = static_cast<float>(std::log(s0[l]) - std::log(s1[l]));
+                continue;
+            }
+            double m0 = INFINITY, m1 = INFINITY; // the long way: each value's sum shifted by its own nearest point
+            for (long long p = 0; p < P; p++) {
+                const double d = dp[p*T + l];
+                if (lab[p*B + j]) m1 = std::min(m1, d); else m0 = std::min(m0, d);
+            }
+            double a0 = 0.0, a1 = 0.0;
+            for (long long p = 0; p < P; p++) {
+                const double d = dp[p*T + l];
+                if (lab[p*B + j]) a1 += std::exp(-(d - m1)*inv); else a0 += std::exp(-(d - m0)*inv);
+            }
+            o[l*B + j] = static_cast<float>((m1 - m0)*inv + std::log(a0) - std::log(a1));
+        }
+    }
+    (void)dmin;
 }
 
 py::array_t<float> demap_llr(carray<cf64> y_a, carray<cf64> pts_a, carray<uint8_t> lab_a, carray<double> nv_a, bool maxlog,
-                             int iters, double floor_var, double tol, int threads) {
+                             int iters, double floor_var, double tol, int em_symbols, int threads) {
     check_shape(y_a, {-1, -1}, "y");
     check_shape(lab_a, {-1, -1}, "labels");
     const long long R = y_a.shape(0), L = y_a.shape(1), P = pts_a.size(), B = lab_a.shape(1);
@@ -111,41 +159,50 @@ py::array_t<float> demap_llr(carray<cf64> y_a, carray<cf64> pts_a, carray<uint8_
     const double *nvg = nv_a.data();
     py::array_t<float> out({R, L*B});
     float *out_all = out.mutable_data();
+    std::vector<double> nvs(static_cast<size_t>(R));
     {
         py::gil_scoped_release nogil;
+        // The noise of each row: EM over every `stride`-th symbol (at most em_symbols of them: the variance of thousands of
+        // symbols is known to a few percent, and it only scales the LLRs)
+        const long long stride = (em_symbols > 0 && L > em_symbols) ? (L + em_symbols - 1)/em_symbols : 1;
+        const long long Ls = L ? (L + stride - 1)/stride : 0;
         parallel_for(R, threads, [&](long long r) {
-            const cf64 *y = y_all + r*L;
-            std::vector<double> dp(static_cast<size_t>(L*P)), dmin(static_cast<size_t>(L), INFINITY), s(static_cast<size_t>(L)),
-                t(static_cast<size_t>(L)), a0(static_cast<size_t>(L)), a1(static_cast<size_t>(L));
-            for (long long p = 0; p < P; p++) { // distances, one point at a time: dp[p*L + l]
-                double *d = &dp[p*L];
-                const double pr = pts[p].real(), pi = pts[p].imag();
-                for (long long l = 0; l < L; l++) {
-                    const double dr = y[l].real() - pr, di = y[l].imag() - pi;
-                    d[l] = dr*dr + di*di;
-                    dmin[l] = d[l] < dmin[l] ? d[l] : dmin[l];
-                }
-            }
             double nv;
             if (given) {
                 nv = nvg[nv_a.size() == 1 ? 0 : r];
             } else {
+                std::vector<cf64> ys(static_cast<size_t>(Ls));
+                for (long long k = 0; k < Ls; k++) ys[k] = y_all[r*L + k*stride];
+                std::vector<double> dp(static_cast<size_t>(Ls*P)), dmin(static_cast<size_t>(Ls)), s(static_cast<size_t>(Ls)),
+                    t(static_cast<size_t>(Ls));
+                tile_distances(ys.data(), pts, Ls, P, dp.data(), dmin.data());
                 double dsum = 0.0;
-                for (long long l = 0; l < L; l++) dsum += dmin[l];
-                double var = (L ? dsum/L : 0.0)/2 + floor_var;
-                for (int it = 0; it < iters && L; it++) {
-                    const double acc = em_step(dp.data(), dmin.data(), L, P, 1.0/(2*var), s.data(), t.data());
-                    const double nu = std::max(acc/(2.0*L), floor_var);
+                for (long long l = 0; l < Ls; l++) dsum += dmin[l];
+                double var = (Ls ? dsum/Ls : 0.0)/2 + floor_var;
+                for (int it = 0; it < iters && Ls; it++) {
+                    const double acc = em_step(dp.data(), dmin.data(), Ls, P, 1.0/(2*var), s.data(), t.data());
+                    const double nu = std::max(acc/(2.0*Ls), floor_var);
                     const bool done = std::fabs(nu - var) <= tol*var;
                     var = nu;
                     if (done) break;
                 }
                 nv = 2*var;
             }
-            nv = std::max(nv, 2*floor_var);
-            float *o = out_all + r*L*B;
-            for (long long j = 0; j < B; j++)
-                bit_llr(dp.data(), lab, L, P, B, j, 1.0/nv, maxlog, dmin.data(), t.data(), a0.data(), a1.data(), o);
+            nvs[r] = std::max(nv, 2*floor_var);
+        });
+        // The LLRs: tasks of CHUNK symbols (a long row over several threads), tiles of TILE symbols within each
+        const long long per = L ? (L + CHUNK - 1)/CHUNK : 0;
+        parallel_for(R*per, threads, [&](long long task) {
+            const long long r = task/per, a = (task % per)*CHUNK, z = std::min(L, a + CHUNK);
+            std::vector<double> dp(static_cast<size_t>(TILE*P)), ep(static_cast<size_t>(TILE*P)), dmin(static_cast<size_t>(TILE)),
+                s0(static_cast<size_t>(TILE)), s1(static_cast<size_t>(TILE));
+            const double inv = 1.0/nvs[r];
+            for (long long t0 = a; t0 < z; t0 += TILE) {
+                const long long T = std::min(TILE, z - t0);
+                tile_distances(y_all + r*L + t0, pts, T, P, dp.data(), dmin.data());
+                if (!maxlog) tile_terms(dp.data(), dmin.data(), T, P, inv, ep.data());
+                tile_llr(dp.data(), dmin.data(), ep.data(), lab, T, P, B, inv, maxlog, s0.data(), s1.data(), out_all + (r*L + t0)*B);
+            }
         });
     }
     return out;
@@ -155,9 +212,9 @@ py::array_t<float> demap_llr(carray<cf64> y_a, carray<cf64> pts_a, carray<uint8_
 
 void register_demap(py::module_ &m) {
     m.def("demap_llr", &demap_llr,
-          "demap_llr(y (R, L) complex128, points (P), labels (P, B) uint8, noise_var (R) or (1) or empty, maxlog, iters, floor, tol, threads) -> LLRs (R, L*B) float32",
+          "demap_llr(y (R, L) complex128, points (P), labels (P, B) uint8, noise_var (R) or (1) or empty, maxlog, iters, floor, tol, em_symbols, threads) -> LLRs (R, L*B) float32",
           py::arg("y"), py::arg("points"), py::arg("labels"), py::arg("noise_var"), py::arg("maxlog"), py::arg("iters"),
-          py::arg("floor"), py::arg("tol"), py::arg("threads") = 0);
+          py::arg("floor"), py::arg("tol"), py::arg("em_symbols") = 4096, py::arg("threads") = 0);
 }
 
 } // namespace rpps

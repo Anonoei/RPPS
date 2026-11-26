@@ -34,7 +34,8 @@ def config_path(tmp_path):
 
 def test_tables():
     t = rp.profile.table("dvbs2/modcod")
-    assert t.row({"modcod": 12, "short": 0})["constellation"] == "dvbs2_8psk"
+    assert t.row({"modcod": 12, "short": 0})["constellation"] == "psk/8psk"
+    assert t.row({"modcod": 19, "short": 0})["params"] == {"rate": "3/4"} # 16APSK's radii follow the code rate
     assert t.row({"modcod": 12, "short": 0})["interleaver"] == "dvbs2_8psk_210" # 8PSK 3/5 reads its columns backwards
     assert t.row({"modcod": 4, "short": 0})["kbch"] == 32208
     assert t.row({"modcod": 4, "short": 1})["kbch"] == 7032 # A short frame (table 5b)
@@ -47,7 +48,7 @@ def test_entry_values_take_fields_columns_and_calcs():
                               "drive": {"map": {"name": "constellation"}, "pilots": {"pilots": "pilots"},
                                         "plscram": {"length": {"calc": "slots*90 + pilots*((slots - 1)//16)*36"}}}}, "t")
     v, row = e.values({"modcod": 4, "short": 0, "pilots": 1})
-    assert v == {"map": {"name": "dvbs2_qpsk"}, "pilots": {"pilots": 1}, "plscram": {"length": 360*90 + 22*36}}
+    assert v == {"map": {"name": "psk/qpsk"}, "pilots": {"pilots": 1}, "plscram": {"length": 360*90 + 22*36}}
     v, row = e.values({"pilots": 0}) # Only what these fields give: no row, so no column or calc that needs one
     assert v == {"pilots": {"pilots": 0}} and row is None
 
@@ -79,7 +80,7 @@ def test_none_is_refused(config_path):
 def test_steps_declare_live_and_restart():
     p = rp.profile.load("dvbs2/normal")
     ctl = {s.id: s.controls for s in p.steps}
-    assert ctl["map"] == {"name": "live", "mapping": "live"} and ctl["ldpc"]["name"] == "live"
+    assert ctl["map"] == {"name": "live", "mapping": "live", "params": "live"} and ctl["ldpc"]["name"] == "live"
     assert ctl["timing"] == {} # A sync tracker's own estimates: none
     conv = rp.profile.load("dvbs/qpsk_3_4").steps[5]
     assert conv.controls["name"] == "restart" # Viterbi path metrics belong to the old trellis

@@ -64,7 +64,7 @@ def test_fits_narrows_by_what_was_measured():
 
 def test_candidates_are_the_variants_that_fit():
     every = rp.profile.candidates()
-    assert {n for n, _ in every} == {f"{f}/{m}" for f, ms in rp.profile.ls(examples=False).items() for m in ms}
+    assert {n for n, _ in every} == {f"{f}/{m}" for f, ms in rp.profile.ls(blind=True).items() for m in ms}
     sat = {n for n, _ in rp.profile.candidates(baud=27.5e6, input="baseband")}
     assert "dvbs2/normal" in sat and "dvbs/qpsk" in sat and "ble/adv" not in sat and "adsb/mode_s" not in sat
     assert {n for n, _ in rp.profile.candidates(baud=11e6)} >= {"ieee80211b/1m", "ieee80211b/long"}

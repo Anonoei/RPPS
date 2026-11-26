@@ -67,6 +67,12 @@ class _Component:
             self.L, self.taps, self.s = L, taps, _bits(obj["init"], L, obj.get("init_order", "lsb"))
         self._lock = threading.Lock()
 
+    def __copy__(self):
+        return self # Shared by every sequence of its definition (`_component`): a copied operator shares it too
+
+    def __deepcopy__(self, memo):
+        return self
+
     def first(self, n):
         """s[0 .. n-1] (one component is shared by every sequence with its definition, and by their threads). Extended
         with no loop over the bits: from the last L, a recursion over GF(2) (rpps.math.gf2.recur)"""

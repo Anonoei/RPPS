@@ -98,7 +98,7 @@ def test_a_modulation_starts_on_its_first_map_and_can_pick_another():
         mm = rp.symbol.load_or_generate("QPSK", i)
         assert np.array_equal((rp.Data(bits) * mm / mm).bits(), bits)
 
-@pytest.mark.parametrize("name", ["bpsk", "qpsk", "8psk", "16psk", "16qam", "32qam", "64qam", "4ask", "16apsk", "dvbs2_8psk"])
+@pytest.mark.parametrize("name", ["bpsk", "qpsk", "8psk", "16psk", "16qam", "32qam", "64qam", "4ask", "16apsk"])
 def test_every_generated_map_undoes_its_channel(name, rng):
     """A signal sent on the first map and turned (and spectrally inverted) by the channel decodes on the map that says so"""
     base = rp.symbol.load_or_generate(name)

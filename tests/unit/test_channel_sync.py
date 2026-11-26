@@ -99,7 +99,7 @@ def test_ddcarrier_follows_apsk_through_drift_and_phase_noise(rng):
     """16APSK, a phase that starts 0.1 rad off, drifts 2e-4 cycles a symbol and wanders (0.005 rad a symbol): no rotation
     slip and an rms error near 0.08 rad (over 40 seeds: none slipped, the median 0.082, the worst under 0.11)"""
     from rpps.sync.phase import decided
-    pts = np.asarray(rp.symbol.load("apsk/dvbs2_16apsk_2_3").points)
+    pts = np.asarray(rp.symbol.load("apsk/dvbs2_16apsk", rate="2/3").points)
     n = 8000
     s = pts[rng.integers(0, len(pts), n)]
     ph = 0.1 + 2*np.pi*2e-4*np.arange(n) + np.cumsum(rng.normal(0, 0.005, n))
