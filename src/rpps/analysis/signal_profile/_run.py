@@ -21,9 +21,12 @@ def profile(source, signals=None, freq=None, blocks=450, block=16384, blind=True
     progress: called as progress(stage, done, total, left) as the work goes: stage "read" (blocks read of the stretch
         planned: `blocks`, then `max_blocks` once some chains read on; `left` the chains still reading), "build" (profiles
         built of the signals), and "again" / "build again" for a second pass at a rate the cyclic spectrum gives
-    jobs: profile the signals in this many processes (forked, each with its share of the signals and its own reading of
-        the source from where this one starts: a File seeks back, Memory starts over; Linux and macOS). With jobs > 1
-        `progress` is called as ("parallel", groups done, jobs, groups left)
+    jobs: profile the signals in this many processes, each with its share of the signals and its own reading of the
+        source from where this one starts (a File seeks back, Memory starts over). With jobs > 1 `progress` is called as
+        ("parallel", groups done, jobs, groups left). The processes are forked where the platform can, else spawned
+        (Windows): `source` and `hint` must then pickle (a hint defined at a module's top level, not a lambda), a script
+        needs its `if __name__ == "__main__"` guard, and definitions made in code stay with the parent (the config paths,
+        selected tags and effort level go along)
     hint: hint(signal) -> None or {"baud": the symbol rate, "codes": the convolutional definitions to try (names in
         config/fec/conv), "blind": False to skip the blind tools}: what an earlier look at the same signal (another
         capture of it) found, so it is not searched for again"""
@@ -488,24 +491,32 @@ def _refit(source, sigs, samples=2**21, nfft=2**18, drop=10.0, q=95, move=0.08, 
     return out
 
 def _parallel(source, picked, sv, jobs, tell, kw):
-    """profile() of `picked` in `jobs` forked processes: the signals dealt round robin, results in their order"""
+    """profile() of `picked` in `jobs` processes (forked, else spawned): the signals dealt round robin, results in their
+    order"""
     import multiprocessing as mp
     from concurrent.futures import ProcessPoolExecutor, as_completed
-    global _JOB
+    from ... import _config, _effort
     jobs = min(jobs, len(picked))
     groups = [picked[k::jobs] for k in range(jobs)]
-    _JOB = (source, getattr(source, "cur_samp", None), groups, sv, kw)
+    job = (source, getattr(source, "cur_samp", None), groups, sv, kw) # (forked: inherited; spawned: pickled)
+    method = "fork" if "fork" in mp.get_all_start_methods() else "spawn"
     out = {}
-    try:
-        with ProcessPoolExecutor(jobs, mp_context=mp.get_context("fork")) as ex:
-            futs = {ex.submit(_parallel_part, k): k for k in range(jobs)}
-            for done, f in enumerate(as_completed(futs), 1):
-                for s, p in zip(groups[futs[f]], f.result()):
-                    out[id(s)] = p
-                tell("parallel", done, jobs, jobs - done)
-    finally:
-        _JOB = None
+    with ProcessPoolExecutor(jobs, mp_context=mp.get_context(method), initializer=_parallel_init,
+                             initargs=(job, _config.state(), _effort.level())) as ex:
+        futs = {ex.submit(_parallel_part, k): k for k in range(jobs)}
+        for done, f in enumerate(as_completed(futs), 1):
+            for s, p in zip(groups[futs[f]], f.result()):
+                out[id(s)] = p
+            tell("parallel", done, jobs, jobs - done)
     return [out[id(s)] for s in picked]
+
+def _parallel_init(job, config, effort):
+    """In each of profile()'s processes: its job, and the parent's definitions and effort (a spawned one starts without)"""
+    global _JOB
+    from ... import _config, _effort
+    _JOB = job
+    _config.restore(config)
+    _effort.set_effort(effort)
 
 def _parallel_part(k):
     source, start, groups, sv, kw = _JOB

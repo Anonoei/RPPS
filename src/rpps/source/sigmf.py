@@ -87,6 +87,9 @@ class SigMF(Source):
         """Unmap the data file. Windows can't delete or replace a file while it is mapped; reading again maps it again"""
         self._map = None # The blocks are copies, so this was the only reference
 
+    def __getstate__(self):
+        return {**self.__dict__, "_map": None} # Pickled without the data: it is mapped again where it is read
+
     def __enter__(self):
         self.open()
         return self

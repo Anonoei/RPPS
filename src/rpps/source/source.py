@@ -248,6 +248,21 @@ class File(Source):
     def __str__(self):
         return str(self._f)
 
+    def __getstate__(self):
+        """Pickled without the open file and pysdrlib's own objects: it comes back closed, at the same position"""
+        state = dict(self.__dict__)
+        f = state.pop("_f")
+        state["fmt"] = self.fmt.name
+        state["_at"] = (f.scale, f.cur_samp)
+        return state
+
+    def __setstate__(self, state):
+        scale, pos = state.pop("_at")
+        self.__dict__.update(state)
+        self.fmt = fmts.get(self.fmt)
+        self._f = fmts.pysdrlib().File(self.path, self.fmt.name, scale=scale)
+        self._f.seek(pos)
+
     max_samp = property(lambda self: self._f.max_samp)
     cur_samp = property(lambda self: self._f.cur_samp)
 

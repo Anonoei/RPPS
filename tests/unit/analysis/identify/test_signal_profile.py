@@ -1,5 +1,6 @@
 """rp.analysis.profile: the steps that process each signal of a capture, and what it might be where unsolved"""
 import json
+import multiprocessing as mp
 
 import numpy as np
 import pytest
@@ -196,8 +197,13 @@ def test_progress_reports_each_stage(dvbs_capture):
     assert builds[-1][1:] == (len(ps), len(ps), 0)
 
 @pytest.mark.kernels
-def test_jobs_profile_the_signals_in_parallel_with_the_same_result(tmp_path):
-    """Two carriers in a File: jobs=2 forks two workers, each seeking back to where the profile's reading starts"""
+@pytest.mark.parametrize("method", ["fork", "spawn"])
+def test_jobs_profile_the_signals_in_parallel_with_the_same_result(tmp_path, monkeypatch, method):
+    """Two carriers in a File: jobs=2 starts two workers (forked, or spawned as on Windows), each seeking back to where
+    the profile's reading starts"""
+    if method not in mp.get_all_start_methods():
+        pytest.skip(f"no {method} here")
+    monkeypatch.setattr(mp, "get_all_start_methods", lambda: [method])
     rng = np.random.default_rng(9)
     def carrier(sps, f, n_pk):
         ts = rng.integers(0, 256, (n_pk, 188)).astype(np.uint8)

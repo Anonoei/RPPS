@@ -1,5 +1,6 @@
 """Sources and sinks beyond files and radios: sockets, SigMF recordings, WAV input"""
 import json
+import pickle
 import socket
 import threading
 
@@ -12,6 +13,29 @@ pytest.importorskip("pysdrlib")
 
 def _tone(n=10000):
     return (0.5*np.exp(2j*np.pi*0.01*np.arange(n))).astype(np.complex64)
+
+@pytest.mark.parametrize("kind", ["file", "sigmf"])
+def test_a_pickled_source_reads_on_from_where_it_was(tmp_path, kind):
+    """As a spawned process gets it (profile(jobs=)): the same position, even from an open file, and no samples inside"""
+    x = _tone()
+    with rp.source.SigMFSink(tmp_path/"rec", Fs=2e6, datatype="cf32_le") as s:
+        s.write(x)
+    if kind == "file":
+        src = rp.source.File("cf32", tmp_path/"rec.sigmf-data", Fs=2e6)
+        src.open()
+        src.seek(1000)
+    else:
+        src = rp.source.SigMF(tmp_path/"rec")
+    saved = pickle.dumps(src)
+    assert len(saved) < x.nbytes//4
+    again = pickle.loads(saved)
+    start = 1000 if kind == "file" else 0
+    assert again.Fs == 2e6 and np.array_equal(again.peek(100, 50), x[50:150])
+    if kind == "file":
+        assert again.cur_samp == start
+    assert np.array_equal(np.concatenate([b.data for b in again(4096)]), x[start:])
+    again.close()
+    src.close()
 
 @pytest.mark.parametrize("datatype", ["cf32_le", "ci16_le", "ci8", "cu8", "rf32_be"])
 def test_sigmf_round_trip(tmp_path, datatype):

@@ -56,6 +56,13 @@ def _check_tags(sel):
     if unknown:
         raise ConfigError(f"select_tags: no tag {unknown} ($RPPS_CONFIG_TAGS or rp.select_tags), have {sorted(tags())}")
 
+def restore(saved):
+    """Search as a `state()` taken in another process does (a spawned worker starts from the environment alone)"""
+    global _SHIPPED, _SELECTED, _CHECKED
+    extra, _SHIPPED, _SELECTED = saved
+    _EXTRA[:] = extra
+    _CHECKED = False
+
 def roots():
     """The config directories searched, highest priority first: the user's, then the shipped one (unless `use_shipped(False)`)"""
     return [*_EXTRA, *([PATH_CONFIG] if _SHIPPED else [])]
