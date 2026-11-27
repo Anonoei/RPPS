@@ -4,9 +4,10 @@ RPPS is 0.x: a minor version may rename or remove things, and old names are not 
 in the Building on RPPS guide, which warns for one release). Every release lists what breaks under **Breaking**, with
 what to use instead.
 
-## Unreleased
+## 0.7.0 (2026-11-27)
 
 ### Breaking
+- **pysdrlib 0.5.1 or newer is required** (was 0.5).
 - **`rpps.grid.nr` takes either subcarrier spacing** (15 or 30 kHz), so its pieces changed shape:
   - `NrGrid` gives one frame a subframe (was a slot): `16 + 960 + 14 x Fs / 15 kHz` items, and `nr.unpack(frame)` is
     `(head, G, B)`: the grid of every slot `(2^mu, 14, nfft)` and the SS/PBCH block's own `(4, 240)`. The PDCCH publishes
@@ -551,6 +552,10 @@ what to use instead.
   ambiguity an M-th power carrier leaves. `rp.sync.Puncture` tries the constellation's turns (`bit_rotations`) with its
   offsets and applies the one that decodes; and it decides on the first window where one hypothesis clearly wins, not on
   the stream's first (where timing and carrier were still settling and every offset decoded badly).
+- **A message's `sample` was early in a burst profile by whatever its preamble step dropped** before the preamble
+  (`ble/adv`: a burst cut early placed its PDU before the packet): `rp.sync.Preamble` tells the profile what it dropped.
+- **`rp.analysis.profile(jobs=)` raised ValueError on Windows**, which has no `fork`: it spawns its processes there
+  (`source` and `hint` must then pickle, and a script needs its `__main__` guard). `File` and `SigMF` sources pickle.
 
 ## 0.6.0 (2026-11-22)
 
