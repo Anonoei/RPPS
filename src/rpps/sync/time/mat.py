@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from ... import _accel
 from ...base import Meta, Stage
 from ...signal.filters.shaping import rrc_pulse
 from ...math.interp import peak, fractional, REACH
@@ -11,15 +12,29 @@ def matrix_mf(x, centres, sps, beta=0.2, span=8):
 
     W[i, j] = rrc((j - centres[i]) / sps), so symbols are taken at any fractional instant
     and sps may be fractional. Only the 2*span*sps columns that matter are built per row.
-    x[centres +/- span*sps] must exist. Weights have unit energy per row.
+    x[centres +/- span*sps] must exist (`fits`; IndexError otherwise). Weights have unit energy per row.
+    Complex x runs in C++ when the kernels are loaded (rpps._native.matrix_mf: the rows computed and applied in one
+    pass, never stored); the code below is the reference it agrees with to rounding.
     """
+    native = _accel.native
+    if native is not None and isinstance(x, np.ndarray) and x.dtype in (np.complex64, np.complex128):
+        return native.matrix_mf(np.ascontiguousarray(x), np.ascontiguousarray(centres, dtype=np.float64), float(sps),
+                                float(beta), float(span))
     S = span * sps
     j0 = np.ceil(centres - S).astype(np.int64)
     lags = np.arange(int(np.ceil(2*S)) + 2)
+    if len(j0) and (j0.min() < 0 or j0.max() + len(lags) > len(x)): # (numpy would wrap a negative index round)
+        raise IndexError("matrix_mf: a symbol's support runs outside x")
     idx = j0[:, None] + lags
     w = _rrc_rows(j0 - np.asarray(centres, dtype=np.float64), lags, sps, beta)
     w /= np.sqrt(np.sum(w**2, axis=1, keepdims=True))
     return np.sum(w * x[idx], axis=1)
+
+def fits(centres, n, sps, span=8):
+    """Which centres have their whole matched-filter support in n samples (what matrix_mf reads)"""
+    S = span*sps
+    j0 = np.ceil(np.asarray(centres, dtype=np.float64) - S)
+    return (j0 >= 0) & (j0 + int(np.ceil(2*S)) + 2 <= n)
 
 def _rrc_rows(off, lags, sps, beta):
     """rrc_pulse((off[:, None] + lags) / sps, beta), with the sines and cosines of the rows (N) and of the lags (L)
@@ -135,6 +150,10 @@ class Mat(Stage):
             st.det = meta.det
             k = np.round((st.base + st.t_next - st.det.tau)/sps)
             st.t_next = st.det.tau + k*sps - st.base
+            # The point nearest can be one whose support begins before the buffer kept (a timing a hair earlier than the
+            # one the buffer was cut for): on to the first whose support is all there
+            while np.ceil(st.t_next - self.span*sps) < 0:
+                st.t_next += sps
         samples = samples if st.buffer is None else np.concatenate((st.buffer, samples))
         centres = centres_in(len(samples), st.t_next, sps, self.span)
 
@@ -144,10 +163,12 @@ class Mat(Stage):
             out = matrix_mf(samples, centres, sps, st.beta, self.span)
             nxt = centres[-1] + sps
             if self.track and len(centres) >= 64:
-                # Energy at +/- DELTA around the lattice: the parabola vertex is the timing error
-                e = [np.mean(np.abs(matrix_mf(samples, centres + d, sps, st.beta, self.span))**2)
+                # Energy at +/- DELTA around the lattice: the parabola vertex is the timing error. All three over the
+                # symbols whose shifted support is still in the buffer (the first one's can start a sample before it)
+                ok = fits(centres - self.DELTA, len(samples), sps, self.span) & fits(centres + self.DELTA, len(samples), sps, self.span)
+                e = [np.mean(np.abs(matrix_mf(samples, centres[ok] + d, sps, st.beta, self.span))**2)
                      for d in (-self.DELTA, self.DELTA)]
-                e0 = np.mean(np.abs(out)**2)
+                e0 = np.mean(np.abs(out[ok])**2)
                 den = e[0] - 2*e0 + e[1]
                 if den < 0: # A maximum
                     nxt += self.track*np.clip(self.DELTA*(e[0] - e[1])/(2*den), -self.DELTA, self.DELTA)

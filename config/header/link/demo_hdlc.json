@@ -1,0 +1,16 @@
+{
+  "type": "link",
+  "comment": [
+    "Demo header inside an HDLC frame (profile/demo/hdlc_header): an address, a control byte and a protocol byte",
+    "before the payload, the frame's length given by the HDLC step (`length`:",
+    "its payload's bits), so the header is stripped and its fields read"
+  ],
+  "tags": ["example"],
+  "order": "msb",
+  "fields": [
+    {"name": "address", "bits": 8, "default": 1},
+    {"name": "control", "bits": 8, "default": 3},
+    {"name": "protocol", "bits": 8, "default": 0}
+  ],
+  "framed": true
+}

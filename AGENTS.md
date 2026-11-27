@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Orientation for agents working in this repository. Read this first; it says where everything else is.
+Read this first: it says where everything is.
 
 RPPS (RF Parameter Processor Suite) is a Python library (numpy, optional C++ kernels) that generates and processes radio
 signals: filters, sync, modulation, FEC, framing, and whole standards (DVB-S/S2, 802.11b, 802.15.4, BLE, ADS-B, CCSDS,
@@ -18,7 +18,7 @@ python tools/builder.py -d      # docs: API pages + llms files (tools/gen_docs.p
 python -m rpps ls [resource]    # shipped definitions; also: show, steps, rx, tx, survey, profile, solve, fmt
 ```
 
-A stale `rpps._native` warns at import; rebuild with `python tools/builder.py -c` after touching `csrc/`.
+A stale `rpps._native` warns at import: rebuild (`-c`) after touching `csrc/`.
 
 ## The model in one screen
 
@@ -49,14 +49,14 @@ Full design: the `rpps.base` docstring (model, rule, categories, contracts, grey
 
 | Path | What |
 |---|---|
-| `src/rpps/<pkg>/` | one package per category: source, signal, sync, wave, symbol, code, link, grid, profile, parallel, sequence, analysis, base, math, utils, viz |
+| `src/rpps/<pkg>/` | one package per category: source, signal, sync, wave, symbol, code, link, grid, profile, parallel, sequence, plan, analysis, base, math, utils, viz |
 | `src/rpps/<pkg>/__init__.py` | **the package's documentation** (its docstring), rendered in the API reference |
-| `config/<resource>/` | JSON definitions: constellation, pulse, filter, sequence, scramble, fec, interleave, crc, frame, header, table, profile; `tags.json` |
+| `config/<resource>/` | JSON definitions: constellation, pulse, filter, sequence, scramble, fec, interleave, crc, frame, header, linktype, table, plan, profile; `tags.json` |
 | `csrc/rpps_native/` | C++17 kernels (pybind11); the Python loop in the calling stage is the reference |
 | `docs/` | the site: guides (`docs/guide/`), examples index, contributing, roadmap; `docs/api/` and `docs/llms*.txt` are generated |
 | `tools/` | `builder.py` (setup, kernels, tests, docs, release), `gen_docs.py` (API pages, llms files), benchmarks (`*_bench.py`, `tpc_ber.py`) |
-| `examples/` | one self-checking script per recommended usage; the guides embed them; `tests/unit/test_examples.py` runs them |
-| `tests/unit/` | the suite; `conftest.py` gives `rng`, `bits`, `awgn`, `shaped`, `cpfsk` |
+| `examples/` | one self-checking script per recommended usage; the guides embed them and the tests run them |
+| `tests/unit/` | a folder per package, plus `standards/`, `policy/`, `native/`; helpers in `tests/support/` |
 | `projects/` | worked receivers on real signals, each with a README |
 | `private/` | untracked captures and tooling: **never commit or quote it** |
 
@@ -76,7 +76,7 @@ Nothing under `src/` may import scipy (`test_numpy_only.py`).
 | Parallel region, batch kernels | `rpps.parallel` |
 | Effort levels and measured gains | `rpps._effort` |
 | How to use it for a task | `docs/guide/*.md` |
-| Setup, testing markers, native kernel pitfalls, CI, releases | `docs/contributing.md` |
+| Setup, test markers, kernel pitfalls, CI, releases | `docs/contributing.md` |
 | Everything at once | `docs/llms-full.txt` (after `python tools/gen_docs.py`) |
 
 ## Conventions
@@ -86,11 +86,12 @@ Nothing under `src/` may import scipy (`test_numpy_only.py`).
   is the stable API (`docs/guide/integrating.md`): its old name stays one release, warning, then goes.
 - **Be explicit:** fix a caller rather than loosen a contract check.
 - **Python first, then C++:** write the stage in Python with a block-cut test; move hot loops to `csrc/` behind
-  `rpps._accel.native`, keeping the Python loop as the reference the tests compare against.
+  `rpps._accel.native`, keeping the Python loop as the reference the tests compare against. A primitive's kernel goes
+  behind a `rpps.math`/`rpps.signal` wrapper that stages share; one stage's loop stays in that stage until a second caller.
 - **Decoders return status, never keep it** (`decode(x, status=True)`), so one loaded code serves many threads.
 - **Read the standard** when a decode does not work, instead of guessing.
 - **Statistical tests** assert with a margin measured over many seeds.
 - **Docs live with what they describe:** concepts in the package/module docstring, usage in a guide that embeds an
-  example script. Python blocks in README.md and `docs/` run in `tests/unit/test_docs.py` (mark untestable ones
+  example script. Python blocks in README.md and `docs/` run in the tests (mark untestable ones
   `# docs: skip`). User-facing changes go in CHANGELOG.md under Unreleased; renames and removals under **Breaking**.
 - Branch from `dev`; `main` is released.

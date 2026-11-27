@@ -1,0 +1,9 @@
+{
+  "comment": [
+    "A private link type (DLT_USER0): RPPS's own header (tools/wireshark/rpps.lua) then the packet, for the packets no",
+    "other link type carries, or every packet with its metadata"
+  ],
+  "ref": "https://www.tcpdump.org/linktypes.html",
+  "dlt": 147,
+  "dissector": "rpps"
+}

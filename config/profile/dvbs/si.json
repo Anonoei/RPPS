@@ -1,0 +1,49 @@
+{
+  "extends": "dvbs/qpsk",
+  "comment": [
+    "DVB-S service information: the transport packets of dvbs/qpsk (the alignment after RS publishing each packet's",
+    "start), each one's header read and the sections cut out of their payloads as dvbs2/sections does, on the PSI/SI",
+    "PIDs (0x00-0x1F) and on `pids` (the PMTs), each read by header/link/dvb_si:",
+    "a message a section, its table by `table_id.name`, its CRC-32 checked (the TDT has none)"
+  ],
+  "ref": "ETSI EN 300 468 5.1.3, 5.2; ISO/IEC 13818-1 2.4.4",
+  "params": {"pids": {"default": [], "comment": "more PIDs to read sections of: the PMTs' (the PAT's programs)"}},
+  "steps": {
+    "frames": {"publish": true},
+    "+end": [
+      {"link": "header", "id": "tsh", "name": "mpeg_ts"},
+      {
+        "link": "packets",
+        "id": "sections",
+        "params": ["pid", "pusi", "cc", "afc", "more"],
+        "active": "afc & 1 and (pid <= 31 or pid in more)",
+        "frame_fields": [{"name": "pointer_field", "bits": 8, "if": "pusi"}],
+        "starts": "pusi == 1",
+        "pointer": "8*pointer_field",
+        "channel": "pid",
+        "count": "cc",
+        "modulo": 16,
+        "fields": [
+          {"name": "table_id", "bits": 8},
+          {"name": "ssi", "bits": 1},
+          {"name": "private", "bits": 1},
+          {"name": "reserved", "bits": 2},
+          {"name": "section_length", "bits": 12}
+        ],
+        "length": "8*(section_length + 3)",
+        "end": "table_id == 255",
+        "defaults": {"more": {"param": "pids"}}
+      },
+      {"link": "header", "id": "si", "name": "dvb_si"}
+    ]
+  },
+  "controls": {
+    "frames": {"on": "rx", "drive": {"tsh": {"frame": "frame", "length": {"calc": "1504"}}}},
+    "tsh": {
+      "on": "rx",
+      "drive": {"sections": {"length": "bits", "pid": "pid", "pusi": "pusi", "cc": "cc", "afc": "afc"}}
+    },
+    "sections": {"on": "rx", "drive": {"si": {"frame": "frame", "length": "packet_bits"}}}
+  },
+  "capture": {"tsh": false, "sections": false, "si": false}
+}

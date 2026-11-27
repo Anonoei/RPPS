@@ -1,0 +1,528 @@
+{
+  "type": "link",
+  "comment": [
+    "MPEG-2 and DVB tables, one section each: the PSI (PAT, CAT, PMT:",
+    "ISO/IEC 13818-1) and the DVB SI (NIT, SDT, BAT, EIT, TDT, TOT, RST, ST: EN 300 468).",
+    "The section header (with section syntax, the table id extension, version and section numbers too), then the",
+    "table's content read by table id. The CRC-32 ends every section with section syntax, and the TOT (which has",
+    "none); the TDT has no CRC. Descriptors are read by tag (names, delivery systems, services, events, local time",
+    "offsets, CA), any other kept as bytes. Times are UTC: dates from the MJD as ISO text, times and durations from",
+    "their BCD digits as hh:mm:ss; delivery frequencies in Hz, symbol rates in Bd.",
+    "DVB strings are decoded by their table byte (latin-1 standing in for the default, ISO 6937).",
+    "A section's tables follow from its message: by table_id (`table_id.name`), table_id_extension (the network, the",
+    "service, the transport stream), version_number and section_number of last_section_number"
+  ],
+  "ref": "ETSI EN 300 468 V1.17.1 5.2, 6.2; ISO/IEC 13818-1 2.4.4",
+  "tags": ["mpeg-ts"],
+  "order": "msb",
+  "fields": [
+    {
+      "name": "table_id",
+      "bits": 8,
+      "enum": {
+        "0": "PAT",
+        "1": "CAT",
+        "2": "PMT",
+        "64": "NIT",
+        "65": "NIT_other",
+        "66": "SDT",
+        "70": "SDT_other",
+        "74": "BAT",
+        "78": "EIT_pf",
+        "79": "EIT_pf_other",
+        "80": "EIT_schedule",
+        "81": "EIT_schedule",
+        "82": "EIT_schedule",
+        "83": "EIT_schedule",
+        "84": "EIT_schedule",
+        "85": "EIT_schedule",
+        "86": "EIT_schedule",
+        "87": "EIT_schedule",
+        "88": "EIT_schedule",
+        "89": "EIT_schedule",
+        "90": "EIT_schedule",
+        "91": "EIT_schedule",
+        "92": "EIT_schedule",
+        "93": "EIT_schedule",
+        "94": "EIT_schedule",
+        "95": "EIT_schedule",
+        "96": "EIT_schedule_other",
+        "97": "EIT_schedule_other",
+        "98": "EIT_schedule_other",
+        "99": "EIT_schedule_other",
+        "100": "EIT_schedule_other",
+        "101": "EIT_schedule_other",
+        "102": "EIT_schedule_other",
+        "103": "EIT_schedule_other",
+        "104": "EIT_schedule_other",
+        "105": "EIT_schedule_other",
+        "106": "EIT_schedule_other",
+        "107": "EIT_schedule_other",
+        "108": "EIT_schedule_other",
+        "109": "EIT_schedule_other",
+        "110": "EIT_schedule_other",
+        "111": "EIT_schedule_other",
+        "112": "TDT",
+        "113": "RST",
+        "114": "ST",
+        "115": "TOT",
+        "126": "DIT",
+        "127": "SIT"
+      }
+    },
+    {"name": "ssi", "bits": 1},
+    {"name": "private", "bits": 1, "default": 1},
+    {"name": "reserved", "bits": 2, "default": 3},
+    {"name": "section_length", "bits": 12, "tx": "(bits + 32*(ssi or table_id == 115))//8 + 5*ssi"},
+    {"name": "table_id_extension", "bits": 16, "if": "ssi"},
+    {"name": "reserved_2", "bits": 2, "default": 3, "if": "ssi"},
+    {"name": "version_number", "bits": 5, "if": "ssi"},
+    {"name": "current_next", "bits": 1, "default": 1, "if": "ssi"},
+    {"name": "section_number", "bits": 8, "if": "ssi"},
+    {"name": "last_section_number", "bits": 8, "if": "ssi"}
+  ],
+  "payload": "8*section_length - (40 if ssi else 0) - (32 if ssi or table_id == 115 else 0)",
+  "fcs": {"crc": "crc32_mpeg2", "if": "ssi or table_id == 115"},
+  "groups": {
+    "descriptor": [
+      {
+        "name": "tag",
+        "bits": 8,
+        "enum": {
+          "2": "video_stream",
+          "3": "audio_stream",
+          "9": "CA",
+          "10": "ISO_639_language",
+          "64": "network_name",
+          "65": "service_list",
+          "67": "satellite_delivery_system",
+          "68": "cable_delivery_system",
+          "71": "bouquet_name",
+          "72": "service",
+          "74": "linkage",
+          "77": "short_event",
+          "78": "extended_event",
+          "80": "component",
+          "82": "stream_identifier",
+          "84": "content",
+          "85": "parental_rating",
+          "86": "teletext",
+          "88": "local_time_offset",
+          "89": "subtitling",
+          "90": "terrestrial_delivery_system",
+          "95": "private_data_specifier",
+          "106": "AC-3",
+          "127": "extension"
+        }
+      },
+      {"name": "length", "bits": 8, "tx": "len(body)"},
+      {
+        "name": "body",
+        "bytes": "length",
+        "fields": [
+          {"name": "ca_system_id", "bits": 16, "if": "tag == 9"},
+          {"name": "reserved", "bits": 3, "default": 7, "if": "tag == 9"},
+          {"name": "ca_pid", "bits": 13, "if": "tag == 9"},
+          {"name": "private_data", "type": "bytes", "bytes": "*", "if": "tag == 9"},
+          {
+            "name": "languages",
+            "if": "tag == 10",
+            "repeat": "*",
+            "fields": [
+              {"name": "language", "type": "text", "bytes": 3},
+              {
+                "name": "audio_type",
+                "bits": 8,
+                "enum": {
+                  "0": "undefined",
+                  "1": "clean effects",
+                  "2": "hearing impaired",
+                  "3": "visual impaired commentary"
+                }
+              }
+            ]
+          },
+          {"name": "network_name", "type": "text", "encoding": "dvb", "bytes": "*", "if": "tag == 64"},
+          {
+            "name": "services",
+            "if": "tag == 65",
+            "repeat": "*",
+            "fields": [
+              {"name": "service_id", "bits": 16},
+              {
+                "name": "service_type",
+                "bits": 8,
+                "enum": {
+                  "1": "digital television",
+                  "2": "digital radio",
+                  "3": "teletext",
+                  "12": "data broadcast",
+                  "22": "H.264 SD television",
+                  "25": "H.264 HD television",
+                  "31": "HEVC television"
+                }
+              }
+            ]
+          },
+          {
+            "name": "frequency",
+            "type": "bcd",
+            "bits": 32,
+            "scale": 10000,
+            "if": "tag == 67",
+            "comment": "Hz (10 kHz digits)"
+          },
+          {"name": "orbital_position", "type": "bcd", "bits": 16, "if": "tag == 67", "comment": "tenths of a degree"},
+          {"name": "west_east", "bits": 1, "enum": {"0": "west", "1": "east"}, "if": "tag == 67"},
+          {
+            "name": "polarization",
+            "bits": 2,
+            "enum": {"0": "linear horizontal", "1": "linear vertical", "2": "circular left", "3": "circular right"},
+            "if": "tag == 67"
+          },
+          {"name": "roll_off", "bits": 2, "enum": {"0": "0.35", "1": "0.25", "2": "0.20"}, "if": "tag == 67"},
+          {"name": "modulation_system", "bits": 1, "enum": {"0": "DVB-S", "1": "DVB-S2"}, "if": "tag == 67"},
+          {
+            "name": "modulation_type",
+            "bits": 2,
+            "enum": {"0": "auto", "1": "QPSK", "2": "8PSK", "3": "16-QAM"},
+            "if": "tag == 67"
+          },
+          {
+            "name": "frequency",
+            "type": "bcd",
+            "bits": 32,
+            "scale": 100,
+            "if": "tag == 68",
+            "comment": "Hz (100 Hz digits)"
+          },
+          {"name": "reserved_future_use", "bits": 12, "default": 4095, "if": "tag == 68"},
+          {
+            "name": "fec_outer",
+            "bits": 4,
+            "enum": {"0": "not defined", "1": "none", "2": "RS(204,188)"},
+            "if": "tag == 68"
+          },
+          {
+            "name": "modulation",
+            "bits": 8,
+            "enum": {"0": "not defined", "1": "16-QAM", "2": "32-QAM", "3": "64-QAM", "4": "128-QAM", "5": "256-QAM"},
+            "if": "tag == 68"
+          },
+          {
+            "name": "symbol_rate",
+            "type": "bcd",
+            "bits": 28,
+            "scale": 100,
+            "if": "tag in (67, 68)",
+            "comment": "Bd (100 Bd digits)"
+          },
+          {
+            "name": "fec_inner",
+            "bits": 4,
+            "enum": {
+              "0": "not defined",
+              "1": "1/2",
+              "2": "2/3",
+              "3": "3/4",
+              "4": "5/6",
+              "5": "7/8",
+              "6": "8/9",
+              "7": "3/5",
+              "8": "4/5",
+              "9": "9/10",
+              "15": "none"
+            },
+            "if": "tag in (67, 68)"
+          },
+          {"name": "bouquet_name", "type": "text", "encoding": "dvb", "bytes": "*", "if": "tag == 71"},
+          {
+            "name": "service_type",
+            "bits": 8,
+            "enum": {
+              "1": "digital television",
+              "2": "digital radio",
+              "3": "teletext",
+              "12": "data broadcast",
+              "22": "H.264 SD television",
+              "25": "H.264 HD television",
+              "31": "HEVC television"
+            },
+            "if": "tag == 72"
+          },
+          {"name": "provider_name_length", "bits": 8, "tx": "len(provider_name)", "if": "tag == 72"},
+          {
+            "name": "provider_name",
+            "type": "text",
+            "encoding": "dvb",
+            "bytes": "provider_name_length",
+            "if": "tag == 72"
+          },
+          {"name": "service_name_length", "bits": 8, "tx": "len(service_name)", "if": "tag == 72"},
+          {
+            "name": "service_name",
+            "type": "text",
+            "encoding": "dvb",
+            "bytes": "service_name_length",
+            "if": "tag == 72"
+          },
+          {"name": "language", "type": "text", "bytes": 3, "if": "tag == 77"},
+          {"name": "event_name_length", "bits": 8, "tx": "len(event_name)", "if": "tag == 77"},
+          {"name": "event_name", "type": "text", "encoding": "dvb", "bytes": "event_name_length", "if": "tag == 77"},
+          {"name": "text_length", "bits": 8, "tx": "len(text)", "if": "tag == 77"},
+          {"name": "text", "type": "text", "encoding": "dvb", "bytes": "text_length", "if": "tag == 77"},
+          {"name": "component_tag", "bits": 8, "if": "tag == 82"},
+          {
+            "name": "offsets",
+            "if": "tag == 88",
+            "repeat": "*",
+            "fields": [
+              {"name": "country_code", "type": "text", "bytes": 3},
+              {"name": "country_region_id", "bits": 6},
+              {"name": "reserved", "bits": 1, "default": 1},
+              {"name": "polarity", "bits": 1, "enum": {"0": "ahead of UTC", "1": "behind UTC"}},
+              {"name": "local_time_offset", "type": "time", "bits": 16},
+              {"name": "time_of_change_date", "type": "mjd", "bits": 16},
+              {"name": "time_of_change_time", "type": "time", "bits": 24},
+              {"name": "next_time_offset", "type": "time", "bits": 16}
+            ]
+          },
+          {"name": "centre_frequency", "bits": 32, "scale": 10, "comment": "Hz (10 Hz units)", "if": "tag == 90"},
+          {
+            "name": "bandwidth",
+            "bits": 3,
+            "enum": {"0": "8 MHz", "1": "7 MHz", "2": "6 MHz", "3": "5 MHz"},
+            "if": "tag == 90"
+          },
+          {"name": "priority", "bits": 1, "if": "tag == 90"},
+          {"name": "time_slicing", "bits": 1, "if": "tag == 90"},
+          {"name": "mpe_fec", "bits": 1, "if": "tag == 90"},
+          {"name": "reserved_2", "bits": 2, "default": 3, "if": "tag == 90"},
+          {"name": "constellation", "bits": 2, "enum": {"0": "QPSK", "1": "16-QAM", "2": "64-QAM"}, "if": "tag == 90"},
+          {"name": "hierarchy", "bits": 3, "if": "tag == 90"},
+          {
+            "name": "code_rate_hp",
+            "bits": 3,
+            "enum": {"0": "1/2", "1": "2/3", "2": "3/4", "3": "5/6", "4": "7/8"},
+            "if": "tag == 90"
+          },
+          {
+            "name": "code_rate_lp",
+            "bits": 3,
+            "enum": {"0": "1/2", "1": "2/3", "2": "3/4", "3": "5/6", "4": "7/8"},
+            "if": "tag == 90"
+          },
+          {
+            "name": "guard_interval",
+            "bits": 2,
+            "enum": {"0": "1/32", "1": "1/16", "2": "1/8", "3": "1/4"},
+            "if": "tag == 90"
+          },
+          {"name": "transmission_mode", "bits": 2, "enum": {"0": "2k", "1": "8k", "2": "4k"}, "if": "tag == 90"},
+          {"name": "other_frequency", "bits": 1, "if": "tag == 90"},
+          {"name": "reserved_3", "bits": 32, "default": 4294967295, "if": "tag == 90"},
+          {"name": "private_data_specifier", "bits": 32, "if": "tag == 95"},
+          {
+            "name": "data",
+            "type": "bytes",
+            "bytes": "*",
+            "if": "tag not in (9, 10, 64, 65, 67, 68, 71, 72, 77, 82, 88, 90, 95)"
+          }
+        ]
+      }
+    ],
+    "ts_loop": [
+      {"name": "reserved", "bits": 4, "default": 15},
+      {"name": "descriptors_length", "bits": 12, "tx": "len(descriptors)"},
+      {"name": "descriptors", "bytes": "descriptors_length", "repeat": "*", "group": "descriptor"},
+      {"name": "reserved_2", "bits": 4, "default": 15},
+      {"name": "transport_stream_loop_length", "bits": 12, "tx": "len(transport_streams)"},
+      {
+        "name": "transport_streams",
+        "bytes": "transport_stream_loop_length",
+        "repeat": "*",
+        "fields": [
+          {"name": "transport_stream_id", "bits": 16},
+          {"name": "original_network_id", "bits": 16},
+          {"name": "reserved", "bits": 4, "default": 15},
+          {"name": "transport_descriptors_length", "bits": 12, "tx": "len(descriptors)"},
+          {"name": "descriptors", "bytes": "transport_descriptors_length", "repeat": "*", "group": "descriptor"}
+        ]
+      }
+    ]
+  },
+  "payload_fields": [
+    {
+      "name": "pat",
+      "if": "table_id == 0",
+      "fields": [
+        {
+          "name": "programs",
+          "repeat": "*",
+          "fields": [
+            {"name": "program_number", "bits": 16},
+            {"name": "reserved", "bits": 3, "default": 7},
+            {"name": "pid", "bits": 13}
+          ]
+        }
+      ]
+    },
+    {"name": "cat", "if": "table_id == 1", "fields": [{"name": "descriptors", "repeat": "*", "group": "descriptor"}]},
+    {
+      "name": "pmt",
+      "if": "table_id == 2",
+      "fields": [
+        {"name": "reserved", "bits": 3, "default": 7},
+        {"name": "pcr_pid", "bits": 13},
+        {"name": "reserved_2", "bits": 4, "default": 15},
+        {"name": "program_info_length", "bits": 12, "tx": "len(descriptors)"},
+        {"name": "descriptors", "bytes": "program_info_length", "repeat": "*", "group": "descriptor"},
+        {
+          "name": "streams",
+          "repeat": "*",
+          "fields": [
+            {
+              "name": "stream_type",
+              "bits": 8,
+              "enum": {
+                "1": "MPEG-1 video",
+                "2": "MPEG-2 video",
+                "3": "MPEG-1 audio",
+                "4": "MPEG-2 audio",
+                "5": "private sections",
+                "6": "PES private data",
+                "13": "DSM-CC sections",
+                "15": "AAC (ADTS)",
+                "17": "AAC (LATM)",
+                "27": "H.264",
+                "36": "HEVC",
+                "129": "AC-3",
+                "135": "E-AC-3"
+              }
+            },
+            {"name": "reserved", "bits": 3, "default": 7},
+            {"name": "elementary_pid", "bits": 13},
+            {"name": "reserved_2", "bits": 4, "default": 15},
+            {"name": "es_info_length", "bits": 12, "tx": "len(descriptors)"},
+            {"name": "descriptors", "bytes": "es_info_length", "repeat": "*", "group": "descriptor"}
+          ]
+        }
+      ]
+    },
+    {"name": "nit", "if": "table_id in (64, 65)", "group": "ts_loop"},
+    {"name": "bat", "if": "table_id == 74", "group": "ts_loop"},
+    {
+      "name": "sdt",
+      "if": "table_id in (66, 70)",
+      "fields": [
+        {"name": "original_network_id", "bits": 16},
+        {"name": "reserved", "bits": 8, "default": 255},
+        {
+          "name": "services",
+          "repeat": "*",
+          "fields": [
+            {"name": "service_id", "bits": 16},
+            {"name": "reserved", "bits": 6, "default": 63},
+            {"name": "eit_schedule", "bits": 1},
+            {"name": "eit_present_following", "bits": 1},
+            {
+              "name": "running_status",
+              "bits": 3,
+              "enum": {
+                "0": "undefined",
+                "1": "not running",
+                "2": "starts in a few seconds",
+                "3": "pausing",
+                "4": "running",
+                "5": "service off-air"
+              }
+            },
+            {"name": "free_ca_mode", "bits": 1},
+            {"name": "descriptors_loop_length", "bits": 12, "tx": "len(descriptors)"},
+            {"name": "descriptors", "bytes": "descriptors_loop_length", "repeat": "*", "group": "descriptor"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "eit",
+      "if": "78 <= table_id <= 111",
+      "fields": [
+        {"name": "transport_stream_id", "bits": 16},
+        {"name": "original_network_id", "bits": 16},
+        {"name": "segment_last_section_number", "bits": 8},
+        {"name": "last_table_id", "bits": 8},
+        {
+          "name": "events",
+          "repeat": "*",
+          "fields": [
+            {"name": "event_id", "bits": 16},
+            {"name": "start_date", "type": "mjd", "bits": 16},
+            {"name": "start_time", "type": "time", "bits": 24},
+            {"name": "duration", "type": "time", "bits": 24},
+            {
+              "name": "running_status",
+              "bits": 3,
+              "enum": {
+                "0": "undefined",
+                "1": "not running",
+                "2": "starts in a few seconds",
+                "3": "pausing",
+                "4": "running",
+                "5": "service off-air"
+              }
+            },
+            {"name": "free_ca_mode", "bits": 1},
+            {"name": "descriptors_loop_length", "bits": 12, "tx": "len(descriptors)"},
+            {"name": "descriptors", "bytes": "descriptors_loop_length", "repeat": "*", "group": "descriptor"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "tdt",
+      "if": "table_id == 112",
+      "fields": [{"name": "utc_date", "type": "mjd", "bits": 16}, {"name": "utc_time", "type": "time", "bits": 24}]
+    },
+    {
+      "name": "rst",
+      "if": "table_id == 113",
+      "fields": [
+        {
+          "name": "statuses",
+          "repeat": "*",
+          "fields": [
+            {"name": "transport_stream_id", "bits": 16},
+            {"name": "original_network_id", "bits": 16},
+            {"name": "service_id", "bits": 16},
+            {"name": "event_id", "bits": 16},
+            {"name": "reserved", "bits": 5, "default": 31},
+            {
+              "name": "running_status",
+              "bits": 3,
+              "enum": {
+                "0": "undefined",
+                "1": "not running",
+                "2": "starts in a few seconds",
+                "3": "pausing",
+                "4": "running",
+                "5": "service off-air"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "tot",
+      "if": "table_id == 115",
+      "fields": [
+        {"name": "utc_date", "type": "mjd", "bits": 16},
+        {"name": "utc_time", "type": "time", "bits": 24},
+        {"name": "reserved", "bits": 4, "default": 15},
+        {"name": "descriptors_loop_length", "bits": 12, "tx": "len(descriptors)"},
+        {"name": "descriptors", "bytes": "descriptors_loop_length", "repeat": "*", "group": "descriptor"}
+      ]
+    }
+  ]
+}

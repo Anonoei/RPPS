@@ -14,6 +14,12 @@ class Hypothesis:
         self.coding = coding # (folder, config name) when it is in config/fec
         self.guess = guess # The Guess (definition to save) a blind find comes with
 
+    @property
+    def p(self):
+        """The chance of a z this high from chance alone (one-sided Gaussian tail)"""
+        from math import erfc, sqrt
+        return 0.5*erfc(float(self.z)/sqrt(2))
+
     def __repr__(self):
         c = f" [{self.coding[0]}/{self.coding[1]}]" if self.coding else ""
         return f"<{self.kind} {self.name} z={self.z:.1f}{c} {self.params}>"
@@ -36,23 +42,32 @@ class Report:
         """The best hypothesis if it stands out from chance, else None"""
         return self.best if self.best and self.best.z > self.z_crit else None
 
+    def p(self, h=None):
+        """h's p-value (the best's by default) over every hypothesis tried (Bonferroni: its own times `trials`, at
+        most 1): what the z_crit threshold tests at 0.01"""
+        h = self.best if h is None else h
+        return None if h is None else min(1.0, h.p*max(1, self.trials))
+
     def __str__(self):
         out = [f"{self.trials} hypotheses tried, significance threshold z>{self.z_crit:.1f}"]
-        out += [f"  {h}" for h in self.hyps[:5]]
+        out += [f"  {h} p {self.p(h):.2g}" for h in self.hyps[:5]]
         out.append(f"verdict: {self.verdict if self.verdict else 'no FEC structure found'}")
         return "\n".join(out)
 
 class Guess:
-    """A guessed definition (a code, a scrambler). Decoding only happens from a saved config: `save` it, then load it
-    (rp.code.load("block/guess/<name>"), rp.code.scram.load("feedthrough/guess/<name>"))"""
-    __slots__ = ("kind", "definition", "evidence")
+    """A guessed definition (a code, a scrambler, a CRC). Decoding only happens from a saved config: `save` it, then load
+    it (rp.code.load("block/guess/<name>"), rp.code.scram.load("feedthrough/guess/<name>"), rp.link.load("crc/guess/<name>"))"""
+    __slots__ = ("kind", "definition", "evidence", "plan", "scores")
     FOLDER = {"block": ("fec", "block"), "rs": ("fec", "block"), "conv": ("fec", "conv"),
-              "scramble": ("scramble", "feedthrough")} # kind: (config domain, folder in it)
+              "scramble": ("scramble", "feedthrough"), "crc": ("crc", ""),
+              "header": ("header", "link"), "plan": ("plan", "")} # kind: (config domain, folder in it)
 
     def __init__(self, kind, definition, evidence=None):
         self.kind = kind
         self.definition = definition
         self.evidence = evidence or {}
+        self.plan = None # (a plan's guess: the Plan itself)
+        self.scores = None # (a plan's guess: the curves it was chosen on, rp.viz.plan_evidence)
 
     def __repr__(self):
         d = self.definition
@@ -65,15 +80,21 @@ class Guess:
             return f"<Guess {d['type']} ({d['n']},{d['k']}) {extra} {self.evidence}>"
         if self.kind == "rs":
             return f"<Guess RS({d['n']},{d['k']}) poly {d['poly']:#x} fcr {d['fcr']} prim {d['prim']} {self.evidence}>"
+        if self.kind == "header":
+            return f"<Guess header {[(f['name'], f['bits']) for f in d['fields']]} {self.evidence}>"
+        if self.kind == "crc":
+            return f"<Guess CRC-{d['width']} poly {d['poly']} init {d['init']} xorout {d['xorout']} {self.evidence}>"
+        if self.kind == "plan":
+            return f"<Guess burst time plan {self.evidence}>"
         if self.kind == "scramble":
             return f"<Guess feedthrough scrambler taps {d['poly']} {self.evidence}>"
-        e = d["encode"]
-        if e.get("puncture") is not None:
-            pat = np.asarray(e["puncture"])
-            rate = f"{e['num']*pat.shape[1]}/{int(pat.sum())} (punctured {pat.tolist()})"
-        else:
-            rate = f"{e['num']}/{e['den']}"
-        return f"<Guess conv K={e['constraint']} rate {rate} {self.evidence}>"
+        # A convolutional guess: a mother code it extends (its puncture its own), or the generators themselves
+        what = f"extends {d['extends']}" if d.get("extends") else \
+            f"K={d.get('constraint')} generators {[''.join(map(str, g)) for g in d.get('generator', [])]}"
+        if d.get("puncture") is not None:
+            pat = np.asarray(d["puncture"])
+            what += f" punctured {pat.tolist()} (rate {pat.shape[1]}/{int(pat.sum())})"
+        return f"<Guess conv {what} {self.evidence}>"
 
     def save(self, name, path=None):
         """Write config/<domain>/<folder>/guess/<name>.json (or <path>/<folder>/guess/<name>.json). Returns the file"""
@@ -85,7 +106,8 @@ class Guess:
         folder = base / sub / "guess"
         folder.mkdir(parents=True, exist_ok=True)
         f = folder / f"{name.lower()}.json"
-        f.write_text(json.dumps({**self.definition, "guess": self.evidence}, indent=1, default=lambda o: o.item() if hasattr(o, "item") else list(o)))
+        obj = _config.file_obj(domain, (*([sub] if sub else []), "guess", f.stem), self.definition) # (no "base": the folder says it)
+        f.write_text(json.dumps({**obj, "guess": self.evidence}, indent=1, default=lambda o: o.item() if hasattr(o, "item") else list(o)))
         return f
 
 def pick(hyps, z_crit, key, fits):

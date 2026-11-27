@@ -1,15 +1,7 @@
 {
-  "base": "block",
   "type": "linear",
-  "comment": "Small (3,6)-regular LDPC example",
-  "g": [
-    [1, 0, 0, 1, 0, 1],
-    [0, 1, 0, 1, 1, 1],
-    [0, 0, 1, 1, 1, 0]
-  ],
-  "h": [
-    [1, 1, 1, 1, 0, 0],
-    [0, 0, 1, 1, 0, 1],
-    [1, 0, 0, 1, 1, 0]
-  ]
+  "comment": "A (6,3,3) linear block code with its matrices written out (not a regular LDPC code)",
+  "tags": ["example"],
+  "g": [[1, 0, 0, 1, 0, 1], [0, 1, 0, 1, 1, 1], [0, 0, 1, 1, 1, 0]],
+  "h": [[1, 1, 1, 1, 0, 0], [0, 0, 1, 1, 0, 1], [1, 0, 0, 1, 1, 0]]
 }

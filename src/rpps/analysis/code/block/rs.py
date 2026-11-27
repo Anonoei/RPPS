@@ -81,6 +81,10 @@ def _count_zeros(V, n, EXP, LOG, words):
     for _ in range(n):
         Q = np.take(M1, base[0] + Q) ^ 0xFF
     Q = Q.astype(np.uint8)[None]
+    from .... import _accel
+    if _accel.native is not None: # The loop below in C++ (rpps._native.rs_count_zeros), the same counts
+        return _accel.native.rs_count_zeros(np.ascontiguousarray(V, dtype=np.uint8), int(n), np.ascontiguousarray(M1),
+                                            np.ascontiguousarray(MN), np.ascontiguousarray(Q[0]), int(words))
     V = V.astype(np.int32)
     E = np.zeros((Vn, P, 255), dtype=np.int32)
     z0 = np.zeros((n, Vn, P, 255), dtype=np.int16)

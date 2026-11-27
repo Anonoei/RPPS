@@ -1,7 +1,11 @@
 {
-  "base": "header",
   "type": "link",
-  "comment": "DVB-S2 BBHEADER, normal mode: MATYPE (TS/GS, SIS/MIS, CCM/ACM, ISSYI, NPD, roll-off; second byte), UPL, DFL, SYNC, SYNCD and a CRC-8 over the first 9 bytes, then DFL data bits, padded to fill the BBFRAME (Kbch bits, set per frame by the PLS). Transmitting it is a single generic continuous stream with ACM/VCM, filling every frame",
+  "comment": [
+    "DVB-S2 BBHEADER, normal mode: MATYPE (TS/GS, SIS/MIS, CCM/ACM, ISSYI, NPD, roll-off;",
+    "second byte), UPL, DFL, SYNC, SYNCD and a CRC-8 over the first 9 bytes, then DFL data bits, padded to fill the",
+    "BBFRAME (Kbch bits, set per frame by the PLS). Transmitting, its fields are the controlled values (a generic",
+    "continuous stream unless a step before it, dvbs2/ts's, says otherwise), filling every frame"
+  ],
   "ref": "EN 302 307-1 5.1.6",
   "tags": ["dvb-s2"],
   "order": "msb",

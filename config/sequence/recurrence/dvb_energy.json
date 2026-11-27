@@ -1,14 +1,7 @@
 {
-  "base": "sequence",
   "type": "recurrence",
   "comment": "DVB energy dispersal 1+x^14+x^15: the register's output bits from its seed, as a recurrence",
   "tags": ["dvb-s", "dvb-s2"],
-  "sequences": [
-    {
-      "length": 15,
-      "taps": [0, 1],
-      "init": [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1]
-    }
-  ],
+  "sequences": [{"length": 15, "taps": [0, 1], "init": [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1]}],
   "skip": 15
 }

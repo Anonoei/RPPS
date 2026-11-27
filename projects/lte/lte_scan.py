@@ -10,7 +10,8 @@ Stages (each one prints what it found; every stage after the first needs the one
   2. detect  : LTE carriers are flat plateaus of 4.5 / 9 / 13.5 / 18 MHz (occupied width of 5 / 10 / 15 / 20 MHz carriers) with steep edges; find them
   3. capture : per carrier, the gain search of gain_search.py, then a capture at 20 MS/s resampled to the LTE rate
                (1.92, 3.84, 7.68, 15.36, 23.04 or 30.72 MS/s), with the carrier 2 MHz off the HackRF's centre so its DC spike misses the sync signals
-  4. identify: PSS/SSS cell search (lte_cell), MIB (lte_pbch), SIB1 (lte_sib): PCI, bandwidth, antenna ports, band, PLMN, tracking area, cell identity
+  4. identify: cell search, MIB and SIB1 of the strongest cell (lte_sib, over rpps.grid.lte): PCI, FDD or TDD, bandwidth, antenna ports, band, PLMN,
+               tracking area, cell identity; the PCIs of any other cells on the carrier
   5. traffic : lock (carrier offset and subframe timing from the cell search) and, for every subframe of the capture, measure
                - reference-signal power per RE and the power of every PRB's data REs: a PRB is *active* when its data power is above 0.12 x the CRS power
                - CFI (how many symbols the control channel takes: it grows with the number of scheduled users)
@@ -33,10 +34,10 @@ from rpps.signal.sample import resample_poly
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); import _paths  # noqa: E402,F401
 import gain_search
 import radio_io
-import lte_cell
-import lte_pbch
 import lte_sib
-from lte_pbch import crs_shift
+import rpps as rp
+from rpps.grid import lte
+from rpps.grid.lte import phy
 
 DEFAULT_RANGES = [(728.0, 756.0), (869.0, 894.0), (1930.0, 1995.0), (2110.0, 2155.0)] # MHz: bands 12/13/17, 5, 2, 4/66 downlink (North America)
 CLASSES = [ # (name, occupied MHz, n_rb, LTE sample rate MHz, nominal bandwidth MHz)
@@ -230,109 +231,98 @@ def parse_sib1_basic(payload):
         return None
 
 def identify(path, fs, cf, carrier, asn=None, quiet=True):
-    """Run cell search, MIB and SIB1 on a capture. Returns a dict (or None when no cell is found). `res` keeps the locked cell for the traffic stage."""
-    argv = [path, "--fs", str(fs/1e6), "--cf", str(cf/1e6), "--carrier", str(carrier), "--no-si"]
-    if asn:
-        argv += ["--asn", asn]
+    """Cell search, MIB and SIB1 of the strongest cell of a capture. Returns a dict (None when there is no cell; "error" where
+    receiving it failed). `res` and `x` keep what the traffic stage needs."""
     buf = io.StringIO()
     try:
+        x = np.fromfile(path, np.complex64)
+        offset = (carrier*1e6 - cf)
+        found = lte.search(x, fs, offset=offset, span=150e3)
+        if not found:
+            return None
         with contextlib.redirect_stdout(buf if quiet else sys.stdout):
-            res = lte_sib.main(argv)
+            res = lte_sib.receive(x, fs, offset, 150e3, found[0]["pci"])
+            codec = None
+            if asn:
+                import lte_rrc
+                codec = lte_rrc.load(asn)
+            lte_sib.report(res, codec, si=False)
     except Exception as e:
         return dict(error=f"{type(e).__name__}: {str(e)[:80]}", log=buf.getvalue())
-    pb = res["pb"]; cell = pb["cell"]
-    info = dict(pci=cell["pci"], n_rb=res["n_rb"], carrier_mhz=(cf + cell["off"])/1e6, clock_ppm=None, found=len(cell["pss_pos"]))
-    good = [r for r in pb["results"] if r[1] == 4]
-    votes = sum(1 for f in cell["found"] if f[1][0] == cell["n1"])
-    info["sss_frac"] = votes/max(1, len(cell["found"]))
-    info["valid"] = bool(pb["results"]) and info["sss_frac"] >= 0.5 and len(cell["pss_pos"]) >= 20 # a real cell: SSS agrees across occurrences and the MIB CRC passes
-    info["ports"] = 4 if good else None
-    if not good:
-        ok = {}
-        for i, ports, q, bits, p in pb["results"]:
-            ok[p] = ok.get(p, 0) + 1
-        info["ports"] = max(ok, key=ok.get) if ok else None
+    c = found[0]
+    info = dict(pci=c["pci"], duplex=c["duplex"], n_rb=res["n_rb"], ports=res["ports"], offset=c["offset"],
+                carrier_mhz=(cf + c["offset"])/1e6, others=[o["pci"] for o in found[1:]])
+    info["valid"] = res["mibs"][0] > 0 # (a cell: the SSS agreed across occurrences, and the MIB's CRC passes)
     if "sib1_msg" in res:
         info["sib1"] = sib1_fields(res["sib1_msg"])
-    elif res.get("sib1"):
+    elif res["sib1"]:
         info["sib1"] = parse_sib1_basic(res["sib1"][0])
-    info["sib1_ok"] = sum(1 for _, r in res["out"] if r["pdsch"] and r["pdsch"][0]["ok"])
-    info["sib1_tried"] = len(res["out"])
-    info["res"] = res
+    ones = [r for r in res["subframes"] if lte_sib.is_sib1(r)]
+    info["sib1_ok"] = sum(bool(r["payload"]) for r in ones)
+    info["sib1_tried"] = len(ones)
+    info.update(res=res, x=x, fs=fs)
     return info
 
 # ---------------------------------------------------------------------------------------------------------------- traffic
+def grid_frames(info):
+    """(header, G, H) of every subframe of the identified cell"""
+    d = rp.Data(info["x"], Fs=info["fs"], flush=True)
+    d = d + lte.LteCell(offset=info["offset"], span=10e3, pci=info["pci"]) + lte.LteGrid(info["n_rb"])
+    y = np.asarray(d.data)
+    F = lte.frame_len(info["n_rb"])
+    for i in range(len(y)//F):
+        yield lte.unpack(y[i*F:(i + 1)*F])
+
+def downlink(G, pci, n_rb, sf):
+    """Whether a subframe carries the cell's reference signals (a TDD cell's uplink subframes do not): neighbouring ones
+    agree in phase once their values are taken off"""
+    h = G[0, (phy.crs_shift(0, 2*sf, 0) + pci) % 6::6]*np.conj(phy.crs_values(pci, 2*sf, 0, n_rb))
+    return abs(np.sum(h[1:]*np.conj(h[:-1])))/max(float(np.sum(np.abs(h)**2)), 1e-30) > 0.4
+
 def traffic(info, seconds=None, threshold=0.12):
-    """Lock to the identified cell and measure the load of every subframe in the capture."""
-    res = info["res"]; cell = res["pb"]["cell"]
-    y, nfft, pci, n_rb = cell["y"], cell["nfft"], cell["pci"], res["n_rb"]
-    scale = nfft/2048
-    cp = int(round(144*scale)); cp0 = int(round(160*scale))
-    pss_off = (cp0 + nfft) + 5*(cp + nfft) + cp
-    slot_len = lte_pbch.symbol_start(0, 1, 0, nfft) - lte_pbch.symbol_start(0, 0, 0, nfft)
-    half = {f[0]: f[1][1] for f in cell["found"] if f[1][0] == cell["n1"]}
-    vs = pci % 6
-    nsc = 12*n_rb
-    ks = np.arange(nsc)
-    crs_mask = (ks - vs) % 3 == 0
+    """Lock to the identified cell and measure the load of every downlink subframe in the capture."""
+    res = info["res"]
+    pci, n_rb, ports = info["pci"], res["n_rb"], res["ports"]
+    ks = np.arange(12*n_rb)
+    crs_mask = (ks - pci % 6) % 3 == 0
     centre_prbs = set(range(n_rb//2 - 3, n_rb//2 + 3))
-    k_dc = 6*n_rb - cell["off"]/15e3 # the HackRF's DC spike sits at the capture centre: a constant fake 'active' PRB if left in
+    k_dc = 6*n_rb - info["offset"]/15e3 # the radio's DC spike sits at the capture centre: a constant fake 'active' PRB if left in
     dc_prbs = {int(k_dc//12) + d for d in (-1, 0, 1)}
-    rows = []
-    for k, p in enumerate(cell["pss_pos"]):
-        if k not in half:
+    mib = res["mib"]
+    pcfich = lte.PCFICH(ports=ports)
+    rows, cfis, grants, mi = [], [], Counter(), {}
+    for head, G, H in grid_frames(info):
+        sf = head["sf"]
+        if not downlink(G, pci, n_rb, sf):
             continue
-        for j in range(5):
-            sf = half[k]*5 + j
-            S = int(p) - pss_off + j*2*slot_len
-            if S - 20 < 0 or S + 2*slot_len + 100 > len(y):
-                continue
-            G = np.array([lte_pbch.grid_symbol(y, u, nfft, n_rb) for u in lte_sib.subframe_symbol_starts(S, nfft)])
-            P = np.abs(G)**2
-            crs = np.mean([P[l][crs_mask] for l in (0, 4, 7, 11)])
-            prb = np.zeros(n_rb)
-            for q in range(n_rb):
-                vals = []
-                for l in range(3, 14):
-                    sl = slice(12*q, 12*q + 12)
-                    m = ~crs_mask[sl] if l in (4, 7, 8, 11) else np.ones(12, bool)
-                    vals.append(P[l][sl][m])
-                prb[q] = np.mean(np.concatenate(vals))
-            rows.append(dict(sf=sf, S=S, crs=crs, prb=prb))
+        P = np.abs(G)**2
+        crs = np.mean([P[l][crs_mask] for l in (0, 4, 7, 11)])
+        prb = np.zeros(n_rb)
+        for q in range(n_rb):
+            vals = []
+            for l in range(3, 14):
+                sl = slice(12*q, 12*q + 12)
+                m = ~crs_mask[sl] if l in (4, 7, 8, 11) else np.ones(12, bool)
+                vals.append(P[l][sl][m])
+            prb[q] = np.mean(np.concatenate(vals))
+        # CFI and the grants to public RNTIs (paging can only be in subframes 0, 4, 5, 9 of FDD; 0, 1, 5, 6 of TDD)
+        cfi = pcfich.read(head, G, H)
+        paging = (0, 1, 5, 6) if head["duplex"] == "tdd" else (0, 4, 5, 9)
+        pdcch = lte.PDCCH(rntis=[phy.SI_RNTI] + ([phy.P_RNTI] if sf in paging else []), ports=ports, cfi=cfi,
+                          phich_ng=mib["phich_ng"], phich_duration=mib["phich_duration"])
+        for _, rnti, _ in pdcch.find(head, G, H, mi):
+            grants["paging" if rnti == phy.P_RNTI else "system information"] += 1
+        cfis.append(cfi)
+        rows.append(dict(sf=sf, crs=crs, prb=prb, cfi=cfi))
     if not rows:
         return None
     crs_all = np.array([r["crs"] for r in rows])
     rho = np.array([r["prb"]/r["crs"] for r in rows]) # (subframes, PRBs)
     use = [q for q in range(n_rb) if q not in centre_prbs and q not in dc_prbs]
     active = rho[:, use] > threshold
-    out = dict(subframes=len(rows), seconds=len(rows)/1000, util=float(active.mean()), per_sf=active.mean(1), rho=rho, active=active,
-               rho_db_pct={p: float(10*np.log10(np.percentile(rho[:, use], p) + 1e-12)) for p in (10, 50, 90)}, crs_db=float(10*np.log10(np.median(crs_all))))
-    # CFI and public-RNTI grants per subframe: need the channel, so only for the subframes where something can be sent to public RNTIs
-    ng_ = {"1/6": 1/6, "1/2": 0.5, "1": 1, "2": 2}
-    mibd = [lte_pbch.parse_mib(b) for _, _, _, b, _ in res["pb"]["results"][:1]]
-    ng = ng_[mibd[0]["phich_resource"]] if mibd else 1
-    groups = int(np.ceil(ng*n_rb/8))
-    cfis, grants = [], Counter()
-    for r in rows:
-        S, sf = r["S"], r["sf"]
-        Gm, H = lte_sib.subframe_grid(y, S, nfft, n_rb, pci, sf)
-        cfi, margin, _ = lte_sib.decode_pcfich(Gm, H, pci, n_rb, sf)
-        cfis.append(cfi)
-        r["cfi"] = cfi
-        rn = [lte_sib.SI_RNTI] + ([lte_sib.P_RNTI] if sf in (0, 4, 5, 9) else [])
-        cces, M = lte_sib.pdcch_soft_cces(Gm, H, pci, n_rb, cfi, groups, sf)
-        hits = lte_sib.blind_pdcch(cces, rn, sizes=(27, 13))
-        seen = set()
-        for h in hits:
-            key = (h["rnti"], tuple(int(b) for b in h["bits"]))
-            if key in seen:
-                continue
-            seen.add(key)
-            grants["paging" if h["rnti"] == lte_sib.P_RNTI else "system information"] += 1
-    out["cfi"] = Counter(cfis)
-    out["grants"] = grants
-    out["rows"] = rows
-    return out
+    return dict(subframes=len(rows), seconds=len(rows)/1000, util=float(active.mean()), per_sf=active.mean(1), rho=rho, active=active,
+                rho_db_pct={p: float(10*np.log10(np.percentile(rho[:, use], p) + 1e-12)) for p in (10, 50, 90)},
+                crs_db=float(10*np.log10(np.median(crs_all))), cfi=Counter(cfis), grants=grants, rows=rows)
 
 SPARK = " ▁▂▃▄▅▆▇█"
 def spark(v, width=60):
@@ -369,12 +359,14 @@ def describe(cand, info):
         return s + f": {'no cell (' + info['error'] + ')' if info else 'no cell found'}"
     sb = info.get("sib1")
     if not info["valid"]:
-        return s + (f": a PSS correlation (PCI {info['pci']}) but no cell: SSS agreement {100*info['sss_frac']:.0f}%, MIB not decoded "
-                    f"(too weak, or not LTE)")
-    s += f": PCI {info['pci']}, {info['n_rb']} RB, {info['ports']} ports, carrier {info['carrier_mhz']:.4f} MHz"
+        return s + f": synchronization signals of PCI {info['pci']} but no MIB decoded (too weak)"
+    s += (f": PCI {info['pci']}, {info['duplex'].upper()}, {info['n_rb']} RB, {info['ports']} ports, "
+          f"carrier {info['carrier_mhz']:.4f} MHz")
     if sb:
         s += f", band {sb['band']}, PLMN {sb['mcc']}-{sb['mnc']}, TAC {sb['tac']:#06x}, eNB {sb['enb']} cell {sb['cell']}"
     s += f"; SIB1 {info['sib1_ok']}/{info['sib1_tried']}"
+    if info["others"]:
+        s += f"; also on the carrier: PCI {', '.join(map(str, info['others']))} (lte_sib.py --pci)"
     return s
 
 def main(argv=None):
@@ -395,7 +387,7 @@ def main(argv=None):
     if a.file:
         info = identify(a.file, a.fs*1e6, a.cf*1e6, a.carrier_nominal, asn=a.asn)
         print(describe(a.carrier_nominal, info))
-        if a.traffic and info and "error" not in info:
+        if a.traffic and info and "error" not in info and info["valid"]:
             t = traffic(info)
             report_traffic(t, a.carrier_nominal)
             if a.keep:
@@ -443,7 +435,7 @@ def main(argv=None):
                             heatmap(t, hp, f"{carrier:.1f} MHz, PCI {info['pci']}: PRB power over time")
                             print(f"    heat map: {hp}")
                         entry["traffic"] = dict(util=t["util"], seconds=t["seconds"], cfi=dict(t["cfi"]), grants=dict(t["grants"]))
-                info.pop("res", None)
+                info.pop("res", None); info.pop("x", None)
             results.append(entry)
         print("\nSummary:")
         for e in results:

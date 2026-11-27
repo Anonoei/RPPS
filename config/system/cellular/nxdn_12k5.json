@@ -1,0 +1,5 @@
+{
+  "ref": "NXDN TS 1-A",
+  "title": "NXDN 12.5 kHz",
+  "features": {"modulation": ["4fsk"], "baud": 4800, "bandwidth": 12500.0}
+}

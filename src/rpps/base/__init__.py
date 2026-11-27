@@ -60,7 +60,7 @@ deinterleaving, Reed-Solomon, energy dispersal (code).
 
 ## Contracts
 
-`tests/unit/test_contracts.py` checks these over every registered implementation.
+`tests/unit/policy/test_contracts.py` checks these over every registered implementation.
 
 - **source**: produces blocks at any representation and says which, and which sync was already applied (for example
   timed, carrier not removed). Sets the rates it knows (`Fs`, `cf`, symbol rate) and each block's absolute position.
@@ -88,7 +88,7 @@ Each settled by the rule.
 | Function | Category | Why |
 |---|---|---|
 | Matched filter | wave | prepares samples; does not decide when to sample |
-| Timing recovery (`MM`, `Mat`, `TLL`, `OerderMeyr`) | sync | estimates the instant; the one sync step that changes representation |
+| Timing recovery (`OerderMeyr`, `MatTrack`, `Mat`, `Known`) | sync | estimates the instant; the one sync step that changes representation |
 | Differential coding on symbols / on bits (NRZI) | symbol / code | symbols ↔ symbols / bits ↔ bits |
 | Manchester as a pulse / as 0 → 01, 1 → 10 | wave / code | symbols ↔ samples / bits ↔ bits |
 | Spreading at one sample per chip (`Spread`), `Despread` at `sps` with a known code phase | symbol | chips are symbols |
@@ -147,7 +147,7 @@ statistics. `data + rp.Tee(a=..., b=...)` runs each branch in its own stream (FM
 
 ## Streaming rules
 
-Tested by cutting the same input differently (`test_stream.py`, `test_position.py`, per-stage tests):
+Tested by cutting the same input differently (`tests/unit/base/`, per-stage tests):
 
 1. **Any block length, including 0**; never drop or repeat items across blocks.
 2. **State lives in the stream state**, so one stage can serve several streams.

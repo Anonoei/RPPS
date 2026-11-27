@@ -1,6 +1,7 @@
 {
-  "base": "iir",
   "type": "single_pole",
   "comment": "Leaky integrator y[n] = 0.05 x[n] + 0.95 y[n-1] (GNU Radio single_pole_iir_filter alpha)",
+  "ref": "GNU Radio single_pole_iir_filter",
+  "tags": ["example"],
   "alpha": 0.05
 }

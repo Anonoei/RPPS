@@ -1,0 +1,15 @@
+{
+  "type": "bytes",
+  "comment": [
+    "PPP in HDLC-like framing over an asynchronous link: frames between flags 0x7E, the flag, the escape 0x7D and the",
+    "control characters 0x00-0x1F (the default ACCM) sent as 0x7D then the byte XOR 0x20; FCS-16 after each frame"
+  ],
+  "ref": "RFC 1662 4",
+  "tags": ["hdlc"],
+  "flag": "0x7E",
+  "escape": "0x7D",
+  "xor": "0x20",
+  "escaped": [{"each": "i", "n": 32}, "0x7D", "0x7E"],
+  "fcs": "crc16_x25",
+  "min_bytes": 4
+}

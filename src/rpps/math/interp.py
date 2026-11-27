@@ -40,22 +40,24 @@ def _sinc_table(taps):
         _TABLES[taps] = (np.sinc(d)*w, n)
     return _TABLES[taps]
 
-def doubled(x, a, b, base=0):
-    """x at a, a + 1/2, a + 1, ... up to b - REACH (its positions are absolute: x[0] is position `base`), band limited (the
-    12-tap windowed sinc at a half sample: one fixed FIR for the half samples). Before x's start it reads zeros"""
+def upsampled(x, a, b, base=0, u=2):
+    """x at a, a + 1/u, a + 2/u, ... up to b - REACH (its positions are absolute: x[0] is position `base`), band limited
+    (the 12-tap windowed sinc at each k/u of a sample: fixed FIRs, one a phase). u divides _PHASES (2, 4, 8...). Before
+    x's start it reads zeros"""
+    if u < 1 or _PHASES % u:
+        raise ValueError(f"upsampled: u {u} must divide {_PHASES}")
     tab, n = _sinc_table(2*REACH)
-    h = tab[_PHASES//2] # x(i + 1/2) = sum_n h[n] x[i + n], n = 1-REACH .. REACH
     lo = a + n[0]
     x = np.asarray(x)
     pre = max(0, base - lo)
     ext = x[max(lo - base, 0):b - base]
     if pre:
         ext = np.concatenate((np.zeros(pre, x.dtype), ext))
-    half = np.convolve(ext, h[::-1], "valid") # len b - a - REACH
-    K = len(half)
-    out = np.empty(2*K, np.result_type(x.dtype, np.complex128) if x.dtype.kind == "c" else np.float64)
-    out[0::2] = ext[-n[0]:-n[0] + K]
-    out[1::2] = half
+    K = max(len(ext) - (len(n) - 1), 0) # len b - a - REACH
+    out = np.empty(u*K, np.result_type(x.dtype, np.complex128) if x.dtype.kind == "c" else np.float64)
+    out[0::u] = ext[-n[0]:-n[0] + K]
+    for k in range(1, u): # x(i + k/u) = sum_n h[n] x[i + n], n = 1-REACH .. REACH
+        out[k::u] = np.convolve(ext, tab[_PHASES*k//u][::-1], "valid")[:K]
     return out
 
 def fractional_edge(x, t, taps=4):
@@ -71,6 +73,10 @@ def fractional(x, t, taps=4):
     taps 8, 12...: a windowed sinc over x[i+1-taps/2 .. i+taps/2] (a band-limited interpolator: the error of the matched
     filter's output at 2 samples per symbol is -44 dB with 8 taps and -56 dB with 12, against -26 dB cubic)"""
     t = np.asarray(t, dtype=np.float64)
+    if taps == 4 and len(t) and np.asarray(x).dtype in (np.complex64, np.complex128):
+        from .. import _accel
+        if _accel.native is not None: # The four products a position in C++, in double (the lines below are its reference)
+            return _accel.native.cubic_read(np.ascontiguousarray(x), np.ascontiguousarray(t))
     i = np.floor(t).astype(np.int64)
     u = t - i
     if taps == 4:

@@ -1,0 +1,11 @@
+{
+  "ref": "ATSC A/53",
+  "tags": ["atsc"],
+  "title": "ATSC 1.0 (8-VSB)",
+  "features": {
+    "modulation": ["8vsb"],
+    "baud": 10762237.762237763,
+    "bandwidth": 6000000.0,
+    "frequency": [[54000000.0, 698000000.0]]
+  }
+}

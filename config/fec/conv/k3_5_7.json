@@ -1,11 +1,7 @@
 {
-  "base": "conv",
   "abstract": true,
   "comment": "Mother code K=3, generators 5, 7 octal, its rates (1/n unpunctured, and punctured ones) are in k3_5_7/",
   "constraint": 3,
-  "generator": [
-    [1, 0, 1],
-    [1, 1, 1]
-  ],
+  "generator": [[1, 0, 1], [1, 1, 1]],
   "decoder": "viterbi"
 }

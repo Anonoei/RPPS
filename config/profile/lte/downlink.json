@@ -1,13 +1,21 @@
 {
-  "base": "profile",
-  "comment": "LTE downlink (FDD, normal cyclic prefix) to the system information: cell search on the PSS and SSS, the resource grid of every subframe with the channel of each antenna port from the cell's reference signals, then four branches reading each subframe in turn. The PBCH gives the MIB and, by its CRC mask, the port count every other channel needs; the PCFICH the CFI, the size of its subframe's control region; the PDCCH searches the common search space for DCIs to the SI-RNTI, and a format 1A sets the allocation of its subframe's PDSCH, which gives SIB1 and the other SI messages (transport blocks with a good CRC-24A). The sample rate sets the FFT (15.36 MS/s: 1024, 50 RB)",
+  "comment": [
+    "LTE downlink (FDD and TDD, normal cyclic prefix) to the system information:",
+    "cell search on the PSS and SSS (the strongest cell, or `pci` among those on the carrier), the resource grid of",
+    "every subframe with the channel of each antenna port from the cell's reference signals, then four branches",
+    "reading each subframe in turn. The PBCH gives the MIB and, by its CRC mask, the port count every other channel",
+    "needs; the PCFICH the CFI, the size of its subframe's control region;",
+    "the PDCCH searches the common search space for DCIs to the SI-RNTI, and a format 1A or 1C sets the allocation of",
+    "its subframe's PDSCH, which gives SIB1 and the other SI messages (transport blocks with a good CRC-24A).",
+    "The sample rate sets the FFT (15.36 MS/s: 1024, 50 RB)"
+  ],
   "ref": "3GPP TS 36.211 6.6-6.11, 36.212 5.3, 36.213 7.1",
   "tags": ["lte"],
   "params": {
-    "offset": {
-      "default": 0.0,
-      "comment": "where the carrier is from the centre of the samples [Hz]"
-    },
+    "offset": {"default": 0.0, "comment": "where the carrier is from the centre of the samples [Hz]"},
+    "span": {"default": 50000.0, "comment": "carrier offsets searched about it [Hz]"},
+    "pci": {"default": -1, "comment": "the cell to receive, among those on the carrier (-1: the strongest)"},
+    "duplex": {"default": "auto", "comment": "fdd, tdd, or auto: where the SSS is says"},
     "n_rb": {
       "default": 50,
       "comment": "resource blocks: 6, 15, 25, 50, 75, 100 at 1.92, 3.84, 7.68, 15.36, 23.04, 30.72 MS/s"
@@ -24,79 +32,53 @@
     {
       "grid": "lte_cell",
       "id": "cell",
-      "offset": {
-        "param": "offset"
-      }
+      "offset": {"param": "offset"},
+      "span": {"param": "span"},
+      "pci": {"param": "pci"},
+      "duplex": {"param": "duplex"}
     },
-    {
-      "grid": "lte_grid",
-      "n_rb": {
-        "param": "n_rb"
-      }
-    },
+    {"grid": "lte_grid", "n_rb": {"param": "n_rb"}},
     {
       "branch": "channels",
       "order": ["pbch", "pcfich", "pdcch", "pdsch"],
-      "frame": {
-        "expr": "8 + 4200*n_rb"
-      },
+      "frame": {"expr": "8 + 4200*n_rb"},
       "branches": {
-        "pbch": [
-          {"grid": "lte_pbch", "id": "pbch"}
-        ],
-        "pcfich": [
-          {"grid": "lte_pcfich", "id": "pcfich"}
-        ],
-        "pdcch": [
-          {
-            "grid": "lte_pdcch",
-            "id": "pdcch",
-            "rntis": [65535]
-          }
-        ],
-        "pdsch": [
-          {"grid": "lte_pdsch", "id": "pdsch"}
-        ]
+        "pbch": [{"grid": "lte_pbch", "id": "pbch"}],
+        "pcfich": [{"grid": "lte_pcfich", "id": "pcfich"}],
+        "pdcch": [{"grid": "lte_pdcch", "id": "pdcch", "rntis": [65535]}],
+        "pdsch": [{"grid": "lte_pdsch", "id": "pdsch"}]
       }
     }
   ],
   "controls": {
     "pbch": {
       "drive": {
-        "pcfich": {
-          "ports": "ports"
-        },
-        "pdcch": {
-          "ports": "ports",
-          "phich_ng": "phich_ng"
-        },
-        "pdsch": {
-          "ports": "ports"
-        }
+        "pcfich": {"ports": "ports"},
+        "pdcch": {"ports": "ports", "phich_ng": "phich_ng", "phich_duration": "phich_duration"},
+        "pdsch": {"ports": "ports"}
       }
     },
-    "pcfich": {
-      "drive": {
-        "pdcch": {
-          "cfi": "cfi"
-        },
-        "pdsch": {
-          "cfi": "cfi"
-        }
-      }
-    },
+    "pcfich": {"drive": {"pdcch": {"cfi": "cfi"}, "pdsch": {"cfi": "cfi"}}},
     "pdcch": {
       "drive": {
         "pdsch": {
+          "format": "format",
           "rnti": "rnti",
           "riv": "riv",
           "mcs": "mcs",
           "rv": "rv",
           "tpc": "tpc",
           "distributed": "distributed",
-          "flag": "flag"
+          "gap": "gap",
+          "flag": "flag",
+          "harq": "harq",
+          "ndi": "ndi"
         }
       }
     }
+  },
+  "capture": {
+    "pbch": {"linktype": "upper_pdu", "dissector": "lte_rrc.bcch_bch"},
+    "pdsch": {"linktype": "upper_pdu", "dissector": "lte_rrc.bcch_dl_sch"}
   }
 }

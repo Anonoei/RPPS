@@ -1,0 +1,25 @@
+{
+  "extends": "dvbs2/sections",
+  "comment": [
+    "DVB-S2 service information: the sections of dvbs2/sections on the PSI/SI PIDs (0x00-0x1F:",
+    "PAT, CAT, NIT, SDT/BAT, EIT, RST, TDT/TOT, ST) and on `pids` (the PMTs the PAT names), each read by",
+    "header/link/dvb_si: a message a section, its table by `table_id.name` (the network and its delivery systems, the",
+    "services, the events, the UTC time and local offsets), its CRC-32 checked (the TDT has none).",
+    "The transport packets are captured for Wireshark, which reads the tables itself"
+  ],
+  "ref": "ETSI EN 300 468 5.1.3, 5.2; ISO/IEC 13818-1 2.4.4",
+  "params": {"pids": {"default": [], "comment": "more PIDs to read sections of: the PMTs' (the PAT's programs)"}},
+  "steps": {
+    "sections": {
+      "params": ["pid", "pusi", "cc", "afc", "more"],
+      "active": "afc & 1 and (pid <= 31 or pid in more)",
+      "defaults": {"more": {"param": "pids"}}
+    },
+    "+end": [{"link": "header", "id": "si", "name": "dvb_si"}]
+  },
+  "controls": {"sections": {"on": "rx", "drive": {"si": {"frame": "frame", "length": "packet_bits"}}}},
+  "capture": {
+    "ts": {"linktype": "mpeg2_ts", "include": ["header", "payload"], "fields": ["pid", "pusi", "cc"]},
+    "si": false
+  }
+}

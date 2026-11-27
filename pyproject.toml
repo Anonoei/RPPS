@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rpps"
-version = "0.6.0"
+version = "0.7.0"
 description = "RF Parameter Processor Suite"
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -30,11 +30,11 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
 ]
 keywords = ["anonoei", "dsp", "sdr"]
-dependencies = ["numpy>=2.0", "pysdrlib>=0.5.0"]
+dependencies = ["numpy>=2.0", "pysdrlib>=0.5.1"]
 
 [project.optional-dependencies]
 viz = ["matplotlib"]
-test = ["pytest", "pytest-xdist"]
+test = ["pytest", "pytest-xdist", "coverage>=7.10"]
 oracle = ["scipy"] # only the tests that check against it: RPPS itself must not need it
 docs = ["zensical>=0.1.3", "mkdocstrings-python>=2.0"]
 dev = ["rpps[viz,test,oracle,docs]", "twine", "build", "bumpver"]
@@ -54,7 +54,7 @@ where = ["src"]
 
 
 [tool.bumpver]
-current_version = "0.6.0"
+current_version = "0.7.0"
 version_pattern = "MAJOR.MINOR.PATCH"
 commit_message = "bump version {old_version} -> {new_version}"
 tag_message = "{new_version}"
@@ -78,15 +78,25 @@ push = false
 build = "cp312-* cp313-* cp314-*"
 skip = "*-musllinux_* *-win32"
 environment = { RPPS_REQUIRE_NATIVE = "1" }
-test-requires = ["pytest", "matplotlib"]
+test-requires = ["pytest", "pytest-xdist", "matplotlib"]
 test-command = "python -c \"import rpps._native\" && python {project}/tests/run_wheel_tests.py"
 
 
+# `coverage run -m pytest -n auto`, then `coverage combine` and `coverage report`
+[tool.coverage.run]
+branch = true
+source = ["rpps"]
+patch = ["subprocess"] # the xdist workers, and the examples and CLI the tests start
+
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]
-pythonpath = ["src"]
+pythonpath = ["src", "tests"]
+addopts = "--strict-markers --strict-config --dist=worksteal"
 markers = [
     "slow: takes more than a few seconds",
     "kernels: over a minute with the C++ kernels off (the no-kernel CI pass leaves it out; it runs in the others)",
+    "native: compares the C++ kernels with the Python reference (tests/unit/native)",
     "oracle: compares against scipy (pytest.importorskip); CI runs these again with scipy installed",
 ]
+# A definition or step with a key nothing reads is an error in the tests (rpps.errors.ConfigWarning)
+filterwarnings = ["error::rpps.errors.ConfigWarning"]

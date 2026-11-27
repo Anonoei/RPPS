@@ -1,34 +1,27 @@
 {
-  "base": "block",
   "abstract": true,
   "type": "turbo",
-  "comment": "CCSDS telemetry turbo code: two 16-state recursive encoders, feedback G0 = 1 + D^3 + D^4 (10011), the second fed through the CCSDS permutation, both terminated; k = 1784, 3568, 7136 or 8920",
+  "comment": [
+    "CCSDS telemetry turbo code: two 16-state recursive encoders, feedback G0 = 1 + D^3 + D^4 (10011), the second fed",
+    "through the CCSDS permutation, both terminated; k = 1784, 3568, 7136 or 8920"
+  ],
   "ref": "CCSDS 131.0-B-5 6",
   "tags": ["ccsds"],
-  "params": {
-    "k": {
-      "comment": "information block length: 1784, 3568, 7136 or 8920",
-      "default": 1784
-    }
-  },
-  "length": {
-    "param": "k"
-  },
+  "params": {"k": {"comment": "information block length: 1784, 3568, 7136 or 8920", "default": 1784}},
+  "length": {"param": "k"},
   "g0": "0b10011",
   "constraint": 5,
-  "forward": {
-    "1": "0b11011",
-    "2": "0b10101",
-    "3": "0b11111"
-  },
-  "interleave": {
-    "name": "block/ccsds_turbo",
-    "args": {
-      "k": {
-        "param": "k"
-      }
-    }
-  },
+  "forward": {"1": "0b11011", "2": "0b10101", "3": "0b11111"},
+  "interleave": {"name": "block/ccsds_turbo", "args": {"k": {"param": "k"}}},
   "iters": 10,
-  "scale": 0.75
+  "scale": 0.75,
+  "variants": {
+    "columns": ["name", "outputs", "comment"],
+    "rows": [
+      ["ccsds_1_2", [["0a", "1a"], ["0a", "1b"]], "CCSDS turbo code, rate 1/2: every other parity bit of each encoder"],
+      ["ccsds_1_3", [["0a", "1a", "1b"]], "CCSDS turbo code, rate 1/3"],
+      ["ccsds_1_4", [["0a", "2a", "3a", "1b"]], "CCSDS turbo code, rate 1/4: encoder a's G2, G3, encoder b's G1"],
+      ["ccsds_1_6", [["0a", "1a", "2a", "3a", "1b", "3b"]], "CCSDS turbo code, rate 1/6"]
+    ]
+  }
 }

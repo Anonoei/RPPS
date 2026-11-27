@@ -1,0 +1,23 @@
+{
+  "extends": "ieee802154/2450",
+  "comment": [
+    "IEEE 802.15.4 2.4 GHz O-QPSK frames: the synchronization header (preamble and SFD) found and taken off, the PHY",
+    "header read, each PSDU (the MAC frame with its FCS) a message, captured for Wireshark as 802.15.4 with FCS.",
+    "Transmitting, each call is one PSDU, the SHR and PHR put before it. The 2450 PHY's limits hold:",
+    "no carrier estimator, and no search for where its 32-chip symbols start (the samples start on a symbol)"
+  ],
+  "ref": "IEEE 802.15.4-2020 12.1",
+  "steps": {
+    "interleave": null,
+    "+end": [
+      {"sync": "delimit", "id": "shr", "sequence": "ieee802154_shr", "errors": 2, "keep": true},
+      {"code": "marker", "id": "sync", "sequence": "ieee802154_shr"},
+      {"link": "header", "id": "phr", "name": "ieee802154_phr"}
+    ]
+  },
+  "controls": {
+    "shr": {"drive": {"sync": {"frame": "frame"}, "phr": {"frame": "frame"}}},
+    "phr": {"on": "tx", "default": {"reserved": 0}, "drive": {"sync": {"frame": "frame_bits"}}}
+  },
+  "capture": {"phr": {"linktype": "ieee802_15_4", "include": ["payload"], "fields": ["frame_length"]}}
+}

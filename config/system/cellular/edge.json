@@ -1,0 +1,13 @@
+{
+  "ref": "3GPP TS 45.004",
+  "tags": ["gsm"],
+  "title": "EDGE (8PSK slots of GSM)",
+  "features": {
+    "modulation": ["8psk"],
+    "baud": 270833.3333333333,
+    "frame": 0.004615384615384615,
+    "slots": 8,
+    "bandwidth": 200000.0,
+    "frequency": [[824000000.0, 960000000.0], [1710000000.0, 1990000000.0]]
+  }
+}

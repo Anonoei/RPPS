@@ -96,6 +96,13 @@ def window(spec="hamming"):
 
 # ---- FIR
 
+def _take(obj, keys):
+    """The keys of a definition a design uses later (when the stream starts), taken now: a plain dict the design's
+    closure keeps, so what it does not take is reported unused when the definition loads (rpps._config.Keys)"""
+    return {k: obj[k] for k in keys if k in obj}
+
+_POST = ("units", "normalize", "gain")
+
 def _freq(obj, key, Fs):
     """A frequency (or list of them) of a design, as a fraction of the sample rate"""
     v = np.asarray(obj[key], dtype=float)
@@ -127,6 +134,7 @@ def _taps(name, obj):
 PASSES = {"lowpass": True, "highpass": False, "bandpass": False, "bandstop": True} # -> pass_zero
 
 def _windowed(name, obj):
+    obj = _take(obj, ("pass", "cutoff", "taps", "window", "transition", "atten_db") + _POST)
     kind = obj.get("pass")
     if kind not in PASSES:
         raise ConfigError(f"{name}: pass must be one of {sorted(PASSES)}, not {kind!r}")
@@ -146,6 +154,7 @@ def _windowed(name, obj):
     return build
 
 def _remez(name, obj):
+    obj = _take(obj, ("taps", "bands", "desired", "weight", "response") + _POST)
     for k in ("taps", "bands", "desired"):
         if k not in obj:
             raise ConfigError(f"{name}: a remez design needs `{k}`")
@@ -184,6 +193,8 @@ def _iir_sections(name, obj):
     t = obj.get("type")
     if t not in IIR_TYPES:
         raise ConfigError(f"{name}: unknown iir type {t!r}, have {list(IIR_TYPES)}")
+    obj = _take(obj, {"sos": ("sos",), "ba": ("b", "a"), "zpk": ("z", "p", "k"), "single_pole": ("alpha",),
+                      "biquad": ("shape", "f0", "q", "gain_db", "units")}.get(t, ("order", "pass", "cutoff", "ripple_db", "atten_db", "units")))
     def need(*keys):
         for k in keys:
             if k not in obj:
@@ -262,7 +273,9 @@ def _shaping_def(name, obj):
     t = obj.get("type")
     if t not in SHAPING_TYPES:
         raise ConfigError(f"{name}: unknown shaping type {t!r}, have {list(SHAPING_TYPES)}")
+    obj.get("kind") # (whether it shapes symbols or a frequency: the profile's shape step reads it from the file)
     gain, beta = obj.get("gain", 1.0), obj.get("beta", 0.35)
+    obj = _take(obj, ("sps", "bt", "span", "taps"))
     if t == "biphase":
         return _shaping.ShapingBiphase(gain)
     def build(meta):

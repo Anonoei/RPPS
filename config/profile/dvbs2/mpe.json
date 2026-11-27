@@ -1,0 +1,29 @@
+{
+  "extends": "dvbs2/sections",
+  "comment": [
+    "DVB-S2 multiprotocol encapsulation: the sections of dvbs2/sections, of the `pid`, and each MPE datagram section's",
+    "header read and its CRC-32 checked: the datagram (an IP packet) a message, captured for Wireshark as raw IP.",
+    "Only MPE sections (table id 0x3E) are kept"
+  ],
+  "ref": "EN 301 192 7.1, ISO/IEC 13818-1 2.4.4",
+  "params": {
+    "pid": {"default": -1, "comment": "the PID carrying the MPE sections (the PMT says which); -1: every PID's"}
+  },
+  "steps": {
+    "sections": {
+      "params": ["pid", "pusi", "cc", "afc", "wanted"],
+      "active": "afc & 1 and (wanted < 0 or pid == wanted)",
+      "defaults": {"wanted": {"param": "pid"}}
+    },
+    "+end": [{"link": "header", "id": "mpe", "name": "dvb_mpe", "select": {"table_id": 62}}]
+  },
+  "controls": {"sections": {"on": "rx", "drive": {"mpe": {"frame": "frame", "length": "packet_bits"}}}},
+  "capture": {
+    "mpe": {
+      "linktype": "raw",
+      "include": ["payload"],
+      "drop": "llc_snap == 1",
+      "fields": ["pid", "mac_6", "mac_5", "mac_4_1"]
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "comment": [
+    "Demo MF-TDMA return link (plan/demo/mftdma): QPSK bursts on three carriers at 250 and 500 kBd, each carrier cut",
+    "into its bursts (rpps.sync.Bursts), each burst decimated to 4 samples a symbol, matched filtered and timed on its",
+    "own, its type found by its unique word (one of three:",
+    "the frame sync's `word`), its carrier offset and phase taken off on the word;",
+    "then the type's LDPC units (802.11n (648,324)), a scrambler running across the burst, and the terminal, sequence",
+    "number, payload and CRC-16. With the plan each burst is placed in it (superframe, frame, slot, tx type), the",
+    "plan's origin acquired from the bursts; transmitting, the plan places each burst on its slot.",
+    "The capture is 8 MS/s around the plan's centre"
+  ],
+  "tags": ["example"],
+  "params": {
+    "sps": {"default": 4, "comment": "samples a symbol of every carrier's bursts"},
+    "plan": {"default": "demo/mftdma", "comment": "the burst time plan (\"\": none, detection only, with `carriers`)"},
+    "carriers": {
+      "default": [],
+      "blind": false,
+      "comment": "the carriers [{freq, width, rate}] when there is no plan (detection only); [] takes the plan's"
+    }
+  },
+  "requires": {
+    "baud": "250e3",
+    "Fs": "8e6",
+    "bw": "4.5e6",
+    "min_samples": "Fs*0.05",
+    "comment": "the slower carriers' symbol rate; the capture spans the plan's carriers at 8 MS/s"
+  },
+  "steps": [
+    {
+      "sync": "burst",
+      "id": "burst",
+      "plan": {"param": "plan"},
+      "sps": {"param": "sps"},
+      "factor": 4,
+      "win": 16,
+      "min_s": 0.0005,
+      "lock": 6,
+      "Fs": 8000000.0,
+      "carriers": {"param": "carriers"}
+    },
+    {"wave": "shape", "pulse": "rrc/0p35", "sps": {"param": "sps"}},
+    {"sync": "timing", "method": "oerder_meyr", "window": 0.05, "min_symbols": 96, "gate": 0.5, "clock": false},
+    {
+      "sync": "frame",
+      "id": "fs",
+      "sequences": {"uw1": "demo_uw1", "uw2": "demo_uw2", "uw3": "demo_uw3"},
+      "cfo": true,
+      "threshold": 0.75
+    },
+    {
+      "sync": "carrier",
+      "id": "track",
+      "method": "dd",
+      "comment": "what the word left of the carrier, from decisions: block estimation tracked across 32-symbol windows",
+      "constellation": "psk/qpsk",
+      "window": 32
+    },
+    {"symbol": "constellation", "id": "map", "name": "psk/qpsk"},
+    {"code": "marker", "id": "uw", "sequence": "demo_uw1"},
+    {"code": "block", "id": "fec", "name": "ldpc/ieee80211n_648_1_2"},
+    {"code": "scramble", "id": "scr", "name": "additive/ccsds"},
+    {"link": "header", "id": "hdr", "name": "demo_burst"}
+  ],
+  "controls": {
+    "fs": {
+      "table": "demo/mftdma_types",
+      "drive": {
+        "uw": {"frame": "frame", "sequence": "sequence"},
+        "map": {"name": "constellation"},
+        "fec": {"name": "code"},
+        "hdr": {"frame": "frame", "length": "bits"}
+      }
+    },
+    "burst": {
+      "on": "tx",
+      "drive": {
+        "uw": {"sequence": "word"},
+        "map": {"name": "constellation"},
+        "fec": {"name": "code"},
+        "hdr": {"length": "bits"}
+      }
+    },
+    "hdr": {"on": "tx", "default": {"terminal": 1, "seq": 0}, "drive": {"hdr": {"terminal": "terminal", "seq": "seq"}}}
+  }
+}

@@ -20,15 +20,17 @@ receive and transmit is in `rpps.wave`.
 
 | Feature | Says | Where |
 |---|---|---|
+| Variants | a param's `"choices"` (each a bundle of fields: `{"param": "modulation.shape"}`), a step's `"when"` | `rpps._config.resolve`, guide "Definitions" |
 | Header-driven control | `"controls"`: a header's fields drive other steps' parameters from a position on, without losing lock | `rpps.profile.control`, `rpps.base.control`, `rpps.profile.runner` |
-| Bursts | `{"sync": "burst"}`: the steps after it are built anew for every burst; transmitting places bursts on one stream (`gap_s`, `at=`, `ramp_s`, `freq=`, `hop`) | `rpps.profile.burst`, `rpps.sync.Burst`, `rpps.sync.BurstTx` |
+| Bursts | `{"sync": "burst"}`: the steps after it are built anew for every burst; transmitting places bursts on one stream (`gap_s`, `at=`, `ramp_s`, `freq=`, `hop`); `carriers`: bursts on many carriers, `plan`: placed in a burst time plan (each burst's fields drive its steps, its messages carry them; transmitting, the plan places them) | `rpps.profile.burst`, `rpps.sync.Burst`, `rpps.sync.BurstTx`, `rpps.sync.Bursts`, `rpps.plan` |
 | Preambles | `{"sync": "preamble"}` after a burst step: by repetition or a waveform the profile makes from a `sequence` word; `"attach": true` sends it on transmit | `rpps.sync.Preamble` |
-| Branches | a last `{"branch": ...}` step fans the chain out; a header in one branch drives the branches after it, `frame` makes them read whole frames | `rpps.profile.branch` |
+| Branches | a last `{"branch": ...}` step fans the chain out; a header in one branch drives the branches after it, `frame` makes them read whole frames, `take` only parts of each (a code split around a sync word), `select` only the frames a trunk step's fields accept | `rpps.profile.branch` |
 | Resource grids | `grid` steps take an OFDM system's samples to frames of its grid; its channels are branches (`lte/downlink`, `nr/downlink`) | `rpps.grid` |
 | Parallel region | `"parallel": "<step id>"`: the per-frame rest of the chain on threads or processes | `rpps.parallel`, `rpps.profile.parallel` |
 | Messages | every frame is also a `Message` (kind, fields, payload, `crc_ok`, where it starts), from `runner.take_messages()` | `rpps.profile.message` |
 | Only some kinds | `profile.kinds()`, `profile.rx(kinds={"pbch"})`: hands out only those and builds only the steps they need (`profile.needed`) | `rpps.profile.profile` |
-| Requirements | `"requires"`: `baud`, `Fs`, `bw`, `min_samples`, `input`, `from_cf` as expressions, evaluated when asked | `rpps.profile.catalogue`, `rpps.profile.Decoder` |
+| Captures | `"capture"`: each message kind as a packet of a link type, for Wireshark (pcapng) and interfaces, and back to transmit (`Encoder`) | `rpps.link.capture`, `rpps.source.pcap`, `rpps.source.tun`, `rpps.profile.encoder` |
+| Requirements | `"requires"`: `baud`, `Fs`, `bw`, `min_samples`, `input`, `from_cf` as expressions, evaluated when asked | `rpps.profile.catalogue` (`fits`, `candidates`: what a measured signal can be), `rpps.profile.Decoder` |
 
 **Sources that start later in the chain:** the runner skips every receive step before what the source gives
 (`Source.REP`, `APPLIED`): timed symbols with the carrier on skip signal, wave and timing; a BBFRAME stream skips
@@ -47,8 +49,9 @@ which needs the PCFICH, which needs the PBCH. A kind the profile doesn't give is
 """
 from .profile import Profile, load, ls
 from .message import Message
-from .catalogue import ProfileInfo, info, catalogue
+from .catalogue import ProfileInfo, info, catalogue, variants, fits, candidates, lineage
 from .decoder import Decoder
+from .encoder import Encoder
 from .runner import Runner
 from .parallel import Region
 from .steps import Step

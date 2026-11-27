@@ -9,6 +9,13 @@ import numpy as np
 
 from .. import _accel
 
+EM_SYMBOLS = 4096 # A row's noise is estimated from at most this many of its symbols, evenly strided (`em_stride`): the
+                  # variance of thousands of symbols is known to a few percent, and it only scales the LLRs
+
+def em_stride(L):
+    """Noise stride"""
+    return max(1, -(-int(L)//EM_SYMBOLS))
+
 def mask_matrix(labels):
     """(points, 2*bits) float matrix of the bit values of each point: the zeros first, then the ones. `labels`: (points, bits) bool"""
     labels = np.asarray(labels, dtype=bool)
@@ -41,12 +48,13 @@ def noise_variance(xp, d2, dmin, iters=8, floor=1e-12, tol=1e-10):
 def llr_rows(xp, y, points, labels, masks, noise_var=None, maxlog=False, iters=8, floor=1e-6):
     """LLRs log(P(bit=0)/P(bit=1)), positive means 0, of symbols (rows, L): (rows, L*bits) float32, symbol after symbol.
 
-    noise_var: complex noise variance E|n|^2, per row or one value; None: estimated from each row (floored at `floor`, per
-    real dimension). labels: (points, bits) bool; masks: `mask_matrix(labels)`"""
+    noise_var: complex noise variance E|n|^2, per row or one value; None: estimated from each row (from every `em_stride`-th
+    symbol, floored at `floor`, per real dimension). labels: (points, bits) bool; masks: `mask_matrix(labels)`"""
     if xp is np and _accel.native is not None: # C++: a row at a time on several threads, only the exponentials that count
         nv = np.zeros(0) if noise_var is None else np.asarray(noise_var, dtype=np.float64).reshape(-1)
         return _accel.native.demap_llr(np.ascontiguousarray(y, dtype=np.complex128), np.asarray(points, dtype=np.complex128),
-                                       np.asarray(labels, dtype=np.uint8), nv, bool(maxlog), int(iters), float(floor), 1e-10)
+                                       np.asarray(labels, dtype=np.uint8), nv, bool(maxlog), int(iters), float(floor), 1e-10,
+                                       EM_SYMBOLS)
     return _llr_rows(xp, y, points, labels, masks, noise_var, maxlog, iters, floor)
 
 def _llr_rows(xp, y, points, labels, masks, noise_var=None, maxlog=False, iters=8, floor=1e-6):
@@ -58,7 +66,8 @@ def _llr_rows(xp, y, points, labels, masks, noise_var=None, maxlog=False, iters=
         return xp.zeros((n, 0), dtype=np.float32)
     d2, dmin = distances(xp, y, points)
     if noise_var is None:
-        nv = 2*noise_variance(xp, d2, dmin, iters, floor)
+        s = em_stride(L)
+        nv = 2*noise_variance(xp, d2[:, ::s], dmin[:, ::s], iters, floor)
     else:
         nv = xp.broadcast_to(xp.asarray(noise_var, dtype=np.float64), (n,))
     nv = xp.maximum(nv, 2*floor)

@@ -4,7 +4,15 @@ config/interleave/<type>/<name>.json (`rp.code.load("interleave/forney/12_17")`)
 Folders are kind (`base`), then the structure of the code; the standard goes in `ref`/`comment`. Names are parameters.
 
     block       {"base": "block", "type": ..., "decoder": optional type to decode with instead}
-      linear      "code": [n, k], "p": parity block rows    or    "g": generator rows, "h": check rows (decoded on its syndrome "trellis" when small)
+                  any block code also takes, as sent (rpps.code.types.layout): "append": check bits after the codeword,
+                  each the XOR of the codeword bits listed ([[14, 15]]); "extend": an overall parity bit; "layout": the
+                  sent position of each codeword bit, or {"message": [...], "parity": [...] | "rest"}; "xor": a pattern on
+                  the sent word (inverted parity, a coset)
+      linear      "n", "k" and "p": parity block rows (one per message bit)    or    "parity": one list per parity bit of the
+                  message bits it XORs, as standards write P0 = I0 + I1 + I3    or    "g": generator rows, "h": check
+                  rows; "extend" (decoded on its syndrome "trellis" when small)
+      expr        "k", "bits": an expression per codeword bit over m0.. (and c0.., the bits before), ^ & | ~: loaded as a
+                  linear code (in its arrangement) when affine, else decoded from its 2^k codebook (k <= 16), "t"
       cyclic      "n", "k", "poly": generator polynomial as a number, bit i = x^i (polynomial order: "0xb" is x^3 + x + 1;
                   a convolutional or turbo generator is the other way round, its first or most significant bit the
                   current input), "extend": overall parity bit, "shorten": leading
@@ -41,7 +49,7 @@ Folders are kind (`base`), then the structure of the code; the standard goes in 
 A reference is the path below config/fec or config/interleave with the kind first: "block/rs/204_188", "conv/k7_171_133/3_4",
 "interleave/forney/12_17". A bare name ("204_188") works while one definition of any kind has it.
 
-Decoding only runs from a definition loaded here; `analysis.identify.Guess.save` turns a guessed structure into one,
+Decoding only runs from a definition loaded here; `analysis.result.Guess.save` turns a guessed structure into one,
 `rp.code.import_alist` an LDPC alist file. CRC and framing are in rpps.link.
 """
 from pathlib import Path
@@ -64,15 +72,19 @@ def root() -> Path:
     """Directory holding the coding definitions"""
     return _config.find_config("fec")
 
-def ls(path=None):
-    """List available FEC definitions by family: {"block/rs": [names], "conv/dvbs": [names], ...}"""
-    return {**_config.ls("fec", path), **{f"interleave/{k}" if k != "interleave" else k: v
-                                              for k, v in _config.ls("interleave", path).items()}}
+def ls(path=None, blind=False):
+    """List available FEC definitions by family: {"block/rs": [names], "conv/dvbs": [names], ...}
 
-def names(kind: str, sub=None, path=None):
-    """References of the definitions of a kind ("block", "conv", "interleave"), as `load(kind, ref)` takes them ("rs/204_188"), across families or just one"""
+    blind: only what the blind tools try (rp._config.ls): no definitions tagged "example", and only the selected tags (rp.select_tags)"""
+    return {**_config.ls("fec", path, blind=blind),
+            **{f"interleave/{k}" if k != "interleave" else k: v for k, v in _config.ls("interleave", path, blind=blind).items()}}
+
+def names(kind: str, sub=None, path=None, blind=False):
+    """References of the definitions of a kind ("block", "conv", "interleave"), as `load(kind, ref)` takes them ("rs/204_188"), across families or just one
+
+    blind: only what the blind tools try (rp._config.ls): no definitions tagged "example", and only the selected tags (rp.select_tags)"""
     out = []
-    for key, v in ls(path).items():
+    for key, v in ls(path, blind).items():
         k, _, family = key.partition("/")
         if k == kind and (sub is None or family == sub):
             out += [f"{family}/{n}" if family else n for n in v]

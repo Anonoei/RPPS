@@ -15,7 +15,8 @@ bits would give it:
   IPv4                20-byte headers starting 0x45 whose ones-complement checksum holds
   CCSDS               the attached sync marker 0x1ACFFC1D at a period
   MPEG-TS             0x47 every 188 bytes (204 with Reed-Solomon parity)
-  fixed word          any bits constant at a period (frame structure in general), the period from the autocorrelation
+  fixed word          any bits constant at a period (frame structure in general, a unique word after demodulation,
+                      bit errors and all), the period from the autocorrelation summed over its multiples
 
 `verdict` combines them with the plain statistics: bias, byte distribution, autocorrelation, linear complexity over
 windows (an additive LFSR scrambler shows as complexity much below half a window), and how well zlib compresses.
@@ -24,11 +25,14 @@ import zlib
 
 import numpy as np
 
+from ...math.prob import deviance_z, z_critical
+
 from ...math.gf2 import berlekamp_massey
 
 class Found:
-    """A signature found: name, period (bits, or None), offset (first bit), hits, expected (by chance), z, detail"""
-    __slots__ = ("name", "period", "offset", "hits", "expected", "z", "detail")
+    """A signature found: name, period (bits, or None), offset (first bit), hits, expected (by chance), z, detail; a
+    word found (`fixed_word`): word (hex, first bit sent most significant), bits, mismatches (median, 99%) per frame"""
+    __slots__ = ("name", "period", "offset", "hits", "expected", "z", "detail", "word", "bits", "mismatches")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
@@ -87,9 +91,10 @@ def _periodic_word(bits, word, wlen, periods, name, z_min):
         off = int(np.argmax(cols))
         h, n = int(cols[off]), m//P
         p = 2.0**-wlen
-        # every offset was tried: the best column of P is compared with chance over n frames
-        z = _z(h, n, p)
-        if z > z_min and (best is None or z > best.z):
+        # every offset was tried: the best column of P is compared with chance over n frames, by the binomial deviance (a
+        # Gaussian z gives 2 hits where 0.06 are expected z 8) and past what the best of P random columns reaches
+        z = float(deviance_z(h, n, p))
+        if z > max(z_min, z_critical(P)) and (best is None or z > best.z):
             best = Found(name=name, period=P, offset=off, hits=h, expected=n*p, z=float(z),
                          detail=f"{100*h/n:.0f}% of {n} frames")
     return best
@@ -225,39 +230,91 @@ def mpeg_ts(bits, z_min=8.0):
             best = f
     return best
 
-def fixed_word(bits, max_period=16384, z_min=8.0, min_bits=8):
-    """Bits constant at a period: (Found with the period from the autocorrelation, the constant positions in detail)"""
-    b = np.asarray(bits, dtype=np.float64)
+WORD_AGREE = 0.9 # fixed_word: how often a word's position reaches `agree` (bit errors take some short of it)
+WORD_DENSITY = 0.75 # and the least share of its positions that do: under it, structure of another kind (a scrambler's
+# keystream folded at a divisor of its period has columns agreeing far beyond chance, scattered, half of them)
+
+def fixed_word(bits, max_period=16384, z_min=8.0, min_bits=8, agree=0.75, alpha=1e-3, false_alarm=1e-6):
+    """Bits constant at a period, as a unique word after demodulation: Found with the period, the word (its longest run
+    of constant positions: `word`, a hex string sent first bit first, `bits` long, at `offset`), `hits` (every constant
+    position), and in `mismatches` the bits each frame's copy differs by (median, 99th percentile)
+
+    The candidate periods sum the bits' autocorrelation over the multiples of each lag (frames.comb_lags), so a short
+    word shows within a few dozen frames. A position is constant when at least `agree` of the frames hold the same bit
+    there, which channel bit errors mostly leave it (an exact agreement they would not); one such position is common by
+    chance over few frames, a stretch of them is not. The word is the stretch where they gather most (one position bit
+    errors left short breaks it not), taken when its chance over every position and candidate looked at is under
+    `alpha`. The whole stream inverted keeps its words (the
+    word given is as received). `errors` in `detail` is what a delimit step could allow: a margin over the 99th
+    percentile, no more than rpps.sync.word_errors at `false_alarm` over a period of positions."""
+    from math import log, lgamma
+    from ...math.prob import log_binom_half_cdf
+    from ...sync.frame import word_errors
+    from .frames import comb_lags, HALF_NORMAL_MEAN, HALF_NORMAL_VAR
+    b = np.asarray(bits, dtype=np.uint8)
     n = len(b)
     if n < 4*64:
         return None
-    x = 1 - 2*b
+    x = 1 - 2*b.astype(np.float64)
     x = x - x.mean()
-    F = np.fft.rfft(x, 2*n)
-    ac = np.fft.irfft(np.abs(F)**2)[:min(max_period, n//4) + 1]
-    ac[:8] = 0
-    # Lags standing out of the noise (sd ~ sqrt(n)), smallest first: every multiple of the period correlates about as well,
-    # so the first whose grid has constant columns is the period
-    cands = np.flatnonzero(ac > 3*np.sqrt(n))
-    cands = [int(c) for c in cands[np.argsort(-ac[cands])][:16]]
-    cands = {c//d for c in cands for d in range(1, 7) if c % d == 0 and c//d >= 8} # its submultiples too
-    for P in sorted(cands):
+    v = max(float(np.mean(x**2)), 1e-12)
+    F = np.fft.rfft(x, 1 << int(np.ceil(np.log2(2*n))))
+    za = np.abs(np.fft.irfft(np.abs(F)**2)[:n])/(v*np.sqrt(n - np.arange(n)))
+    cands = [L for L, _ in comb_lags(za, 8, max_period, mean=HALF_NORMAL_MEAN, var=HALF_NORMAL_VAR)]
+    cands = sorted({c//d for c in cands for d in range(1, 7) if c % d == 0 and c//d >= 8}) # their submultiples too
+    best = None
+    for P in cands:
         m = n//P
         if m < 8:
             continue
         G = b[:m*P].reshape(m, P)
-        mean = G.mean(axis=0)
-        const = np.flatnonzero((mean > 0.98) | (mean < 0.02))
-        if len(const) < min_bits:
+        ones = G.sum(axis=0, dtype=np.int64)
+        k = int(np.ceil(agree*m)) # (frames that must agree)
+        lp = min(0.0, log(2) + log_binom_half_cdf(m, m - k)) # log chance a random position agrees so, either way
+        hot = np.maximum(ones, m - ones) >= k
+        if hot.sum() < min_bits or lp >= 0:
             continue
-        # chance: a column constant over m rows, 2^(1-m) each, P columns
-        z = _z(len(const), P, min(1.0, 2.0**(1 - m)))
+        if lp >= log(WORD_AGREE):
+            continue
+        # The word: the segment (circular: it may straddle the fold) scoring most when a constant position counts for
+        # it and any other against, as likely in a word as WORD_AGREE (a position its bit errors leave short of `agree`
+        # breaks no word); then taken only if chance could not have made it, over every position and candidate
+        h2 = np.concatenate((hot, hot))
+        sc = np.where(h2, log(WORD_AGREE) - lp, log(1 - WORD_AGREE) - np.log1p(-np.exp(lp)))
+        S = np.concatenate(([0.0], np.cumsum(sc)))
+        lo = np.minimum.accumulate(S)
+        at = np.arange(len(S))
+        lo_at = np.maximum.accumulate(np.where(S <= lo, at, 0)) # (where the running minimum was last reached)
+        gain = S - lo
+        e = int(np.argmax(gain))
+        s0 = int(lo_at[e])
+        ln = min(e - s0, P)
+        hits = int(h2[s0:s0 + ln].sum())
+        chance = lgamma(ln + 1) - lgamma(hits + 1) - lgamma(ln - hits + 1) + hits*lp # (ln positions, hits of them constant)
+        if hits < min_bits or hits < WORD_DENSITY*ln or chance > log(alpha) - log(P*len(cands)):
+            continue
+        s0 %= P
+        cols = (s0 + np.arange(ln)) % P
+        colz = np.abs(2*ones - m)/np.sqrt(m)
+        z = float(min(np.sum(colz[cols])/np.sqrt(ln), 1e6)) # (Stouffer, over the word's positions)
         if z < z_min:
             continue
-        return Found(name="fixed bits at a period", period=P, offset=int(const[0]), hits=len(const),
-                     expected=P*min(1.0, 2.0**(1 - m)), z=float(min(z, 1e6)),
-                     detail=f"{len(const)} constant bit positions")
-    return None
+        word = 2*ones[cols] > m
+        rows = G[:, cols] if s0 + ln <= P else b[s0:s0 + (m - 1)*P].reshape(m - 1, P)[:, :ln] # (frames whose copy is whole)
+        mis = np.count_nonzero(rows != word[None, :], axis=1)
+        med, p99 = float(np.median(mis)), float(np.percentile(mis, 99))
+        allowed = word_errors(ln, false_alarm, P)
+        errors = min(max(int(np.ceil(2*p99)), int(p99) + 2), allowed) if allowed >= 0 else -1
+        value = int("".join("1" if w else "0" for w in word), 2)
+        f = Found(name="fixed word at a period", period=P, offset=int(s0), hits=int(hits),
+                     expected=float(P*len(cands)*np.exp(chance)), z=z, word=f"{value:#0{(ln + 3)//4 + 2}x}", bits=int(ln),
+                     mismatches=(med, p99),
+                     detail=f"{int(hits)} constant bit positions; a {ln}-bit word at {s0}, each frame's copy off by "
+                            f"{med:.0f} bits (99%: {p99:.0f}); errors {errors} for a delimit step"
+                            + ("" if allowed >= 0 else f" (too short to search {P} positions at {false_alarm:g})"))
+        if best is None or chance < best[0]: # The word chance is least likely to make: a multiple of the period, over
+            best = (chance, f)              # fewer frames, or a divisor, where other frames' data dilutes it, makes it less
+    return None if best is None else best[1]
 
 TESTS = (e1, t1, atm, gfp, hdlc, ipv4, ccsds, mpeg_ts, fixed_word)
 
@@ -271,7 +328,7 @@ class Verdict:
     """Result of `verdict`: kind ("structured", "scrambled", "random-looking"), why, signatures, bias (|mean - 1/2|*2),
     byte_chi (z of the byte distribution, the worst of 8 offsets), lc (linear complexity over windows / their length),
     compress (zlib size / size)"""
-    __slots__ = ("kind", "why", "signatures", "bias", "byte_chi", "lc", "compress", "repeats")
+    __slots__ = ("kind", "why", "signatures", "bias", "byte_chi", "lc", "compress", "repeats", "randomness")
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
@@ -319,4 +376,15 @@ def verdict(bits, window=512, z_min=8.0, frame=None, max_bits=2_000_000):
     else:
         kind, why = "random-looking", "no framing, even bits and bytes, full linear complexity, incompressible: " \
                                       "encrypted, compressed, or under a layer not found"
-    return Verdict(kind=kind, why=why, signatures=sig, bias=bias, byte_chi=chi, lc=lc, compress=comp, repeats=repeats)
+    rnd = None
+    if kind == "random-looking": # The NIST SP 800-22 tests tell a cipher's output from most compressors' (randomness)
+        from .randomness import test as _randomness
+        rnd = _randomness(b)
+        if rnd is not None and rnd.passed:
+            why = (f"no framing, full linear complexity, and it passes the NIST SP 800-22 tests ({rnd.entropy:.2f} bits a "
+                   "byte): as random as a cipher's output: encrypted or keyed (or a strong compressor's output)")
+        elif rnd is not None:
+            why = (f"no framing, full linear complexity, {rnd.entropy:.2f} bits a byte, but it fails "
+                   f"{', '.join(rnd.failed)}: compressed, or a weak cipher or scrambler")
+    return Verdict(kind=kind, why=why, signatures=sig, bias=bias, byte_chi=chi, lc=lc, compress=comp, repeats=repeats,
+                   randomness=rnd)

@@ -1,5 +1,4 @@
 {
-  "base": "frame",
   "type": "hdlc",
   "comment": "HDLC with NRZI (AX.25 / 1200 baud packet style)",
   "tags": ["hdlc"],

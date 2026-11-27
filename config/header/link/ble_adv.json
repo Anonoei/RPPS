@@ -1,12 +1,28 @@
 {
-  "base": "header",
   "type": "link",
-  "comment": "Bluetooth LE advertising channel PDU: a 16-bit header (PDU type, RFU, ChSel, TxAdd, RxAdd, then the payload length in bytes), the payload, and a CRC-24 over header and payload, every field least significant bit first. On air the packet is preamble and access address (the ble_adv_aa word, not whitened), then this, whitened",
+  "comment": [
+    "Bluetooth LE advertising channel PDU: a 16-bit header (PDU type, RFU, ChSel, TxAdd, RxAdd, then the payload",
+    "length in bytes), the payload, and a CRC-24 over header and payload, every field least significant bit first.",
+    "On air the packet is preamble and access address (the ble_adv_aa word, not whitened), then this, whitened"
+  ],
   "ref": "Bluetooth Core 6.0 Vol 6 Part B 2.1, 2.3",
   "tags": ["ble"],
   "order": "lsb",
+  "payload_order": "lsb",
   "fields": [
-    {"name": "type", "bits": 4},
+    {
+      "name": "type",
+      "bits": 4,
+      "enum": {
+        "0": "ADV_IND",
+        "1": "ADV_DIRECT_IND",
+        "2": "ADV_NONCONN_IND",
+        "3": "SCAN_REQ",
+        "4": "SCAN_RSP",
+        "5": "CONNECT_IND",
+        "6": "ADV_SCAN_IND"
+      }
+    },
     {"name": "rfu", "bits": 1},
     {"name": "chsel", "bits": 1},
     {"name": "txadd", "bits": 1},
@@ -14,5 +30,42 @@
     {"name": "length", "bits": 8, "tx": "bits//8"}
   ],
   "fcs": "crc24_ble",
-  "payload": "length*8"
+  "payload": "length*8",
+  "payload_fields": [
+    {
+      "name": "adva",
+      "type": "bytes",
+      "bytes": 6,
+      "reverse": true,
+      "comment": [
+        "AdvA (ScanA for a SCAN_REQ, InitA for a CONNECT_IND):",
+        "sent low octet first, shown as written (most significant first)"
+      ]
+    },
+    {
+      "name": "ad",
+      "repeat": "*",
+      "if": "type == 0 or type == 2 or type == 4 or type == 6",
+      "comment": "AdvData / ScanRspData: AD structures, each a length, then an AD type and length - 1 bytes",
+      "fields": [
+        {"name": "len", "bits": 8},
+        {
+          "name": "ad_type",
+          "bits": 8,
+          "if": "len > 0",
+          "enum": {
+            "1": "Flags",
+            "2": "UUID16 (part)",
+            "3": "UUID16",
+            "8": "Name (short)",
+            "9": "Name",
+            "10": "TX power",
+            "22": "Service data",
+            "255": "Manufacturer data"
+          }
+        },
+        {"name": "data", "type": "bytes", "bytes": "len - 1", "if": "len > 1"}
+      ]
+    }
+  ]
 }

@@ -1,0 +1,30 @@
+{
+  "type": "link",
+  "comment": [
+    "CCSDS TM transfer frame primary header: version, spacecraft and virtual channel ids, the operational control",
+    "field flag, the master and virtual channel frame counts, and the data field status (secondary header,",
+    "synchronization and packet order flags, segment length id, the first header pointer:",
+    "where in the data field the first packet starts, in octets; 2047 none starts here, 2046 idle data only). Framed:",
+    "the frame's length is the profile's (the RS data of its codewords);",
+    "the data field runs to the frame's end less the operational control field (4 octets when its flag is set), which",
+    "is passed over. No frame error control field (the RS code checks the frame)"
+  ],
+  "ref": "CCSDS 132.0-B-3 4.1.2, 4.1.4",
+  "tags": ["ccsds"],
+  "order": "msb",
+  "fields": [
+    {"name": "version", "bits": 2},
+    {"name": "scid", "bits": 10},
+    {"name": "vcid", "bits": 3},
+    {"name": "ocf", "bits": 1},
+    {"name": "mc_count", "bits": 8},
+    {"name": "vc_count", "bits": 8},
+    {"name": "sec_hdr", "bits": 1},
+    {"name": "sync", "bits": 1},
+    {"name": "order", "bits": 1},
+    {"name": "seg_len", "bits": 2, "default": 3},
+    {"name": "fhp", "bits": 11}
+  ],
+  "payload": "length - 48 - 32*ocf",
+  "framed": true
+}

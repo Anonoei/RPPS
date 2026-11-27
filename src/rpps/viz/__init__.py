@@ -6,6 +6,7 @@ from .plots import eye
 from .plots import freq
 from .plots import spectrogram
 from .plots.survey import survey
+from .plots.bursts import bursts, burst_timing, burst_stack, burst_terminals, plan_evidence
 from .plots import time
 from .plots.phasor import phasor
 

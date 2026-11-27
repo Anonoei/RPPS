@@ -1,6 +1,7 @@
 {
-  "base": "conv",
   "extends": "k9_557_663_711",
-  "comment": "3GPP UTRA (and IS-95/cdma2000) rate 1/3, K=9: G0=557 G1=663 G2=711 octal, outputs 0, 1, 2, 8 zero tail bits",
+  "comment": [
+    "3GPP UTRA (and IS-95/cdma2000) rate 1/3, K=9: G0=557 G1=663 G2=711 octal, outputs 0, 1, 2, 8 zero tail bits"
+  ],
   "tags": ["3gpp-umts"]
 }

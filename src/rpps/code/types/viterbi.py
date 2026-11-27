@@ -118,20 +118,26 @@ class viterbi(_code):
 
     def decode_batch(self, words, soft=None):
         """Words (W, L), each decoded as a frame of its own: decisions (W, T), the same as decode() on each row. In C++
-        (rpps._native.viterbi_batch) on several threads; a loop over decode() without the kernels or for a tail-biting code"""
+        (rpps._native.viterbi_batch) on several threads; a loop over decode() without the kernels"""
         words = np.asarray(words)
-        if _accel.native is None or self.termination == "tailbiting" or len(words) == 0:
+        if _accel.native is None or len(words) == 0:
             return np.array([self.decode(w, soft) for w in words], dtype=bool).reshape(len(words), -1)
         llr = self._depuncture_batch(as_llr(words, soft)) # (W, T, n)
         if self.invert is not None:
             llr = llr*self.invert[None, None, :]
         S = self.n_states
-        pm0 = np.full(S, np.inf)
-        pm0[0] = 0.0
+        T = llr.shape[1]
+        if self.termination == "tailbiting": # Three laps from no particular state, the best end, the middle lap (_path)
+            llr, pm0 = np.tile(llr, (1, 3, 1)), np.zeros(S)
+        else:
+            pm0 = np.full(S, np.inf)
+            pm0[0] = 0.0
         end = np.full(len(llr), 0 if self.terminated else -1, dtype=np.int64) # -1: the best end state, as decode()'s argmin
         states, _, _ = _accel.native.viterbi_batch(np.ascontiguousarray(llr, dtype=np.float64), self.patterns, 1, self._pred,
                                                    self._pat, pm0, end)
         out = self.prev_in[states]
+        if self.termination == "tailbiting":
+            return out[:, T:2*T].astype(bool)
         if self.terminated:
             out = out[:, :max(0, out.shape[1]-(self.con-1))]
         return out.astype(bool)

@@ -1,10 +1,6 @@
 {
-  "base": "conv",
   "extends": "k7_171_133",
   "comment": "DVB-S (EN 300 421) inner code rate 2/3, G1=171 G2=133",
   "tags": ["dvb-s"],
-  "puncture": [
-    [1, 0],
-    [1, 1]
-  ]
+  "puncture": [[1, 0], [1, 1]]
 }

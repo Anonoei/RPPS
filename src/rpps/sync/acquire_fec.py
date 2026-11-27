@@ -7,6 +7,8 @@ from ..base import Stage
 from ..symbol.mapping import hard_bits
 from ..code.coding import mismatch, cached
 
+REDECIDED = 0.01 # A rate this far (a fraction) from the one the held symbols were taken at is another lock
+
 class AcquireFEC(Stage):
     """Identify the code the symbols carry, then turn them to the map its decoder uses
 
@@ -22,7 +24,10 @@ class AcquireFEC(Stage):
     Acquisition: symbols are held until `skip` + `window` have arrived, and the code is identified on those `window`
     (at absolute positions, so the result is the same however the stream was cut). While more symbols could tell more
     (a window shorter than the scans use, or Reed-Solomon behind a Viterbi, which needs ~100 codewords) the window doubles,
-    up to `max_wait` symbols. Then what was held is released from the window on (from a codeword start for a block code;
+    up to `max_wait` symbols. A stream that ends first (meta.flush) is decided on every symbol held past `skip`, blind
+    tools included, so a short capture gets the same look a long one does. Acquire can decide again before it settles
+    (another modulation, or a rate more than REDECIDED off): what was held, taken at the old one, is dropped and the
+    acquisition starts over from that block, `skip` again. Then what was held is released from the window on (from a codeword start for a block code;
     the `skip` symbols before it, where the sync before this was settling, are dropped).
     Tracking (convolutional codes): every `check` symbols the output is re-encoded through the code on the decoder's map.
     A mismatch above `relock` times the one at acquisition means a slip: the carrier by a turn, or the symbol timing by a
@@ -33,13 +38,15 @@ class AcquireFEC(Stage):
     acquiring it holds the answer so far with complete False (before any, found False and `n` the symbols held so far): a
     code found then may still gain the layers inside it, so a decoder is best built once complete, which it is once the stage
     stops looking.
-    names: only these convolutional definitions. blind: also look for unknown codes (a `Guess`, never decoded)
+    names: only these convolutional definitions. blind: also look for unknown codes (a `Guess`, never decoded), unless the
+    rate came from a symbol-rate line weaker than `min_line` over its floor (Acquire took it anyway: a guess; None: always)
     """
-    __slots__ = ("window", "skip", "max_wait", "names", "blind", "check", "relock", "name")
+    __slots__ = ("window", "skip", "max_wait", "names", "blind", "check", "relock", "name", "min_line")
 
-    def __init__(self, window=2**14, skip=2048, max_wait=2**18, names=None, blind=False, check=4096, relock=4.0, name="fec"):
+    def __init__(self, window=2**14, skip=2048, max_wait=2**18, names=None, blind=False, check=4096, relock=4.0, name="fec",
+                 min_line=5.0):
         self.window, self.skip, self.max_wait = int(window), int(skip), int(max_wait)
-        self.names, self.blind = names, blind
+        self.names, self.blind, self.min_line = names, blind, min_line
         self.check, self.relock, self.name = int(check), float(relock), name
 
     def __str__(self):
@@ -47,17 +54,27 @@ class AcquireFEC(Stage):
 
     def new_state(self, meta):
         return SimpleNamespace(held=[], count=0, length=self.window, done=False, fec=None, c=None, code=None, out=0,
-                               drop=0, buf=[], buffered=0, shift=0)
+                               drop=0, buf=[], buffered=0, shift=0, prior=None, at=None)
 
     def step(self, y, st, meta):
         det = meta.det
-        if det is None or len(y) == 0:
+        if det is None:
             return y
         if st.done:
-            return self._emit(y, st)
+            return self._emit(y, st) if len(y) else y
+        at = (det.mod, det.baud)
+        if st.at is not None and (at[0] != st.at[0] or abs(at[1] - st.at[1]) > REDECIDED*abs(at[1])):
+            # (Acquire decided again: the symbols held are another lock's, junk at this one)
+            st.held, st.count, st.length, st.prior = [], 0, self.window, None
+            if self.name in meta.stream.est:
+                del meta.stream.est[self.name]
+        st.at = at
+        if len(y) == 0 and not (meta.flush and st.count): # (an empty last block still ends the acquisition)
+            return y
         st.held.append(y)
         st.count += len(y)
-        if st.count < self.skip + st.length:
+        end = meta.flush # The stream ends with this block: decide on what there is
+        if st.count < self.skip + st.length and not end:
             if self.name not in meta.stream.est: # Still acquiring: say so (found and complete False), and how far it got
                 from ..analysis.identify import CodeDetection # The scans are blind analysis: loaded when first needed
                 meta.stream.est[self.name] = CodeDetection(mod=det.mod)
@@ -66,19 +83,25 @@ class AcquireFEC(Stage):
             return y[:0]
         x = np.concatenate(st.held)
         st.held = [x]
-        win = x[self.skip:self.skip + st.length]
+        win = x[self.skip:] if end else x[self.skip:self.skip + st.length] # (at the end: every symbol past `skip`)
         from ..analysis.identify import identify # (blind analysis, loaded when first needed)
-        fec = identify(win, det.mod, self.names, blind=False)
-        last = 2*st.length > self.max_wait - self.skip
+        prior = st.prior # The previous window's answer: the configured scans saw the same start (identify(prior=))
+        fec = identify(win, det.mod, self.names, blind=False, baud=det.baud, prior=prior)
+        st.prior = fec
+        last = end or 2*st.length > self.max_wait - self.skip
         if not last and not fec.complete:
             st.length *= 2
             meta.stream.est[self.name] = fec # The answer so far: complete False, more symbols may still change it
             return y[:0]
-        if self.blind: # The blind tools take most of the time and don't decide completeness: once, on the final window
-            fec = identify(win, det.mod, self.names, blind=True)
+        # The blind tools take most of the time and don't decide completeness: once, on the final window; and not on a
+        # rate Acquire only guessed (no symbol-rate line of min_line over its floor: symbols at a wrong rate fit no code)
+        guessed = self.min_line is not None and getattr(det, "line", None) is not None and det.line < self.min_line
+        if self.blind and not guessed:
+            fec = identify(win, det.mod, self.names, blind=True, baud=det.baud, prior=fec)
         st.done, st.held, st.fec = True, None, fec
         fec.complete = True # Final: this stage looks no further (even if more symbols could have shown more)
-        fec.latency = (self.skip + st.length)/det.baud if det.baud else None # Held until the window was in
+        fec.n = len(win)
+        fec.latency = (self.skip + len(win))/det.baud if det.baud else None # Held until the window was in
         meta.stream.est[self.name] = fec
         if not fec.found:
             return x

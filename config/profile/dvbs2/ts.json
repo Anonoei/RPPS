@@ -1,0 +1,85 @@
+{
+  "extends": "dvbs2/normal",
+  "comment": [
+    "DVB-S2 transport stream: BBFRAMEs in TS mode (MATYPE TS) whose data fields carry user packets back to back across",
+    "frames, cut out by SYNCD and UPL (rpps.link.packets). Each user packet's sync byte was replaced by the CRC-8 of",
+    "the packet before: it is checked, and 0x47 put back, so the packets come out as MPEG transport stream packets, a",
+    "message each, captured for Wireshark as MPEG-TS. With null-packet deletion (NPD) each user packet carries the",
+    "count of null packets deleted before it (DNP), and with ISSYI its ISSY field:",
+    "both are read (the message's `dnp`, `issy`) and taken off, and the null packets put back, so out comes the",
+    "transport stream as it went in. Frames in another mode (GSE) are passed over.",
+    "Transmitting, a stream of transport packets is packed into the frames (TS mode, no NPD):",
+    "SYNCD per frame, the CRC-8s made. Serial (no parallel region: the BBHEADER drives the packet step after it)"
+  ],
+  "ref": "EN 302 307-1 5.1.3-5.1.6, annex D.3",
+  "steps": {
+    "+end": [
+      {
+        "link": "packets",
+        "id": "ts",
+        "params": ["ts_gs", "npd", "issyi", "upl", "syncd"],
+        "defaults": {"ts_gs": 3, "upl": 1504},
+        "active": "ts_gs == 3",
+        "starts": "syncd != 65535",
+        "pointer": "syncd",
+        "length": "upl",
+        "fields": [
+          {"name": "crc", "bits": 8},
+          {"name": "tei", "bits": 1},
+          {"name": "pusi", "bits": 1},
+          {"name": "priority", "bits": 1},
+          {"name": "pid", "bits": 13},
+          {"name": "scrambling", "bits": 2},
+          {"name": "afc", "bits": 2},
+          {"name": "cc", "bits": 4}
+        ],
+        "carried_check": {"crc": "crc8_dvbs2", "bits": 8, "restore": "0x47"},
+        "keep": "1504",
+        "trailer": [
+          {"name": "issy", "bits": "upl - 1504 - 8*npd", "if": "issyi"},
+          {"name": "dnp", "bits": 8, "if": "npd"}
+        ],
+        "insert": {"count": "dnp if npd else 0", "bits": 1504, "head": "0x471FFF10", "fill": 255},
+        "tx": {
+          "ts_gs": "ts_gs",
+          "npd": "npd",
+          "issyi": "issyi",
+          "upl": "upl",
+          "sync": "0x47",
+          "syncd": "pointer if start else 65535"
+        }
+      }
+    ]
+  },
+  "controls": {
+    "pls": {"drive": {"ts": {"length": {"calc": "kbch - 80", "on": "tx"}}}},
+    "bbheader": {
+      "on": "rx",
+      "drive": {
+        "ts": {
+          "frame": "dfl",
+          "length": "bits",
+          "ts_gs": "ts_gs",
+          "npd": "npd",
+          "issyi": "issyi",
+          "upl": "upl",
+          "syncd": "syncd"
+        }
+      }
+    },
+    "ts": {
+      "drive": {
+        "bbheader": {
+          "ts_gs": {"calc": "ts_gs", "on": "tx"},
+          "npd": {"calc": "npd", "on": "tx"},
+          "issyi": {"calc": "issyi", "on": "tx"},
+          "upl": {"calc": "upl", "on": "tx"},
+          "sync": {"calc": "sync", "on": "tx"},
+          "syncd": {"calc": "syncd", "on": "tx"}
+        }
+      }
+    }
+  },
+  "capture": {"ts": {"linktype": "mpeg2_ts", "include": ["header", "payload"], "fields": ["pid", "pusi", "cc"]}},
+  "parallel": null
+}

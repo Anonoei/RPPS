@@ -17,10 +17,10 @@ def word_bits(word, bits=None, order="msb"):
     if bits is None:
         raise ConfigError("a word given as a number needs its width, `bits`")
     n = int(bits)
-    if v >> n:
+    if v < 0 or v >> n:
         raise ConfigError(f"word {v:#x} is wider than {n} bits")
-    idx = np.arange(n) if order == "lsb" else np.arange(n - 1, -1, -1)
-    return ((v >> idx) & 1).astype(bool)
+    msb = np.unpackbits(np.frombuffer(v.to_bytes((n + 7)//8, "big"), np.uint8))[-n:] if n else np.zeros(0, np.uint8) # (any width)
+    return (msb[::-1] if order == "lsb" else msb).astype(bool)
 
 class Word:
     """A known bit word. `bits`: the bits as sent (bool array); `value`, `n`, `order` as defined"""
@@ -30,8 +30,8 @@ class Word:
         self.name, self.order = name, order
         self.bits = word_bits(word, bits, order)
         self.n = len(self.bits)
-        w = 1 << (np.arange(self.n) if order == "lsb" else np.arange(self.n - 1, -1, -1))
-        self.value = int(self.bits.astype(np.int64) @ w)
+        msb = self.bits[::-1] if order == "lsb" else self.bits
+        self.value = int("".join("1" if b else "0" for b in msb), 2) if self.n else 0 # (a Python int: any width)
 
     def __len__(self):
         return self.n

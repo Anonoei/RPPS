@@ -1,32 +1,23 @@
 {
-  "base": "constellation",
-  "comment": "DVB-S2 16APSK: rings of 4 + 12 points; the outer radii depend on the code rate (the rate files below give them), the labelling does not",
-  "ref": "EN 302 307-1 V1.2.1 5.4.3",
+  "extends": "apsk/16apsk",
+  "comment": "DVB-S2 16APSK: the outer radius (gamma) follows the code rate (`rate`), the labelling does not",
+  "ref": "EN 302 307-1 V1.2.1 5.4.3, table 9",
   "tags": ["dvb-s2"],
   "params": {
-    "gamma": {
+    "gamma": null,
+    "rate": {
       "default": null,
-      "example": 3.15,
-      "comment": "radius of ring 2 over the innermost (table 9/10 of EN 302 307-1 for each code rate)"
-    }
-  },
-  "rings": [
-    {
-      "n": 4,
-      "pha": 45
-    },
-    {
-      "n": 12,
-      "pha": 15,
-      "mag": {
-        "param": "gamma"
+      "example": "2/3",
+      "comment": "the LDPC code rate, which sets gamma, ring 2's radius over ring 1's (EN 302 307-1 table 9)",
+      "choices": {
+        "2/3": {"gamma": 3.15},
+        "3/4": {"gamma": 2.85},
+        "4/5": {"gamma": 2.75},
+        "5/6": {"gamma": 2.7},
+        "8/9": {"gamma": 2.6},
+        "9/10": {"gamma": 2.57}
       }
     }
-  ],
-  "maps": [
-    {
-      "map": [12, 14, 15, 13, 4, 0, 8, 10, 2, 6, 7, 3, 11, 9, 1, 5],
-      "comment": "DVB-S2 16APSK: label (b0b1b2b3) of each point, inner ring then outer, by angle"
-    }
-  ]
+  },
+  "rings": [{"n": 4, "pha": 45}, {"n": 12, "pha": 15, "mag": {"param": "rate.gamma"}}]
 }

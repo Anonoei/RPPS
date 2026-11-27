@@ -1,0 +1,45 @@
+{
+  "extends": "dvbs2/ts",
+  "abstract": true,
+  "comment": [
+    "DVB-S2 sections: the transport packets of dvbs2/ts, each one's header read (adaptation field and all), and the",
+    "sections cut out of their payloads by the pointer field (a section may cross packets;",
+    "each PID its own stream, its continuity counter telling a lost packet; 0xFF stuffing ends a payload).",
+    "Which PIDs' sections, and what reads them, is a child's: dvbs2/mpe, dvbs2/si"
+  ],
+  "ref": "ISO/IEC 13818-1 2.4.3, 2.4.4",
+  "steps": {
+    "+end": [
+      {"link": "header", "id": "tsh", "name": "mpeg_ts"},
+      {
+        "link": "packets",
+        "id": "sections",
+        "params": ["pid", "pusi", "cc", "afc"],
+        "active": "afc & 1",
+        "frame_fields": [{"name": "pointer_field", "bits": 8, "if": "pusi"}],
+        "starts": "pusi == 1",
+        "pointer": "8*pointer_field",
+        "channel": "pid",
+        "count": "cc",
+        "modulo": 16,
+        "fields": [
+          {"name": "table_id", "bits": 8},
+          {"name": "ssi", "bits": 1},
+          {"name": "private", "bits": 1},
+          {"name": "reserved", "bits": 2},
+          {"name": "section_length", "bits": 12}
+        ],
+        "length": "8*(section_length + 3)",
+        "end": "table_id == 255"
+      }
+    ]
+  },
+  "controls": {
+    "ts": {"drive": {"tsh": {"frame": {"calc": "frame", "on": "rx"}, "length": {"calc": "packet_bits", "on": "rx"}}}},
+    "tsh": {
+      "on": "rx",
+      "drive": {"sections": {"length": "bits", "pid": "pid", "pusi": "pusi", "cc": "cc", "afc": "afc"}}
+    }
+  },
+  "capture": {"ts": false, "tsh": false, "sections": false}
+}

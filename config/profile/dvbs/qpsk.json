@@ -1,13 +1,13 @@
 {
-  "base": "profile",
-  "comment": "DVB-S QPSK: convolutional code K=7 171/133 (the `code` parameter picks the punctured rate), Forney interleaver I=12, RS(204,188), energy dispersal, MPEG-TS out. QPSK carries the code's two outputs on I and Q, I first, a 1 negative",
+  "comment": [
+    "DVB-S QPSK: convolutional code K=7 171/133 (the `code` parameter picks the punctured rate), Forney interleaver",
+    "I=12, RS(204,188), energy dispersal, MPEG-TS out. QPSK carries the code's two outputs on I and Q, I first, a 1",
+    "negative"
+  ],
   "ref": "EN 300 421",
   "tags": ["dvb-s"],
   "params": {
-    "sps": {
-      "default": 4,
-      "comment": "samples per symbol"
-    },
+    "sps": {"default": 4, "comment": "samples per symbol"},
     "code": {
       "default": "k7_171_133/1_2",
       "comment": "the inner convolutional code: conv/k7_171_133/<rate>, rate 1_2, 2_3, 3_4, 5_6 or 7_8"
@@ -21,54 +21,18 @@
     "comment": "any symbol rate: given, or measured"
   },
   "steps": [
-    {
-      "wave": "shape",
-      "pulse": "rrc/0p35",
-      "sps": {
-        "param": "sps"
-      }
-    },
-    {
-      "sync": "timing"
-    },
-    {
-      "sync": "carrier",
-      "order": 4,
-      "constellation": "qpsk"
-    },
-    {
-      "symbol": "constellation",
-      "name": "qpsk",
-      "mapping": "R090 inverted"
-    },
-    {
-      "sync": "puncture",
-      "conv": {
-        "param": "code"
-      }
-    },
-    {
-      "code": "conv",
-      "name": {
-        "param": "code"
-      }
-    },
+    {"wave": "shape", "pulse": "rrc/0p35", "sps": {"param": "sps"}},
+    {"sync": "timing"},
+    {"sync": "carrier", "order": 4, "constellation": "qpsk"},
+    {"symbol": "constellation", "name": "qpsk", "mapping": "R090 inverted"},
+    {"sync": "puncture", "conv": {"param": "code"}},
+    {"code": "conv", "name": {"param": "code"}},
+    {"sync": "align", "id": "packets", "period": 204, "pattern": [184, 71, 71, 71, 71, 71, 71, 71], "name": "packets"},
+    {"code": "interleave", "name": "forney/12_17"},
+    {"code": "block", "name": "rs/204_188"},
     {
       "sync": "align",
-      "period": 204,
-      "pattern": [184, 71, 71, 71, 71, 71, 71, 71],
-      "name": "packets"
-    },
-    {
-      "code": "interleave",
-      "name": "forney/12_17"
-    },
-    {
-      "code": "block",
-      "name": "rs/204_188"
-    },
-    {
-      "sync": "align",
+      "id": "frames",
       "period": 188,
       "pattern": [184, 71, 71, 71, 71, 71, 71, 71],
       "name": "frames",
@@ -86,9 +50,33 @@
           {"name": "tei", "from": 8, "bits": 1},
           {"name": "pusi", "from": 9, "bits": 1},
           {"name": "pid", "from": 11, "bits": 13},
-          {"name": "cc", "from": 28, "bits": 4}
+          {"name": "afc", "from": 26, "bits": 2},
+          {"name": "cc", "from": 28, "bits": 4},
+          {
+            "name": "adaptation",
+            "from": 32,
+            "if": "(afc & 2) == 2",
+            "fields": [
+              {"name": "length", "bits": 8},
+              {"name": "flags", "bits": 8, "if": "length > 0"},
+              {"name": "pcr_base", "bits": 33, "if": "length > 0 and (flags & 16) == 16"},
+              {"name": "pcr_reserved", "bits": 6, "if": "length > 0 and (flags & 16) == 16"},
+              {"name": "pcr_ext", "bits": 9, "if": "length > 0 and (flags & 16) == 16"}
+            ]
+          }
         ]
       }
     }
-  ]
+  ],
+  "capture": {"packet": {"linktype": "mpeg2_ts", "include": ["payload"], "fields": ["pid", "tei"]}},
+  "variants": {
+    "columns": ["name", "params.code", "comment"],
+    "rows": [
+      ["qpsk_1_2", "k7_171_133/1_2", "DVB-S QPSK with the inner code at rate 1/2 (the mother code, unpunctured)"],
+      ["qpsk_2_3", "k7_171_133/2_3", "DVB-S QPSK with the inner code punctured to 2/3"],
+      ["qpsk_3_4", "k7_171_133/3_4", "DVB-S QPSK with the inner code punctured to 3/4"],
+      ["qpsk_5_6", "k7_171_133/5_6", "DVB-S QPSK with the inner code punctured to 5/6"],
+      ["qpsk_7_8", "k7_171_133/7_8", "DVB-S QPSK with the inner code punctured to 7/8"]
+    ]
+  }
 }

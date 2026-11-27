@@ -6,9 +6,14 @@ An IIR is a cascade of second-order sections, one row `[b0 b1 b2 a0 a1 a2]` each
 `butter`, `cheby1`, `cheby2`, the RBJ `biquad`s, `single_pole`, and `zpk2sos` / `tf2sos` for coefficients from elsewhere.
 Frequencies are fractions of the sample rate (0.5 is Nyquist).
 
-Filtering is exact but not sample by sample: a block of up to BLOCK samples is one matrix product per section
-(the section as a state space system, whose impulse-response matrix and state transition are precomputed), so it runs at
-BLAS speed and any block length works. An IIR has no constant group delay, so a stream's `delay` is not changed by it.
+Filtering is exact and has no loop over samples (`_Cascade`): the sections are one state space system, its input cut
+into chunks of L samples. Every chunk's zero-state output is one matrix product (the L x L impulse-response matrix), and
+so is every chunk's contribution to the state at its end. The states at the chunk starts are an inclusive scan over the
+chunks (s_k = A^L s_(k-1) + u_k) in log2(chunks) array passes. The start states' outputs are one more product. Any
+block length works, it agrees with the sample-by-sample recursion to rounding (float64 inside), and it needs only
+array operations: the form a GPU runs. On the CPU, the C++ kernel (`sos_filter`, sample by sample, about 5 operations
+a sample and section) is 1.3-1.7x faster single-threaded, so it runs when loaded. An IIR has no constant group delay,
+so a stream's `delay` is not changed by it.
 """
 from types import SimpleNamespace
 import warnings
@@ -18,7 +23,6 @@ import numpy as np
 from ... import _accel
 from .filter import Filter
 
-BLOCK = 256 # Samples handled by one matrix product
 MAX_ORDER_TF = 8 # Above this, a transfer function (b, a) converts badly: use sections or zpk
 
 # ---- Sections
@@ -48,34 +52,74 @@ def sos2zpk(sos):
         p.append(np.roots([1.0, r[4], r[5]]))
     return np.concatenate(z), np.concatenate(p), k
 
-class _Section:
-    """One biquad as a state space system (transposed direct form II), with the matrices for processing BLOCK samples at once"""
-    def __init__(self, row, L=BLOCK):
-        b0, b1, b2, _, a1, a2 = row
-        A = np.array([[-a1, 1.0], [-a2, 0.0]])
-        B = np.array([b1 - a1*b0, b2 - a2*b0])
-        P = np.empty((L + 1, 2, 2))   # A^k
-        P[0] = np.eye(2)
+def _state_space(sos):
+    """(A, B, C, D) of the cascade, each section in transposed direct form II, the sections' states stacked (section i's
+    two at 2i, 2i + 1: the layout of `IIR`'s state and of the C++ kernel's)"""
+    N = 2*len(sos)
+    A, B = np.zeros((N, N)), np.zeros(N)
+    C, D = np.zeros(N), 1.0 # The output so far (the input to the next section): C z + D u
+    for i, (b0, b1, b2, _, a1, a2) in enumerate(sos):
+        j = 2*i
+        Bi = np.array([b1 - a1*b0, b2 - a2*b0])
+        A[j:j + 2] += np.outer(Bi, C) # z_i' = A_i z_i + B_i (C z + D u)
+        A[j:j + 2, j:j + 2] += np.array([[-a1, 1.0], [-a2, 0.0]])
+        B[j:j + 2] = Bi*D
+        C = b0*C # y_i = z_i[0] + b0 (C z + D u)
+        C[j] += 1.0
+        D = b0*D
+    return A, B, C, D
+
+class _Cascade:
+    """The sections as one state space system, with the matrices for chunks of L samples (see the module)"""
+    def __init__(self, sos, L=None):
+        A, B, C, D = _state_space(sos)
+        N = len(B)
+        L = L or (32 if N <= 4 else 64) # (measured: short chunks for few states, longer ones past four)
+        P = np.empty((L + 1, N, N))     # A^k
+        P[0] = np.eye(N)
         for k in range(1, L + 1):
-            P[k] = P[k-1] @ A
-        PB = P @ B                    # A^k B
-        h = np.empty(L)               # Impulse response
-        h[0] = b0
-        h[1:] = PB[:L-1, 0]
+            P[k] = P[k - 1] @ A
+        PB = P[:L] @ B                  # (L, N): A^k B
+        h = np.empty(L)                 # the impulse response
+        h[0] = D
+        h[1:] = PB[:L - 1] @ C
         i = np.subtract.outer(np.arange(L), np.arange(L))
-        self.L, self.P, self.PB = L, P, PB
-        self.T = np.where(i >= 0, h[np.clip(i, 0, None)], 0.0)  # y = T x for zero state
-        self.O = P[:L, 0, :]                                    # y = O z for zero input
+        self.L, self.N, self.P, self.PB = L, N, P, PB
+        self.T = np.where(i >= 0, h[np.clip(i, 0, None)], 0.0) # (L, L): y = T x from a zero state
+        self.O = np.einsum("n,knm->km", C, P[:L])              # (L, N): y[k] = C A^k z from the state alone
+        self.G = PB[::-1].T                                    # (N, L): the end state from input k, A^(L-1-k) B
 
     def process(self, X, Z):
-        """X: (n, c) input columns (1: real, 2: real and imaginary), Z: (2, c) state. Returns (Y, new Z)"""
-        L, out = self.L, np.empty_like(X)
-        for s in range(0, len(X), L):
-            x = X[s:s+L]
-            m = len(x)
-            out[s:s+m] = self.T[:m, :m] @ x + self.O[:m] @ Z
-            Z = self.P[m] @ Z + self.PB[:m][::-1].T @ x
-        return out, Z
+        """X: (n, c) input columns (1: real, 2: real and imaginary), float64; Z: (N, c) state. Returns (Y, new Z)"""
+        Y = np.empty_like(X)
+        Z = Z.copy()
+        for j in range(X.shape[1]):
+            Y[:, j], Z[:, j] = self._column(X[:, j], Z[:, j])
+        return Y, Z
+
+    def _column(self, x, z):
+        L, n = self.L, len(x)
+        K = n//L
+        m = K*L
+        y = np.empty(n)
+        if K:
+            X = x[:m].reshape(K, L)
+            Yc = X @ self.T.T # every chunk from a zero state
+            S = X @ self.G.T  # (K, N): each chunk's own part of the state at its end
+            S[0] += self.P[L] @ z
+            M, step = self.P[L], 1
+            while step < K:   # s_k = A^L s_(k-1) + u_k, by doubling: after the pass, S[k] holds 2*step chunks' sums
+                S[step:] += S[:-step] @ M.T
+                M, step = M @ M, 2*step
+            Yc += np.vstack((z[None, :], S[:-1])) @ self.O.T
+            y[:m] = Yc.reshape(-1)
+            z = S[-1]
+        r = n - m
+        if r:
+            t = x[m:]
+            y[m:] = self.T[:r, :r] @ t + self.O[:r] @ z
+            z = self.P[r] @ z + self.PB[:r][::-1].T @ t
+        return y, z
 
 class IIR(Filter):
     """Cascade of second-order sections `sos` (rows [b0 b1 b2 a0 a1 a2]); `gain` scales the output
@@ -87,13 +131,13 @@ class IIR(Filter):
         self.sos[0, :3] *= gain
         if len(poles(self.sos)) and np.max(np.abs(poles(self.sos))) > 1 + 1e-9:
             raise ValueError(f"unstable IIR: a pole has radius {np.max(np.abs(poles(self.sos))):.6g}")
-        self._sections = [_Section(r) for r in self.sos]
+        self._cascade = _Cascade(self.sos)
 
     def __str__(self):
         return f"IIR:{len(self.sos)}"
 
     def new_state(self, meta):
-        return SimpleNamespace(z=[np.zeros((2, 2)) for _ in self._sections])
+        return SimpleNamespace(z=[np.zeros((2, 2)) for _ in self.sos])
 
     def _run(self, samples, zs):
         x = np.asarray(samples)
@@ -113,10 +157,12 @@ class IIR(Filter):
             return Y.view(X.dtype if not cplx else np.result_type(X.dtype, np.complex64)).reshape(-1)
         X = np.stack([x.real, x.imag], axis=1).astype(float) if cplx else x.astype(float)[:, None]
         c = X.shape[1]
-        for i, sec in enumerate(self._sections):
-            X, z = sec.process(X, zs[i][:, :c])
-            zs[i][:, :c] = z
-        return X[:, 0] + 1j*X[:, 1] if cplx else X[:, 0]
+        Y, Z = self._cascade.process(X, np.concatenate([z[:, :c] for z in zs]))
+        for i, z in enumerate(zs):
+            z[:, :c] = Z[2*i:2*i + 2]
+        single = x.dtype in (np.complex64, np.float32) # (the kernel's precision: the input's, double inside)
+        y = Y[:, 0] + 1j*Y[:, 1] if cplx else Y[:, 0]
+        return y.astype((np.complex64 if cplx else np.float32) if single else y.dtype, copy=False)
 
     def step(self, samples, st, meta):
         return self._run(samples, st.z)
@@ -289,6 +335,22 @@ def single_pole(alpha):
     if not 0 < alpha <= 1:
         raise ValueError(f"alpha must be in (0, 1], not {alpha}")
     return as_sos([[alpha, 0, 0, 1, -(1 - alpha), 0]])
+
+class RunningMean:
+    """An exponential average that starts at the first sample: m[0] = x[0], m[n] = m[n-1] + alpha (x[n] - m[n-1]), a
+    `single_pole` IIR whose state is set from the first sample. `run(x, z)` -> (m, z); z None until a sample is seen"""
+    def __init__(self, alpha):
+        self.alpha = float(alpha)
+        self.iir = IIR(single_pole(alpha))
+
+    def run(self, x, z):
+        x = np.asarray(x)
+        if z is None:
+            if len(x) == 0:
+                return x.copy(), None
+            z = self.iir.new_state(None).z # m[-1] = x[0], so m[0] = x[0]: the state (1 - alpha) m[-1], per column
+            z[0][0] = (1 - self.alpha)*np.array([np.real(x[0]), np.imag(x[0])])
+        return self.iir._run(x, z), z
 
 BIQUADS = ("lowpass", "highpass", "bandpass", "notch", "allpass", "peaking", "lowshelf", "highshelf")
 

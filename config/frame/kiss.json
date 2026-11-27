@@ -1,0 +1,11 @@
+{
+  "extends": "slip",
+  "comment": [
+    "KISS TNC framing (SLIP's FEND 0xC0 / FESC 0xDB, TFEND 0xDC / TFESC 0xDD):",
+    "each frame's first byte is the port and command (0x00: data on port 0), the rest an AX.25 frame without its flags",
+    "or FCS"
+  ],
+  "ref": "KISS TNC protocol (Chepponis, Karn 1987)",
+  "tags": ["ax.25"],
+  "min_bytes": 2
+}

@@ -20,4 +20,5 @@ PYBIND11_MODULE(_native, m) {
     rpps::register_resample(m);
     rpps::register_analysis(m);
     rpps::register_polar(m);
+    rpps::register_bits(m);
 }

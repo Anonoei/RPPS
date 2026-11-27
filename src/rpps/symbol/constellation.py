@@ -31,6 +31,10 @@ class Constellation(Modulation):
         normalize is False. The number must be a power of two; a point carries log2(number) bits.
     maps: the ways of labelling the points: Mapping objects, or (labels, comment), or just labels. labels[point] is the value
         (bits, first bit most significant) the point carries. The first map is the one used unless `mapping` picks another.
+        A map with a `turn` (radians; "rotate" in degrees in a definition) uses the points turned by it: a standard that
+        labels the same set turned (DVB-S2 8PSK at k*45 degrees on 8PSK at 22.5 + k*45) is a map, not another constellation.
+        Such maps are in `turned`, picked by name; `maps` holds the ones on the points as given. `blind_maps`: `maps`, then
+        each turned map with every turn and inversion of it the points allow, what a blind search tries.
         The first map is also turned by every rotation the points allow, with and without spectral inversion (see `.maps`), the
         maps a receiver that does not know the carrier phase or the IQ sense has to try. No maps: the points in order, 0, 1, 2...
     mapping: which map to use: an index into `maps`, words of its comment ("R090", "R090 inverted"), a Mapping, or labels
@@ -46,14 +50,33 @@ class Constellation(Modulation):
             raise ConfigError(f"A constellation needs a power of two points (2, 4, 8...), got {len(pts)}")
         if normalize:
             pts = pts/np.sqrt(np.mean(np.abs(pts)**2))
+        self._base = pts # The points as given; a map with a turn uses them turned (`points`)
         self.points = pts
         self.bits_per_symbol = bps
         self._weights = 1 << np.arange(bps - 1, -1, -1) # Bits are most significant first, on every host
         if name is not None:
             self.name = name # The instance's name; `type(self).name` stays the class's (the logger uses it)
         given = [self._as_mapping(m) for m in (maps if maps else [Mapping(np.arange(len(pts)), "natural")])]
-        self.maps = expand_maps(pts, given)
+        every = expand_maps(pts, given)
+        self.maps = [m for m in every if not m.turn] # The maps on these points: what a receiver that does not know the phase tries
+        self.turned = [m for m in every if m.turn] # Maps that turn the points (a standard's labelling of the set turned): by name only
+        self.blind_maps, self._family = list(self.maps), {} # (_family: id of a turn of a turned map -> that map's name)
+        for t in self.turned:
+            for m in self._turns_of(pts, t):
+                self.blind_maps.append(m)
+                self._family[id(m)] = t._comment
         self.mapping = self.maps[0] if mapping is None else self._pick_map(mapping)
+
+    def turned_name(self, m):
+        """The name of the turned map `m` (one of `blind_maps`) is a turn of ("DVB-S2"), as `load(name, mapping)` takes it;
+        None for a map on the points as given"""
+        return self._family.get(id(m)) if m.turn else None
+
+    @staticmethod
+    def _turns_of(pts, t):
+        """A turned map and each turn and inversion of it the points allow (named R<degrees> <its name>): what a receiver
+        whose carrier phase is known only to the points' symmetry tries of it"""
+        return [t] + expand_maps(pts, [t])[1:]
 
     def takes(self, encode):
         """Encodes channel bits (data bits too: a link with no channel code), decodes symbols"""
@@ -61,16 +84,20 @@ class Constellation(Modulation):
 
     # ---- header-driven control (rpps.profile.control)
 
-    CONTROLS = {"name": "live", "mapping": "live"}
+    CONTROLS = {"name": "live", "mapping": "live", "params": "live"}
     SCOPE = FRAME # Whole symbols of bits; nothing is held across frames
 
-    def control(self, name=None, mapping=None):
-        """Become another constellation (`name`, as `rp.symbol.load` takes it) and/or use another of its maps, from here on:
-        what a header that changes the modulation does. Nothing else carries over, so it applies between symbols"""
+    def control(self, name=None, mapping=None, params=None):
+        """Become another constellation (`name`, as `rp.symbol.load` takes it, with the definition's `params`, a dict) and/or
+        use another of its maps, from here on: what a header that changes the modulation does. Nothing else carries over,
+        so it applies between symbols"""
+        if params is not None and name is None:
+            raise ValueError("control: params are the definition's, so they come with a name")
         if name is not None:
             from .serial import load
-            new = load(name)
-            self.points, self.bits_per_symbol, self._weights, self.maps = new.points, new.bits_per_symbol, new._weights, new.maps
+            new = load(name, **(params or {}))
+            self._base, self.points, self.bits_per_symbol, self._weights = new._base, new.points, new.bits_per_symbol, new._weights
+            self.maps, self.turned, self.blind_maps, self._family = new.maps, new.turned, new.blind_maps, new._family
             self.name = new.name
             if mapping is None:
                 self.mapping = new.mapping
@@ -112,6 +139,7 @@ class Constellation(Modulation):
         m = self._as_mapping(mapping)
         if sorted(np.asarray(m.arr).tolist()) != list(range(self.order)):
             raise ValueError(f"A map of {self.order} points holds each of 0..{self.order - 1} once, got {np.asarray(m.arr).tolist()}")
+        self.points = self._base*np.exp(1j*m.turn) if m.turn else self._base
         self._mapping = m
         self._point_of = np.empty(self.order, dtype=np.int64) # Value -> the point that carries it
         self._point_of[np.asarray(m.arr, dtype=np.int64)] = np.arange(self.order)
@@ -127,7 +155,7 @@ class Constellation(Modulation):
         if isinstance(m, Mapping):
             return m
         if isinstance(m, dict):
-            return Mapping(m["map"], m.get("comment", ""))
+            return Mapping(m["map"], m.get("comment", ""), np.deg2rad(m.get("rotate", 0.0)), m.get("tags", ()))
         if isinstance(m, tuple) and len(m) == 2 and isinstance(m[1], str):
             return Mapping(m[0], m[1])
         return Mapping(m)
@@ -139,7 +167,9 @@ class Constellation(Modulation):
             return self.maps[int(mapping)]
         if isinstance(mapping, str):
             words = mapping.lower().split() # Every word has to be in the name: "R090 Inverted"
-            hits = [m for m in self.maps if all(w in m.comment.lower() for w in words)]
+            hits = [m for m in self.maps + self.turned if all(w in m.comment.lower() for w in words)]
+            if not hits: # A turn of a turned map (the blind tools name them: "R045 DVB-S2")
+                hits = [m for m in self.blind_maps[len(self.maps):] if all(w in m.comment.lower() for w in words)]
             if len(hits) > 1 and not {"normal", "inverted"} & set(words):
                 hits = [m for m in hits if not m.inverted] # Unless it says inverted, the normal sense is meant
             if len(hits) != 1:
@@ -224,6 +254,7 @@ class Constellation(Modulation):
         180/n, so a 4-point ring is QPSK at 45 degrees) and the rest evenly round, counter-clockwise; rings are listed innermost
         first and the points come out ring by ring, so a map indexes them in that order (PSK is one ring, APSK several).
         rotate: degrees added to every point's phase (QPSK on the axes is QPSK rotated by -45)
+        A map may say "rotate" too: degrees the points are turned by while that map is used (DVB-S2 8PSK on 8PSK)
         """
         def point(p):
             if isinstance(p, dict):

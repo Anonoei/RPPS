@@ -1,0 +1,14 @@
+{
+  "ref": "ETSI EN 300 175-2",
+  "title": "DECT",
+  "features": {
+    "modulation": ["2fsk", "gfsk", "gmsk"],
+    "baud": 1152000.0,
+    "bt": 0.5,
+    "h": 0.5,
+    "frame": 0.01,
+    "slots": 24,
+    "bandwidth": 1728000.0,
+    "frequency": [[1880000000.0, 1930000000.0]]
+  }
+}

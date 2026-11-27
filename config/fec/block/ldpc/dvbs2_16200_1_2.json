@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "extends": "dvbs2_16200",
   "comment": "DVB-S2 short frame LDPC rate 1/2 (kldpc=7200): parity address table C.4 of EN 302 307",
   "ref": "EN 302 307-1 V1.2.1 annex C, tables 5b, 7b",

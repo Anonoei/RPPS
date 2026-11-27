@@ -1,4 +1,11 @@
-"""Linear algebra over GF(2)"""
+"""Linear algebra over GF(2), and bit sequences filtered over it
+
+`fir(x, delays)`: y[n] = x[n] ^ XOR x[n-d]; `recur(u, delays)`: y[n] = u[n] ^ XOR y[n-d], both from zeros before the
+start, on whole arrays. A recursion has no loop over its bits: over GF(2) g(x)^2 = g(x^2), so y = u/g(x) is
+u g(x) g(x^2) .. g(x^(2^(k-1))) / g(x^(2^k)): k sparse FIR passes, then a recursion whose shortest delay is 2^k times
+longer, run a chunk of that many bits at a time. Self-synchronizing scramblers (rpps.code.scram.Feedthrough) and the
+linear recurrences of rpps.sequence are these.
+"""
 import numpy as np
 
 def parity_to_gh(n: int, k: int, p: np.ndarray):
@@ -55,7 +62,7 @@ def eliminate_packed(A, ncols):
     reference"""
     from .. import _accel
     nat = _accel.native
-    if nat is not None and hasattr(nat, "gf2_eliminate") and A.dtype == np.uint64 and A.flags.c_contiguous:
+    if nat is not None and A.dtype == np.uint64 and A.flags.c_contiguous:
         return list(nat.gf2_eliminate(A, int(ncols)))
     return _eliminate_python(A, ncols)
 
@@ -92,7 +99,15 @@ def rref(M, pivot_cols=None):
     return unpack_rows(A[:len(piv)], n), piv
 
 def rank(M):
-    """Rank of M over GF(2) (bit-packed elimination, rows below the pivot only)"""
+    """Rank of M over GF(2): the pivots of `eliminate_packed` (the C++ kernel), else `_rank_python`"""
+    from .. import _accel
+    M = np.asarray(M, dtype=np.uint8)
+    if _accel.native is not None and M.ndim == 2 and M.size:
+        return len(eliminate_packed(pack_rows(M), M.shape[1]))
+    return _rank_python(M)
+
+def _rank_python(M):
+    """`rank` by bit-packed elimination, rows below the pivot only: the reference"""
     M = np.asarray(M, dtype=np.uint8)
     R, n = M.shape
     A64, A8 = _pack(M)
@@ -255,3 +270,42 @@ def rank_ints(vectors):
         if v:
             basis.append(v)
     return len(basis)
+
+
+def _odd(delays):
+    """The delays that appear an odd number of times (an even count cancels over GF(2)), positive, sorted"""
+    from collections import Counter
+    return sorted(d for d, c in Counter(int(d) for d in delays).items() if c % 2 and d > 0)
+
+def fir(x, delays):
+    """y[n] = x[n] ^ XOR over d of x[n - d] (0 before the start), as uint8 0/1"""
+    x = np.asarray(x).astype(np.uint8) & 1
+    y = x.copy()
+    for d in _odd(delays):
+        if d < len(x):
+            y[d:] ^= x[:-d]
+    return y
+
+def recur(u, delays, chunk=None):
+    """y[n] = u[n] ^ XOR over d of y[n - d] (0 before the start), as uint8 0/1, with no loop over the bits: u is filtered by
+    g(x^(2^i)) for i < k (g = 1 + sum x^d), which leaves the recursion over delays d 2^k, run `chunk` (at least the
+    shortest of them) bits at a time. `chunk`: the bits a step aims for (default about 4 sqrt(n), at least 256)"""
+    y = np.asarray(u).astype(np.uint8) & 1
+    n, D = len(y), _odd(delays)
+    if not D or n == 0:
+        return y.copy()
+    aim = max(256, 4*int(np.sqrt(n))) if chunk is None else int(chunk)
+    k = 0
+    while (D[0] << k) < min(aim, n):
+        k += 1
+    for i in range(k): # times g(x^(2^i))
+        y = fir(y, [d << i for d in D])
+    D = [d << k for d in D]
+    C = D[0]
+    for a in range(C, n, C): # bits [a, a + C) need only bits before a
+        b = min(n, a + C)
+        for d in D:
+            if d < b:
+                lo = max(a, d)
+                y[lo:b] ^= y[lo - d:b - d]
+    return y

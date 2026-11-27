@@ -1,5 +1,4 @@
 {
-  "base": "crc",
   "type": "crc",
   "comment": "CRC-32C/Castagnoli (iSCSI, SCTP)",
   "width": 32,

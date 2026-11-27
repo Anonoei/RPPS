@@ -6,6 +6,7 @@
     FM        a shaped level signal to a phase-continuous frequency-modulated one (FSK, GFSK, GMSK, C4FM)
     FMDemod   its quadrature discriminator
     demod     FM, AM or SSB audio from one block, no state, with FM deviation, AM depth and SINAD
+    loops     second class: AMDemod with its mean as a per-sample loop (the same output; a C++ kernel)
 
 The pulses are definitions (config/pulse: `halfsine`, `gaussian`, `rrc`, `rect`), loaded by rp.signal.filters.load:
 
@@ -31,6 +32,7 @@ from .stagger import Stagger
 from .fm import FM, FMDemod, fm_gain, discriminate
 from .analog import AMDemod, SSBDemod, demod, Measurements
 from .ofdm import OFDMTx, OFDMRx
+from . import loops
 
 from ..base.rpps import tag_stages as _tag_stages
 from ..base.types import Category as _Category

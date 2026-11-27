@@ -21,7 +21,7 @@ import threading
 
 import numpy as np
 
-from ..math.gf2 import berlekamp_massey
+from ..math.gf2 import berlekamp_massey, fir, recur
 
 
 def _bits(v, L, order="lsb"):
@@ -65,25 +65,25 @@ class _Component:
             if not taps or max(taps) >= L or min(taps) < 0:
                 raise ValueError(f"recurrence taps {taps} must lie in 0..{L-1}")
             self.L, self.taps, self.s = L, taps, _bits(obj["init"], L, obj.get("init_order", "lsb"))
-        self.step = max(1, self.L - max(self.taps)) if self.taps else self.L
         self._lock = threading.Lock()
 
+    def __copy__(self):
+        return self # Shared by every sequence of its definition (`_component`): a copied operator shares it too
+
+    def __deepcopy__(self, memo):
+        return self
+
     def first(self, n):
-        """s[0 .. n-1] (one component is shared by every sequence with its definition, and by their threads)"""
+        """s[0 .. n-1] (one component is shared by every sequence with its definition, and by their threads). Extended
+        with no loop over the bits: from the last L, a recursion over GF(2) (rpps.math.gf2.recur)"""
         if len(self.s) < n:
             with self._lock:
                 if len(self.s) < n: # (another thread may have extended it while this one waited)
-                    L, taps, step = self.L, self.taps, self.step
-                    s = np.concatenate((self.s, np.zeros(n - len(self.s) + step, dtype=np.uint8)))
-                    t = len(self.s) - L
-                    while t + L < n:
-                        c = min(step, n - (t + L))
-                        v = np.zeros(c, dtype=np.uint8)
-                        for j in taps:
-                            v ^= s[t + j:t + j + c]
-                        s[t + L:t + L + c] = v
-                        t += c
-                    self.s = s[:n]
+                    L, m0 = self.L, len(self.s)
+                    delays = [L - t for t in self.taps]
+                    u = np.zeros(n - m0 + L, dtype=np.uint8)
+                    u[:L] = fir(self.s[m0 - L:], delays) # (the last L bits, as what a recursion from zeros needs)
+                    self.s = np.concatenate((self.s, recur(u, delays)[L:]))
         return self.s[:n]
 
 _COMPONENTS = {}

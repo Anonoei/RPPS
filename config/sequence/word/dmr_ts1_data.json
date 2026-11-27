@@ -1,0 +1,12 @@
+{
+  "type": "word",
+  "comment": [
+    "DMR sync pattern, direct mode time slot 1 data: 48 bits (24 symbols, +3 / -3) in the middle of a burst, most",
+    "significant bit first. A voice pattern is the matching data pattern inverted"
+  ],
+  "ref": "ETSI TS 102 361-1 V2.6.1 9.1.1, Table 9.2",
+  "tags": ["dmr"],
+  "word": "0xF7FDD5DDFD55",
+  "bits": 48,
+  "order": "msb"
+}

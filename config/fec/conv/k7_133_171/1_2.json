@@ -1,5 +1,4 @@
 {
-  "base": "conv",
   "extends": "k7_133_171",
   "comment": "IESS-308 rate 1/2, K=7",
   "tags": ["iess-308", "ieee-802.11a"]

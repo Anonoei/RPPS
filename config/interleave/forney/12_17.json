@@ -1,5 +1,4 @@
 {
-  "base": "interleave",
   "type": "forney",
   "comment": "DVB-S / ITU-T J.83 convolutional interleaver",
   "tags": ["dvb-s"],

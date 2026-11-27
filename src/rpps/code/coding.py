@@ -237,6 +237,22 @@ def _code_of(obj):
 
 DEFAULT_DECODER = {"linear": "trellis", "cyclic": "syndrome"} # What decodes a code type when its definition doesn't say
 
+def _decoder_for(want, code, log, name):
+    """The decoder of type `want` built from `code` (a linear code's matrices, for "trellis" and "syndrome"), or a
+    ConfigError saying why it can't be"""
+    cls = _code_of({"type": want})
+    if not hasattr(cls, "from_encoder"):
+        raise ConfigError(f"{name}: {want!r} is not a decoder another block code can use (it is a code type of its own); "
+                          f"decoders built from a code: {sorted(k for k, c in types.REGISTRY.items() if hasattr(c, 'from_encoder'))}")
+    try:
+        return cls.from_encoder(log, code)
+    except AttributeError as e:
+        what = "a linear code (one given by matrices or parity equations)"
+        hint = " A non-linear expr code decodes from its codebook: leave out \"decoder\"." if type(code).__name__ == "expr" else ""
+        raise ConfigError(f"{name}: decoder {want!r} is built from {what}, and {type(code).__name__} is not one ({e}).{hint}") from None
+    except ValueError as e: # (asked for by name: too big is an error, not a fallback)
+        raise ConfigError(f"{name}: decoder {want!r}: {e}") from None
+
 def _block_kernel(self, params, how):
     """The batch decoder of a code that works on whole blocks and keeps nothing between them (block codes, block
     interleavers), for the code as `params` (live parameters) make it; None where there is none (encoding, no code, a code with
@@ -245,10 +261,24 @@ def _block_kernel(self, params, how):
         return None
     if params:
         self.control(**params)
-    if self.decoder is None or (self.folder == "interleave" and not hasattr(self.decoder, "block_bits")):
+    from .kernels import BlockDecode, BchDecode, Identity, LdpcDecode, Permute, permutation_of
+    if self.decoder is None: # (switched off for this frame: the items pass)
+        return Identity(self.CATEGORY, str(self.name))
+    if self.folder == "interleave" and not hasattr(self.decoder, "block_bits"):
         return None
-    from .kernels import BlockDecode
-    return BlockDecode(self.decoder, self._block(False), self.decision == Decision.SOFT, self.CATEGORY, self.DECODE_GIVES, str(self.name))
+    from .types.bchgf import bchgf
+    from .types.ldpc import ldpc
+    args = (self.decoder, self._block(False), self.decision == Decision.SOFT, self.CATEGORY, self.DECODE_GIVES, str(self.name))
+    if self.folder == "interleave": # (a permutation gathers on any array module)
+        perm = permutation_of(self.decoder, self._block(False))
+        return BlockDecode(*args) if perm is None else Permute(perm, *args)
+    # A plain layered LDPC code and a binary BCH code decode on a device when the plan runs on one (a subclass decodes in
+    # its own way)
+    if type(self.decoder) is ldpc and self.decoder.schedule == "layered":
+        return LdpcDecode(*args)
+    if type(self.decoder) is bchgf:
+        return BchDecode(*args)
+    return BlockDecode(*args)
 
 class Block(Coding):
     SCOPE = FRAME # Whole codewords
@@ -259,17 +289,28 @@ class Block(Coding):
     def load(name, obj, decoder=None):
         """decoder: a registered decoder type to use instead of the code's own (it's built from the encoder),
         or "name"/"decoder" in the definition. Linear codes decode on their syndrome trellis unless that is too big"""
+        from .types.layout import arranged
         log = Logger().Child("Coding", _config.LOG_CODING).Child(name)
         enc = _code_of(obj).from_config(log, obj)
+        core = enc.inner if isinstance(enc, arranged) else enc # (an expr code that is linear: its own arrangement)
         want = decoder or obj.get("decoder")
-        dec = enc
-        if want is None and obj["type"] in DEFAULT_DECODER:
+        default = DEFAULT_DECODER.get(obj["type"], DEFAULT_DECODER.get(type(core).__name__))
+        dec = core
+        if want is None and default is not None:
             try:
-                dec = _code_of({"type": DEFAULT_DECODER[obj["type"]]}).from_encoder(log, enc)
+                dec = _code_of({"type": default}).from_encoder(log, core)
             except ValueError: # Too many trellis states: the encoder's own (hard) decoder it is
                 pass
         elif want is not None and want != obj["type"]:
-            dec = _code_of({"type": want}).from_encoder(log, enc)
+            dec = _decoder_for(want, core, log, name)
+        if isinstance(enc, arranged):
+            dec = enc.with_decoder(dec)
+        # Where the bits go as sent (rpps.code.types.layout), for any block code
+        layout, xor, append = obj.get("layout"), obj.get("xor"), obj.get("append")
+        extend = bool(obj.get("extend")) and not getattr(core, "extends", False) # (matrix codes build it in)
+        if layout is not None or xor is not None or extend or append:
+            keys = dict(layout=layout, xor=xor, extend=extend, append=append)
+            enc, dec = arranged(log, enc, **keys), arranged(log, enc, dec=dec, **keys)
         out = _impl(Block, name)(enc, dec)
         out.folder = "block"
         return out

@@ -15,6 +15,8 @@ Coded data under the unique word is random-looking; data that repeats (idle fram
 """
 import numpy as np
 
+from ...math.mask import runs
+
 class Frame:
     """`find`: period (symbols), uw_start (position in the period), uw_length (symbols), coherence (of the unique word,
     1 = the same symbols every frame), floor (of the other positions), uw (the unique word's symbols, from the first
@@ -34,49 +36,119 @@ def _normalized(y):
     y = np.asarray(y, dtype=np.complex128)
     return y/np.sqrt(np.mean(np.abs(y)**2))
 
-def periods(y, max_lag=20000, min_lag=16, top=8):
-    """[(lag, correlation)] where the symbols correlate with themselves, strongest first: |mean y[n] conj(y[n+lag])|"""
-    y = _normalized(y)
-    n = len(y)
+RAYLEIGH_MEAN, RAYLEIGH_VAR = np.sqrt(np.pi)/2, 1 - np.pi/4 # |z| of a unit complex Gaussian
+HALF_NORMAL_MEAN, HALF_NORMAL_VAR = np.sqrt(2/np.pi), 1 - 2/np.pi # |z| of a unit real Gaussian
+PLAIN_TOP = 8 # Lags `comb_lags` also takes by their own correlation alone
+
+def comb_lags(za, min_lag, max_lag, top=32, mean=RAYLEIGH_MEAN, var=RAYLEIGH_VAR):
+    """[(lag, z)] the lags in [min_lag, max_lag] a frame structure may repeat at, most significant first
+
+    za: |autocorrelation| at every lag 0..n-1 in noise units (|sum of products| / its standard deviation under noise),
+    whose |.| has `mean` and `var` there (Rayleigh for complex, half-normal for real). A word of U symbols every P adds
+    only U/P to the correlation at lag P, against noise of 1/sqrt(n): alone that takes hundreds of frames to show. But
+    it adds the same at every multiple kP, where the noise is new: z sums za less its mean over the multiples of a lag up
+    to half the stream, each weighted by the signal it can hold (sqrt(n - kL)). That is what a fold of the stream at
+    that lag measures, so a short word is a candidate about sqrt(frames) times sooner; magnitudes are summed, so a
+    carrier left turning slowly (a residual offset, phase noise) or a polarity that changes costs only the coherence
+    across the multiples. The `top` lags by that sum, and the PLAIN_TOP lags by their own correlation alone (a
+    structure seen once a frame at one lag only, which the sum spreads out)."""
+    n = len(za)
     max_lag = min(max_lag, n//4)
     if max_lag <= min_lag:
         return []
-    Y = np.fft.fft(y, 2*n)
-    r = np.abs(np.fft.ifft(np.abs(Y)**2)[:max_lag + 1])/np.arange(n, n - max_lag - 1, -1)
-    lags = np.argsort(-r[min_lag:])[:4*top] + min_lag
-    out = []
-    for L in lags: # One per peak: a lag next to a stronger one is its shoulder
-        if all(abs(L - k) > 2 for k, _ in out):
-            out.append((int(L), float(r[L])))
-        if len(out) == top:
+    zl = za - mean
+    w = np.sqrt((n - np.arange(n))/n)
+    L = np.arange(min_lag, max_lag + 1)
+    num, den = np.zeros(len(L)), np.zeros(len(L))
+    # Short lags have many multiples, so they go one lag at a time over all of them; the rest one multiple at a time
+    # over all those lags
+    split = max(min_lag, int(np.sqrt(n/2)))
+    for i, lag in enumerate(L[L < split]):
+        idx = lag*np.arange(1, n//2//lag + 1)
+        num[i], den[i] = np.sum(w[idx]*zl[idx]), np.sum(w[idx]**2)
+    long = L >= split
+    for k in range(1, n//2//split + 1):
+        m = long & (k*L <= n//2)
+        if not m.any():
             break
+        idx = k*L[m]
+        num[m] += w[idx]*zl[idx]
+        den[m] += w[idx]**2
+    z = num/np.sqrt(var*np.maximum(den, 1e-30))
+    out = []
+    for score, n_top in ((z, top), (zl[L], PLAIN_TOP)):
+        got = 0
+        for i in np.argsort(-score)[:8*n_top]: # One per peak: a lag next to a stronger one is its shoulder
+            lag = int(L[i])
+            if all(abs(lag - k) > 2 for k, _ in out):
+                out.append((lag, float(z[i])))
+                got += 1
+            if got == n_top:
+                break
+    out.sort(key=lambda t: -t[1])
     return out
 
+def periods(y, max_lag=20000, min_lag=16, top=32):
+    """[(lag, z)] the lags locked symbols may repeat at with a frame, most significant first (`comb_lags` over their
+    autocorrelation, one FFT)"""
+    y = _normalized(y)
+    n = len(y)
+    if min(max_lag, n//4) <= min_lag:
+        return []
+    Y = np.fft.fft(y, 1 << int(np.ceil(np.log2(2*n))))
+    za = np.abs(np.fft.ifft(np.abs(Y)**2)[:n])/np.sqrt(n - np.arange(n)) # (unit-power symbols: noise sd sqrt(n - lag))
+    return comb_lags(za, min_lag, max_lag, top)
+
 def coherence(y, period):
-    """Per position in the period: |mean over frames of y[n] conj(y[n+period])|, 1 where every frame has the same symbol"""
+    """Per position in the period: |mean over frames of y[n] conj(y[n+period])| over their rms, 1 where every frame has the
+    same symbol. A product over 3 times the rms is clipped there, so one loud sample can't stand for a word; by chance (m
+    frames) a position reaches c with probability about exp(-m c^2)"""
     y = _normalized(y)
     c = y[:-period]*np.conj(y[period:])
     m = len(c)//period
-    return np.abs(c[:m*period].reshape(m, period).mean(axis=0))
+    c = c[:m*period]
+    mag = np.abs(c)
+    lim = 3*np.sqrt(np.mean(mag**2))
+    c = c*np.minimum(1.0, lim/np.maximum(mag, 1e-30))
+    return np.abs(c.reshape(m, period).mean(axis=0))/np.sqrt(np.mean(np.abs(c)**2))
 
-def find(y, mod=None, max_lag=20000, min_frames=8, threshold=0.5):
+def _chance(m, word):
+    """How likely chance makes `word`'s coherences over m frames: each position reaches c with p about exp(-m c^2), and the
+    product x of k such p is itself under x sum_{j<k} ln(1/x)^j / j! (Fisher), so a long run of middling values counts
+    as what it is"""
+    t = m*float(np.sum(np.asarray(word, float)**2)) # ln(1/x)
+    term, total = 1.0, 1.0
+    for j in range(1, len(word)):
+        term *= t/j
+        total += term
+    return float(np.exp(-t)*total)
+
+def find(y, mod=None, max_lag=20000, min_frames=8, threshold=0.5, false_alarm=1e-3, min_coherence=0.2):
     """The frame structure of locked symbols y: a Frame, or None (no lag with a unique word standing out)
 
-    The candidate periods are the lags the symbols correlate at (`periods`), shortest first among those near the
-    strongest (a multiple of the frame is a superframe, kept for `repeats`); at a period, the unique word is the longest
-    run of positions whose coherence passes `threshold` while the median position stays near chance. Data that itself
-    repeats every few frames doesn't average out, which hides the unique word: then frame by hand and use `repeats`."""
+    The candidate periods are the lags whose multiples the symbols correlate at (`periods`), with their divisors (a
+    multiple of the frame is a superframe, kept for `repeats`); at a period, the unique word is the longest
+    run of positions whose coherence passes `threshold` (with many frames less: sqrt(4/m), but at least `min_coherence`:
+    a unique word is in every frame, which a weak signal's 0.2 or more still shows), taken only when chance could
+    not have made it (`_chance`, times every position and candidate period looked at, under `false_alarm`): one
+    coherent symbol is not a word. Data that itself repeats every few frames doesn't average
+    out, which hides the unique word (most positions coherent): then frame by hand and use `repeats`."""
     y = _normalized(y)
     cands = {L for L, _ in periods(y, max_lag)}
     # Frames that repeat (fill, a superframe) correlate most at the repeat: the frame is a divisor of it
     cands |= {L//k for L in list(cands) for k in range(2, 17) if L % k == 0 and L//k >= 16}
     best = None
     for L in sorted(cands):
-        if len(y)//L < min_frames:
+        m = len(y)//L - 1 # (frame pairs the coherence averages)
+        if m + 1 < min_frames:
             continue
         prof = coherence(y, L)
         floor = float(np.median(prof))
-        hot = prof > max(threshold, 4*floor)
+        if floor > threshold: # Most positions coherent: data repeating, no word to single out
+            continue
+        hot = prof > max(min_coherence, min(threshold, np.sqrt(4/m))) # (with many frames, lower: a weak signal's word is
+        # lower too, and the run's own test below keeps chance out; never under min_coherence: a word is in every frame,
+        # not a structure a few percent of them share, which many frames make significant)
         if not hot.any():
             continue
         # The longest run of coherent positions (circular: the word may straddle the fold)
@@ -93,11 +165,30 @@ def find(y, mod=None, max_lag=20000, min_frames=8, threshold=0.5):
         s0, ln = max(runs, key=lambda t: t[1])
         ln = min(ln, L)
         s0 %= L
-        coh = float(np.mean(prof[(s0 + np.arange(ln)) % L]))
+        word = prof[(s0 + np.arange(ln)) % L]
+        if L*len(cands)*_chance(m, word) > false_alarm: # Chance could have made it
+            continue
+        coh = float(np.mean(word))
         f = Frame(period=L, uw_start=int(s0), uw_length=int(ln), coherence=coh, floor=floor,
                   uw=y[s0:s0 + ln].copy(), frames=len(y)//L)
-        if best is None or ln*coh > best.uw_length*best.coherence*1.5: # A shorter period wins unless much weaker
+        # A shorter period wins unless much weaker; a multiple of it by far more (over fewer frames its word's coherence,
+        # and the noise positions joining the run, are biased up: it is the superframe, for `repeats`)
+        multiple = best is not None and abs(L - best.period*round(L/best.period)) <= 2
+        if best is None or ln*coh > best.uw_length*best.coherence*(4.0 if multiple else 1.5):
             best = f
+    return best
+
+def grid_of(constellation):
+    """The turns a constellation is symmetric under. The largest M of 2, 4, 8, 16 that turns its points onto
+    themselves by 360/M degrees (BPSK 2, QPSK and square QAM 4, 8PSK 8), 1 for none. `cut`'s grid"""
+    from ... import symbol
+    c = symbol.load_or_generate(constellation) if isinstance(constellation, str) else constellation
+    pts = np.asarray(c.points, dtype=np.complex128)
+    best = 1
+    for M in (2, 4, 8, 16):
+        turned = pts*np.exp(2j*np.pi/M)
+        if np.all(np.min(np.abs(turned[:, None] - pts[None, :]), axis=1) < 1e-6*np.max(np.abs(pts))):
+            best = M
     return best
 
 def cut(y, fr, M=None, grid=4):
@@ -107,7 +198,8 @@ def cut(y, fr, M=None, grid=4):
     passes: frames turned onto the first frame's word by multiples of 90 degrees, averaged, then every frame onto that
     average. M=None: by the angle measured (also takes off a carrier phase drifting frame to frame); M: by the nearest
     multiple of 360/M degrees only (the ambiguity alone). Then the whole set is turned so the payload sits on a
-    `grid`-fold symmetric constellation (QPSK points at 45 + 90k degrees, as rpps.symbol's), by its grid-th power."""
+    `grid`-fold symmetric constellation (QPSK points at 45 + 90k degrees, as rpps.symbol's), by its grid-th power: the
+    constellation's own symmetry (`grid_of`; 4 on BPSK turns it 45 degrees off its points)."""
     y = _normalized(y)
     F = (len(y) - fr.uw_start)//fr.period
     f = y[fr.uw_start:fr.uw_start + F*fr.period].reshape(F, fr.period)
@@ -222,40 +314,229 @@ class Burst:
         d = f", {self.det.mod} {self.det.baud/1e3:.1f} kBd, Es/N0 {self.det.esn0:.1f} dB" if self.det is not None else ""
         return f"<burst {self.start}-{self.stop}{d}>"
 
-def gate(x, Fs, smooth=4e-6, contrast=10.0, min_len=64e-6, hang=8e-6):
+def _segments(F, min_seg, thr):
+    """Change points of the rows of F (windows x features, each feature's noise about 1): binary segmentation, a split
+    where the two sides' means differ by n1 n2 / n |m1 - m2|^2 above thr, both sides min_seg windows at least"""
+    cuts, todo = [], [(0, len(F))]
+    while todo:
+        a, b = todo.pop()
+        n = b - a
+        if n < 2*min_seg:
+            continue
+        c = np.cumsum(F[a:b], axis=0)
+        k = np.arange(min_seg, n - min_seg + 1)
+        m1 = c[k - 1]/k[:, None]
+        m2 = (c[-1] - c[k - 1])/(n - k)[:, None]
+        gain = k*(n - k)/n*np.sum(np.abs(m1 - m2)**2, axis=1)
+        i = int(np.argmax(gain))
+        if gain[i] > thr:
+            cuts.append(a + int(k[i]))
+            todo += [(a, a + int(k[i])), (a + int(k[i]), b)]
+    return sorted(cuts)
+
+def _noise(f):
+    """A feature's noise level from its first differences (median absolute, robust to the steps being looked for)"""
+    d = np.abs(np.diff(f))
+    return max(float(np.median(d))/0.6745/np.sqrt(2) if len(d) else 1.0, 1e-9)
+
+def _guards(p, level, min_gap, ratio=3.0, q=95):
+    """Runs of the fine power p under `level` (one for all, or one a sample: the local level less a margin) long enough
+    to be guard times: [(start, stop)] in p's samples. At least
+    `min_gap` long, and `ratio` times the `q`th percentile of all runs' lengths (a burst's own envelope dips through
+    zero, a fraction of a symbol each, are most of the runs; guard times are a few)"""
+    lows = list(zip(*runs(p < level)))
+    if not lows:
+        return []
+    typical = np.percentile([b - a for a, b in lows], q)
+    return [(int(a), int(b)) for a, b in lows if b - a >= max(min_gap, ratio*typical)]
+
+def split(x, Fs, a, b, win=4e-6, min_len=64e-6, min_gap=2e-6, thr=None, bw=None, guards=True):
+    """Where touching bursts meet in x[a:b]: [(start, stop)]
+
+    Touching: no gap the gate sees, or one shorter than its `hang`. Found by
+      - guard times: dips of the power (smoothed over a quarter of a symbol) 10 dB under the span's level, `min_gap`
+        long at least and much longer than the bursts' own envelope dips (`_guards`)
+      - power steps between transmitters' levels: binary segmentation of the power (dB) in windows of `win` (32 samples
+        at least), the gain over its noise above `thr` (default 30 + 6 ln(windows): above chance over every position)
+    bw: the occupied bandwidth (Hz), when known: windows of 8 symbols and guards of a symbol at least (a slow
+    signal's envelope dips within a symbol). guards: look for guard times (not when the bursts stand under 10 dB over
+    the floor, where noise dips as deep). Parts `min_len` long at least. Not cut: bursts at one level with no guard between them, told apart only by their
+    carriers (the line of x^M in a few symbols is mostly the data's own noise; tried and dropped)"""
+    x = np.asarray(x[a:b], dtype=np.complex128)
+    if bw:
+        win, min_gap = max(win, 8/bw), max(min_gap, 1/bw)
+    w = max(32, int(Fs*win))
+    n = len(x)//w
+    min_seg = max(2, int(np.ceil(min_len*Fs/w)))
+    if n < 2*min_seg:
+        return [(a, b)]
+    pw = np.abs(x)**2
+    P = 10*np.log10(np.mean(pw[:n*w].reshape(n, w), axis=1) + 1e-30)
+    top = np.percentile(P, 90)
+    f = max(2, int(Fs/bw/4) if bw else w//16) # a quarter of a symbol
+    fine = np.convolve(pw, np.ones(f)/f, mode="same")
+    # The level around each sample (the louder of the windows within min_len either side: a quiet burst beside a loud
+    # one is judged against its own level), 10 dB under it a guard time
+    from numpy.lib.stride_tricks import sliding_window_view
+    Pm = np.median(sliding_window_view(np.pad(P, min_seg//2, mode="edge"), 2*(min_seg//2) + 1), axis=1)[:n]
+    Pl = np.max(sliding_window_view(np.pad(Pm, 1, mode="edge"), 3), axis=1)
+    local = np.repeat(Pl, w)
+    local = np.concatenate((local, np.full(len(x) - len(local), local[-1])))
+    gaps = _guards(fine, 10**((local - 10)/10), int(min_gap*Fs)) if guards else []
+    cuts = []
+    lp = 10*np.log10(fine + 1e-30)
+    for k in _segments((P/_noise(P))[:, None], min_seg, 30 + 6*np.log(n) if thr is None else thr):
+        c = w*k
+        if any(g0 - 2*w <= c <= g1 + 2*w for g0, g1 in gaps): # a guard time there already parts them, exactly
+            continue
+        lo, hi = max(0, c - 3*w), min(len(x), c + 3*w) # to the sample: the best single split of the fine power near it
+        seg = lp[lo:hi]
+        cs = np.cumsum(seg)
+        j = np.arange(1, len(seg))
+        gain = j*(len(seg) - j)*((cs[j - 1]/j - (cs[-1] - cs[j - 1])/(len(seg) - j))**2)
+        cuts.append(lo + int(j[np.argmax(gain)]))
+    cuts = sorted(cuts)
+    out, last = [], 0
+    for c in cuts + [len(x)]:
+        segs = [[last, c]]
+        last = c
+        for g0, g1 in gaps: # the guard times taken out
+            segs = [r for s0, s1 in segs for r in (([[s0, s1]]) if g1 <= s0 or g0 >= s1 else [[s0, g0], [g1, s1]])
+                    if r[1] > r[0]]
+        out += [(a + s0, a + s1) for s0, s1 in segs
+                if s1 - s0 >= min_len*Fs and np.median(fine[s0:s1]) > 10**((top - 10)/10)]
+    return out or [(a, b)]
+
+def occupied(x, Fs, nfft=1024, share=0.9):
+    """The bandwidth holding `share` of the power above the noise floor (Hz): about the symbol rate of a shaped signal"""
+    x = np.asarray(x, dtype=np.complex128)
+    n = min(nfft, 1 << int(np.floor(np.log2(max(len(x), 16)))))
+    k = len(x)//n
+    if k == 0:
+        return Fs
+    S = np.fft.fftshift(np.mean(np.abs(np.fft.fft(x[:k*n].reshape(k, n)*np.hanning(n), axis=1))**2, axis=0))
+    floor = np.percentile(S, 10)
+    e = np.maximum(S - 2*floor, 0)
+    if e.sum() <= 0:
+        return Fs
+    c = np.cumsum(e)/e.sum()
+    lo, hi = np.searchsorted(c, (1 - share)/2), np.searchsorted(c, (1 + share)/2)
+    return max(hi - lo + 1, 1)*Fs/n
+
+def gate(x, Fs, smooth=4e-6, contrast=2.5, min_len=64e-6, hang=8e-6, touching=True):
     """[(start, stop)] where the power is on: above the geometric mean of its low and high levels (`contrast` apart at
-    least), bursts closer than `hang` merged, those shorter than `min_len` dropped"""
+    least), bursts closer than `hang` merged, those shorter than `min_len` dropped; each span then cut where bursts
+    touch (`split`: a power step or a guard time), unless `touching` is False. Times scale with a symbol, 1/bw (the
+    occupied bandwidth, `occupied`):
+      - the levels from the power averaged over 64 symbols (noise alone then spans under 2 between its 5th and 99th
+        percentiles, so `contrast` tells bursts from noise; averaged over a sample or two, noise alone would pass it)
+      - on and off from the power averaged over enough symbols that noise stays 4 standard deviations from the threshold
+        ((4/(sqrt(hi/lo) - 1))^2 symbols, 2 to 64, and `smooth` at least: a weak signal is averaged longer)
+      - `hang` at least 6 symbols and twice that average (a slow or weak signal's own dips do not open the gate)"""
     p = np.abs(np.asarray(x))**2
-    w = max(2, int(Fs*smooth))
-    e = np.convolve(p, np.ones(w)/w, mode="same")
+    bw = occupied(x, Fs)
+    sym = Fs/bw # samples a symbol, about
+    def avg(w):
+        w = max(2, int(w))
+        return np.convolve(p, np.ones(w)/w, mode="same")
+    e = avg(max(Fs*smooth, 64*sym))
     lo, hi = np.percentile(e, 5), np.percentile(e, 99)
     if hi < contrast*lo:
         return []
-    on = (e > np.sqrt(lo*hi)).astype(np.int8)
-    d = np.diff(np.concatenate(([0], on, [0])))
-    spans = list(zip(np.nonzero(d == 1)[0], np.nonzero(d == -1)[0]))
+    n_sym = float(np.clip((4/(np.sqrt(hi/lo) - 1))**2, 2, 64))
+    w = max(Fs*smooth, n_sym*sym)
+    on = avg(w) > np.sqrt(lo*hi)
+    hang = max(hang, 6/bw, 2*w/Fs)
+    spans = list(zip(*runs(on)))
     merged = []
     for a, b in spans:
         if merged and a - merged[-1][1] < hang*Fs:
             merged[-1][1] = b
         else:
             merged.append([a, b])
-    return [(int(a), int(b)) for a, b in merged if b - a >= min_len*Fs]
+    spans = [(int(a), int(b)) for a, b in merged if b - a >= min_len*Fs]
+    if touching:
+        spans = [p for a, b in spans for p in (split(x, Fs, a, b, min_len=min_len, bw=bw, guards=hi/lo > 10)
+                                               if b - a >= 2*min_len*Fs else [(a, b)])]
+    return spans
+
+def centroid(x, Fs, nfft=1024):
+    """The power-weighted mean frequency (Hz) of the spectrum's bins above twice its 10th-percentile floor: a coarse
+    carrier for a signal cut off-centre"""
+    x = np.asarray(x, dtype=np.complex128)
+    n = min(nfft, 1 << int(np.floor(np.log2(max(len(x), 16)))))
+    k = len(x)//n
+    if k == 0:
+        return 0.0
+    S = np.fft.fftshift(np.mean(np.abs(np.fft.fft(x[:k*n].reshape(k, n)*np.hanning(n), axis=1))**2, axis=0))
+    f = np.fft.fftshift(np.fft.fftfreq(n, 1/Fs))
+    e = np.maximum(S - 2*np.percentile(S, 10), 0)
+    return float(np.sum(f*e)/np.sum(e)) if e.sum() > 0 else 0.0
+
+def tone_pair(x, Fs, sep, tol=0.02, min_snr=20.0):
+    """The middle (Hz) of the strongest pair of spectral lines `sep` apart (to `tol` of it) in the samples x, or None:
+    a periodic preamble (1100...: tones at the carrier +-baud/4) puts its carrier between two lines, which squaring
+    cannot tell from the lines themselves. Lines are taken over the floor (median of the spectrum), both `min_snr` over it"""
+    x = np.asarray(x, dtype=np.complex128)
+    n = 1 << int(np.ceil(np.log2(max(len(x), 64))))
+    X = np.abs(np.fft.fftshift(np.fft.fft(x*np.hanning(len(x)), 2*n)))**2
+    f = np.fft.fftshift(np.fft.fftfreq(2*n, 1/Fs))
+    floor = np.median(X) + 1e-30
+    df = f[1] - f[0]
+    k = int(round(sep/df))
+    w = max(1, int(round(tol*sep/df)))
+    if k <= w or k >= len(X):
+        return None
+    from numpy.lib.stride_tricks import sliding_window_view
+    pad = np.concatenate((X, np.zeros(k + w)))
+    partner = sliding_window_view(pad[k - w:], 2*w + 1).max(axis=1)[:len(X)] # the strongest line near sep above each
+    score = np.minimum(X, partner)/floor
+    i = int(np.argmax(score))
+    if score[i] < min_snr:
+        return None
+    j = i + k - w + int(np.argmax(pad[i + k - w:i + k + w + 1]))
+    return float((f[i] + f[min(j, len(f) - 1)])/2)
+
+def _take(seg, t0, sps, beta, shifts, pts, M, Fs, margin=0.95):
+    """The burst's symbols at each carrier shift (taken off before the matched filter) and quarter-symbol timing step
+    around t0, corrected feed-forward: (mean squared decision error, symbols, shift, carrier in Hz) of the best, a later
+    shift only when its error is under `margin` of the best so far"""
+    from ...sync.acquire import correct
+    from ...sync.time.mat import matrix_mf, centres_in
+    n_ = np.arange(len(seg))
+    best = None
+    for df in shifts:
+        sg = seg*np.exp(-2j*np.pi*df/Fs*n_) if df else seg
+        for f in (0.0, 0.25, 0.5, 0.75):
+            tf = t0 + f*sps
+            tf -= np.floor((tf - 8*sps - 5)/sps)*sps
+            y = matrix_mf(sg, centres_in(len(sg), tf, sps, 8), sps, beta, 8)
+            y, r, _ = correct(y/np.sqrt(np.mean(np.abs(y)**2)), pts, M)
+            e = float(np.mean(np.min(np.abs(y[:, None] - pts[None, :])**2, axis=1)))
+            if best is None or e < margin*best[0]:
+                best = (e, y, df, df + r*Fs/sps)
+    return best
 
 def bursts(x, Fs, names=None, baud=None, min_symbols=128, betas=(0.2, 0.25, 0.35), **kw):
     """The bursts of x (`gate`), each acquired on its own: rate (or `baud` for all), modulation, offset, timing (as a
-    TDMA receiver must: every burst comes from another transmitter, with its own clock and carrier). What is known
+    TDMA receiver must: every burst comes from another transmitter, with its own clock and carrier). The rate is the
+    |x|^2 line within 0.7 to 1.4 times the burst's occupied bandwidth (`occupied`). What is known
     narrows each burst's search: `baud` (no rate search), `names` (the modulations to try), `betas` (the roll-offs).
     [Burst]"""
-    from ...sync.acquire import detect, correct, candidates, symmetry
-    from ...sync.time.mat import matrix_mf, centres_in
+    from ...sync.acquire import detect, candidates, symmetry
+    from ...sync.rate import find_baud
     x = np.asarray(x, dtype=np.complex128)
     out = []
     for a, b in gate(x, Fs, **kw):
         seg = x[a:b]
         bu = Burst(a, b)
         try:
-            det = detect(seg, Fs, names, betas=betas, baud=baud)
+            b0 = baud
+            if b0 is None: # the rate's line near the burst's occupied bandwidth only (a preamble's own lines lie
+                bwb = occupied(seg, Fs) #  at fractions and multiples of it; the default search starts at Fs/16)
+                b0, _ = find_baud(seg, Fs, lo=0.7*bwb, hi=min(1.4*bwb, Fs/2.5))
+                b0 = b0 or None
+            det = detect(seg, Fs, names, betas=betas, baud=b0)
             sps = Fs/baud if baud is not None else det.sps
             if len(seg)/sps >= min_symbols:
                 # The matched filter needs the pulse's span either side: widen the segment by it, so the burst's first
@@ -265,11 +546,39 @@ def bursts(x, Fs, names=None, baud=None, min_symbols=128, betas=(0.2, 0.25, 0.35
                 seg = x[a2:b2]
                 t0 = det.tau + (a - a2)
                 t0 -= np.floor((t0 - 8*sps - 5)/sps)*sps
-                c = centres_in(len(seg), t0, sps, 8)
-                y = matrix_mf(seg, c, sps, det.beta, 8)
-                y = y/np.sqrt(np.mean(np.abs(y)**2))
                 pts = candidates([det.mod])[det.mod]
-                bu.symbols = correct(y, pts, symmetry(pts))[0]
+                M = symmetry(pts)
+                rate = Fs/sps
+                # Carriers to try, the samples shifted by each before the matched filter: none (the blind estimate is
+                # taken from the symbols); a quarter of the rate either side, where that is not a turn of the
+                # constellation's symmetry (BPSK: a long 1100... preamble is a pair of tones at +-baud/4 a blind carrier
+                # can lock onto; for QPSK the turn is invisible to the decisions); and the middle of such a tone pair
+                # in the spectrum of the samples themselves (`tone_pair`: unambiguous, and strong where the preamble is)
+                shifts = [0.0]
+                if M % 4: # (a quarter of the rate turns each symbol 90 degrees: a symmetry of QPSK, 8PSK...)
+                    shifts += [rate/4, -rate/4]
+                tp = tone_pair(seg, Fs, rate/2)
+                if tp is not None:
+                    shifts.append(tp)
+                # and the blind estimate and the burst's spectral centroid, taken off before the matched filter (a burst
+                # cut far off-centre loses its edge to the filter otherwise, or lies past the blind search)
+                shifts += [float(det.cfo), centroid(seg, Fs)]
+                n_ = np.arange(len(seg))
+                best = _take(seg, t0, sps, det.beta, shifts, pts, M, Fs)
+                if best[2]: # a shifted carrier: detected again there (modulation, Es/N0, and the timing and roll-off the
+                    try:    #   first, aliased, detection had wrong), and the symbols taken again with them
+                        sh = seg*np.exp(-2j*np.pi*best[2]/Fs*n_)
+                        d2 = detect(sh, Fs, names, betas=betas, baud=det.baud)
+                        t2 = d2.tau - np.floor((d2.tau - 8*d2.sps - 5)/d2.sps)*d2.sps
+                        again = _take(seg, t2, d2.sps, d2.beta, [best[2]], pts, M, Fs)
+                        if again[0] <= best[0]:
+                            best = again
+                        d2.cfo = float(d2.cfo + best[2])
+                        det = d2
+                    except Exception: # (keep the first detection, with the carrier corrected)
+                        pass
+                bu.symbols = best[1]
+                det.cfo = float(best[3]) # the carrier these symbols were taken at (the shift tried, and what was left)
                 bu.det = det
         except Exception: # A burst too short or too weak to acquire is kept, without symbols
             pass

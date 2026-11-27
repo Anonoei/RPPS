@@ -4,11 +4,11 @@ What is in each part of RPPS, and what is not yet.
 
 - [ ] [Source](https://github.com/Anonoei/RPPS/tree/main/src/rpps/source)
     - [X] File, memory, radios (pysdrlib), WAV out
-    - [ ] (Linux only) tun/tap
+    - [X] tun/tap (Linux), pcapng for Wireshark live (any OS), packets back out (`rp.profile.Encoder`)
     - [X] Socket (UDP, TCP)
     - [X] SigMF (capture metadata in and out), WAV in
     - [X] `rpps tx`: a profile's transmission to a file
-    - [ ] Transmit to a radio
+    - [X] Transmit to a radio (`rp.source.DeviceSink`, `rpps tx --device`)
 - [ ] [Filters](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/filters)
     - [X] Pulse Shaping (rrc, rc, halfsine, gaussian, rect)
     - [X] Window functions
@@ -16,11 +16,13 @@ What is in each part of RPPS, and what is not yet.
 - [X] [Sample](https://github.com/Anonoei/RPPS/tree/main/src/rpps/signal/sample)
 - [ ] [Sync](https://github.com/Anonoei/RPPS/tree/main/src/rpps/sync)
     - [X] Frequency
-    - [X] Phase (M-th power, Costas, pilots)
-    - [X] Time (Oerder & Meyr, Mueller & Muller, Gardner, timing locked loop)
-    - [X] Frames: preambles among symbols, delimiter words among bits (fixed or header-driven length, polarity), repeating markers
-    - [X] Equalizers: block least squares, LMS, CMA; OFDM pilots and cyclic prefix
-    - [X] Per-burst acquisition (`sync.Burst`: each burst a stream of its own), preambles (`sync.Preamble`: known waveform or Schmidl-Cox, carrier offset)
+    - [X] Phase (M-th power, decision directed on any constellation, pilots), by block estimation tracked across windows
+    - [X] Time (Oerder & Meyr; the matched filter and an energy-maximum timing in one, `timing: mat`), AGC by block estimation
+    - [X] Per-sample loops, second class (`sync.loops`: Costas, Mueller & Muller, Gardner, timing locked loop, AGC, LMS, CMA)
+    - [X] SNR before lock (`sync.quality`: from moments, a known sequence, the cyclic spectrum, the empty band)
+    - [X] Frames: preambles among symbols, named words and Zadoff-Chu roots (any width, any rotation), delimiter words among bits (fixed or header-driven length, polarity), repeating markers
+    - [X] Equalizers: block least squares (decision directed or blind), OFDM pilots and cyclic prefix; LMS and CMA as loops
+    - [X] Per-burst acquisition (`sync.Burst`: each burst a stream of its own; `sync.Bursts`: many carriers, placed by a time plan), preambles (`sync.Preamble`: known waveform or Schmidl-Cox, carrier offset)
     - [X] Tone / pilot PLL (`sync.ToneLock`: FM stereo, ATSC pilot)
     - [X] LTE cell search and resource grid (`grid.lte`: PSS/SSS, sample-clock tracking, channel of each antenna port)
     - [X] NR cell search and SS/PBCH tracking through LEO Doppler and Doppler rate (`grid.nr`)
@@ -35,6 +37,7 @@ What is in each part of RPPS, and what is not yet.
     - [ ] Block
         - [X] Repetition
         - [X] Hamming (decoded on its syndrome trellis)
+        - [X] Any code bit by bit: parity equations, expressions of the message bits, appended checks, layouts
         - [X] BCH
         - [X] Reed-Solomon
         - [X] LDPC (layered or flooding min-sum; DVB-S2 tables, quasi-cyclic matrices: IEEE 802.11n)
@@ -61,27 +64,38 @@ What is in each part of RPPS, and what is not yet.
     - [X] Line codes: Bi-phi-M/S and delay modulation (IRIG-106)
     - [ ] Line codes: 4B5B, 8b/10b
 - [ ] [Link](https://github.com/Anonoei/RPPS/tree/main/src/rpps/link)
-    - [X] CRC
+    - [X] CRC, checksums, composite checks
     - [X] HDLC (streaming, any block cut)
     - [X] Headers: fields, a CRC over them or a frame check sequence over header and payload, header-driven lengths
-    - [ ] PPP, KISS, AX.25 addresses
-    - [ ] MPEG-TS packets, CCSDS transfer frames and space packets, FX.25
+    - [X] Byte-stuffed framing: SLIP, KISS, asynchronous PPP; checksums (sum, Internet, Fletcher, Adler, XOR); composite checks
+    - [X] Fields as definitions: conditional, repeated, expression-sized, signed, scaled, enums, text (AX.25 addresses, BLE AD structures, TS adaptation fields)
+    - [X] GSE (PDUs in DVB-S2 data fields)
+    - [X] Packets that cross frames: MPEG-TS in DVB-S2 (null-packet deletion), MPE and ULE sections, CCSDS space packets
+    - [ ] FX.25
 - [ ] [Profiles](https://github.com/Anonoei/RPPS/tree/main/config/profile)
     - [X] DVB-S, DVB-S2 (normal and short frames, APSK), IEEE 802.11b, IEEE 802.15.4, Bluetooth LE advertising, Mode S / ADS-B, AX.25 AFSK, CCSDS telemetry (Reed-Solomon)
     - [X] CCSDS concatenated (convolutional + Reed-Solomon)
-    - [X] LTE downlink to SIB1 (`lte/downlink`: MIB, CFI, DCI 1A, PDSCH, branches driving one another)
-    - [X] 5G NR downlink to SIB1 at 15 kHz, through LEO satellite Doppler (`nr/downlink`: SS/PBCH, MIB, CORESET 0, DCI 1_0, PDSCH)
+    - [X] LTE downlink to SIB1 (`lte/downlink`: FDD and TDD, MIB, CFI, DCI 1A / 1C, PDSCH, several cells on a carrier; branches driving one another)
+    - [X] 5G NR downlink to SIB1 at 15 and 30 kHz, through LEO satellite Doppler (`nr/downlink`: SS/PBCH, MIB, CORESET 0, DCI 1_0, PDSCH)
     - [X] DVB-S2 multiple input streams (`dvbs2/mis`)
     - [X] Bursts (`{"sync": "burst"}`, preambles) received and transmitted (placed, ramped, hopping); branches driving one another
+    - [X] P25 phase 1 control channel (`p25/tsdu`), DMR bursts (`dmr/burst`)
+    - [X] MF-TDMA by burst time plan (`rpps.plan`: DVB-RCS2's model, from a definition, the forward link's tables, or learned); `dvbrcs2/forward`
+    - [X] Params with choices, variants, `when` on steps, children patching single steps
     - [X] Decoded messages (`Message`), only the kinds wanted, what each profile needs (`requires`), `profile.Decoder` from a selected band
-    - [ ] From definitions already shipped: CCSDS turbo, P25, DMR, IEEE 802.11a/g, 802.11n, ATSC 8VSB, GPS C/A, DAB
+    - [ ] From definitions already shipped: CCSDS turbo, IEEE 802.11a/g, 802.11n, ATSC 8VSB, GPS C/A, DAB
 - [X] [Parallel](https://github.com/Anonoei/RPPS/tree/main/src/rpps/parallel): a profile's per-frame work on threads or processes, batch kernels
-    - [ ] GPU and FPGA backends
+    - [X] GPU (CUDA or ROCm/HIP through CuPy): LDPC, BCH, demapping, the DVB-S2 region end to end
+    - [ ] FPGA backend
 - [X] [Analysis](https://github.com/Anonoei/RPPS/tree/main/src/rpps/analysis): blind survey and identification of unknown signals
-    - [X] Signals in a capture (`survey`, `find_signals`, `measure_band`), symbol rate, modulation (PSK/QAM/APSK, FSK index, CPM/SOQPSK offline), OFDM and its pilots, TDMA bursts and their kinds
-    - [X] Codes: convolutional (mother code, puncturing, RSC and turbo, TCM), linear block, Reed-Solomon, polar, quasi-cyclic LDPC (generator and sparse checks); scramblers, interleavers, frame markers
+    - [X] Signals in a capture (`survey`, `find_signals` read by level, a streaming `Finder`, `measure_band`), symbol rate, modulation (PSK/QAM/APSK, FSK index, CPM/SOQPSK offline), OFDM and its pilots, TDMA bursts, their kinds and their time plan
+    - [X] Codes (hard or soft): convolutional (mother code, puncturing, RSC and turbo, TCM), linear block, Reed-Solomon, polar, quasi-cyclic LDPC (generator and sparse checks); scramblers, interleavers, frame markers
+    - [X] CRCs: generator, init, xorout and coverage from frames (`framing.crc`); header fields (`framing.fields`); randomness (NIST SP 800-22)
     - [X] Step by step through a receive chain to a profile, or what is still unsolved (`analysis.profile`, `rpps solve`)
-- [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey
+    - [X] Naming by evidence: a profile's own checks verify it, a deeper profile only when its layers do; one signal over
+      the survey's pieces (spread spectrum, OFDM); FSK, pulse and OFDM signals by the shipped profile that decodes them;
+      other readings of a lock no code fits; a drifting carrier (Doppler rate) measured and taken off
+- [X] [Viz](https://github.com/Anonoei/RPPS/tree/main/src/rpps/viz): time, frequency, eye, constellation, spectrogram, survey, bursts and plans
 
 ## Not yet built
 
@@ -89,16 +103,28 @@ Reviewed 2026-11-19 against errorcorrectionzoo.org's realized codes, AFF3CT, liq
 
 - **Codes:** NR polar parity-check bits (an uplink message of 12-19 bits), LDPC limited-buffer rate matching from a
   transport block's TBS_LBRM, HARQ combining across redundancy versions; LDPC tables for CCSDS AR4JA / C2, DVB-S2X, DVB-T2,
-  ATSC 3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; Fletcher and Internet checksums; fountain codes.
+  ATSC 3.0; UMTS and DVB-RCS duo-binary turbo; 4B5B, 8b/10b; fountain codes.
 - **Waves and sync:** coherent CPM (GMSK, SOQPSK) in the data path (offline only: `analysis.modulation.cpm`); VSB / PAM, chirp
-  spread spectrum, space-time codes; a burst step in a parallel region; a channelized burst step (receiving MF-TDMA or a hopping carrier); a preamble `offset`
+  spread spectrum, space-time codes; a burst step in a parallel region; DVB-RCS (first generation) tables over MPEG-TS sections, DVB-RCS2's duo-binary turbo code and reference waveforms; a preamble `offset`
   with known timing `anchor` (the grid lands off); the transmit side of branches (and of `grid`:
-  `grid.lte.tx`, `grid.nr.tx` are test transmitters); NR at 30 kHz and above, NR VRB-to-PRB interleaving, several
-  code blocks a transport block, multiple antenna ports; LTE beyond SIB1 (unicast DCI formats, multiple code blocks, TDD, extended prefix); `lte/downlink` in
-  real time at 15.36 MS/s (about 1.1x slower; `nr/downlink` keeps up at 7.68 MS/s); a first-class carrier estimator for
+  `grid.lte.tx`, `grid.nr.tx` are test transmitters); NR in FR2, several
+  code blocks a transport block, multiple antenna ports; LTE beyond SIB1 (unicast DCI formats, multiple code blocks,
+  TDD special subframes, extended prefix), cells of one N_ID2 and frame timing on a carrier; `lte/downlink` in
+  real time at 15.36 MS/s in short blocks (pipelined, it keeps up from blocks of about 17 ms; the trunk and branches
+  share the GIL, so two threads gain about 8% over one; `nr/downlink` keeps up at 7.68 MS/s); a first-class carrier estimator for
   staggered signals, fractionally spaced block equalization, DFE; the DVB-S sync bytes, 802.11b SFD and DVB-S2 SOF as
   `sequence/word`; matched filter fused with Oerder & Meyr.
-- **Links, sources, profiles:** PPP, KISS, AX.25 addresses, MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
-  block-coded headers; tun/tap, audio devices, transmitting to a radio; profiles for DMR, P25, 802.11a/g/n, ATSC, GPS C/A,
+- **Blind analysis:** a rate k/n and K > 7 convolutional scan; payload signatures (GSE, MPE/ULE, Ethernet, CCSDS TM
+  / AOS, AX.25) in `framing.payload`; chirp / CSS; the analog and VSB kinds in `waveform.classify`; multipath and ISI
+  diagnosis; a symbol map search for block and product codes in `identify`; a duo-binary turbo constituent; Reed-Muller;
+  8b10b / 4B5B line codes; SC-FDMA and STBC tests on an OFDM grid. Known gaps on `tools/ident_bench.py`: NR is named only
+  when its SS/PBCH block is within the cell search's +-60 kHz of the box (a partly loaded carrier's box is off it);
+  `sequence.spread` reads 802.11b's code period as 4 us (the Barker code repeats every 1); 802.15.4, 802.11b and DMR
+  carry no check a blind run can verify on random data (DMR's bursts give none even clean); an unknown FSK or pulse
+  signal no shipped profile decodes gets no bits or framing (fsk.analyze, a line code and HDLC, per burst); OFDM
+  carriers of one site, time aligned, a narrow gap apart, are taken for one.
+- **Links, sources, profiles:** MPEG-TS, CCSDS TM / AOS frames and space packets, FX.25,
+  block-coded headers; audio devices; transmitting packets that cross frames with a pointer inside the data (CCSDS space packets, MPE/ULE sections), DVB-S2 with null-packet deletion or ISSY; profiles for DMR voice, P25 phase 2 and voice, 802.11a/g/n, ATSC, GPS C/A,
   DAB, UMTS, CCSDS turbo (and `projects/` using the BLE, ADS-B and 802.11b profiles that exist); `dvbs2/normal` dummy frames;
-  positions and gaps in the parallel runner's output; GPU and FPGA backends.
+  positions and gaps in the parallel runner's output; MPower and Oerder & Meyr on a GPU a group of windows a launch (each window is a launch and a wait now: slower than the
+  host); an FPGA backend.

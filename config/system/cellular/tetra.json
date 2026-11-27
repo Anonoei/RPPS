@@ -1,0 +1,13 @@
+{
+  "ref": "ETSI EN 300 392-2",
+  "title": "TETRA",
+  "features": {
+    "modulation": ["8psk", "dqpsk", "pi4dqpsk"],
+    "baud": 18000.0,
+    "beta": 0.35,
+    "frame": 0.056666666666666664,
+    "slots": 4,
+    "bandwidth": 25000.0,
+    "frequency": [[380000000.0, 470000000.0]]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "ref": "ITU-R BS.450",
+  "title": "FM broadcast",
+  "features": {
+    "modulation": ["fm"],
+    "bandwidth": {"range": [150000.0, 260000.0]},
+    "frequency": [[76000000.0, 108000000.0]]
+  }
+}

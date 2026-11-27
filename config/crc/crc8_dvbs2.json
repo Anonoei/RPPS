@@ -1,5 +1,4 @@
 {
-  "base": "crc",
   "type": "crc",
   "comment": "CRC-8 of DVB-S2 generic stream headers",
   "tags": ["dvb-s2"],

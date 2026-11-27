@@ -1,11 +1,9 @@
 {
-  "base": "conv",
   "abstract": true,
-  "comment": "Mother code K=7, generators 171, 133 octal, its rates (1/n unpunctured, and punctured ones) are in k7_171_133/",
-  "constraint": 7,
-  "generator": [
-    [1, 1, 1, 1, 0, 0, 1],
-    [1, 0, 1, 1, 0, 1, 1]
+  "comment": [
+    "Mother code K=7, generators 171, 133 octal, its rates (1/n unpunctured, and punctured ones) are in k7_171_133/"
   ],
+  "constraint": 7,
+  "generator": [[1, 1, 1, 1, 0, 0, 1], [1, 0, 1, 1, 0, 1, 1]],
   "decoder": "viterbi"
 }

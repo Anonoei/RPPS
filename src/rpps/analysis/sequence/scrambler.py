@@ -130,7 +130,7 @@ def _scrambler_polys():
     """{taps: name} of the feedthrough scramblers configured (config/scramble/feedthrough), and the known LFSRs"""
     from ... import code
     out = {}
-    for name in code.scram.ls().get("feedthrough", []):
+    for name in code.scram.ls(blind=True).get("feedthrough", []):
         try:
             t = tuple(sorted(cached_scrambler(f"feedthrough/{name}")["poly"], reverse=True))
             out.setdefault(t, f"feedthrough/{name} ({lfsr_name(t)})")

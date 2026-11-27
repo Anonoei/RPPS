@@ -1,10 +1,25 @@
 {
-  "base": "block",
   "abstract": true,
   "type": "bch",
   "comment": "DVB-S2 outer BCH codes of normal frames over GF(2^16): each rate's length and errors corrected",
   "ref": "EN 302 307-1 V1.2.1 5.3.1, table 5a",
   "tags": ["dvb-s2"],
   "m": 16,
-  "poly": "0x1002D"
+  "poly": "0x1002D",
+  "variants": {
+    "columns": ["name", "n", "k", "t", "comment"],
+    "rows": [
+      ["dvbs2_1_2", 32400, 32208, 12, "DVB-S2 normal frame outer BCH, LDPC rate 1/2"],
+      ["dvbs2_1_3", 21600, 21408, 12, "DVB-S2 normal frame outer BCH, LDPC rate 1/3"],
+      ["dvbs2_1_4", 16200, 16008, 12, "DVB-S2 normal frame outer BCH, LDPC rate 1/4"],
+      ["dvbs2_2_3", 43200, 43040, 10, "DVB-S2 normal frame outer BCH, LDPC rate 2/3"],
+      ["dvbs2_2_5", 25920, 25728, 12, "DVB-S2 normal frame outer BCH, LDPC rate 2/5"],
+      ["dvbs2_3_4", 48600, 48408, 12, "DVB-S2 normal frame outer BCH, LDPC rate 3/4 (kldpc=48600); needs the matching LDPC table to decode behind it"],
+      ["dvbs2_3_5", 38880, 38688, 12, "DVB-S2 normal frame outer BCH, LDPC rate 3/5 (kldpc=38880); needs the matching LDPC table to decode behind it"],
+      ["dvbs2_4_5", 51840, 51648, 12, "DVB-S2 normal frame outer BCH, LDPC rate 4/5"],
+      ["dvbs2_5_6", 54000, 53840, 10, "DVB-S2 normal frame outer BCH, LDPC rate 5/6"],
+      ["dvbs2_8_9", 57600, 57472, 8, "DVB-S2 normal frame outer BCH, LDPC rate 8/9"],
+      ["dvbs2_9_10", 58320, 58192, 8, "DVB-S2 normal frame outer BCH, LDPC rate 9/10"]
+    ]
+  }
 }

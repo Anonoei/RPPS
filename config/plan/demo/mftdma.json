@@ -1,0 +1,52 @@
+{
+  "comment": [
+    "Demo MF-TDMA burst time plan (profile/demo/mftdma), in DVB-RCS2's model: a 15 ms superframe of two frames, one of",
+    "two 250 kBd carriers (BTU 0.6 ms = 150 symbols) and one of a 500 kBd carrier (300 symbols a BTU).",
+    "Tx types 128 and 129 (one and two LDPC units) on the 250 kBd frame, 130 (three units) on the 500 kBd one;",
+    "each its own unique word. Times in NCR ticks (27 MHz)"
+  ],
+  "tags": ["example"],
+  "clock": 27000000.0,
+  "tx_types": {
+    "128": {
+      "btus": 3,
+      "offset": 1350,
+      "fields": {"word": "demo_uw1", "constellation": "psk/qpsk", "code": "ldpc/ieee80211n_648_1_2", "bits": 324}
+    },
+    "129": {
+      "btus": 5,
+      "offset": 1350,
+      "fields": {"word": "demo_uw2", "constellation": "psk/qpsk", "code": "ldpc/ieee80211n_648_1_2", "bits": 648}
+    },
+    "130": {
+      "btus": 4,
+      "offset": 1350,
+      "fields": {"word": "demo_uw3", "constellation": "psk/qpsk", "code": "ldpc/ieee80211n_648_1_2", "bits": 972}
+    }
+  },
+  "frame_types": {
+    "1": {
+      "duration": 405000,
+      "btu": {"duration": 16200, "bw": 337500.0, "symbol_rate": 250000.0},
+      "time_units": 25,
+      "grid": [-250000.0, 250000.0],
+      "sections": [[128, 2], [129, 2], [128, 1], [129, 2], [128, 0]]
+    },
+    "2": {
+      "duration": 405000,
+      "btu": {"duration": 16200, "bw": 675000.0, "symbol_rate": 500000.0},
+      "time_units": 25,
+      "grid": [0],
+      "sections": [[130, 5]]
+    }
+  },
+  "sequences": {
+    "0": {
+      "start": 0,
+      "duration": 405000,
+      "centre": 0,
+      "count": 0,
+      "frames": [{"type": 1, "start": 0, "offset": -1750000.0}, {"type": 2, "start": 0, "offset": 1500000.0}]
+    }
+  }
+}

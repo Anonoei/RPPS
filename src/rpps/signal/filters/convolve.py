@@ -54,3 +54,8 @@ def convolve(x, h, mode="full"):
         out = out[nh - 1:nx]
     dtype = (np.complex64 if np.iscomplexobj(out) else np.float32) if single else None
     return out.astype(dtype, copy=False) if dtype else out
+
+def correlate(x, t):
+    """sum_i x[n + i] conj(t[i]) at every n where the template t fits in x (len(x) - len(t) + 1 values, as
+    np.correlate(x, t, "valid")), by FFT blocks when that is cheaper"""
+    return convolve(x, np.conj(np.asarray(t)[::-1]), "valid")

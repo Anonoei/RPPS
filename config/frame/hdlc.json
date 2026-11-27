@@ -1,5 +1,4 @@
 {
-  "base": "frame",
   "type": "hdlc",
   "comment": "HDLC, FCS-16, no line coding",
   "tags": ["hdlc"],

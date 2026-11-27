@@ -1,0 +1,17 @@
+{
+  "comment": [
+    "frame lists the SSB burst periods too: a repetition measured on NR is often the SSB period, not the 10 ms frame"
+  ],
+  "ref": "3GPP TS 38.211",
+  "tags": ["nr"],
+  "title": "5G NR",
+  "profile": "nr/downlink",
+  "features": {
+    "modulation": ["ofdm"],
+    "scs": [15000.0, 30000.0, 60000.0, 120000.0],
+    "cp": [4.6875e-06, 2.34375e-06, 1.171875e-06, 5.859375e-07],
+    "frame": [0.01, 0.005, 0.0025, 0.02, 0.04, 0.08, 0.16],
+    "sync": ["ssb"],
+    "ssb_period": [0.005, 0.01, 0.02, 0.04, 0.08, 0.16]
+  }
+}

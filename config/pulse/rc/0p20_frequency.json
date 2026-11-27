@@ -1,0 +1,12 @@
+{
+  "type": "rc",
+  "comment": [
+    "Raised-cosine frequency pulse, roll-off 0.2: the Nyquist filter ahead of the FM modulator of P25 C4FM (its sinc",
+    "compensation left out) and of DMR 4FSK. A frequency pulse has no matched filter:",
+    "the fm step's integrate-and-dump takes its place"
+  ],
+  "ref": "TIA-102.BAAA-A 9.2; ETSI TS 102 361-1 10.2",
+  "tags": ["p25", "dmr"],
+  "kind": "frequency",
+  "beta": 0.2
+}

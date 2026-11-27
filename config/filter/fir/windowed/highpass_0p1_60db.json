@@ -1,7 +1,8 @@
 {
-  "base": "fir",
   "type": "windowed",
   "comment": "High pass at 0.1 of the sample rate, 0.02 wide transition, 60 dB stopband (Kaiser window)",
+  "ref": "J. F. Kaiser, Nonrecursive Digital Filter Design Using the I0-sinh Window Function, IEEE ISCAS 1974",
+  "tags": ["example"],
   "pass": "highpass",
   "cutoff": 0.1,
   "transition": 0.02,

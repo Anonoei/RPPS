@@ -1,0 +1,13 @@
+{
+  "ref": "IEEE 802.15.4-2020 12",
+  "tags": ["ieee-802.15.4"],
+  "title": "IEEE 802.15.4 2.4 GHz (Zigbee, Thread)",
+  "profile": "ieee802154/2450",
+  "features": {
+    "modulation": ["msk", "oqpsk", "qpsk"],
+    "chip_rate": 2000000.0,
+    "code_length": 32,
+    "bandwidth": 2000000.0,
+    "frequency": [[2400000000.0, 2483500000.0]]
+  }
+}

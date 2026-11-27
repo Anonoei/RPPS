@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from .. import _accel
 from ..base import Stage
+from ..signal.filters.iir import RunningMean
 from ..signal.filters.filter import FIR
 from ..signal.filters.impl.designer import designer
 from .fm import discriminate
@@ -19,23 +19,14 @@ class AMDemod(Stage):
         self.alpha = alpha
 
     def new_state(self, meta):
-        return SimpleNamespace(mean=None)
+        return SimpleNamespace(mean=None if self.alpha is None else RunningMean(self.alpha), z=None)
 
     def step(self, samples, st, meta):
         env = np.abs(samples).astype(np.float32)
         if self.alpha is None:
             return env
-        if _accel.native is not None:
-            out, mean, have = _accel.native.am_demod(env, 0.0 if st.mean is None else float(st.mean), st.mean is not None, float(self.alpha))
-            st.mean = mean if have else None
-            return out
-        out = np.empty_like(env)
-        mean = st.mean
-        for i, v in enumerate(env):
-            mean = v if mean is None else mean + self.alpha*(v - mean)
-            out[i] = v - mean
-        st.mean = mean
-        return out
+        mean, st.z = st.mean.run(env, st.z) # (an IIR section: no loop over the samples)
+        return env - mean
 
 
 class SSBDemod(FIR):

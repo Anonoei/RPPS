@@ -1,8 +1,0 @@
-{
-  "base": "block",
-  "extends": "ccsds",
-  "comment": "CCSDS turbo code, rate 1/3",
-  "outputs": [
-    ["0a", "1a", "1b"]
-  ]
-}

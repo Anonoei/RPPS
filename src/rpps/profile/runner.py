@@ -22,6 +22,7 @@ import copy
 
 import numpy as np
 
+from ..base import dtype
 from ..base.rpps import FLUSH, failed_of
 from . import control as _ctl
 from ..base import control as _control
@@ -35,7 +36,11 @@ class Slot:
     __slots__ = ("how", "op", "step", "index", "map", "in_end", "out_next", "params", "rate")
     def __init__(self, how, op, step, index):
         self.how, self.op, self.step, self.index = how, op, step, index
-        self.map = _ctl.PosMap()
+        try:
+            r0 = _ctl.rate_of(op, how)
+        except Exception: # (an operator that can't say before it runs)
+            r0 = None
+        self.map = _ctl.PosMap(r0=r0 or 1.0)
         self.in_end = None   # Input position read up to
         self.out_next = None # Pipes: the position of their next output item (stages keep theirs in the stream)
         self.params = {}     # Controlled parameters, as last applied
@@ -96,6 +101,7 @@ class Runner:
 
     def __init__(self, slots, name="", entries=None, direction="rx", profile=None):
         self.slots, self.name, self.direction = list(slots), name, direction
+        self._schemas = {} # A message step's field schema, by slot
         self.profile = profile if profile is not None else name
         self.messages, self._mseq, self._handed, self._input = [], 0, {}, (1.0, 0.0)
         self.ctx = None
@@ -122,14 +128,16 @@ class Runner:
         if direction == "rx":
             for e in self.entries.values():
                 h = self._header_slot(e)
-                for sid in e.drive:
+                for sid, ps in e.drive.items():
+                    if all(isinstance(v, dict) and v.get("on", "both") == "tx" for v in ps.values()):
+                        continue # (it drives that step only transmitting)
                     for i in self._step_slots.get(sid, []):
                         if i < h:
                             self.span = i if self.span is None else min(self.span, i)
         self.ckpts, self.buf = [], []
         self._span_ops = set()
         # Steps whose output is a run of fixed-size frames ({"message": {"bits": n, "kind": k, "check": true, "fields":
-        # [{"name", "from", "bits"}]}} in the profile: TS packets, transfer frames): the runner cuts it into messages, from
+        # a schema, rpps.link.fields: [{"name", "from", "bits"}, ...]}} in the profile: TS packets, transfer frames): the runner cuts it into messages, from
         # the step's last op. check: a decoder before it reports failures (an RS), so no failed mask means all good
         self._units = {}
         if direction == "rx":
@@ -257,8 +265,8 @@ class Runner:
         if ctl is not None and ctl.messages:
             mine = [m for m in ctl.messages if m[0] is op]
             ctl.messages = [m for m in ctl.messages if m[0] is not op]
-            for _, kind, fields, bits, ok, at in mine:
-                self._message(slot, kind, fields, bits, ok, at)
+            for op_, kind, fields, bits, ok, at, frame in mine:
+                self._message(slot, kind, fields, bits, ok, at, getattr(op_, "check_name", None), frame)
         if ctl is not None and (ctl.anchors or ctl.published):
             mine = [a for a in ctl.anchors if a[0] is op]
             ctl.anchors = [a for a in ctl.anchors if a[0] is not op]
@@ -274,17 +282,19 @@ class Runner:
 
     # ---- messages
 
-    def _message(self, slot, kind, fields, bits, ok, at):
-        """A frame a slot's op emitted, at position `at` of its input: placed in the runner's input, kept until taken"""
+    def _message(self, slot, kind, fields, bits, ok, at, check=None, frame=None):
+        """A frame a slot's op emitted, at position `at` of its input: placed in the runner's input, kept until taken.
+        check: the definition behind ok; frame: (the whole frame's bits, {part: (first bit, bits)}) when the op gave it"""
         from .message import Message
         sample = int(round(self._back(at, slot.index, 0)))
         kind = kind or slot.step.id
         Fs, cf = self._input
         t0 = self._stream.t0
         payload, n = Message.payload_of(bits)
+        whole, nw = Message.payload_of(frame[0]) if frame is not None else (None, 0)
         q = self._stream.est.get("quality")
         m = Message(self.profile, kind, fields, payload, n, ok, sample, (t0 or 0.0) + sample/Fs, cf or None,
-                    copy.copy(q) if q is not None else None)
+                    copy.copy(q) if q is not None else None, check, whole, nw, frame[1] if frame is not None else None)
         self.messages.append((self._mseq, slot.index, (slot.index, sample, kind), m))
         self._mseq += 1
 
@@ -303,14 +313,25 @@ class Runner:
         u = [u[0], np.concatenate((u[1], y)), np.concatenate((u[2], f)), u[3] or known]
         while len(u[1]) >= n:
             bits, bad = u[1][:n], u[2][:n]
-            fields = {fd["name"]: int(bits[fd["from"]:fd["from"] + fd["bits"]].astype(np.int64)
-                                      @ (1 << np.arange(fd["bits"] - 1, -1, -1)))
-                      for fd in spec.get("fields", ())}
+            fields = self._unit_fields(slot, spec, bits)
             at = slot.map.back(u[0]) # Where it starts, in the slot's input
             # crc_ok: the failed mask's verdict; none at all after a checking decoder ("check": an RS) is all good
-            self._message(slot, spec.get("kind"), fields, bits, (not bad.any()) if u[3] or spec.get("check") else None, at)
+            chk = spec.get("check")
+            self._message(slot, spec.get("kind"), fields, bits, (not bad.any()) if u[3] or chk else None, at,
+                          chk if isinstance(chk, str) else None)
             u = [u[0] + n, u[1][n:], u[2][n:], u[3]]
         self._units[slot.index][1] = u
+
+    def _unit_fields(self, slot, spec, bits):
+        """What a message step's "fields" (a schema: rpps.link.fields) read of one frame; {} where they don't fit"""
+        from ..link.fields import Schema, Short
+        from ..errors import ConfigError
+        if slot.index not in self._schemas:
+            self._schemas[slot.index] = Schema(spec.get("fields", ()), "msb", f"{slot.step.id} message")
+        try:
+            return self._schemas[slot.index].parse(bits)[0]
+        except (Short, ValueError, ConfigError):
+            return {}
 
     def take_messages(self):
         """The frames decoded since the last call, by position (each once: a re-run's second decode is not handed out
@@ -324,6 +345,24 @@ class Runner:
         while len(self._handed) > self.HANDED:
             self._handed.pop(next(iter(self._handed)))
         return sorted((m for m in out if self.kinds is None or m.kind in self.kinds), key=lambda m: m.sample)
+
+    def inject(self, entry, fields, pos, key):
+        """Fields a step outside this runner published (another branch's header, a burst cutter's labels), driving this
+        runner's steps from `pos` of its input, as its own header's would"""
+        if key in self._keys:
+            return
+        self._keys.add(key)
+        values, _ = entry.values(fields, self.direction)
+        params = {i: dict(ps) for sid, ps in values.items() for i in self._step_slots.get(sid, [])}
+        if not params:
+            return
+        ch = Change()
+        ch.key, ch.fields, ch.origin, ch.at, ch.params, ch.step = key, dict(fields), -1, pos, params, entry.header
+        self._seq += 1
+        ch.seq = self._seq
+        ch.fwd, ch.hop, ch.pos = set(params), 0, pos
+        ch.group, ch.btargets, ch.back, ch.s0 = (-1, pos), [], {}, None
+        self.changes.append(ch)
 
     def to_input(self, pos):
         """A position in this runner's output, in its input (the stream it was given)"""
@@ -346,7 +385,16 @@ class Runner:
         if len(outs) == 1:
             return outs[0]
         last = outs[-1]
-        arrs = [np.asarray(o.data) for o in outs if len(o)]
+        forms = {o.DT for o in outs if len(o)}
+        if dtype.LLR in forms and len(forms) > 1: # Frames decoded to bits and frames passed on as LLRs (a code switched
+            # off by a header): all LLRs, a decided bit as sure as the surest soft one, so neither reads as the other
+            soft = [np.asarray(o.data, dtype=dtype.LLR.dtype) for o in outs if len(o) and o.DT == dtype.LLR]
+            sure = max(1.0, max(float(np.abs(a).max()) for a in soft if len(a)))
+            arrs = [np.asarray(o.data, dtype=dtype.LLR.dtype) if o.DT == dtype.LLR
+                    else np.where(np.asarray(o.bits()).astype(bool), -sure, sure).astype(dtype.LLR.dtype) for o in outs if len(o)]
+            last = next(o for o in reversed(outs) if len(o) and o.DT == dtype.LLR)
+        else:
+            arrs = [np.asarray(o.data) for o in outs if len(o)]
         arr = np.concatenate(arrs) if arrs else np.asarray(last.data)
         meta = last.meta.fork()
         meta.pos = outs[0].meta.pos
@@ -406,7 +454,7 @@ class Runner:
                 self._place(ch)
 
     def _make(self, entry, origin, fields, at, out, key, group):
-        values, row = entry.values(fields)
+        values, row = entry.values(fields, self.direction)
         if entry.table is not None and row is None and all(fields.get(k) is not None for k in entry.table.key):
             self._report("no row", step=entry.header, fields=dict(fields), table=entry.table.name, at=at)
         h = self._header_slot(entry)

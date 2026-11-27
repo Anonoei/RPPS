@@ -9,10 +9,15 @@ tail-biting convolutional code with its rate matching, turbo code with its rate 
     PBCH   subframe 0: 1, 2 or 4 ports and the frame's quarter of the 40 ms scrambling are tried, the CRC mask says which:
            gives the 24 MIB bits; publishes ports, n_rb, phich_ng, phich_duration, sfn
     PCFICH every subframe, once `ports` is known: gives the CFI (2 bits); publishes cfi (for its subframe)
-    PDCCH  once ports, cfi and phich_ng are known: the common search space (CCEs 0-15, aggregation 4 and 8) for the
-           `rntis`, formats 1A and 1C: gives each DCI's bits; publishes a 1A's fields (for its subframe)
-    PDSCH  where a DCI 1A gave an allocation (riv not None): localized, one code block; gives the transport block when its
-           CRC-24A checks
+    PDCCH  once ports, cfi and the PHICH's size and duration are known: the common search space (CCEs 0-15, aggregation 4
+           and 8) for the `rntis`, formats 1A and 1C: gives each DCI's bits; publishes the first's fields (for its
+           subframe). TDD: the PHICH's size also depends on the uplink-downlink configuration, which SIB1 gives, so
+           m_i = 1, 0 and 2 are tried until a DCI checks, the one a subframe number last took first
+    PDSCH  where a DCI gave an allocation (riv not None): localized or distributed, one code block; a 1C has no
+           redundancy version, so the four are tried; gives the transport block when its CRC-24A checks. TDD subframe 1
+           (special: DwPTS) is not covered (est "special")
+
+Every message names its subframe: `subframe`, counted from the first the grid gave.
 """
 import functools
 from types import SimpleNamespace
@@ -52,17 +57,22 @@ def _turbo_rm(K, E, rv):
     from ... import code
     return code.load("block/ratematch/lte_turbo", K=K, E=E, rv=rv).encoder
 
-@functools.lru_cache(maxsize=None)
-def tbs_table():
-    """{I_TBS: [TBS for N_PRB 1..10]} (36.213 Table 7.1.7.2.1-1, the columns a DCI 1A for system information uses)"""
-    from ... import _config
-    t = _config.read(_config.find("table", "lte/tbs"))
-    return {r[0]: list(r[1:]) for r in t["rows"]}
-
 def tail_biting(llr, K):
     """K bits (CRC included) from soft bits of the 1/3 tail-biting code, rate matched to len(llr) (positive = 0)"""
     d = _conv_rm(K, len(llr)).decode(np.asarray(llr, float))
     return np.asarray(_conv().decoder.decode(d)).astype(np.uint8)
+
+def tail_biting_batch(llrs, K):
+    """`tail_biting` of each of llrs (soft bits of any lengths): (len(llrs), K) bits, the Viterbi of a length in one batch"""
+    out = np.zeros((len(llrs), K), np.uint8)
+    by_len = {}
+    for i, llr in enumerate(llrs):
+        by_len.setdefault(len(llr), []).append(i)
+    for E, rows in by_len.items():
+        rm = _conv_rm(K, E)
+        d = np.array([rm.decode(np.asarray(llrs[i], float)) for i in rows])
+        out[rows] = np.asarray(_conv().decoder.decode_batch(d)).astype(np.uint8)
+    return out
 
 def crc_bits(bits, name):
     return np.asarray(_crc(name).field(np.asarray(bits, np.uint8))).astype(np.uint8)
@@ -140,6 +150,7 @@ class _Channel(Pipe):
 
 class PBCH(_Channel):
     """The MIB of every subframe 0 (see the module)"""
+    check_name = "crc16_xmodem" # (Message.check: the MIB's CRC-16, masked with the antenna ports)
     def __init__(self, name="pbch"):
         super().__init__(name)
 
@@ -165,12 +176,13 @@ class PBCH(_Channel):
                     fields = {"ports": ports, "n_rb": mib["n_rb"], "phich_ng": mib["phich_ng"],
                               "phich_duration": mib["phich_duration"], "sfn": mib["sfn_msb"]*4 + q}
                     publish(meta, self, fields, at=pos)
-                    emit(meta, self, None, {"pci": pci, "sf": 0, **fields}, b[:24], True, pos)
+                    emit(meta, self, None, {"pci": pci, "sf": 0, "subframe": head["count"], "duplex": head["duplex"], **fields},
+                         b[:24], True, pos)
                     st.est["decoded"] += 1
                     st.est["last"] = fields
                     return b[:24]
         st.est["failed"] += 1
-        emit(meta, self, None, {"pci": pci, "sf": 0}, None, False, pos)
+        emit(meta, self, None, {"pci": pci, "sf": 0, "subframe": head["count"]}, None, False, pos)
         return None
 
 
@@ -184,18 +196,23 @@ class PCFICH(_Channel):
     def __str__(self):
         return f"PCFICH({self.ports} ports)"
 
-    def frame(self, head, G, H, pos, meta, st):
-        if self.ports is None:
-            return None
-        st.est["frames"] += 1
+    def read(self, head, G, H):
+        """The CFI of one grid frame: the code word nearest what the PCFICH holds"""
         pci, sf = head["pci"], head["sf"]
         k, l = phy.pcfich_res(pci, head["n_rb"], self.ports)
         s = phy.soft_bits(phy.undo_diversity(G, H, k, l, self.ports))
         s = s*phy.sign(phy.gold(((sf + 1)*(2*pci + 1) << 9) + pci, 32))
         score = {cfi: float(np.sum(s*phy.sign(w))) for cfi, w in phy.CFI_WORDS.items()}
-        cfi = max(score, key=score.get)
+        return max(score, key=score.get)
+
+    def frame(self, head, G, H, pos, meta, st):
+        if self.ports is None:
+            return None
+        st.est["frames"] += 1
+        pci, sf = head["pci"], head["sf"]
+        cfi = self.read(head, G, H)
         publish(meta, self, {"cfi": cfi}, at=pos, span=frame_len(head["n_rb"]))
-        emit(meta, self, None, {"pci": pci, "sf": sf, "cfi": cfi}, None, None, pos) # (no check: the nearest code word)
+        emit(meta, self, None, {"pci": pci, "sf": sf, "subframe": head["count"], "cfi": cfi}, None, None, pos) # (no check: the nearest code word)
         st.est["decoded"] += 1
         st.est["last"] = {"cfi": cfi}
         return [cfi >> 1 & 1, cfi & 1]
@@ -203,18 +220,28 @@ class PCFICH(_Channel):
 
 class PDCCH(_Channel):
     """DCIs in the common search space for the RNTIs given (see the module)"""
-    CONTROLS = {"ports": "live", "cfi": "live", "phich_ng": "live"}
+    check_name = "crc16_xmodem" # (Message.check: a DCI's CRC-16, masked with the RNTI)
+    CONTROLS = {k: "live" for k in ("ports", "cfi", "phich_ng", "phich_duration")}
 
-    def __init__(self, rntis=(phy.SI_RNTI,), ports=None, cfi=None, phich_ng=None, name="pdcch"):
-        super().__init__(name, rntis=tuple(int(r) for r in rntis), ports=ports, cfi=cfi, phich_ng=phich_ng)
+    def __init__(self, rntis=(phy.SI_RNTI,), ports=None, cfi=None, phich_ng=None, phich_duration=0, name="pdcch"):
+        super().__init__(name, rntis=tuple(int(r) for r in rntis), ports=ports, cfi=cfi, phich_ng=phich_ng,
+                         phich_duration=phich_duration)
 
     def __str__(self):
         return f"PDCCH({', '.join(hex(r) for r in self.rntis)})"
 
-    def cces(self, head, G, H):
-        """(N_CCE, 72) soft bits of the control region: REGs equalized, the shift and interleaver undone, descrambled"""
+    def new_state(self, meta):
+        st = super().new_state(meta)
+        st.mi = {} # TDD: subframe number -> the m_i a DCI checked with
+        return st
+
+    def cces(self, head, G, H, mi=1):
+        """(N_CCE, 72) soft bits of the control region: REGs equalized, the shift and interleaver undone, descrambled
+        (mi: TDD's PHICH multiplier)"""
         pci, n_rb, sf = head["pci"], head["n_rb"], head["sf"]
-        key = (pci, n_rb, phy.control_symbols(self.cfi, n_rb), phy.phich_groups(self.phich_ng, n_rb), int(self.ports))
+        extended = bool(self.phich_duration)
+        key = (pci, n_rb, phy.control_symbols(self.cfi, n_rb), phy.phich_groups(self.phich_ng, n_rb, mi), int(self.ports),
+               extended, phy.short_phich(head["duplex"], sf))
         M = len(phy.control_regs(*key))
         k, l = phy.control_res(*key)
         wbar = phy.soft_bits(phy.undo_diversity(G, H, k, l, int(self.ports))).reshape(M, 8)
@@ -225,37 +252,57 @@ class PDCCH(_Channel):
         n = M//9
         return bits[:n*72].reshape(n, 72)
 
+    def find(self, head, G, H, mi):
+        """(format, RNTI, payload bits) of the DCIs of one grid frame; `mi` (a dict kept from frame to frame: subframe
+        number -> TDD's m_i) says which PHICH size to try first, and takes the one that checked"""
+        sf, duplex = head["sf"], head["duplex"]
+        tries = (1,) if duplex == "fdd" else sorted((1, 0, 2), key=lambda m: m != mi.get(sf, 1))
+        for m in tries:
+            found = self.search(self.cces(head, G, H, m), head["n_rb"], duplex)
+            if found:
+                if duplex == "tdd":
+                    mi[sf] = m
+                return found
+        return []
+
+    def search(self, cc, n_rb, duplex):
+        """(format, RNTI, payload bits) of every DCI for the RNTIs in the common search space of CCEs `cc`"""
+        sizes = {phy.dci_1a_size(n_rb, duplex): "1A", phy.dci_1c_size(n_rb): "1C"}
+        cands = [cc[s0:s0 + L].reshape(-1) for L, starts in ((4, (0, 4, 8, 12)), (8, (0, 8))) for s0 in starts
+                 if s0 + L <= len(cc)]
+        decoded = {K: tail_biting_batch(cands, K + 16) for K in sizes} # (every candidate of a size in one batch)
+        found, seen = [], set()
+        for i in range(len(cands)):
+            for K, fmt in sizes.items():
+                b = decoded[K][i]
+                rnti = _int(b[K:] ^ crc_bits(b[:K], "crc16_xmodem"))
+                key = (rnti, K, b[:K].tobytes())
+                if rnti in self.rntis and key not in seen: # (aggregation 8 holds the 4 of the same DCI)
+                    seen.add(key)
+                    found.append((fmt, rnti, b[:K]))
+        return found
+
     def frame(self, head, G, H, pos, meta, st):
         if None in (self.ports, self.cfi, self.phich_ng):
             return None
         st.est["frames"] += 1
-        n_rb = head["n_rb"]
-        cc = self.cces(head, G, H)
-        sizes = {phy.dci_1a_size(n_rb): "1A", phy.dci_1c_size(n_rb): "1C"}
-        found, seen = [], set()
-        for L, starts in ((4, (0, 4, 8, 12)), (8, (0, 8))):
-            for s0 in starts:
-                if s0 + L > len(cc):
-                    continue
-                llr = cc[s0:s0 + L].reshape(-1)
-                for K, fmt in sizes.items():
-                    b = tail_biting(llr, K + 16)
-                    rnti = _int(b[K:] ^ crc_bits(b[:K], "crc16_xmodem"))
-                    key = (rnti, K, b[:K].tobytes())
-                    if rnti in self.rntis and key not in seen: # (aggregation 8 holds the 4 of the same DCI)
-                        seen.add(key)
-                        found.append((fmt, rnti, b[:K]))
+        n_rb, sf, duplex = head["n_rb"], head["sf"], head["duplex"]
+        found = self.find(head, G, H, st.mi)
         out, allocated = [], False
         for fmt, rnti, b in found:
             out.append(b)
-            fields = {"pci": head["pci"], "sf": head["sf"], "format": fmt, "rnti": rnti}
-            if fmt == "1A" and b[0] == 1:
-                fields.update(phy.parse_1a(b, n_rb))
+            fields = {"pci": head["pci"], "sf": sf, "subframe": head["count"], "format": fmt, "rnti": rnti}
+            d = None
+            if fmt == "1C":
+                d = {"flag": 1, "distributed": 1, "rv": -1, "tpc": 0, "harq": 0, "ndi": 0, **phy.parse_1c(b, n_rb)}
+            elif b[0] == 1: # (a 0: format 0, an uplink grant)
+                d = phy.parse_1a(b, n_rb, duplex)
+            if d is not None:
+                fields.update(d)
             emit(meta, self, None, fields, b, True, pos) # (its CRC, masked with the RNTI, matched)
-            if fmt == "1A" and b[0] == 1 and not allocated: # (the first 1A allocates: one PDSCH a subframe here)
+            if d is not None and not allocated: # (the first allocates: one PDSCH a subframe here)
                 allocated = True
-                d = phy.parse_1a(b, n_rb)
-                d["rnti"] = rnti
+                d = {**d, "format": fmt, "rnti": rnti}
                 publish(meta, self, d, at=pos, span=frame_len(n_rb))
                 st.est["last"] = d
         st.est["decoded"] += len(found)
@@ -263,37 +310,47 @@ class PDCCH(_Channel):
 
 
 class PDSCH(_Channel):
-    """The transport block a DCI 1A allocated in its subframe (see the module)"""
-    CONTROLS = {k: "live" for k in ("ports", "cfi", "rnti", "riv", "mcs", "rv", "tpc", "distributed", "flag", "harq", "ndi")}
+    """The transport block a DCI allocated in its subframe (see the module)"""
+    check_name = "crc24_lte_a" # (Message.check: the transport block's CRC-24A)
+    CONTROLS = {k: "live" for k in ("ports", "cfi", "format", "rnti", "riv", "mcs", "rv", "tpc", "distributed", "gap",
+                                    "flag", "harq", "ndi")}
 
     def __init__(self, ports=None, cfi=None, name="pdsch"):
-        super().__init__(name, ports=ports, cfi=cfi, rnti=None, riv=None, mcs=None, rv=0, tpc=0, distributed=0, flag=1,
-                         harq=0, ndi=0)
+        super().__init__(name, ports=ports, cfi=cfi, format="1A", rnti=None, riv=None, mcs=None, rv=0, tpc=0,
+                         distributed=0, gap=0, flag=1, harq=0, ndi=0)
 
     def __str__(self):
         return "PDSCH()"
 
     def frame(self, head, G, H, pos, meta, st):
-        if None in (self.ports, self.cfi, self.riv, self.rnti) or self.distributed or not self.flag:
+        if None in (self.ports, self.cfi, self.riv, self.rnti) or not self.flag:
             return None
         st.est["frames"] += 1
         pci, n_rb, sf = head["pci"], head["n_rb"], head["sf"]
-        first, count = phy.riv_decode(int(self.riv), n_rb)
-        tbs = tbs_table().get(int(self.mcs))
-        if tbs is None:
+        if head["duplex"] == "tdd" and sf == 1:
+            st.est["special"] = st.est.get("special", 0) + 1
+            return None
+        got = phy.allocation({k: getattr(self, k) for k in ("format", "riv", "mcs", "tpc", "distributed", "gap")}, n_rb)
+        if got is None:
             st.est["failed"] += 1
             return None
-        tbs = tbs[(3 if int(self.tpc) & 1 else 2) - 1] # N_PRB^1A from the TPC's low bit (36.213 7.1.7)
-        k, l = phy.pdsch_res(first, count, phy.control_symbols(self.cfi, n_rb), pci, sf, n_rb, int(self.ports))
+        blocks, tbs = got
+        k, l = phy.pdsch_res(blocks, phy.control_symbols(self.cfi, n_rb), pci, sf, n_rb, int(self.ports), head["duplex"])
         s = phy.soft_bits(phy.undo_diversity(G, H, k, l, int(self.ports)))
         s = s*phy.sign(phy.gold((int(self.rnti) << 14) + (sf << 9) + pci, len(s)))
         K = tbs + 24
         t = _turbo(K)
-        llr = t.app(_turbo_rm(K, len(s), int(self.rv)).decode(s))
-        b = (np.asarray(llr) < 0).astype(np.uint8)
-        ok = not crc_bits(b, "crc24_lte_a").any()
+        for rv in (0, 2, 3, 1) if int(self.rv) < 0 else (int(self.rv),):
+            llr = t.app(_turbo_rm(K, len(s), rv).decode(s))
+            b = (np.asarray(llr) < 0).astype(np.uint8)
+            ok = not crc_bits(b, "crc24_lte_a").any()
+            if ok:
+                break
         st.est["decoded" if ok else "failed"] += 1
+        first, count = int(blocks[0][0]), len(blocks[0])
         st.est["last"] = {"tbs": tbs, "first": first, "count": count, "crc": bool(ok)}
-        emit(meta, self, None, {"pci": pci, "sf": sf, "rnti": int(self.rnti), "tbs": tbs, "first": first, "count": count,
-                                "mcs": int(self.mcs), "rv": int(self.rv)}, b[:tbs] if ok else None, bool(ok), pos)
+        emit(meta, self, None, {"pci": pci, "sf": sf, "subframe": head["count"], "format": self.format,
+                                "rnti": int(self.rnti), "tbs": tbs, "first": first, "count": count,
+                                "distributed": int(self.distributed), "mcs": int(self.mcs), "rv": rv},
+             b[:tbs] if ok else None, bool(ok), pos)
         return b[:tbs] if ok else None

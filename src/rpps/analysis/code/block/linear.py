@@ -69,6 +69,29 @@ def find_length(bits, min_len=4, max_len=None, extra=EXTRA):
             return _longer(b, n, off, max_len, extra) + (defs,)
     return None, None, defs
 
+def frame_units(rows, min_len=4, max_len=None, extra=EXTRA, trials=6, seed=0):
+    """The length of a block code whose words lie end to end from where each frame starts: rows are bits that each start
+    at a frame's start (a burst's payload after its preamble, a frame's after its unique word), of any lengths. For each
+    n the words at 0, n, 2n... of every row are stacked: a code of length n leaves them short of rank. Returns (n,
+    deficiency) for the shortest that is, or (None, 0). Rows are many short frames where `find_length` wants one long
+    stream: a code laid out per frame breaks at every frame's end there, here it doesn't. As for `find_length`, n + extra
+    words at a time (a word with a bit error adds to the rank: fewer words, fewer of them), the best of `trials` draws"""
+    rows = [np.asarray(r, dtype=np.uint8) for r in rows if len(r)]
+    if not rows:
+        return None, 0
+    rng = np.random.default_rng(seed)
+    L = max(len(r) for r in rows)
+    for n in range(min_len, (max_len or L) + 1):
+        W = np.array([r[o:o + n] for r in rows for o in range(0, len(r) - n + 1, n)], dtype=np.uint8)
+        if len(W) < n + extra: # Too few words for the rank to say anything (and fewer still for longer n)
+            break
+        m = n + extra
+        draws = [W] if len(W) <= m else [W[rng.choice(len(W), m, replace=False)] for _ in range(trials)]
+        d = max(n - rank(w) for w in draws)
+        if d > 0:
+            return n, d
+    return None, 0
+
 def _longer(b, n, off, max_len, extra):
     """A code of length n may be part of a longer one (LDPC: a band of checks on n consecutive bits): rows of m*n bits short
     of rank by more than m times rows of n are. Returns (length, offset), the longest such, aligned"""
@@ -135,8 +158,9 @@ def bch_of(g, n_sent):
 
 # --- Product codes ----------------------------------------------------------------------------------------------------
 
-def product(bits, n1, offset, max_n2=128, extra=24):
-    """Rows of n1 bits stacked n2 at a time, whose columns are codewords too: (n2, row phase, deficiency) or None"""
+def product(bits, n1, offset, max_n2=128, extra=24, per_block=4):
+    """Rows of n1 bits stacked n2 at a time, whose columns are codewords too: (n2, row phase, deficiency) or None.
+    Columns from n2 + extra blocks, one each; with fewer blocks, up to `per_block` from each (spread across the columns)"""
     b = np.asarray(bits, dtype=np.uint8)[offset:]
     rows = b[:len(b)//n1*n1].reshape(-1, n1)
     best = None
@@ -144,10 +168,13 @@ def product(bits, n1, offset, max_n2=128, extra=24):
         d = []
         for ph in range(n2):
             B = (len(rows) - ph)//n2
-            if B < n2 + extra:
+            per = -(-(n2 + extra)//max(B, 1)) # Columns a block gives
+            if per > min(per_block, n1):
                 break
-            # One column from each block: words from many blocks (a few blocks can agree with a wrong n2 by chance)
-            cols = rows[ph:ph + B*n2].reshape(B, n2, n1).transpose(0, 2, 1)[np.arange(B), np.arange(B) % n1]
+            # Columns from many blocks: a few blocks can agree with a wrong n2 by chance; each block's spread over its row
+            blk = rows[ph:ph + B*n2].reshape(B, n2, n1).transpose(0, 2, 1)
+            pick = (np.arange(B)[:, None] + np.arange(per)[None, :]*(n1//per)) % n1
+            cols = blk[np.arange(B)[:, None], pick].reshape(-1, n2)
             d.append(n2 - rank(cols[:n2 + extra]))
         if len(d) < n2:
             break
@@ -322,19 +349,28 @@ def recurrence(bits, n, windows=4, hold=0.9):
 def _checks(H):
     return [list(map(int, np.nonzero(row)[0])) for row in np.asarray(H, dtype=bool)]
 
-def solve_block(bits, n=None, offset=None, llr=None, max_len=None, max_n2=128):
+def solve_block(bits, n=None, offset=None, llr=None, max_len=None, max_n2=128, soft_length=False):
     """Find a binary block code in bits: its length, alignment, checks, and kind. Returns [(Hypothesis, Guess or None)]
 
     n / offset: when known (a frame length, a hint); else found by rank (lengths up to max_len, by default what the bits
-    allow). llr: soft values of the bits (positive = 0), to pick the cleanest words for the sparse checks."""
+    allow). llr: soft values of the bits (positive = 0), to pick the cleanest words for the sparse checks, and for the
+    checks when the bits are too noisy for the rank (`soft_dual`, about a second); soft_length: the length too
+    (`soft_find_length`: seconds a length tried, so only when asked)"""
     b = np.asarray(bits, dtype=np.uint8)
+    soft = False
     if n is None:
         n, offset, _ = find_length(b, max_len=max_len)
+        if n is None and llr is not None and soft_length: # too noisy for the rank: the soft dual, length by length
+            n, offset = soft_find_length(llr, max_len=min(max_len or 128, 128)), 0
         if n is None:
             return []
     elif offset is None:
         offset, _ = alignment(b, n)
     r = recover_dual(b, n, offset, trials=20)
+    if llr is not None and r["k"] > 0: # the soft dual too: noisy words leave the hard one short
+        rs = soft_dual(llr, n, offset, trials=20)
+        if rs["ok"] and rs["k"] < r["k"]:
+            r, soft = rs, True
     if not r["ok"]:
         return []
     H, k = r["H"], r["k"]
@@ -343,8 +379,11 @@ def solve_block(bits, n=None, offset=None, llr=None, max_len=None, max_n2=128):
     W = (len(b) - offset)//n
     words = b[offset:offset + W*n].reshape(W, n)
     sat = 1.0 - ((words[:400].astype(np.int32) @ H.T.astype(np.int32)) % 2).mean()
-    base = {"n": int(n), "k": int(k), "offset": int(offset), "checks_hold": float(sat)}
+    clean = words[((words.astype(np.int32) @ H.T.astype(np.int32)) % 2 == 0).all(axis=1)] # (passing every check found)
+    base = {"n": int(n), "k": int(k), "offset": int(offset), "checks_hold": float(sat), "soft": soft}
     z = float((sat - 0.5)*2*np.sqrt(min(W, 400)*len(H)))
+    if soft: # the hard bits break checks often at this SNR: the soft score says how far from chance they are
+        z = float(np.min(soft_score(H, np.asarray(llr, dtype=float)[offset:offset + W*n].reshape(W, n))))
     fixed, same = trivial_checks(words, n - k)
     if fixed is None and k <= n//LOW_RATE: # A code this low a rate is rare; fill with a few bit errors is not
         fixed, same = trivial_checks(words, n - k, hold=0.9)
@@ -368,15 +407,17 @@ def solve_block(bits, n=None, offset=None, llr=None, max_len=None, max_n2=128):
     if prod is not None:
         return [prod]
 
-    p = product(b, n, offset, max_n2) if n*max_n2*(max_n2 + 24) <= len(b) else None
+    # (columns up to the length the bits hold enough blocks for: n2 + 24 columns, at most 4 from a block)
+    m2 = max((m for m in range(3, max_n2 + 1) if n*m*(m + 24) <= 4*len(b)), default=None) # (product: 4 columns a block)
+    p = product(b, n, offset, m2) if m2 else None
     if p is not None: # Rows of n are a code, and so are columns of n2 of them: a product code longer than the rank could see
         n2, ph, _ = p
         found = _product(b, n, k, H, n2, offset + ph*n)
         if found is not None:
             return [found]
 
-    g, frac = cyclic_generator(words[:200], n - k)
-    if g is not None and frac > 0.5:
+    g, frac = cyclic_generator((clean if len(clean) >= 32 else words)[:200], n - k)
+    if g is not None and frac > 0.5 and g & 1: # (a generator has a constant term: x divides no cyclic code's)
         N = porder(g)
         if N is not None and N < n: # g divides x^N + 1 for every multiple of its order: the smallest one that holds n bits
             N = -(-n//N)*N
@@ -407,6 +448,69 @@ def solve_block(bits, n=None, offset=None, llr=None, max_len=None, max_n2=128):
     return [(Hypothesis("block-blind", f"linear ({n},{k})", z, {**base, "kind": "linear"}),
              Guess("block", {"base": "block", "type": "ldpc", "n": int(n), "k": int(k), "checks": _checks(H),
                              "comment": "found by rpps.analysis.code.block.linear.solve_block (dense checks)"}, base))]
+
+def soft_score(H, llr):
+    """z of each check h (rows of H) on words of LLRs (W, n): the sum over words of prod_{j in h} tanh(llr_j/2) (each
+    word's expected parity of h: +1 for a sure 0) over its spread. Near 0 for a vector that is no check, large for one"""
+    t = np.tanh(np.clip(np.asarray(llr, dtype=float), -30, 30)/2)
+    H = np.asarray(H, dtype=bool)
+    # product over each check's support, in logs (sign and magnitude apart), for all words at once
+    la = np.log(np.maximum(np.abs(t), 1e-300))
+    neg = (t < 0).astype(np.int64)
+    mag = np.exp(la @ H.T.astype(float))
+    sign = 1 - 2*((neg @ H.T.astype(np.int64)) % 2)
+    T = sign*mag
+    return T.sum(axis=0)/np.sqrt(np.sum(T**2, axis=0) + 1e-300)
+
+def soft_dual(llr, n, offset=0, trials=40, seed=0, z_min=8.0, size=None):
+    """Parity checks of a linear block code of length n from soft values (LLRs, positive = 0): `recover_dual` for words
+    too noisy for random subsets to be clean. Each subset of s words is drawn from the 3s likeliest to hold no error
+    (prod 1/(1 + e^-|l|); once checks are found, words failing one go last, which cleans the next draw); null vectors are kept on their soft score (`soft_score`: the tanh-product syndrome over all
+    words, above z_min). Returns dict(H, k, ok, clean) as recover_dual (clean: the words' mean chance of no error)"""
+    rng = np.random.default_rng(seed)
+    l = np.asarray(llr, dtype=float).reshape(-1)[offset:]
+    m = len(l)//n
+    L = l[:m*n].reshape(m, n)
+    words = (L < 0).astype(np.uint8)
+    logc = -np.log1p(np.exp(-np.minimum(np.abs(L), 50.0))).sum(axis=1) # log P(no error in the word)
+    out = {"H": np.zeros((0, n), dtype=np.uint8), "k": n, "ok": False, "clean": float(np.exp(logc).mean())}
+    if m < n:
+        return out
+    keep = np.zeros((0, n), dtype=np.uint8)
+    stale = 0
+    sizes = [size] if size else [n//4, n//2, (3*n)//4, n - 1]
+    for _ in range(trials):
+        before = len(keep)
+        ok = np.ones(m, bool) if not len(keep) else ((words.astype(np.int32) @ keep.T.astype(np.int32)) % 2 == 0).all(axis=1)
+        order = np.argsort(-(logc - 1e3*~ok), kind="stable") # the likeliest clean first, those failing a check found last
+        for s in sizes:
+            s = min(s, m)
+            pool = order[:min(m, 3*s)]
+            idx = rng.choice(pool, size=s, replace=False)
+            N = nullspace(words[idx])
+            if len(N) == 0:
+                continue
+            good = N[soft_score(N, L) > z_min]
+            if len(good):
+                keep = nullspace(nullspace(np.concatenate((keep, good)))) # the row space of what holds
+        stale = stale + 1 if len(keep) == before else 0
+        if len(keep) and stale >= 3:
+            break
+    out["H"], out["k"], out["ok"] = keep, n - len(keep), len(keep) > 0
+    return out
+
+def soft_find_length(llr, min_len=4, max_len=128, offset=0, trials=3, seed=0):
+    """Codeword length from soft values: the shortest n (rows of n from `offset`) whose soft dual holds a check, or None.
+    Slower than `find_length` (a `soft_dual` a length): for words too noisy for its rank. Alignment is taken as given
+    (a cyclic code holds at any; a frame start or a known offset for others)"""
+    l = np.asarray(llr, dtype=float).reshape(-1)
+    for n in range(min_len, max_len + 1):
+        if (len(l) - offset)//n < n + EXTRA:
+            break
+        r = soft_dual(l, n, offset, trials=trials, seed=seed)
+        if r["ok"] and 0 < r["k"] < n:
+            return n
+    return None
 
 def recover_dual(bits, n, offset=0, trials=40, seed=0, z_min=8.0):
     """Recover parity checks of an unknown linear block code of length n from (noisy) hard bits

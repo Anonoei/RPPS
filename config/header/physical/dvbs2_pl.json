@@ -1,23 +1,28 @@
 {
-  "base": "header",
   "type": "physical",
-  "comment": "DVB-S2 PLHEADER: 26 SOF symbols then the PLS code, 64 symbols, all pi/2-BPSK. The PLS carries the MODCOD (5 bits), the frame size (1: short) and pilots (1: on): a (32,6) first-order Reed-Muller word, each bit sent twice, the second copy XOR the pilots bit, then XOR a fixed scrambling word",
-  "ref": "EN 302 307-1 5.5.2",
+  "comment": [
+    "DVB-S2 PLHEADER: 26 SOF symbols then the PLS code, 64 symbols, all pi/2-BPSK. The PLS carries s2x (b0:",
+    "1 for a DVB-S2X MODCOD), the MODCOD (5 bits), the frame size (1: short) and pilots (1: on):",
+    "a (32,7) code (the (32,6) first-order Reed-Muller code of DVB-S2 and one more row for s2x), each bit sent twice,",
+    "the second copy XOR the pilots bit, then XOR a fixed scrambling word. With s2x 0 it is DVB-S2's header exactly;",
+    "with s2x 1 the PLS is sent a quarter turn on from the SOF, and (modcod, short) read together as DVB-S2X's MODCOD",
+    "and frame length (EN 302 307-2 table 17a: PLS value 128 + 4 modcod + 2 short + pilots)"
+  ],
+  "ref": "EN 302 307-1 5.5.2, EN 302 307-2 5.5.2",
   "tags": ["dvb-s2"],
   "constellation": "bpsk",
   "phase": 45,
   "rotate": 90,
   "cycle": 2,
-  "known": {
-    "bits": "0x18D2E82",
-    "n": 26
-  },
+  "known": {"bits": "0x18D2E82", "n": 26},
   "code": {
     "n": 64,
-    "rows": ["0x3333333333333333", "0x0F0F0F0F0F0F0F0F", "0x00FF00FF00FF00FF", "0x0000FFFF0000FFFF", "0x00000000FFFFFFFF", "0xFFFFFFFFFFFFFFFF", "0x5555555555555555"],
+    "rows": ["0xC300CCF00CF3F3F3", "0x3333333333333333", "0x0F0F0F0F0F0F0F0F", "0x00FF00FF00FF00FF", "0x0000FFFF0000FFFF", "0x00000000FFFFFFFF", "0xFFFFFFFFFFFFFFFF", "0x5555555555555555"],
     "scramble": "0x719D83C953422DFA"
   },
+  "turn": {"field": "s2x", "degrees": 90},
   "fields": [
+    {"name": "s2x", "bits": 1},
     {"name": "modcod", "bits": 5},
     {"name": "short", "bits": 1},
     {"name": "pilots", "bits": 1}

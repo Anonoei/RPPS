@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from ..base.control import anchor
 from ..base.rpps import Stage
 
 
@@ -169,6 +170,7 @@ class Preamble(Stage):
         meta.stream.est[self.name] = dict(st.est)
         buf, st.buf = st.buf[st.start - st.base:], None
         meta.stream.out_pos[self] = st.start # Data.apply places the output at the preamble, not at the block
+        anchor(meta, self, st.start, 0) # The samples before it were dropped: a profile's positions map past them
         return self._out(buf, st.start, st, meta)
 
     def _out(self, x, pos, st, meta):

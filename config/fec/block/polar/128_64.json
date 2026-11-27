@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "type": "polar",
   "comment": "Polar (128, 64), frozen by polarization weight, successive cancellation (Arikan, IEEE Trans. IT 2009)",
   "n": 128,

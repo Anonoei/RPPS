@@ -4,6 +4,7 @@
     python tools/effort_bench.py --chains polar_dci tpc --fer 0.01 --errors 50
     python tools/effort_bench.py --quick              # fewer errors, coarser search: a few minutes
     python tools/effort_bench.py --markdown           # table rows for rpps._effort as well
+    python tools/effort_bench.py --update-baseline    # keep this machine's results in .benchmarks/ (--check compares)
 
 A chain: random messages, the code's encoder, the constellation, AWGN at Es/N0 (per symbol, unit mean power), the
 constellation's LLRs with the exact noise variance (max-log or exact as the level says), the decoder. Each SNR point
@@ -42,6 +43,7 @@ Findings (2026-11-22, native kernels, one thread, FER 1e-1, 20 errors a point; s
   0.85, 64800 1/2 at 0.8, and both fail every word at 0.75 or less: no safe value to move to).
 """
 import argparse
+import sys
 import time
 
 import numpy as np
@@ -49,10 +51,12 @@ import numpy as np
 import rpps as rp
 from rpps import _accel, _effort
 
+import _bench
+
 # name: (code ref, load params, constellation, words a batch, starting bracket of Es/N0 (dB))
 CHAINS = {
-    "ldpc_64800_1_2_qpsk": ("block/ldpc/dvbs2_64800_1_2", {}, "dvbs2_qpsk", 4, (0.0, 3.0)),
-    "ldpc_16200_3_5_8psk": ("block/ldpc/dvbs2_16200_3_5", {}, "dvbs2_8psk", 8, (4.0, 8.0)),
+    "ldpc_64800_1_2_qpsk": ("block/ldpc/dvbs2_64800_1_2", {}, "psk/qpsk dvb-s2", 4, (0.0, 3.0)),
+    "ldpc_16200_3_5_8psk": ("block/ldpc/dvbs2_16200_3_5", {}, "psk/8psk dvb-s2", 8, (4.0, 8.0)),
     "turbo_lte_6144_qpsk": ("block/turbo/lte", {"K": 6144}, "qpsk", 2, (-3.0, 1.0)),
     "turbo_lte_40_qpsk": ("block/turbo/lte", {"K": 40}, "qpsk", 64, (-1.0, 4.0)),
     "polar_dci_qpsk": ("block/polar/nr_dci", {"K": 63, "E": 432}, "qpsk", 64, (-6.0, 0.0)),
@@ -66,7 +70,7 @@ class Chain:
     def __init__(self, name, seed=1):
         ref, params, const, self.W, self.bracket = CHAINS[name]
         self.name, self.code = name, rp.code.load(ref, **params)
-        self.c = rp.symbol.load(const)
+        self.c = rp.symbol.load(*const.split(" ")) # a definition and its map
         enc = self.code.encoder
         self.conv = ref.startswith("conv/")
         self.k = 2000 if self.conv else enc.num # message bits a word
@@ -140,7 +144,7 @@ class Chain:
         return esn0 - 10*np.log10(self.bps*self.rate)
 
 def qpsk_matched(n, sps, delay, beta=0.35, seed=0):
-    """QPSK through RRC and its matched filter, delayed by `delay` samples (as tests/unit/test_effort.py)"""
+    """QPSK through RRC and its matched filter, delayed by `delay` samples (as tests/unit/math/test_effort.py)"""
     P = np.exp(1j*np.pi/4*(2*np.arange(4) + 1))
     s = P[np.random.default_rng(seed).integers(0, 4, n)]
     h = rp.signal.filters.ShapingRRC(None, sps, beta).pulse
@@ -170,7 +174,7 @@ def timing(levels, n=60000):
             rows.append((sps, lvl, evm_db(out[n//4:-100]), len(out)/best))
     return rows
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--chains", nargs="*", default=list(CHAINS) + ["timing"], help=f"of {list(CHAINS) + ['timing']}")
     ap.add_argument("--levels", nargs="*", default=list(_effort.LEVELS))
@@ -179,7 +183,9 @@ def main():
     ap.add_argument("--step", type=float, default=0.05)
     ap.add_argument("--quick", action="store_true", help="10 errors, 0.1 dB")
     ap.add_argument("--markdown", action="store_true")
-    a = ap.parse_args()
+    _bench.add_args(ap)
+    a = ap.parse_args(argv)
+    rec = _bench.Record("effort")
     if a.quick:
         a.errors, a.step = 10, 0.1
     print(f"native kernels: {'yes' if _accel.available() else 'NO (Python loops)'}; FER {a.fer:g}, {a.errors} errors a point, {a.step} dB")
@@ -190,6 +196,8 @@ def main():
             for sps, lvl, evm, sp in timing(a.levels):
                 print(f"  {sps:3d}  {lvl:9s} {evm:7.1f}  {sp/1e6:7.3f}")
                 md.append(f"| timing {sps} sps | {lvl} | EVM {evm:.1f} dB | | {sp/1e6:.3f} Msym/s | |")
+                rec.add(f"timing {sps} sps {lvl} EVM", evm, "dB", "lower", tol=1.0)
+                rec.add(f"timing {sps} sps {lvl}", sp/1e6, "Msym/s")
             continue
         ch = Chain(name)
         print(f"\n{name}  (rate {ch.rate:.3f}, {ch.bps} bits/symbol)\n  level      Es/N0   Eb/N0   Mbit/s@thr  Mbit/s@thr+1   search s")
@@ -201,9 +209,13 @@ def main():
                 s0, s1 = ch.speed(thr), ch.speed(thr + 1.0)
             print(f"  {lvl:9s} {thr:6.2f}  {ch.ebn0(thr):6.2f}   {s0/1e6:9.4f}   {s1/1e6:11.4f}   {took:8.1f}", flush=True)
             md.append(f"| {name} | {lvl} | {thr:.2f} | {ch.ebn0(thr):.2f} | {s0/1e6:.3f} | {s1/1e6:.3f} |")
+            rec.add(f"{name} {lvl} Es/N0", thr, "dB", "lower", tol=a.step)
+            rec.add(f"{name} {lvl} at threshold", s0/1e6, "Mbit/s")
+            rec.add(f"{name} {lvl} 1 dB above", s1/1e6, "Mbit/s")
     if a.markdown:
         print("\n| Chain | Level | Es/N0 dB | Eb/N0 dB | Mbit/s at threshold | Mbit/s 1 dB above |\n|---|---|---|---|---|---|")
         print("\n".join(md))
+    return _bench.finish(a, rec)
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

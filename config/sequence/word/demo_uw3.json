@@ -1,0 +1,11 @@
+{
+  "type": "word",
+  "comment": [
+    "Demo MF-TDMA unique word of burst type 3: 64 bits (32 QPSK symbols) at the start of every burst of that type;",
+    "the three chosen for low auto- and cross-correlation (profile/demo/mftdma)"
+  ],
+  "tags": ["example"],
+  "word": "0x9b13b424b5b54e82",
+  "bits": 64,
+  "order": "msb"
+}

@@ -1,6 +1,14 @@
 {
-  "base": "profile",
-  "comment": "5G NR downlink at 15 kHz subcarriers to SIB1, through the Doppler of a LEO satellite (NTN) or none: cell search over a wide carrier offset on the PSS, then the SS/PBCH block tracked every 20 ms (the offset and its rate, the slot timing and the clock's rate), the grid of every slot, then three branches reading each slot in turn. The PBCH gives the MIB and the SFN, which place CORESET 0 and the Type0 search space; the PDCCH searches them for a DCI 1_0 to the SI-RNTI, whose allocation the PDSCH decodes (LDPC, the transport block's CRC): SIB1 and the other SI messages. The sample rate sets the FFT (7.68 MS/s: 512)",
+  "comment": [
+    "5G NR downlink (FR1: SS/PBCH block at 15 or 30 kHz subcarriers, control and SIB1 at either, as the MIB says) to",
+    "SIB1, through the Doppler of a LEO satellite (NTN) or none:",
+    "cell search over a wide carrier offset on the PSS, then the SS/PBCH block tracked every 20 ms (the offset and its",
+    "rate, the slot timing and the clock's rate), the grid of every subframe, then three branches reading each in",
+    "turn. The PBCH gives the MIB and the SFN, which place CORESET 0 and the Type0 search space;",
+    "the PDCCH searches them for a DCI 1_0 to the SI-RNTI, whose allocation the PDSCH decodes (LDPC, the transport",
+    "block's CRC): SIB1 and the other SI messages. The sample rate is scs x nfft (15 kHz: 7.68 MS/s at 512; 30 kHz:",
+    "15.36 MS/s)"
+  ],
   "ref": "3GPP TS 38.211 7.3-7.4, 38.212 7.1, 7.3, 38.213 13, 38.214 5.1; TR 38.811 (NTN)",
   "tags": ["nr"],
   "params": {
@@ -12,68 +20,58 @@
       "default": 60000.0,
       "comment": "carrier offsets searched about it [Hz]: a LEO pass at S-band moves it by up to some 50 kHz"
     },
+    "scs": {"default": 15000, "choices": [15000, 30000], "comment": "the SS/PBCH block's subcarrier spacing [Hz]"},
+    "pattern": {
+      "default": "auto",
+      "comment": [
+        "where the candidate blocks of a half frame start (38.213 4.1): A (15 kHz), B or C (30 kHz, by the band);",
+        "auto: A or C"
+      ]
+    },
     "nfft": {
       "default": 512,
-      "comment": "the FFT the sample rate gives: 15 kHz x nfft samples a second"
+      "comment": "the FFT at the block's spacing, a multiple of 256: scs x nfft samples a second"
+    },
+    "min_bw": {
+      "default": 5,
+      "comment": "the band's minimum channel bandwidth [MHz] (5 or 10; 40, e.g. n79): which CORESET 0 table applies"
     },
     "fc": {
       "default": 0.0,
-      "comment": "the SS/PBCH block centre's absolute frequency [Hz], on the synchronization raster: the phase NR's upconversion gives each symbol (38.211 5.4) is reckoned with it, by the cell search (whether the cell applies it) and the PDSCH (it tries its symbols with it taken off and without; 0: never)"
+      "comment": [
+        "the SS/PBCH block centre's absolute frequency [Hz], on the synchronization raster:",
+        "the phase NR's upconversion gives each symbol (38.211 5.4) is reckoned with it, by the cell search (whether",
+        "the cell applies it) and the PDSCH (it tries its symbols with it taken off and without; 0: never)"
+      ]
     }
   },
   "requires": {
-    "baud": "15e3",
-    "Fs": "15e3*nfft",
+    "baud": "scs",
+    "Fs": "scs*nfft",
     "bw": "0.9*Fs",
     "min_samples": "Fs*0.2",
-    "from_cf": {
-      "fc": "cf"
-    },
+    "from_cf": {"fc": "cf"},
     "comment": "baud: the subcarrier spacing; cf: the SS/PBCH block centre (fc)"
   },
   "steps": [
     {
       "grid": "nr_cell",
       "id": "cell",
-      "offset": {
-        "param": "offset"
-      },
-      "span": {
-        "param": "span"
-      },
-      "fc": {
-        "param": "fc"
-      }
+      "offset": {"param": "offset"},
+      "span": {"param": "span"},
+      "fc": {"param": "fc"},
+      "scs": {"param": "scs"},
+      "pattern": {"param": "pattern"}
     },
-    {
-      "grid": "nr_grid"
-    },
+    {"grid": "nr_grid"},
     {
       "branch": "channels",
       "order": ["pbch", "pdcch", "pdsch"],
-      "frame": {
-        "expr": "8 + 14*nfft"
-      },
+      "frame": {"expr": "16 + 960 + 14*nfft*scs/15000"},
       "branches": {
-        "pbch": [
-          {"grid": "nr_pbch", "id": "pbch"}
-        ],
-        "pdcch": [
-          {
-            "grid": "nr_pdcch",
-            "id": "pdcch",
-            "rntis": [65535]
-          }
-        ],
-        "pdsch": [
-          {
-            "grid": "nr_pdsch",
-            "id": "pdsch",
-            "fc": {
-              "param": "fc"
-            }
-          }
-        ]
+        "pbch": [{"grid": "nr_pbch", "id": "pbch"}],
+        "pdcch": [{"grid": "nr_pdcch", "id": "pdcch", "rntis": [65535], "min_bw": {"param": "min_bw"}}],
+        "pdsch": [{"grid": "nr_pdsch", "id": "pdsch", "fc": {"param": "fc"}, "min_bw": {"param": "min_bw"}}]
       }
     }
   ],
@@ -90,11 +88,7 @@
           "dmrs_pos": "dmrs_pos",
           "barred": "barred"
         },
-        "pdsch": {
-          "coreset0": "coreset0",
-          "k_ssb": "k_ssb",
-          "dmrs_pos": "dmrs_pos"
-        }
+        "pdsch": {"coreset0": "coreset0", "k_ssb": "k_ssb", "dmrs_pos": "dmrs_pos"}
       }
     },
     "pdcch": {
@@ -108,9 +102,14 @@
           "sii": "sii",
           "rnti": "rnti",
           "aggregation": "aggregation",
-          "cce": "cce"
+          "cce": "cce",
+          "slot": "slot"
         }
       }
     }
+  },
+  "capture": {
+    "pbch": {"linktype": "upper_pdu", "dissector": "nr-rrc.bcch.bch"},
+    "pdsch": {"linktype": "upper_pdu", "dissector": "nr-rrc.bcch.dl.sch"}
   }
 }

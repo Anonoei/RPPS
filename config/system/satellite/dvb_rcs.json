@@ -1,0 +1,22 @@
+{
+  "comment": [
+    "return-link bursts on MF-TDMA: frames of tens to hundreds of ms;",
+    "seen on the uplink bands and on a transparent satellite's downlink"
+  ],
+  "ref": "ETSI EN 301 790, EN 301 545-2",
+  "title": "DVB-RCS / RCS2 (MF-TDMA return)",
+  "features": {
+    "modulation": ["qpsk", "8psk", "16qam", "bpsk"],
+    "baud": {"range": [32000.0, 8000000.0]},
+    "beta": [0.35, 0.2],
+    "burst": true,
+    "frame": {"range": [0.02, 0.5]},
+    "frequency": [
+      [3400000000.0, 4200000000.0],
+      [10700000000.0, 12750000000.0],
+      [14000000000.0, 14500000000.0],
+      [17700000000.0, 21200000000.0],
+      [27500000000.0, 31000000000.0]
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "comment": "AX.25 frames from the destination address, without flags or FCS",
+  "ref": "https://www.tcpdump.org/linktypes.html",
+  "dlt": 3,
+  "dissector": "ax25",
+  "fcs": "none"
+}

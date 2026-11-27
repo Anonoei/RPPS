@@ -1,10 +1,11 @@
 r"""Analysis: blind estimation and measurement at any representation, outside the data path. The tree follows what is
 analysed, the way config/ and the implementation packages do:
 
- - spectrum: what is in a capture and at what rate. signal (the survey: find_signals, Survey), psd, cyclic (symbol
-   rate and carrier lines with a calibrated false alarm, the SCF), scf (every cycle frequency, FRESH), pencil
-   (matrix-pencil lines), waveform (tones, OFDM and which system, bursts, envelope), ofdm_pilots (an OFDM grid and its
-   pilots), burst (TDMA bursts on a shared preamble), separate (two co-channel signals), hopping (frequency hopping)
+ - spectrum: what is in a capture and at what rate. find (the signals' boxes at a false-alarm rate, the streaming
+   Finder), signal (the survey: find_signals, Survey), psd, cyclic (symbol rate and carrier lines with a calibrated
+   false alarm, the SCF), scf (every cycle frequency, FRESH), pencil (matrix-pencil lines), waveform (tones, OFDM and
+   which system, bursts, envelope), ofdm_pilots (an OFDM grid and its pilots), burst (TDMA bursts on a shared preamble),
+   separate (two co-channel signals), hopping (frequency hopping)
  - modulation: what carries the symbols (rate, timing, modulation, offset and phase are rp.sync.detect). cumulants (the constellation's
    family, blind to noise), fsk (FSK / MSK / GMSK), cpm (GMSK and SOQPSK by a per-survivor detector), pm (residual-carrier
    PM and its subcarriers), quality (a gate on hard decisions; Es/N0 is rp.sync.quality), impairments (compression, IQ imbalance,
@@ -15,12 +16,13 @@ analysed, the way config/ and the implementation packages do:
    trellis-coded modulation), block (linear: length, alignment and checks by rank, BCH / cyclic, product; ldpc; rs;
    polar), interleave (block and Forney interleavers)
  - framing: how the stream is cut. frames (frame period and unique word on symbols), payload (what decoded bits carry),
-   telemetry (PM telemetry end to end)
+   telemetry (PM telemetry end to end), crc (the CRC frames carry: generator, init, xorout, what it covers), fields
+   (what each bit of a header is), marked (frames behind a sync marker, their scrambler and RS code)
  - code/conv/mother, framing/bits: a convolutional mother code's generators; sync markers, frame length and HDLC on bits
  - identify: which code a hard-bit stream carries, peeling layers (`identify`, which rp.sync.AcquireFEC runs, `solve`)
  - result: what the searches return (Hypothesis, Report, Guess) and `pick`
  - signal_profile: `profile(source)`, every step that processes each signal in a capture, and what is left unsolved
- - catalogue: measured features to named systems, with the reasons
+ - catalogue: measured features to named systems (config/system), with the reasons
 Results feed the configured stages (`Guess.save` writes a config/fec definition, a found punctured code as a child of
 its mother code; rp.sync.Detection fills meta.stream.det; `identify.CodeDetection` names the profile that decodes a stream).
 
@@ -43,9 +45,10 @@ bits; strong codes at low SNR are beyond them on channel bits.
 | FSK / MSK / GMSK, CPM index | `modulation.fsk.analyze`, `cpm_index` | instantaneous frequency; h from the phase lattice |
 | GMSK / SOQPSK bits, which pulse | `modulation.cpm.demodulate`, `identify` | per-survivor Viterbi, each survivor its own carrier loop |
 | OFDM pilot pattern | `spectrum.ofdm_pilots.discover`, `grid` | grid from CP peaks; period from coherent repetition; pilot lattice, boost, empty cells |
-| TDMA bursts, frame and slots | `spectrum.burst.demodulate` | each burst on its shared preamble, data-aided carrier and phase |
+| TDMA bursts, frame and slots | `burst.demodulate` | each burst on its shared preamble, mid-amble or postamble (`shared_segments`), data-aided carrier and phase; its symbol clock followed; LLRs (`Bursts.llrs`); blind when nothing is shared |
 | two co-channel signals of equal power | `spectrum.separate.estimate`, `separate` | each one's carrier, timing and phase; joint sequence estimate |
 | which named system | `catalogue.match`, `features` | measured features against systems from their standards, weighted |
+| which shipped profile | `profile` | each fixed-rate one's receive on its channel; its checks verify |
 | PM, residual carrier, subcarriers | `modulation.pm.analyze`, `subcarrier`, `nrz` | carrier tracked, phase around it |
 | DSSS | `sequence.spread.period`, `chip_rate`, `code`, `despread` | windowed autocorrelation variance; code from eigenvectors |
 | frequency hopping | `spectrum.hopping.track`, `dehop` | short-time spectrum clustered into channels and dwells |
@@ -69,6 +72,7 @@ bits; strong codes at low SNR are beyond them on channel bits.
 | puncture of a known mother code | `code.conv.puncture.search` | every rate P/(P+1) pattern through the Viterbi decoder |
 | Reed-Solomon over GF(256) | `code.block.rs.search` | shared roots by Galois-field Fourier transform at every byte phase |
 | binary block code | `code.block.linear.solve_block` | length from rank deficiency, checks from the null space; then cyclic / BCH, product or LDPC |
+| block code from soft values (too noisy for the rank) | `code.block.linear.soft_dual`, `soft_find_length`, `solve_block(llr=, soft_length=)` | subsets of the likeliest clean words; checks kept on the tanh-product syndrome (BCH(63,51) named to 5 dB Eb/N0, hard bits above 6) |
 | additive scrambler | `sequence.scrambler.additive_search`, `explain`, `search` | Berlekamp-Massey over windows; polynomials factored into known scramblers |
 | scrambler taps | `sequence.recurrence.search`, `lfsr`, `keystream` | every recurrence to degree 24 at once; any degree by Berlekamp-Massey |
 | trellis code on PSK labels | `code.conv.tcm.search` | Walsh-Hadamard over label windows, every rotation and labelling |
@@ -84,14 +88,21 @@ bits; strong codes at low SNR are beyond them on channel bits.
 |---|---|---|
 | frame period and unique word on symbols | `framing.frames.find`, `cut`, `bursts` | coherence per position over candidate periods |
 | sync markers, frame length, HDLC | `framing.bits.find_sync`, `frame_length`, `scan_hdlc` | hits at a period, autocorrelation, flags and FCS against chance |
+| frames behind a sync marker, their scrambler and code | `framing.marked.layer` | a marker at one period; scramblers restarted per frame; RS words decoding at each depth, against chance |
 | PM telemetry end to end | `framing.telemetry.analyze` | BPSK per subcarrier, line code, frame period, counters |
+| what each header bit is | `framing.fields.map` | constants, counters (either bit order, per terminal), ids, length fields, enums, random; a link header definition |
+| code blocks a burst is made of | `burst.units` | burst lengths as overhead + n units, the unit to a symbol or so |
+| a burst time plan, and whether one explains the bursts | `burst.learn_plan`, `check_plan` | BTU, frame, slots from the starts; each burst in a slot of its carrier and kind, the plan's origin and clock fitted (`rp.viz.bursts`, `burst_timing`, `plan_evidence` draw them) |
+| a burst's layout, and how many transmitters | `burst.demodulate` with `rp.viz.burst_stack`, `burst_terminals` | the bursts of a kind lined up on their known symbols (where they agree); a cluster per transmitter in offset and power |
+| which CRC, over which bits | `framing.crc.search` | GCD of frame differences (RevEng's method on bit streams); init and xorout from two lengths; config/crc names |
 | framing in decoded bits | `framing.payload.signatures` | E1/T1, ATM, GFP, HDLC, IPv4, CCSDS ASM, MPEG-TS, fixed bits, each against chance |
 | structured, scrambled or random | `framing.payload.verdict` | signatures, bias, linear complexity, compressibility |
+| encrypted, or only compressed | `framing.randomness.test` | NIST SP 800-22 frequency, block, runs, serial, approximate entropy, cusum; byte chi-square and entropy |
 """
-from . import spectrum, modulation, sequence, code, framing
+from . import spectrum, modulation, sequence, code, framing, burst
 from . import result, identify
 from . import signal_profile
 from . import catalogue
 from .signal_profile import profile, SignalProfile
-from .spectrum.signal import Signal, Survey, Channel, find_signals, measure_band, survey, welch, noise_floor
+from .spectrum.signal import Signal, Burst, Survey, Channel, find_signals, measure_band, survey, welch, noise_floor
 from .spectrum.psd import psd, vbw, vbw_calc

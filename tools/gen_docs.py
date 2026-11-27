@@ -23,7 +23,7 @@ DOCS = ROOT / "docs"
 SITE = "https://anonoei.github.io/RPPS"
 
 # Top-level packages in the order data runs through them (rpps, Where things are), then the support packages
-ORDER = ["source", "signal", "sync", "wave", "symbol", "code", "link", "grid", "profile", "parallel", "sequence",
+ORDER = ["source", "signal", "sync", "wave", "symbol", "code", "link", "grid", "profile", "parallel", "sequence", "plan",
          "analysis", "base", "math", "utils", "viz"]
 # Private modules worth reading: rendered on the rpps page
 ROOT_EXTRA = ["rpps._effort", "rpps.errors"]

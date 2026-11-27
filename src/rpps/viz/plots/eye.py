@@ -21,18 +21,22 @@ def get_eye(syms, sps):
             mesh[i//sps] = sym_snip
     return mesh
 
-def sync_phase(st, n_in):
+def sync_phase(st, n_in, pos=None, sps=None):
     """Where a timing sync samples within the block it just consumed, in samples (None: not running yet)
 
-    st: the sync's state after consuming the block (rp.time.MM or rp.sync.time.Mat), n_in: that block's length.
-    The sync's buffer ends at the end of the block, so the next sampling instant (buffer index) is
-    that many samples into the block, and the rest of its lattice follows every sps.
+    st: the sync's state after consuming the block (rp.sync.time.OerderMeyr or rp.sync.time.Mat), n_in: that block's
+    length; for OerderMeyr also pos (the block's first stream position) and sps. Its sampling lattice follows every sps.
     """
+    tr = getattr(st, "tr", None)
+    if tr is not None: # OerderMeyr: the next symbol's instant on the tracked line, within the block (mod sps)
+        if not tr.started or getattr(st, "m", None) is None or pos is None or not sps:
+            return None
+        t = (st.m*sps + tr.value - tr.rate*tr.at)/(1 - tr.rate)
+        return (t - pos) % sps
     buf = getattr(st, "buffer", None)
     if buf is None:
         return None
-    nxt = st.pos + st.est if hasattr(st, "pos") else st.t_next # MM / Mat
-    return nxt - (len(buf) - n_in)
+    return st.t_next - (len(buf) - n_in) # Mat: its buffer ends at the block's end
 
 def get_eye_at(syms, sps, phase, width=1.0, derotate=None):
     """Eye traces `width` symbols wide centred on the sampling instants phase + k*sps (fractional sps and phase ok)

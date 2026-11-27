@@ -190,7 +190,7 @@ def mlse(r, name, ns, parity=0, S=None, loop=(0.08, 0.002)):
         raise ValueError("fewer samples than a symbol")
     r = r[:n*ns]
     nat = _accel.native
-    if nat is not None and hasattr(nat, "cpm_psp"):
+    if nat is not None:
         bits, best = nat.cpm_psp(r, Q, atab, S, int(parity), float(loop[0]), float(loop[1]))
         bits = np.asarray(bits)
     else:

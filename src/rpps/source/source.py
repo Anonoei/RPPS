@@ -9,7 +9,7 @@ Threads: `.threaded()` puts everything before it in its own thread, and `.pipeli
 pipeline its own, connected by bounded queues. Stages overlap where they release the GIL (numpy, the rpps._native
 kernels), and a radio is drained while the stages work:
 
-    src(16384).threaded(drop=True).pipelined(agc + costas + mm) >> sink
+    src(16384).threaded(drop=True).pipelined(agc + timing + carrier) >> sink
 """
 import queue
 import threading
@@ -149,11 +149,14 @@ class Blocks:
         return Blocks(_threaded(self._gen, depth, drop, "rpps-blocks"))
 
     def pipelined(self, pipe, depth=4):
-        """blocks + pipe, with every top-level stage of the pipe in its own thread (and the source in another)"""
+        """blocks + pipe, with every top-level stage of the pipe in its own thread (and the source in another). A
+        profile's receiver that branches runs its trunk in one and its branches in another (`pipelined_parts`)"""
         items = pipe.items if isinstance(pipe, base.Pipeline) else (pipe,)
         b = self.threaded(depth)
         for it in items:
-            b = (b + it).threaded(depth)
+            parts = it.pipelined_parts() if hasattr(it, "pipelined_parts") else (it,)
+            for part in parts:
+                b = (b + part).threaded(depth)
         return b
 
     def collect(self):
@@ -170,13 +173,37 @@ class Source:
     REP: the representation its blocks are (SAMPLES; a demodulator's ring of timed symbols is SYMBOLS), and APPLIED the
     sync it has done already ({"timing"}): `profile.rx(source=src)` skips the steps before and those (rpps.base, Contracts).
     ppm: how far the radio's reference is off (+15: its clock runs 15 ppm fast). The sample rate and the tuned frequency
-    both come from it, so blocks carry Fs and cf times (1 + ppm 1e-6): what was actually sampled, and where."""
+    both come from it, so blocks carry Fs and cf times (1 + ppm 1e-6): what was actually sampled, and where.
+    context: how the samples were received (a pysdrlib `RxContext`: `Device.get_rx_context()`, a SigMF recording's
+        `pysdrlib:rx`; give one for a file that doesn't say), kept as `stream.rx`. A chain whose LO is above the signal
+        (`context.inverted`: mirrored, and not `undone` by whoever wrote the samples) mirrors the spectrum: with
+        `correct` (the default) the samples are conjugated here, every block and peek, so cf + f is over the air at f
+        (`conjugated`; `stream.rx_conjugated`: put right, here or before). An inversion found later (rp.sync.Inversion)
+        is then the transmitter's or a transponder's, not ours."""
     REP = Rep.SAMPLES
     APPLIED = frozenset()
 
-    def __init__(self, Fs=1.0, cf=0.0, sps=0.0, ppm=0.0):
+    def __init__(self, Fs=1.0, cf=0.0, sps=0.0, ppm=0.0, context=None, correct=True):
         self.Fs, self.cf, self.sps, self.ppm = Fs, cf, sps, ppm
         self.stream = Stream(Fs) # Shared by every block this source makes
+        self.correct = bool(correct)
+        self.set_context(context)
+
+    def set_context(self, context):
+        """How the samples are received (see the class): a new one when the radio retunes or the chain changes"""
+        self.context = context
+        self.stream.rx, self.stream.rx_conjugated = context, self.conjugated or bool(getattr(context, "undone", False))
+
+    @property
+    def conjugated(self):
+        """The samples come conjugated, putting right a chain that inverts the spectrum"""
+        return bool(self.correct and self.context is not None and getattr(self.context, "inverted", False))
+
+    def _sense(self, x):
+        """x the right way round: conjugated when the chain inverts (and nobody undid it: `context.undone`)"""
+        if self.conjugated and np.iscomplexobj(x):
+            return np.conj(x)
+        return x
 
     def _block(self, samples, flush=False):
         s = self.stream
@@ -184,7 +211,7 @@ class Source:
         if self.Fs:
             s.add_air(len(samples) / self.Fs)
         k = 1.0 + self.ppm*1e-6
-        return Data(samples, flush=flush, Fs=self.Fs*k, sps=self.sps, cf=self.cf*k, stream=s)
+        return Data(self._sense(samples), flush=flush, Fs=self.Fs*k, sps=self.sps, cf=self.cf*k, stream=s)
 
     def _samples(self, count):
         raise NotImplementedError()
@@ -209,9 +236,10 @@ class File(Source):
     fmt: pysdrlib format name (see `rp.source.formats.ls()`)
     Fs, cf, sps: what the capture was recorded with
     scale: integer formats become floats in [-1, 1), as a device's samples are
+    context, correct: how it was received (a pysdrlib `RxContext`) and whether to undo an inverting chain (see Source)
     """
-    def __init__(self, fmt, path, Fs=1.0, cf=0.0, sps=0.0, scale=True):
-        super().__init__(Fs, cf, sps)
+    def __init__(self, fmt, path, Fs=1.0, cf=0.0, sps=0.0, scale=True, context=None, correct=True):
+        super().__init__(Fs, cf, sps, context=context, correct=correct)
         self.fmt = fmts.get(fmt)
         pysdrlib = fmts.pysdrlib()
         self._f = pysdrlib.File(path, self.fmt.name, scale=scale)
@@ -219,6 +247,21 @@ class File(Source):
 
     def __str__(self):
         return str(self._f)
+
+    def __getstate__(self):
+        """Pickled without the open file and pysdrlib's own objects: it comes back closed, at the same position"""
+        state = dict(self.__dict__)
+        f = state.pop("_f")
+        state["fmt"] = self.fmt.name
+        state["_at"] = (f.scale, f.cur_samp)
+        return state
+
+    def __setstate__(self, state):
+        scale, pos = state.pop("_at")
+        self.__dict__.update(state)
+        self.fmt = fmts.get(self.fmt)
+        self._f = fmts.pysdrlib().File(self.path, self.fmt.name, scale=scale)
+        self._f.seek(pos)
 
     max_samp = property(lambda self: self._f.max_samp)
     cur_samp = property(lambda self: self._f.cur_samp)
@@ -256,7 +299,7 @@ class File(Source):
         self._f.seek(start)
         try:
             self.open()
-            return self._writable(self._f.next(int(count), partial=True))
+            return self._writable(self._sense(self._f.next(int(count), partial=True)))
         finally:
             self._f.seek(pos)
             if not was_open:
@@ -265,7 +308,7 @@ class File(Source):
     def read(self, count):
         """The next `count` samples as an array (not a block)"""
         self.open()
-        return self._writable(self._f.next(int(count)))
+        return self._writable(self._sense(self._f.next(int(count))))
 
     @staticmethod
     def _writable(x):
@@ -279,8 +322,8 @@ class File(Source):
 class Memory(Source):
     """Samples held in memory, in blocks (a short last block flushes the stream): what was captured from a device, for
     analysis that runs slower than the device does (`Memory.capture`), or an array made some other way"""
-    def __init__(self, samples, Fs=1.0, cf=0.0, sps=0.0):
-        super().__init__(Fs, cf, sps)
+    def __init__(self, samples, Fs=1.0, cf=0.0, sps=0.0, context=None, correct=True):
+        super().__init__(Fs, cf, sps, context=context, correct=correct)
         self.samples = np.asarray(samples)
 
     def __str__(self):
@@ -288,7 +331,7 @@ class Memory(Source):
 
     def peek(self, count, start=0):
         """`count` samples from sample `start` (fewer near the end), as an array"""
-        return self.samples[int(start):int(start) + int(count)].copy()
+        return self._sense(self.samples[int(start):int(start) + int(count)].copy())
 
     def _samples(self, count):
         count = int(count)
@@ -310,7 +353,12 @@ class Memory(Source):
             n += len(out[-1])
             if n >= count:
                 break
-        mem = cls(np.concatenate(out)[:count] if out else np.zeros(0, np.complex64), source.Fs, source.cf, source.sps)
+        ctx = source.context
+        if source.conjugated: # (its blocks came the right way round: the context says so)
+            import dataclasses
+            ctx = dataclasses.replace(ctx, undone=True)
+        mem = cls(np.concatenate(out)[:count] if out else np.zeros(0, np.complex64), source.Fs, source.cf, source.sps,
+                  context=ctx, correct=source.correct)
         mem.dropped = int(getattr(source.stream, "dropped", 0))
         return mem
 
@@ -322,7 +370,8 @@ class Device(Source):
 
     Positions and time come from the radio: samples it lost (an overrun) are counted in `meta.pos`, so a block after a
     gap starts further on and the stages carry the gap into theirs (one inside a block shows at the next block), and
-    `stream.dropped` adds them up. `stream.t0` is the radio's clock (`hw_time`) where it timestamps its samples, else
+    `stream.dropped` adds them up. The radio's `get_rx_context()` (its chain, reference, gains) is `stream.rx`; a chain that
+    inverts the spectrum is undone here unless correct=False (see Source). `stream.t0` is the radio's clock (`hw_time`) where it timestamps its samples, else
     the host's `time.monotonic()` at the first sample, so `meta.time_of(k)` dates any item.
 
     When the device's frequency or rate changes while it streams (a "freq" / "rate" event: another program retuned it, a
@@ -330,7 +379,7 @@ class Device(Source):
     positions counting from the change. When the device is lost (unplugged, a publisher that stopped: pysdrlib's
     `err.Lost`), the blocks end, the last one flushing, and `lost` says why.
     """
-    def __init__(self, device, cf=None, Fs=None, rx_gain=None, sps=0.0, **open_args):
+    def __init__(self, device, cf=None, Fs=None, rx_gain=None, sps=0.0, correct=True, **open_args):
         """device: a pysdrlib driver name ("hackrf"), a target string ("hackrf@SERIAL", "shm@rpps.ch3",
         "radiohost/hackrf-0": opened here by `pysdrlib.open`, closed by `close()` or when it is lost), or a device you made
         (rp.source.Device(pysdrlib.device("sim", realtime=False))). rx_gain: the receive gain as a fraction 0-1 of the
@@ -345,7 +394,8 @@ class Device(Source):
         self.sdr = device
         self.rx_gain = rx_gain
         self._open_args = open_args
-        super().__init__(Fs if Fs is not None else self.sdr.get_rx_sample_rate(), cf if cf is not None else self.sdr.get_rx_freq(), sps)
+        super().__init__(Fs if Fs is not None else self.sdr.get_rx_sample_rate(), cf if cf is not None else self.sdr.get_rx_freq(), sps,
+                         correct=correct) # (the context once the radio is set up: `_samples`)
 
     def peek(self, count):
         """The first `count` samples from the device, as an array. A device can't rewind: these are not in the blocks
@@ -362,6 +412,7 @@ class Device(Source):
             sdr.initialize(cf=self.cf, Fs=self.Fs, rx_gain=self.rx_gain)
             self.cf, self.Fs = sdr.get_rx_freq(), sdr.get_rx_sample_rate() # What the hardware settled on
             self.stream.src_Fs = self.Fs
+            self.set_context(self._context_of(sdr))
             s = self.stream
             base = None
             from pysdrlib import err
@@ -386,6 +437,7 @@ class Device(Source):
                                 self.Fs = float(ev.value)
                             # A new setting: what the stages tracked no longer holds. Positions count from the change
                             self.restart()
+                            self.set_context(self._context_of(sdr))
                             s = self.stream
                             s.src_Fs = self.Fs
                             base = -(m.index + ev.offset)
@@ -406,6 +458,18 @@ class Device(Source):
         finally:
             if mine and sdr.state["open"]:
                 sdr.close()
+
+    @staticmethod
+    def _context_of(sdr):
+        """The radio's RxContext (pysdrlib 0.5.1 on), None from one that can't say"""
+        get = getattr(sdr, "get_rx_context", None)
+        if get is None: # pysdrlib before 0.5.1
+            return None
+        from pysdrlib import err
+        try:
+            return get()
+        except (err.NotSupported, err.RemoteError): # a device that doesn't answer it (a server older than 0.5.1): no context
+            return None
 
     def close(self):
         """Close a device this opened from a target string (one opened by name is closed when its blocks end)"""

@@ -1,8 +1,0 @@
-{
-  "base": "profile",
-  "extends": "dvbs/qpsk",
-  "comment": "DVB-S QPSK, convolutional code K=7 171/133 punctured to 2/3, Forney interleaver I=12, RS(204,188), energy dispersal, MPEG-TS out. QPSK carries the code's two outputs on I and Q, I first, a 1 negative",
-  "params": {
-    "code": "k7_171_133/2_3"
-  }
-}

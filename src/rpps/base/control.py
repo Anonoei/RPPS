@@ -15,9 +15,12 @@ Both directions:
     anchor(meta, op, at, out, rate=None)
         a step that drops or inserts items says which output item an input position became, so positions translate
         exactly through it
-    emit(meta, op, kind, fields, bits=None, ok=None, at=<input position>)
+    emit(meta, op, kind, fields, bits=None, ok=None, at=<input position>, frame=None, parts=None)
         a decoded frame, for whoever reads the profile's messages (rpps.profile.message): its fields, its payload bits,
-        whether its check passed, from absolute position `at` in the op's input (where the frame starts)
+        whether its check passed, from absolute position `at` in the op's input (where the frame starts). frame: the
+        whole frame's bits as received (header, payload, FCS) when the op has more than the payload; parts: where each
+        part is in them, {"header" | "payload" | "fcs" | ...: (first bit, bits)}. The op's `check_name`, when it has
+        one, names the check behind `ok`
 """
 
 class Control:
@@ -52,6 +55,7 @@ def anchor(meta, op, at, out, rate=None):
     """Absolute input position `at` became item `out` of this call's output (a step that drops or inserts items)"""
     of(meta.stream).anchors.append((op, int(at), int(out), rate))
 
-def emit(meta, op, kind, fields, bits=None, ok=None, at=0):
+def emit(meta, op, kind, fields, bits=None, ok=None, at=0, frame=None, parts=None):
     """A decoded frame (see module): kind None takes the profile step's id"""
-    of(meta.stream).messages.append((op, kind, dict(fields or {}), None if bits is None else bits, ok, int(at)))
+    of(meta.stream).messages.append((op, kind, dict(fields or {}), None if bits is None else bits, ok, int(at),
+                                     None if frame is None else (frame, dict(parts or {}))))

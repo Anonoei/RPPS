@@ -4,9 +4,18 @@
             "refin": false, "refout": false,       the reveng catalogue fields (numbers or hex strings)
             "check": "0x29b1"}                      optional: the CRC of b"123456789", verified on load
            width is 1 to 64 bits; encode / decode / syndrome work on bit streams of any length (see `crc`)
+           {"base": "crc", "type": "composite",     a check from CRC parts over transformed views of the message
+            "parts": [{"crc": "crc8_smbus"}, {"crc": "crc8_smbus", "input": ["nibble_swap"]}],
+            "combine": "concat"}                    (or "xor"); goes wherever a crc does (see `rpps.link.check`)
+           {"base": "crc", "type": "checksum",      a sum, ones' complement (Internet), Fletcher, Adler or XOR checksum
+            "algorithm": "internet", ...}           (see `rpps.link.checksum`); goes wherever a crc does
     frame  {"base": "frame", "type": "hdlc", "flag": "0x7E", "stuff": 5, "nrzi": false,
             "fcs": "crc16_x25",                     the name of a crc definition
             "min_bytes": 4}
+           {"base": "frame", "type": "bytes",       byte stuffing (SLIP, KISS, asynchronous PPP; see `bytestuff`)
+            "flag": "0xC0", "escape": "0xDB",
+            "escapes": {"0xC0": "0xDC", "0xDB": "0xDD"},   what follows the escape for each byte, or "xor": "0x20" for
+            "fcs": null, "refin": false}                   the bytes in "escaped"; an optional fcs; refin: LSB first
     header {"base": "header", "type": "link", "fields": [...], "crc": ..., "payload": "..."}   fields, CRC and payload length of a
             frame's header, driven and published through a profile (see rpps.link.header)
 """
@@ -37,9 +46,11 @@ def root() -> Path:
     """Directory holding the encapsulation definitions"""
     return _config.find_config("crc")
 
-def ls(path=None):
-    """List available definitions: {category: [names]}"""
-    return {k: sorted(n for names in _config.ls(k, path).items() if k != "header" or names[0] == "link" for n in names[1])
+def ls(path=None, blind=False):
+    """List available definitions: {category: [names]}
+
+    blind: only what the blind tools try (rp._config.ls): no definitions tagged "example", and only the selected tags (rp.select_tags)"""
+    return {k: sorted(n for names in _config.ls(k, path, blind=blind).items() if k != "header" or names[0] == "link" for n in names[1])
             for k in KINDS}
 
 def load(ref: str, path=None, **params):

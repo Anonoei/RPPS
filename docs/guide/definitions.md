@@ -1,9 +1,10 @@
 # Definitions
 
-Codes, scramblers, constellations, pulses, filters, sequences, headers, tables and profiles are JSON, not code: a new
+Codes, scramblers, constellations, pulses, filters, sequences, headers, tables, profiles and systems are JSON, not code: a new
 instance is a new file, a new kind is a new loader. Definitions are organized by **resource** (what they define, not
-which package loads them), one folder each: `config/<resource>/[<group>/]<name>.json`. A file's `base` picks the loader
-within the resource and its `type` the implementation; the keys each accepts are in the docstring of the module linked.
+which package loads them), one folder each: `config/<resource>/[<group>/]<name>.json`. The folder a file is in picks the
+loader within the resource (its "base", below) and its `type` the implementation; the keys each accepts are in the
+docstring of the module linked.
 
 - **Search order:** `rp.add_config_path(dir)` and `$RPPS_CONFIG`, then the shipped `config/` (`rpps/config` in a wheel).
   Your directory is searched first, so it can also override shipped definitions.
@@ -23,6 +24,21 @@ python -m rpps ls sequence scramble   # some resources
 --8<-- "examples/own_definitions.py"
 ```
 
+## Only your definitions, or only some standards
+The shipped definitions are many, and the blind tools (survey, identify, solve, the catalogue) try every one that fits.
+Where most of those signals never appear, that time buys nothing. Two switches narrow it:
+
+- **Only your directories**: `RPPS_CONFIG=/my/config RPPS_CONFIG_SHIPPED=0`, or in code
+  `rp.add_config_path("/my/config"); rp.use_shipped(False)`. Nothing shipped is found or tried. Copy in what you use
+  (`python -m rpps show <ref>` prints a definition): a profile's codes, tables, pulses and headers, and what any of
+  them `extends`. Code that loads a shipped definition by name (the NR grid's polar and LDPC codes, LTE's tables)
+  needs it in your directory too. The shipped `tags.json` is still read, so your files can use its tags.
+- **Only some standards, blind**: `RPPS_CONFIG_TAGS=dvb-s2,lte`, or `rp.select_tags(["dvb-s2", "lte"])`
+  (`rp.select_tags(None)` for all again). The blind tools then try only the definitions tagged with one of them, plus
+  the untagged generic ones (a CRC-32, the K=7 code, QPSK). Everything still loads by name.
+
+`python -m rpps ls` says when either is on; `python -m rpps ls --blind` lists what the blind tools try.
+
 ## Resources
 
 | Resource | Holds | Example | Load | Keys |
@@ -30,7 +46,7 @@ python -m rpps ls sequence scramble   # some resources
 | `constellation` | point sets (or PSK/APSK rings) and their bit maps; shapes by name (16QAM) come from `rp.symbol.generate` | `psk/qpsk` | `rp.symbol.load("psk/qpsk")` | [symbol/constellation.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/symbol/constellation.py) |
 | `pulse` | symbol and frequency pulses (`"kind"`): `rrc`, `rc`, `halfsine`, `gaussian`, `rect/symbol`, `rect/frequency` | `rrc/0p35` | `rp.signal.filters.load("pulse/rrc/0p35")` | [signal/filters/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/signal/filters/serial.py) |
 | `filter` | FIR, IIR, windows | `fir/windowed/lowpass_0p1_60db` | `rp.signal.filters.load("fir/windowed/lowpass_0p1_60db")` | [signal/filters/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/signal/filters/serial.py) |
-| `sequence` | bit sequences (recurrences, Gold), chip codes (Barker, PN sets, GPS C/A) and fixed words (sync markers, access addresses: `word/ccsds_asm`) | `recurrence/lte_gold` | `rp.sequence.load("lte_gold", c_init=77)` | [sequence/\_\_init\_\_.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/sequence/__init__.py) |
+| `sequence` | bit sequences (recurrences, Gold), chip codes (Barker, PN sets, GPS C/A) fixed words (sync markers, access addresses: `word/ccsds_asm`) and Zadoff-Chu sequences (`zc`: root, length, shift) | `recurrence/lte_gold` | `rp.sequence.load("lte_gold", c_init=77)` | [sequence/\_\_init\_\_.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/sequence/__init__.py) |
 | `scramble` | how a sequence is applied: `additive` (names a sequence), `feedthrough` (self-synchronizing) | `additive/dvb_energy` | `rp.code.scram.load("dvb_energy")` | [code/scram/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/code/scram/serial.py) |
 | `fec` | block and convolutional codes (LDPC from DVB-S2 tables, dense or sparse checks, or a quasi-cyclic matrix of shifts: `ldpc/ieee80211n_648_1_2`) | `block/rs/204_188` | `rp.code.load("block/rs/204_188")` | [code/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/code/serial.py) |
 | `interleave` | block and Forney interleavers | `forney/12_17` | `rp.code.load("interleave/forney/12_17")` | [code/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/code/serial.py) |
@@ -38,7 +54,10 @@ python -m rpps ls sequence scramble   # some resources
 | `frame` | frame formats (HDLC) | `hdlc` | `rp.link.load("frame/hdlc")` | [link/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/link/serial.py) |
 | `header` | `physical` (known symbols, a short code carrying fields) and `link` (fields, CRC, payload length) | `physical/dvbs2_pl` | `rp.symbol.load_header("dvbs2_pl")`, `rp.link.load("header/ieee80211b_plcp")` | [symbol/frame.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/symbol/frame.py), [link/header.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/link/header.py) |
 | `table` | rows of parameters looked up by header fields | `dvbs2/modcod` | `rp.profile.table("dvbs2/modcod")` | [profile/control.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/profile/control.py) |
-| `profile` | whole signals | `dvbs2/normal` | `rp.profile.load("dvbs2/normal")` | [profile/steps.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/profile/steps.py), `controls`: [profile/control.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/profile/control.py) |
+| `plan` | burst time plans: superframes, frames, timeslots, burst types, assignments, hopping (DVB-RCS2's model); in `builder/`, what makes one from a forward link's tables | `demo/mftdma`, `builder/dvbrcs2/forward` | `rp.plan.load("demo/mftdma")`, `rp.plan.builder("dvbrcs2/forward")` | [plan/\_\_init\_\_.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/plan/__init__.py) |
+| `profile` | whole signals | `dvbs2/normal` | `rp.profile.load("dvbs2/normal")` | [profile/steps/](https://github.com/Anonoei/RPPS/tree/main/src/rpps/profile/steps), `controls`: [profile/control.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/profile/control.py) |
+| `linktype` | pcap link types (`dlt`), the Linux interface type (`arphrd`), Wireshark's dissector, a `signature` to find one in a frame, `from`: another link type with transforms (802.15.4 with FCS from without) | `ieee802_15_4` | `rp.link.linktype("ieee802_15_4")` | [link/capture.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/link/capture.py) |
+| `system` | named radio systems by what blind tools measure (`"features"`: modulation, baud, roll-off, frame, bands...; the `"profile"` that decodes one), what `rp.analysis.catalogue.match` scores against | `satellite/dvbs2` | `rp.analysis.catalogue.systems()` | [analysis/catalogue.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/analysis/catalogue.py) |
 
 `python -m rpps ls` lists what is available (`python -m rpps ls sequence scramble` for some).
 
@@ -59,10 +78,14 @@ A definition is referenced by its path below the category, without `.json`, case
 A definition can be another one with a few keys changed: `"extends"` names it, in the same resource (looked up below the
 child's own category first, so `"extends": "rs/p25"` in fec/block works). The child holds only what differs:
 ```json
-{"base": "constellation", "extends": "apsk/dvbs2_16apsk", "comment": "DVB-S2 16APSK for code rate 3/4: gamma = 2.85",
+{"extends": "apsk/16apsk", "comment": "16APSK with the outer ring at 2.85 times the inner",
  "params": {"gamma": 2.85}}
 ```
 - Dicts merge key by key, lists and values replace, `null` deletes a key the parent has.
+- A child profile changes single steps with `"steps"` as a dict, by step id (its `"id"`, else its kind: `"timing"`):
+  `{"shape": {"pulse": "rrc/0p20"}, "carrier": null, "+after:timing": [{"sync": "agc"}], "+end": [...]}` merges into a
+  step, takes one out and puts steps in (`+before:<id>`, `+after:<id>`, `+start`, `+end`). Two steps with the same id
+  can't be patched until they have `"id"`s; a list still replaces them all.
 - `comment` and `ref` are each file's own; `tags` add to the parent's; `params` merge by name, and a bare value pins the
   parent's default (`"params": {"code": "k7_171_133/3_4"}`).
 - `"abstract": true` marks a parent that is not a definition on its own (a family's shared fields: the mother codes
@@ -71,13 +94,143 @@ child's own category first, so `"extends": "rs/p25"` in fec/block works). The ch
 - `python -m rpps show <resource>/<ref>` prints a definition with its parents applied.
 
 **Param or child?** A choice made when loading (samples per symbol, a cell id, which punctured rate a DVB-S receiver
-runs) is a param. A variant a standard or a table names (16APSK for rate 3/4, the code of MODCOD 7) is a child, so the
-name keeps working. A child that overrides most of its parent is probably not one.
+runs) is a param; one that changes several steps together is a param with choices (below). A variant a standard or a
+table names (16APSK for rate 3/4, the code of MODCOD 7) is a child, so the name keeps working. A child that overrides
+most of its parent is probably not one.
 
-Families written this way: `constellation/psk` (QPSK, 8PSK as rings; the DVB-S2 labellings and `qpsk_axes` are children),
-`constellation/apsk` (16/32APSK with the radii as params, one child per code rate), `fec/conv/<mother>.json` (the
-generators; every rate in `<mother>/`, the unpunctured 1/n too, is a child adding its `puncture`), `fec/block/ldpc`, `bch`, `rs/p25*`,
-`interleave/block/dvbs2_8psk_210`, `profile/dvbs/qpsk` (the rate a `code` param, a child per rate).
+### Children as rows
+Children that each change a few values are rows of their parent, `"variants"`: the first column the name (a file next
+to the parent's would have), the others the keys a child file would write, a dotted one a key inside a dict
+(`params.gamma`). Each row loads, lists, tags and is extended exactly as that child file would:
+```json
+"variants": {
+  "columns": ["name", "n", "k", "t", "comment"],
+  "rows": [
+    ["dvbs2_1_2", 32400, 32208, 12, "DVB-S2 normal frame outer BCH, LDPC rate 1/2"],
+    ["dvbs2_1_3", 21600, 21408, 12, "DVB-S2 normal frame outer BCH, LDPC rate 1/3"]
+  ]
+}
+```
+`fec/block/bch/dvbs2_1_2` is a row of `bch/dvbs2_normal.json`; `python -m rpps show` says so. A row's name can't also
+be a file. A child with large values (an LDPC table) or its own standard's `ref`, tags and notes (the punctured rates of
+`fec/conv/<mother>/`) reads better as a file of its own.
+
+Families written this way: `constellation/psk` (QPSK, 8PSK as rings; `qpsk_axes` a child file),
+`fec/conv/<mother>.json` (the generators; every rate in `<mother>/`, the unpunctured 1/n too, is a child file adding its
+`puncture`), `fec/block/ldpc` (a file per rate), `bch/dvbs2_normal` and `dvbs2_short` (a row per rate),
+`turbo/ccsds`, `rs/p25*`, `interleave/block/dvbs2_8psk_210`, `profile/dvbs/qpsk` (the rate a `code` param, a row per
+rate).
+
+### A standard's labelling is a map, its sizes a choice
+A standard that labels a shipped point set its own way adds a named map to that set, not a file:
+`{"map": [0, 2, 3, 1], "comment": "DVB-S2"}` in `psk/qpsk.json` is `rp.symbol.load("psk/qpsk", "dvb-s2")` (it is one of
+QPSK's turned maps, which then lists as `R090 Grey Inverted (DVB-S2)`). A map that labels the set turned says by how
+much, `"rotate"` in degrees, and uses the points turned while it is chosen: DVB-S2 8PSK is
+`{"map": [...], "rotate": -22.5, "comment": "DVB-S2"}` on `psk/8psk`, its points at k*45 degrees. Such a map is in the
+constellation's `turned`, not its `maps` (the ones a receiver that does not know the phase tries).
+
+The blind tools try turned maps too. `identify` searches `blind_maps`: `maps`, then every turn and inversion of each
+turned map (`R045 DVB-S2`), on symbols a carrier put on the points as defined; the profile it writes names the turned
+map (`"mapping": "DVB-S2"`) and its correction turns the symbols onto those points. Behind a known word the phase is
+absolute, so `FrameSync(classify=[...])` scores each candidate's turned point sets as well and publishes the one that fits
+as `mapping` next to `modulation`, for a control to drive the constellation step with both.
+A map can carry `"tags"` of its own (`{"map": [0, 2, 3, 1], "comment": "DVB-S2", "tags": ["dvb-s2"]}`): `rp.tagged`
+lists it as `psk/qpsk (DVB-S2)`, the loaded map has them as `mapping.tags`, and a tag selection matches them. The file
+itself stays untagged: QPSK is still a generic set, whatever standards label it.
+
+A shape whose sizes follow another setting takes that setting as a choice param: `apsk/dvbs2_16apsk` and
+`dvbs2_32apsk` extend `apsk/16apsk` and `apsk/32apsk`, drop their free radii (`"gamma": null`) and take the code
+`rate`, whose choice sets them (`{"param": "rate.gamma"}`),
+`rp.symbol.load("apsk/dvbs2_16apsk", rate="3/4")`. A profile step or a table row gives them as `"params"`:
+`{"symbol": "constellation", "name": "apsk/dvbs2_16apsk", "params": {"rate": "3/4"}}`, and a header drives
+`{"name": ..., "mapping": ..., "params": ...}` (`config/table/dvbs2/modcod.json`).
+
+## Variants: choices and "when"
+A param can list its `"choices"`, each a bundle of fields that one choice sets together; a step names a field as
+`{"param": "modulation.shape"}` (or `modulation.shape` in an expression), and a list item with `"when"` is kept only
+where its expression holds:
+```json
+"params": {"modulation": {"default": "qpsk", "choices": {"qpsk": {"shape": "QPSK", "threshold": 0.6},
+                                                         "16qam": {"shape": "16QAM", "threshold": 0.85}}},
+           "fec": {"default": "hamming", "choices": ["hamming", "none"]}},
+"steps": [..., {"symbol": "constellation", "shape": {"param": "modulation.shape"}}, ...,
+          {"code": "block", "name": "hamming/7_4", "when": "fec == 'hamming'"}]
+```
+- A value that is not one of the choices is an error naming them; `"choices": [...]` (a list) only checks the value.
+- A choice matches its key or the key's text (`0.2` is `"0.2"`: JSON keys are strings).
+- Expressions take string literals, so `"when": "modulation == '16qam'"` and `"expr": "... if fec == 'none' else ..."` work.
+- A child's `choices` replace its parent's, so a child can narrow them. A mode a standard names stays a child that pins
+  the default (`dvbs/qpsk_1_2`), so the name keeps working.
+- Blind analysis (`rp.analysis.identify`, `rpps solve`, the survey's framed profiles) tries every variant the choices
+  make (`rp.profile.variants(name)`, the defaults first) and names the one that fits with its params
+  (`demo/variants (modulation=16qam, rolloff=0.2)`); `"blind": false` on a param (a payload size) keeps it at its default.
+- Expressions join strings with `+` (`{"expr": "'k7_171_133/' + rate"}`) and take `min`, `max`, `abs`, `len`, `ceil`,
+  `floor`, `round` and `log2`.
+- A param may say its `"type"` (`int`, `float`, `str`, `bool`), `"min"` and `"max"`: `rpps rx -p sps=fast` is then an
+  error when the profile loads, not a failure in a step.
+- `rp.profile.info(name, **params)` evaluates `requires` with the chosen bundle (`"bw": "(1 + rolloff)*baud"`) and lists
+  each param's choices.
+
+A check that is not one CRC is a `"composite"` crc definition: CRC parts over transformed views of the message
+(`nibble_swap`, `reverse_bits`, `reverse_bytes`, `invert`, `xor`, `skip`, `take`, and your own through
+`rp.link.check.register`), concatenated or XORed. It goes wherever a CRC does: an HDLC frame's `fcs`, a link header's `crc` or
+`fcs` ([`rpps.link`](../api/link.md)).
+
+```python
+--8<-- "examples/profile_variants.py"
+```
+
+## Fields
+What a frame's bits say is a list of fields ([`rpps.link.fields`](../api/link.md)), in link headers (`"fields"`), in
+headers' and frames' `"payload_fields"` (a message's `fields["payload"]`) and in a profile step's `"message"`:
+```json
+"payload_fields": [
+  {"name": "addresses", "until": "ext == 1", "fields": [
+    {"name": "call", "type": "text", "bytes": 6, "shift": 1},
+    {"name": "ssid", "from": 51, "bits": 4}, {"name": "ext", "bits": 1}]},
+  {"name": "control", "bits": 8},
+  {"name": "pid", "bits": 8, "if": "(control & 1) == 0", "enum": {"240": "no layer 3"}}]
+```
+- A field is an unsigned integer (`bits`, an expression over the fields before it too), `signed`, scaled (`scale`,
+  `offset`), with its own bit `order` and `enum` names (`pid.name`); or `"type": "bytes"` / `"text"` (`bytes`,
+  `reverse`, `shift`).
+- `"if"` reads it only where an expression over the fields before holds, decided frame by frame (a definition's `"when"`
+  is decided at load, over its params); `"from"` reads it at a bit position.
+- A field with `"fields"` is a group: a dict, or a list with `"repeat"` (a count, an expression, or `"*"`: to the end) or
+  `"until"` (an expression over each element). Expressions see `left`, the bits not yet read.
+- A link header whose fields are conditional or sized by expressions is read as it comes, however the bits are cut.
+- `frame/ax25` (addresses, control, PID), `header/ble_adv` (PDU type names, AdvA, AD structures) and `dvbs/qpsk` (the TS
+  adaptation field and PCR) are written this way.
+
+## Codes bit by bit
+A block code whose standard writes its parity bits as equations, puts its bits in its own order or inverts some of them
+is still a definition. Any block code (`fec/block`) takes, after its own keys:
+
+- `"append": [[14, 15]]`: check bits after the codeword, each the XOR of the codeword bits listed (P25's NID: BCH (63,16)
+  and a 64th bit that is S1 xor S0 of the DUID, `bch/p25_nid`). `"extend": true` is the overall parity bit.
+- `"layout"`: where each codeword bit is sent, a list of positions or `{"message": [...], "parity": "rest"}`.
+- `"xor"`: a pattern on the word sent (a number of n bits, or a list), for inverted or masked parity.
+
+Decoding undoes them in reverse; an appended bit the decision disagrees with counts as one more error, and a word past
+what the code corrects is a failure. A `linear` code can give its parity bits as the message bits each one XORs, the way
+standards write them:
+
+```json
+{"type": "linear", "n": 7, "k": 4, "parity": [[0, 1, 3], [0, 2, 3], [1, 2, 3]],
+ "layout": {"message": [2, 4, 5, 6], "parity": "rest"}}
+```
+
+A short code given only as what each bit is, `"type": "expr"`, writes one expression per codeword bit over the message
+bits `m0..` (and the bits before it, `c0..`), with `^ & | ~`. One that is linear (or linear and inverted) loads as a
+linear code in its own layout and decodes on its syndrome trellis, soft; any other decodes against its whole codebook
+(k up to 16):
+
+```json
+{"type": "expr", "k": 4, "bits": ["m0 ^ m1 ^ m3", "m0 ^ m2 ^ m3 ^ 1", "m0", "m1 ^ m2 ^ m3", "m1", "m2", "m3"]}
+```
+
+A trellis code (`fsm`) with a `length` (message bits a codeword) is one codeword per block, each started and flushed on
+its own: `trellis/p25_1_2` takes 96 bits to 196.
 
 ## Tags
 `"tags": ["dvb-s2"]` says which standards or systems use a definition. The folders say what a thing is; tags say who uses
@@ -89,18 +242,49 @@ python -m rpps ls --tag dvb-s2        # constellations, codes, interleavers, hea
 rp.tagged("ccsds")                    # {resource: [refs]}
 ```
 
+A definition made up to show a feature (a demo profile, a docs example, a test word) carries `"tags": ["example"]`,
+as its children then do. It loads by name and `ls` lists it, but the blind tools never try it: `identify`, the survey's
+framed profiles, `solve`, the catalogue and the CRC, scrambler, convolutional code and PSK searches all list with
+`blind=True` (`rp.profile.ls(blind=True)`, `rp.code.names("conv", blind=True)`...). Keep the shipped
+`profile/demo/`, `plan/demo/`, `table/demo/` and `demo_*` definitions that way, so they cost a blind search nothing.
+
 ## Differential modulation
 There is no DPSK definition: a differential step chains with a plain constellation, whose points are then the phase
 changes. pi/4-DQPSK is `psk/qpsk` after `{"symbol": "differential"}`; 802.11b DQPSK is `psk/qpsk_axes`; DBPSK is
 `psk/bpsk`. Bit-level differential coding (NRZ-M, NRZ-I) is `{"code": "line"}`.
 
 ## File header
-Every file starts with `base` (the category, picks the loader), then `extends` and `abstract` where it has them, `type` (the implementation, where there are several), `comment`, and optionally `ref` (the spec) and `tags`. `python -m rpps fmt` puts files in the canonical style (`--check` only lists differences).
+The folder a file is in says what it is, so the file doesn't: its "base" (the loader) is the first folder below the
+resource when that folder is one of the resource's loaders (`fec/block/`, `fec/conv/`, `filter/fir/`, `filter/iir/`,
+`filter/window/`, `plan/builder/`), else the resource itself (`crc/`, `profile/<family>/`, `sequence/word/`). A file
+that writes `"base"` is refused; a definition made in code (`rp.code.init(name, obj)`, `_config.load_obj`) has no folder
+and says its `"base"`, which `rp.save` and the importers leave out of the file they write.
+
+Every file starts with `extends` and `abstract` where it has them, then `type` (the implementation, where there are
+several), `comment`, and optionally `ref` (the spec) and `tags`. `python -m rpps fmt` puts files in the canonical style
+(`--check` only lists differences): whatever fits in 120 columns on one line, so a profile reads one step a line.
+
+A `comment` (any comment, at any depth) too long for its line is a list of lines, joined by spaces when the definition
+is read; `fmt` cuts a long one where a sentence or clause ends:
+```json
+"comment": [
+  "DVB-S2, normal (64800 bits) and short (16200) FECFRAMEs, QPSK, 8PSK, 16APSK and 32APSK, MODCOD by MODCOD (VCM,",
+  "ACM): each PLHEADER's PLS sets the PL scrambling length, pilots, constellation, ..."
+]
+```
+
+## Keys nothing reads
+A key that nothing reads is reported when the definition or profile loads, as an `rp.errors.ConfigWarning` naming it:
+a misspelling (`"cutof"`), or a setting the method it names does not take (a loop's `"alpha"` on a block estimator).
+For a profile that covers its own keys, every step's, its `defaults` (a kind with no step to take them is reported
+too) and the `sync` settings given to `rp.profile.load`. When `sync` replaces a step's method, that step's own settings
+were for the method it named, and are not reported. A loader that designs something later (a filter once the stream's
+rate is known) takes the keys it will use when it loads, so they count. The tests turn the warning into an error.
 
 ## Adding
 - **A definition**: drop a JSON in the right folder. A variant of one that exists: a child that `extends` it. A tag it needs: add it to [tags.json](https://github.com/Anonoei/RPPS/blob/main/config/tags.json).
 - **Your own**: keep a folder laid out like this one and call `rp.add_config_path(dir)` or set `$RPPS_CONFIG`. It is searched first, so it can also override shipped definitions.
-- **A category**: add the folder and `_config.register_domain("<domain>").register("<category>", loader)`, where `loader(name, obj)` builds the object.
+- **A category**: add the folder (named as the category: the folder says the loader) and `_config.register_domain("<domain>").register("<category>", loader)`, where `loader(name, obj)` builds the object (reading, through `obj`, every key it uses: what it never reads is reported).
 - **A resource**: `_config.register_domain("<name>", {"<base>": loader})`; `_config.ls / find / load` then work on it. [link/serial.py](https://github.com/Anonoei/RPPS/blob/main/src/rpps/link/serial.py) is the smallest example.
 
 ## Bringing in existing data
@@ -138,4 +322,4 @@ Without `name` they return the dict. Arrays in memory go through `fir_def`, `sos
 | `packet_headergenerator` + CRC trailer | `header/link` with `fields`, `payload` and `fcs` (a CRC over header and payload after the payload) |
 
 Anything GNU Radio builds from parameters can be built without a file: `rp.code.Hamming/RS/Repetition/Conv`, or `rp.code.init(name, dict)`.
-Not expressible yet: 5G NR base graphs (the quasi-cyclic loader takes them once written out), a frequency-hopping schedule.
+Not expressible yet: a frequency-hopping schedule.

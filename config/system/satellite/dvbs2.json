@@ -1,0 +1,12 @@
+{
+  "ref": "ETSI EN 302 307-1",
+  "tags": ["dvb-s2"],
+  "title": "DVB-S2",
+  "profile": "dvbs2/normal",
+  "features": {
+    "modulation": ["16apsk", "32apsk", "8psk", "qpsk"],
+    "beta": [0.35, 0.25, 0.2],
+    "frequency": [[10700000000.0, 12750000000.0], [3400000000.0, 4200000000.0]],
+    "burst": false
+  }
+}

@@ -4,6 +4,20 @@ snapshots of separate blocks (`Lock`: a display that seeks, pauses and retunes) 
 Everything here is feed-forward: symbol rate and timing from the matrix matched filter,
 frequency/phase from the M-th power of the symbols, modulation from the likelihood of the
 corrected symbols under each candidate constellation.
+
+The likelihood needs the noise. Fitted per candidate (each its own variance, the points at the symbols' rms, noise
+included), a denser constellation explains noise better, so at low SNR the densest candidate won (noise alone was named
+32APSK, QPSK at 4 dB 64QAM): the generalised likelihood's known bias to higher orders. So each candidate is scored at
+its own Es/N0 from the symbols' moments (rpps.sync.quality.m2m4: what that candidate's kurtosis says the signal and
+noise are; the quasi-hybrid likelihood test), unless the fit's own winner reads over FIT_MIN dB: there the fit is
+right and M2M4 fades (for QAM), so the fit; at the caller's Es/N0 when it gives one (`esn0=`, from a known sequence: rpps.sync.quality.from_sequence
+on a Zadoff-Chu). It needs nothing but the symbols. With the rate given, BPSK is named 7 dB lower, QPSK from 1.75 dB
+(it was 4.75), 32QAM and the APSKs 1.75 dB lower; 64QAM's 10 dB is honest now (tools/modclass_bench.py).
+
+`min_evidence` makes detect say it doesn't know (mod None, the leader in `best`) rather than name a guess: when the
+leader doesn't beat Gaussian noise of the same power by NULL_MARGIN nats in all (`Detection.over_noise`: is there a
+constellation at all), or doesn't lead the runner-up by min_evidence nats (`Detection.evidence`: which one). 10 nats
+never named noise; it named 8PSK as 16PSK and 16QAM as 64QAM now and then at 8 dB, and at 0-4 dB names 9-22%.
 """
 from types import SimpleNamespace
 
@@ -13,19 +27,30 @@ from ..base import Stage
 from ..errors import NoLock
 from ..math.interp import peak
 from ..math.prob import mixture_variance
-from .rate import find_baud
+from .rate import find_baud, find_rolloff, nearest_rolloff
 from .time.mat import matrix_mf, centres_in, best_tau
-from .quality import measure, decide, errors, summary
+from .quality import measure, decide, errors, summary, m2m4
+
+FIT_MIN = 12.5     # dB: the fit's winner reading over this is scored by the fit, else by M2M4 (measured: 12 dips at
+                   # 8 dB, where the leaning fit over-reads, 14 at 14-16 dB, where M2M4 fades)
+NULL_MARGIN = 10.0 # nats: what the leader must beat Gaussian noise by for min_evidence (noise alone: 1 block in 60)
 
 class Detection:
     """Result of `detect`. Acquire stamps it on its blocks: meta.det
 
     line: strength of the symbol-rate line the rate came from, over its local floor (noise peaks at about 3-4; a rate
-        taken from a weaker line is a guess)"""
+        taken from a weaker line is a guess)
+    beta: the roll-off of the matched filter that scored best; rolloff: the spectrum's (rate.find_rolloff), when measured
+    mod: the modulation, None when detect was asked for `min_evidence` and the evidence is short (`best` the leader)
+    how: how the candidates were scored: "given" (at the caller's esn0, `given`), "moments" (each at its M2M4 Es/N0) or
+        "fit" (each its own variance). null: the score of Gaussian noise of the symbols' power (see over_noise)
+    drift: the carrier's frequency rate over the symbols searched, Hz/s (a Doppler rate; 0.0 when none stands out:
+        `drift`), taken off before the symbols were scored"""
     __slots__ = (
         "mod", "baud", "sps", "beta", "tau",
         "cfo", "phase", "M", "gain",
-        "scores", "n", "esn0", "ebn0", "line"
+        "scores", "n", "esn0", "ebn0", "line",
+        "best", "how", "given", "null", "rolloff", "drift"
     )
     def __init__(self, **kw):
         for k in self.__slots__:
@@ -33,7 +58,7 @@ class Detection:
 
     def __str__(self):
         q = "" if self.esn0 is None else f", Es/N0 {self.esn0:.1f} dB, Eb/N0 {self.ebn0:.1f} dB"
-        return (f"{self.mod}: baud {self.baud:.1f}, sps {self.sps:.4f}, beta {self.beta}, "
+        return (f"{self.mod if self.mod is not None else f'unclear ({self.best}?)'}: baud {self.baud:.1f}, sps {self.sps:.4f}, beta {self.beta}, "
                 f"cfo {self.cfo:.1f} Hz, margin {self.margin:.3f} nats/sym{q}")
 
     __repr__ = __str__
@@ -44,6 +69,16 @@ class Detection:
         s = sorted(self.scores.values(), reverse=True)
         return s[0] - s[1] if len(s) > 1 else np.inf
 
+    @property
+    def evidence(self):
+        """Total log-likelihood lead of the leader over the runner-up (nats): margin times symbols"""
+        return self.margin*(self.n or 0)
+
+    @property
+    def over_noise(self):
+        """Total log-likelihood lead of the leader over Gaussian noise of the same power (nats): a constellation at all"""
+        return (self.scores[self.best] - self.null)*(self.n or 0) if self.null is not None else np.inf
+
 def symmetry(points, tol=1e-3, max_order=16):
     """Order M of the rotational symmetry of a point set (the M-th power removes the modulation)"""
     pts = np.asarray(points)
@@ -53,6 +88,7 @@ def symmetry(points, tol=1e-3, max_order=16):
             return M
     return 1
 
+GROUPS = ("psk", "qam", "apsk") # The constellation folders `detect` names from (ASK is real levels: a discriminator's)
 _CANDIDATES = {} # (config search path, name) -> unit-rms points (read-only), None -> the default names
 
 def candidates(names=None):
@@ -60,12 +96,14 @@ def candidates(names=None):
     search path (a Lock rechecks them every block: finding the files would cost more than scoring them)"""
     from .. import symbol  # Late: symbol imports after sync
     from .. import _config
-    where = tuple(_config._EXTRA)
-    if names is None: # The PSK family's own point sets: a child (a labelling or a rotation of a parent) is not another modulation
-        names = _CANDIDATES.get((where, None))
+    where = _config.state()
+    if names is None: # The PSK, QAM and APSK families' own point sets: a child (a labelling, rotation or radii of a parent)
+        names = _CANDIDATES.get((where, None))                             # is not another modulation
         if names is None:
+            have = symbol.ls(blind=True)
             names = _CANDIDATES[(where, None)] = tuple(
-                n for n in symbol.ls().get("psk", []) if "extends" not in _config.read_raw(_config.find("constellation", f"psk/{n}")))
+                n for g in GROUPS for n in have.get(g, [])
+                if "extends" not in _config.read_raw(_config.find("constellation", f"{g}/{n}")))
     out = {}
     for name in names:
         pts = _CANDIDATES.get((where, name))
@@ -77,8 +115,32 @@ def candidates(names=None):
         out[name] = pts
     return out
 
+def turned_candidates(names):
+    """Turned candidates.
+
+    {(name, map): unit-rms points} of each constellation `names` gives, as defined (map None) and as each of its maps
+    that turns the points uses them (map: that map's name, "DVB-S2"): what symbols whose carrier phase a known word set
+    are scored against (rp.sync.FrameSync's classify), where a turned set is another constellation"""
+    from .. import symbol
+    from .. import _config
+    where, out = _config.state(), {}
+    for name in names:
+        hit = _CANDIDATES.get((where, name, "turned"))
+        if hit is None:
+            c = symbol.load_or_generate(name)
+            hit = {}
+            for m in [None] + c.turned:
+                pts = c._base*np.exp(1j*m.turn) if m is not None else c._base
+                pts = np.asarray(pts, dtype=np.complex128)/np.sqrt(np.mean(np.abs(pts)**2))
+                pts.flags.writeable = False
+                hit[(name, None if m is None else m._comment)] = pts
+            _CANDIDATES[(where, name, "turned")] = hit
+        out.update(hit)
+    return out
+
 def correct(y, pts, M, pad=4):
-    """Feed-forward frequency + phase correction for a candidate. Returns (symbols, cfo cycles/symbol, phase)"""
+    """Feed-forward frequency + phase correction for a candidate. Returns (symbols, cfo cycles/symbol, phase); a carrier
+    drifting over y (a Doppler rate: the frequency moving along) is taken off too (`drift`)"""
     n = len(y)
     cfo = 0.0
     if M > 1:
@@ -89,17 +151,99 @@ def correct(y, pts, M, pad=4):
     y1 = y * np.exp(-2j*np.pi*cfo*np.arange(n))
     phase = 0.0
     if M > 1:
+        c, w = drift(y1, M, offset=True)
+        if c:
+            t = np.arange(n) - (n - 1)/2
+            y1 = y1*np.exp(-1j*(c*t**2 + w*t))
+            cfo += w/(2*np.pi)
         phase = (np.angle(np.sum(y1**M)) - np.angle(np.mean(pts**M)))/M
     return y1 * np.exp(-1j*phase), cfo, phase
 
-def score(y, pts, iters=8):
-    """Mean log-likelihood per symbol under equiprobable points with Gaussian noise (sigma estimated)"""
-    d2 = np.abs(y[:, None] - pts[None, :])**2
-    var = mixture_variance(d2, iters)
+def drift(y, M, blocks=32, min_block=64, sigmas=4.0, segments=8, min_segment=256, offset=False):
+    """The phase curvature c (radians a symbol^2) a drifting carrier leaves on symbols y.
+
+    phase(t) = c (t - centre)^2 after a frequency is taken off: the frequency moves 2c radians a symbol^2 (a Doppler
+    rate, a drifting oscillator).
+    Coarse, from the M-th power's frequency in each of `segments` segments (an FFT peak each, unambiguous within
+    +-1/(2M) cycles a symbol, whatever the phase does between them): the line through them; then fine, from the M-th
+    power's phase in `blocks` blocks (at least `min_block` symbols each), unwrapped by 2 pi / M, a quadratic
+    least-squares fit, on the symbols the coarse drift was taken off. Each counts only when `sigmas` standard errors off
+    0 (a steady carrier's segments and blocks only scatter); 0.0 with neither. offset: (c, w), w the frequency (radians a
+    symbol) still on y about its centre, which an FFT over a drifting carrier places off (its peak smeared)"""
+    n = len(y)
+    centre = (n - 1)/2
+    u = y/np.maximum(np.abs(y), 1e-30)
+    c = w = 0.0
+    L = n//segments
+    if L >= min_segment:
+        f, t = [], []
+        for k in range(segments):
+            z = u[k*L:(k + 1)*L]**M
+            spec = np.abs(np.fft.fft(z*np.hanning(L), 4*L))
+            i, d = peak(spec, circular=True)
+            v = (i + d)/(4*L)
+            f.append(((v + 0.5) % 1.0 - 0.5)/M) # cycles a symbol
+            t.append((k + 0.5)*L - centre)
+        f, t = np.asarray(f), np.asarray(t)
+        f = np.unwrap(f*2*np.pi*M)/(2*np.pi*M) # (a frequency moving across 1/(2M) wraps: unwrapped)
+        A = np.stack((t, np.ones(len(t))), axis=1)
+        coef, *_ = np.linalg.lstsq(A, f, rcond=None)
+        r = f - A @ coef
+        se = np.sqrt(max(float(np.sum(r**2))/max(len(t) - 2, 1), 1e-300)*np.linalg.pinv(A.T @ A)[0, 0])
+        if abs(coef[0]) > sigmas*se:
+            c, w = float(np.pi*coef[0]), float(2*np.pi*coef[1]) # (2 pi (a/2) t^2: a the slope in cycles a symbol^2)
+            u = u*np.exp(-1j*(c*(np.arange(n) - centre)**2 + w*(np.arange(n) - centre)))
+    B = max(min_block, n//blocks)
+    k = n//B
+    if k < 6:
+        return (c, w) if offset else c
+    s = (u[:k*B]**M).reshape(k, B).sum(axis=1)
+    ph = np.unwrap(np.angle(s))/M
+    t = (np.arange(k) + 0.5)*B - centre
+    A = np.stack((t**2, t, np.ones(k)), axis=1)
+    coef, *_ = np.linalg.lstsq(A, ph, rcond=None)
+    r = ph - A @ coef
+    var = float(np.sum(r**2))/max(k - 3, 1)
+    se = float(np.sqrt(max(var*np.linalg.pinv(A.T @ A)[0, 0], 1e-300)))
+    if abs(coef[0]) > sigmas*se:
+        c, w = c + float(coef[0]), w + float(coef[1])
+    return (c, w) if offset else c
+
+def score(y, pts, iters=8, esn0=None):
+    """Mean log-likelihood per symbol of unit-rms y under equiprobable points with Gaussian noise: the variance fitted
+    (EM), or, given esn0 (dB), the points scaled to the signal's share of the power and the noise the rest"""
+    return _score(y, pts, iters, esn0)[0]
+
+def _score(y, pts, iters=8, esn0=None):
+    """`score` and the variance per real axis it used"""
+    if esn0 is None:
+        d2 = np.abs(y[:, None] - pts[None, :])**2
+        var = mixture_variance(d2, iters)
+    else:
+        r = 10**(esn0/10)
+        d2 = np.abs(y[:, None] - np.sqrt(r/(1 + r))*pts[None, :])**2
+        var = 1/(2*(1 + r)) # per real axis
     logp = -d2/(2*var)
     m = logp.max(axis=1)
     ll = m + np.log(np.sum(np.exp(logp - m[:, None]), axis=1)) - np.log(len(pts)) - np.log(2*np.pi*var)
-    return float(np.mean(ll))
+    return float(np.mean(ll)), float(var)
+
+def score_all(ycs, esn0=None):
+    """Scores of {name: (corrected unit-rms symbols, points)} and how they were made: at the caller's esn0 ("given"); each
+    fitting its own variance when the fit's winner reads over FIT_MIN dB ("fit"); else each at its own M2M4 Es/N0
+    ("moments")"""
+    if esn0 is not None:
+        return {n: score(y, p, esn0=esn0) for n, (y, p) in ycs.items()}, "given"
+    fits = {n: _score(y, p) for n, (y, p) in ycs.items()}
+    fit = {n: f[0] for n, f in fits.items()}
+    var = fits[max(fit, key=fit.get)][1] # per axis, unit-rms y: signal 1 - 2 var
+    if 10*np.log10(max(1 - 2*var, 1e-12)/(2*var)) > FIT_MIN:
+        return fit, "fit"
+    return {n: score(y, p, esn0=m2m4(y, p)) for n, (y, p) in ycs.items()}, "moments"
+
+def null_score(y):
+    """`score` of unit-rms y as Gaussian noise of the same power (complex, unit variance)"""
+    return float(-np.mean(np.abs(y)**2) - np.log(np.pi))
 
 def track_timing(x, sps, beta, span=8, rounds=2):
     """Refine sps from the drift of the best timing between the start and end of x. Returns (sps, tau)
@@ -119,17 +263,27 @@ def track_timing(x, sps, beta, span=8, rounds=2):
     tau, _e = best_tau(x, sps, beta, span)
     return sps, tau
 
-def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None):
+BETAS = (0.2, 0.25, 0.35) # The roll-offs always tried; the spectrum's nearest standard one (rate.ROLLOFFS) joins them
+
+def detect(x, Fs, names=None, betas=None, span=8, baud=None, esn0=None, min_evidence=None):
     """Find symbol rate, timing, modulation, frequency offset and phase from baseband samples
 
     x: complex baseband at Fs, with the signal of interest centred and filtered
-    names: candidate modulations, default everything in config/constellation
-    betas: RRC roll-offs to try
+    names: candidate modulations, default `candidates()`'s (the PSK, QAM and APSK definitions)
+    betas: RRC roll-offs to try; None: BETAS and the standard roll-off nearest the spectrum's (rate.find_rolloff: the
+        likelihood can't tell 0.05 from 0.15, the edges can), which `rolloff` records
     baud: the symbol rate when already known (a channel plan, rpps.analysis.spectrum.cyclic): timing refines it, no search
+    esn0: the Es/N0 when known (rpps.sync.quality.from_sequence on a known sequence): every candidate is scored at it
+    min_evidence: nats the winner must lead the runner-up by in all (Detection.evidence), with it NULL_MARGIN over
+        Gaussian noise (Detection.over_noise), or mod is None and `best` holds the leader (see the module)
     Returns a Detection; its tau is relative to x[0].
     """
     cands = candidates(names)
     baud0, line = (float(baud), None) if baud else find_baud(x, Fs)
+    rolloff = None
+    if betas is None:
+        rolloff = find_rolloff(x, Fs, baud0)[0] if baud0 > 0 else None
+        betas = tuple(sorted(set(BETAS) | ({nearest_rolloff(rolloff)} if rolloff is not None else set())))
     best = None
     for beta in betas:
         sps, tau = track_timing(x, Fs/baud0, beta, span)
@@ -137,23 +291,30 @@ def detect(x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None):
         y = matrix_mf(x, c, sps, beta, span)
         gain = np.sqrt(np.mean(np.abs(y)**2))
         y = y / gain
-        scores, fits = {}, {}
+        ycs, fits = {}, {}
         for name, pts in cands.items():
             M = symmetry(pts)
             yc, cfo, phase = correct(y, pts, M)
-            scores[name] = score(yc, pts)
+            ycs[name] = (yc, pts)
             fits[name] = (M, cfo, phase)
+        scores, how = score_all(ycs, esn0)
         top = max(scores, key=scores.get)
         if best is None or scores[top] > best[0]:
             M, cfo, phase = fits[top]
             q = measure(correct(y, cands[top], M)[0], cands[top])
             baud = Fs/sps
+            c = drift(y*np.exp(-2j*np.pi*cfo*np.arange(len(y))), M) if M > 1 else 0.0
             best = (scores[top], Detection(
                 mod=top, baud=baud, sps=sps, beta=beta, tau=tau,
                 cfo=cfo*baud, phase=phase, M=M, gain=gain,
-                scores=scores, n=len(y), esn0=q.esn0_db, ebn0=q.ebn0_db, line=line
+                scores=scores, n=len(y), esn0=q.esn0_db, ebn0=q.ebn0_db, line=line,
+                best=top, how=how, given=esn0, null=null_score(y), rolloff=rolloff,
+                drift=float(2*c/(2*np.pi)*baud**2) # (cycles a symbol^2 at baud^2: Hz/s)
             ))
-    return best[1]
+    det = best[1]
+    if min_evidence is not None and (det.over_noise < NULL_MARGIN or det.evidence < min_evidence):
+        det.mod = None
+    return det
 
 class Lock:
     """A signal's symbols, as a snapshot: found once by a full search (`Lock.find`), then followed block by block
@@ -171,7 +332,7 @@ class Lock:
     symbols: matched-filtered, frequency and phase corrected, unit rms, at `centres` (sample positions in the block)
     points: the constellation (unit rms). quality: rpps.sync.quality.Quality of the symbols
     stale: why the lock no longer fits (Es/N0 fell `drop_db` below the search's, the rate moved more than `drift` from
-        it, or another of the searched modulations now fits better), None while it does
+        it, or one of the search's RECHECK runners-up now fits better), None while it does
     x: the block the lock is of (after `follow`, with the end of the one before that the filter needs)
     end: the stream position just past x, when `at` gave where x starts (None otherwise)
 
@@ -184,17 +345,20 @@ class Lock:
     MIN_SYMBOLS = 16 # Fewer symbols in a block are no measurement
     RECHECK_MARGIN = 0.05 # nats/symbol another modulation must lead by to call the lock stale (a QPSK lock on 8PSK at
     # 6 dB Es/N0: 8PSK leads by about 0.1; the right one leads the next by 0.13 there, more above)
+    RECHECK = 2 # The search's runners-up rescored every block (all seven candidates would cost an update 2.4 times as much)
 
     @classmethod
-    def find(cls, x, Fs, names=None, betas=(0.2, 0.25, 0.35), span=8, baud=None, lock=5.0, min_samples=1024,
-             drop_db=6.0, drift=2e-3, at=None):
+    def find(cls, x, Fs, names=None, betas=None, span=8, baud=None, lock=5.0, min_samples=1024,
+             drop_db=6.0, drift=2e-3, at=None, esn0=None, min_evidence=None):
         """Search x for a signal: its symbol rate, modulation, roll-off, timing, cfo and phase (`detect`)
 
-        names / betas: candidate modulations and roll-offs (default: the PSK family, 0.2 0.25 0.35)
+        names / betas: candidate modulations and roll-offs (default: candidates(), and as `detect` chooses them)
         baud: the symbol rate when known: no rate search and no line needed
         lock: symbol-rate line strength needed over its local floor (noise peaks at about 3-4); None takes any line
         min_samples: fewer samples are not searched (the rate search goes down to Fs/16: at least 64 symbols)
         drop_db / drift: when `update` calls the lock stale (an Es/N0 drop [dB], a relative rate change)
+        esn0 / min_evidence: as `detect` (a known Es/N0; how sure the modulation must be: NoLock when it isn't, or
+            when the samples hold no symbol-rate correlation)
         at: the stream position of x[0], when known: `follow` then checks the next block is the one right after
         Raises NoLock (reason, line) when x is too short or has no clear symbol rate"""
         x = cls._samples(x, min_samples, f"the search needs {min_samples}")
@@ -204,10 +368,14 @@ class Lock:
                 baud, line = find_baud(x, Fs)
                 if lock is not None and not line >= lock:
                     raise NoLock(f"no symbol rate (line {line:.1f}, needs {lock:g}): a carrier, or noise?", line)
-                if not 0 < baud < Fs/2:
+                if not 0 < baud <= Fs/1.5: # (find_baud searches up to there: 1.5 samples a symbol)
                     raise NoLock(f"no symbol rate (the strongest line is at {baud:.6g} Bd): a carrier, or noise?", line)
-            det = detect(x, Fs, names, betas, span, baud=baud)
+            det = detect(x, Fs, names, betas, span, baud=baud, esn0=esn0, min_evidence=min_evidence)
             det.line = line
+            if det.mod is None:
+                raise NoLock(f"modulation unclear: {det.best} leads by {det.evidence:.0f} nats (needs {min_evidence:g})"
+                             if det.over_noise >= NULL_MARGIN else
+                             f"nothing like a constellation: {det.over_noise:.0f} nats over Gaussian noise", line)
             lk = cls._make(x, Fs, det, candidates([det.mod])[det.mod], span, det, drop_db, drift)
         return cls._made(lk, x, det, at)
 
@@ -224,7 +392,7 @@ class Lock:
         with self._numbers():
             sps, tau = track_timing(x, d.sps, d.beta, self.span, rounds)
             det = Detection(mod=d.mod, baud=self.Fs/sps, sps=sps, beta=d.beta, tau=tau, M=d.M, scores=self.found.scores,
-                            line=self.found.line)
+                            line=self.found.line, rolloff=self.found.rolloff)
             lk = self._make(x, self.Fs, det, self.points, self.span, self.found, self.drop_db, self.drift, recheck)
         return self._made(lk, x, det, at)
 
@@ -256,7 +424,7 @@ class Lock:
             sps2, tau = track_timing(j, sps, d.beta, self.span, rounds)
             step = (tau - c0 + sps2/2) % sps2 - sps2/2 # the measured lattice nearest the predicted instant
             det = Detection(mod=d.mod, baud=self.Fs/sps2, sps=sps2, beta=d.beta, tau=c0 + step, M=d.M,
-                            scores=self.found.scores, line=self.found.line)
+                            scores=self.found.scores, line=self.found.line, rolloff=self.found.rolloff)
             # The carrier phase predicted at the first new symbol, len(centres) symbols after this lock's first
             phase = d.phase + 2*np.pi*d.cfo/d.baud*len(self.centres)
             lk = self._make(j, self.Fs, det, self.points, self.span, self.found, self.drop_db, self.drift, recheck,
@@ -340,10 +508,13 @@ class Lock:
             elif abs(det.sps/found.sps - 1) > drift:
                 lk.stale = f"rate {det.baud:.6g} Bd, {abs(det.sps/found.sps - 1)*1e6:.0f} ppm from the search's"
             elif recheck and found.scores and len(found.scores) > 1:
-                own = score(syms, points)
-                others = {}
-                for name, pts in candidates([n for n in found.scores if n != det.mod]).items():
-                    others[name] = score(correct(y/gain, pts, symmetry(pts))[0], pts)
+                # scored as the search scores (score_all), on this block's symbols
+                ycs = {det.mod: (syms, points)}
+                rivals = sorted((n for n in found.scores if n != det.mod), key=found.scores.get, reverse=True)[:cls.RECHECK]
+                for name, pts in candidates(rivals).items():
+                    ycs[name] = (correct(y/gain, pts, symmetry(pts))[0], pts)
+                others, _ = score_all(ycs, found.given)
+                own = others.pop(det.mod)
                 best = max(others, key=others.get)
                 if others[best] > own + cls.RECHECK_MARGIN:
                     lk.stale = f"looks like {best} now ({others[best] - own:.2f} nats/symbol over {det.mod})"
@@ -437,15 +608,37 @@ class Lock:
     def __repr__(self):
         return f"<Lock {self.det}{', stale: ' + self.stale if self.stale else ''}>"
 
+ONSET_BLOCK = 256 # Samples a block of `onset`'s power profile
+ONSET_LEVEL = 0.25 # A block under this share of the median block's power is before the signal comes on
+
+def onset(x, block=ONSET_BLOCK, level=ONSET_LEVEL):
+    """Where a signal comes on in x. The first block whose power reaches `level` of the median block's (0 when the
+    first does, or when x is short). A stretch of nothing or of noise well under the signal at x's start is left out of
+    an estimate made on x (a burst, a carrier switched on after the recording started); at low SNR the noise before the
+    signal is not that far under it, and x is taken whole. A signal on for under half of x is not found this way (the
+    median is the noise's): a later, longer x finds it"""
+    x = np.asarray(x)
+    k = len(x)//block
+    if k < 4:
+        return 0
+    p = (np.abs(x[:k*block])**2).reshape(k, block).mean(axis=1)
+    on = np.flatnonzero(p >= level*np.median(p))
+    return int(on[0])*block if len(on) else 0
+
 class Acquire(Stage):
     """Detect as soon as the signal is there, then keep refining as the stream grows
 
     The matrix matched filter and the likelihood only need a few hundred symbols, so there is no
     fixed wait: blocks are held only until the symbol-rate line is significant (`lock` times the
-    local floor, noise peaks at about 3-4), which can be the first block. Then everything held
-    is released at once, and the estimates are re-run on the growing history (doubling each time, up
-    to `history` samples) so baud and cfo tighten. Refinements retest only the detected
-    modulation and roll-off, which is much cheaper.
+    local floor, noise peaks at about 3-4). Then everything held is released at once, and the
+    estimates are re-run on the growing history so baud and cfo tighten, up to `history` samples.
+
+    Every decision is made on the stream's first P samples at fixed P (min_samples, then doubling), never on
+    whatever has arrived, so how the stream is cut into blocks changes nothing: a block that passes one or more of
+    those positions has them run in order. The modulation and roll-off are searched again in full at each position
+    until two in a row agree (a first decision on a few thousand samples at low SNR can be wrong, and refining would
+    keep it); after that, refinements retest only them, which is much cheaper. A block carries the detection made by
+    its end (meta.det). At the stream's end (flush) what has not settled is decided on the whole stream.
 
     Calibrates meta.sps (to the detected one), so following stages get the fractional sps.
 
@@ -457,7 +650,7 @@ class Acquire(Stage):
     baud: the symbol rate when known (a channel plan, rpps.analysis.spectrum.cyclic): no waiting for a line, no rate search
     """
     __slots__ = ("lock", "max_wait", "history", "names", "betas", "min_samples", "baud")
-    def __init__(self, lock=5.0, max_wait=2**17, history=2**16, names=None, betas=(0.2, 0.25, 0.35), min_samples=1024,
+    def __init__(self, lock=5.0, max_wait=2**17, history=2**16, names=None, betas=None, min_samples=1024,
                  baud=None):
         self.baud = baud
         self.min_samples = min_samples
@@ -468,7 +661,7 @@ class Acquire(Stage):
         self.betas = betas
 
     def new_state(self, meta):
-        return SimpleNamespace(chunks=[], count=0, next=0, done=False, held=True, lock=None)
+        return SimpleNamespace(chunks=[], count=0, next=self.min_samples, done=False, held=True, lock=None, settled=False)
 
     def step(self, samples, st, meta):
         # Every block that passes carries the detection it passed with (meta.det): stages running behind in other
@@ -481,28 +674,43 @@ class Acquire(Stage):
         st.count += len(samples)
         x = np.concatenate(st.chunks) if len(st.chunks) > 1 else st.chunks[0]
         st.chunks = [x]
+        while st.count >= st.next and not st.done: # every decision position this block reached, in order
+            self._decide(x[:st.next], st, meta)
+            st.next *= 2
+        if meta.flush and not st.done and st.count >= self.min_samples and (st.lock is None or not st.settled):
+            self._decide(x, st, meta) # the stream's end is a position too: decide on all of it
         if st.lock is None:
-            if st.count < self.min_samples:
-                return samples[:0] # Nothing there (yet)
-            try: # After max_wait samples, whatever the line
-                st.lock = Lock.find(x, meta.Fs, self.names, self.betas, baud=self.baud, min_samples=self.min_samples,
-                                    lock=self.lock if st.count < self.max_wait else None)
-            except NoLock:
-                return samples[:0]
-            st.next = 2*st.count
-        elif st.count >= st.next: # Refine on the grown history: same modulation and roll-off, the rate searched again
-            st.lock = st.lock.refine(x, baud=self.baud and st.lock.det.baud)
-            st.next = 2*st.count
-        else:
-            meta.det = st.lock.det
-            return samples
+            return samples[:0] # Nothing there (yet)
         det = st.lock.det
         meta.det = det
         meta.calibrate_sps(det.sps)
-        if st.count >= self.history:
-            st.done = True
+        if st.done:
             st.chunks = []
         if st.held: # First detection: release what was held
             st.held = False
             return x
         return samples
+
+    def _decide(self, x, st, meta):
+        """The decision at one position: x is the stream's first P samples, from where the signal comes on (`onset`:
+        what holds only the noise or nothing before it isn't measured, so a signal starting after the stream does keeps
+        its Es/N0 and modulation scores; tau is then shifted back to x's start)"""
+        P = len(x)
+        s = onset(x)
+        y = x[s:]
+        try:
+            if st.lock is None: # Not there yet: a line `lock` strong, or any line after max_wait
+                lk = Lock.find(y, meta.Fs, self.names, self.betas, baud=self.baud, min_samples=self.min_samples,
+                               lock=self.lock if P < self.max_wait else None)
+            elif not st.settled: # The full search again on twice the samples: settled when it agrees
+                lk = Lock.find(y, meta.Fs, self.names, self.betas, baud=self.baud, min_samples=self.min_samples,
+                               lock=None)
+                st.settled = (lk.det.mod, lk.det.beta) == (st.lock.det.mod, st.lock.det.beta)
+            else: # Same modulation and roll-off, the rate searched again
+                lk = st.lock.refine(y, baud=self.baud and st.lock.det.baud)
+            lk.det.tau += s
+            st.lock = lk
+        except NoLock:
+            return
+        if P >= self.history:
+            st.done = True

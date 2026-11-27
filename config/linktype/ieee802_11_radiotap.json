@@ -1,0 +1,8 @@
+{
+  "comment": "IEEE 802.11 MPDUs after a radiotap header (rate, channel, signal, the FCS-present flag)",
+  "ref": "https://www.tcpdump.org/linktypes.html, Linux include/uapi/linux/if_arp.h",
+  "dlt": 127,
+  "arphrd": 803,
+  "dissector": "radiotap",
+  "fcs": "optional"
+}

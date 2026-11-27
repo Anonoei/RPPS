@@ -1,7 +1,10 @@
 {
-  "base": "block",
   "type": "rs",
-  "comment": "CCSDS Reed-Solomon (255,223), E=16: field polynomial x^8+x^7+x^2+x+1 (0x187), generator roots alpha^(11 j) for j = 112..143, symbols in the conventional basis (some spacecraft send it so; the standard's dual basis is rs/ccsds_255_223_dual)",
+  "comment": [
+    "CCSDS Reed-Solomon (255,223), E=16: field polynomial x^8+x^7+x^2+x+1 (0x187), generator roots alpha^(11 j) for j",
+    "= 112..143, symbols in the conventional basis (some spacecraft send it so;",
+    "the standard's dual basis is rs/ccsds_255_223_dual)"
+  ],
   "ref": "CCSDS 131.0-B-4 4.2, 4.3",
   "tags": ["ccsds"],
   "n": 255,

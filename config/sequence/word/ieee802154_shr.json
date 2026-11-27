@@ -1,0 +1,12 @@
+{
+  "type": "word",
+  "comment": [
+    "IEEE 802.15.4 O-QPSK synchronization header: the preamble (four zero octets) then the start-of-frame delimiter",
+    "0xA7, 40 bits sent least significant bit first"
+  ],
+  "ref": "IEEE 802.15.4-2020 12.1.1, 12.1.2",
+  "tags": ["ieee-802.15.4"],
+  "word": "0xA700000000",
+  "bits": 40,
+  "order": "lsb"
+}

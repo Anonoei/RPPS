@@ -1,0 +1,10 @@
+{
+  "comment": [
+    "PPP frames from the address and control bytes (0xFF 0x03) and the 16-bit protocol, no flags, escapes or FCS (RFC",
+    "1661, 1662)"
+  ],
+  "ref": "https://www.tcpdump.org/linktypes.html, Linux include/uapi/linux/if_arp.h",
+  "dlt": 9,
+  "arphrd": 512,
+  "dissector": "ppp"
+}

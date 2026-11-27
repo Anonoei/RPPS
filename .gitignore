@@ -32,3 +32,9 @@ site/
 docs/api/
 docs/llms.txt
 docs/llms-full.txt
+
+# Per-machine benchmark results (tools/_bench.py)
+.benchmarks/
+
+# Local notes on work in progress (not committed)
+WORKING.md

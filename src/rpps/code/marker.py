@@ -21,7 +21,8 @@ from ..base.control import anchor
 
 class Marker(Pipe):
     CATEGORY = Category.CODE
-    CONTROLS = {"frame": "live"} # A frame starts here (frames of no fixed length): the word goes before it, or is stripped
+    CONTROLS = {"frame": "live", "sequence": "live"} # A frame starts here (frames of no fixed length): the word goes before it,
+    # or is stripped; sequence: another word (a word sequence definition) from here on, as a burst's type says
     _start = True
 
     def __init__(self, word, bits=None, length=None, order="msb"):
@@ -34,7 +35,14 @@ class Marker(Pipe):
     def __str__(self):
         return f"Marker({self.n}+{self.length if self.length else 'frame'})"
 
-    def control(self, frame=None):
+    def control(self, frame=None, sequence=None):
+        if sequence is not None:
+            from .. import sequence as seq
+            w = seq.load(sequence)
+            if not hasattr(w, "bits"):
+                raise ValueError(f"Marker: {sequence!r} is not a word")
+            self.word = np.asarray(w.bits, bool)
+            self.n = len(self.word)
         self._start = True
 
     def takes(self, encode):

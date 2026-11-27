@@ -1,0 +1,10 @@
+{
+  "ref": "GLONASS ICD",
+  "title": "GLONASS L1 OF",
+  "features": {
+    "modulation": ["bpsk"],
+    "chip_rate": 511000.0,
+    "code_length": 511,
+    "frequency": [[1598000000.0, 1606000000.0]]
+  }
+}

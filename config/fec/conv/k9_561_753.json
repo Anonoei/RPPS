@@ -1,14 +1,12 @@
 {
-  "base": "conv",
   "abstract": true,
-  "comment": "Mother code K=9, generators 561, 753 octal, its rates (1/n unpunctured, and punctured ones) are in k9_561_753/",
+  "comment": [
+    "Mother code K=9, generators 561, 753 octal, its rates (1/n unpunctured, and punctured ones) are in k9_561_753/"
+  ],
   "ref": "3GPP TS 25.212 4.2.3.1, figure 3",
   "tags": ["3gpp-umts"],
   "constraint": 9,
-  "generator": [
-    [1, 0, 1, 1, 1, 0, 0, 0, 1],
-    [1, 1, 1, 1, 0, 1, 0, 1, 1]
-  ],
+  "generator": [[1, 0, 1, 1, 1, 0, 0, 0, 1], [1, 1, 1, 1, 0, 1, 0, 1, 1]],
   "termination": "zero",
   "decoder": "viterbi"
 }

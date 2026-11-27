@@ -1,0 +1,10 @@
+{
+  "comment": [
+    "Bluetooth LE link layer packets: the access address (4 bytes, little endian), the PDU, the 3-byte CRC;",
+    "no preamble"
+  ],
+  "ref": "https://www.tcpdump.org/linktypes.html",
+  "dlt": 251,
+  "dissector": "btle",
+  "fcs": "required"
+}

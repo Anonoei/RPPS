@@ -1,5 +1,4 @@
 {
-  "base": "frame",
   "type": "hdlc",
   "comment": "HDLC, FCS-32",
   "flag": "0x7E",

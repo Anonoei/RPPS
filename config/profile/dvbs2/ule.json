@@ -1,0 +1,47 @@
+{
+  "extends": "dvbs2/ts",
+  "comment": [
+    "DVB-S2 unidirectional lightweight encapsulation: the transport packets of dvbs2/ts, each one's header read, the",
+    "SNDUs of the `pid` cut out of their payloads by the payload pointer (an SNDU may cross packets;",
+    "the continuity counter tells a lost packet; the end indicator 0xFFFF ends a payload), and each SNDU's header read",
+    "and its CRC-32 checked: the PDU a message, captured for Wireshark as raw IP (IPv4 and IPv6 types)..",
+    "Give the `pid`: read as SNDUs, every other PID's payloads fail their CRC"
+  ],
+  "ref": "RFC 4326, ISO/IEC 13818-1 2.4.3",
+  "params": {
+    "pid": {"default": -1, "comment": "the PID carrying the ULE stream (the PMT says which); -1: every PID's"}
+  },
+  "steps": {
+    "+end": [
+      {"link": "header", "id": "tsh", "name": "mpeg_ts"},
+      {
+        "link": "packets",
+        "id": "sndu",
+        "params": ["pid", "pusi", "cc", "afc", "wanted"],
+        "active": "afc & 1 and (wanted < 0 or pid == wanted)",
+        "frame_fields": [{"name": "pointer_field", "bits": 8, "if": "pusi"}],
+        "starts": "pusi == 1",
+        "pointer": "8*pointer_field",
+        "channel": "pid",
+        "count": "cc",
+        "modulo": 16,
+        "fields": [{"name": "d", "bits": 1}, {"name": "sndu_length", "bits": 15}],
+        "length": "8*(sndu_length + 4)",
+        "end": "d == 1 and sndu_length == 32767",
+        "defaults": {"wanted": {"param": "pid"}}
+      },
+      {"link": "header", "id": "ule", "name": "ule"}
+    ]
+  },
+  "controls": {
+    "ts": {"drive": {"tsh": {"frame": {"calc": "frame", "on": "rx"}, "length": {"calc": "packet_bits", "on": "rx"}}}},
+    "tsh": {"on": "rx", "drive": {"sndu": {"length": "bits", "pid": "pid", "pusi": "pusi", "cc": "cc", "afc": "afc"}}},
+    "sndu": {"on": "rx", "drive": {"ule": {"frame": "frame", "length": "packet_bits"}}}
+  },
+  "capture": {
+    "ts": false,
+    "tsh": false,
+    "sndu": false,
+    "ule": {"linktype": "raw", "include": ["payload"], "drop": "type not in [2048, 34525]", "fields": ["pid", "type"]}
+  }
+}

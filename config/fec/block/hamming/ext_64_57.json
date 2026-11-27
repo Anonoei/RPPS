@@ -1,7 +1,10 @@
 {
-  "base": "block",
   "type": "linear",
-  "comment": "Extended Hamming (64,57,4): the (63,57) Hamming code (6 checks: the binary index of each message bit's position among the non-powers of two) and an overall parity bit; 57 data bits then 7 parity",
+  "comment": [
+    "Extended Hamming (64,57,4): the (63,57) Hamming code (6 checks:",
+    "the binary index of each message bit's position among the non-powers of two) and an overall parity bit;",
+    "57 data bits then 7 parity"
+  ],
   "n": 64,
   "k": 57,
   "t": 1,

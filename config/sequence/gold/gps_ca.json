@@ -1,34 +1,18 @@
 {
-  "base": "sequence",
   "type": "gold",
-  "comment": "GPS C/A code (IS-GPS-200 3.3.2.3): G1 = 1 + x^3 + x^10 and G2 = 1 + x^2 + x^3 + x^6 + x^8 + x^9 + x^10, both from all ones; G2 is read at the XOR of two stages chosen by the PRN. 1023 chips at 1.023 Mcps; a 1 bit is -1",
+  "comment": [
+    "GPS C/A code (IS-GPS-200 3.3.2.3): G1 = 1 + x^3 + x^10 and G2 = 1 + x^2 + x^3 + x^6 + x^8 + x^9 + x^10, both from",
+    "all ones; G2 is read at the XOR of two stages chosen by the PRN. 1023 chips at 1.023 Mcps; a 1 bit is -1"
+  ],
   "ref": "IS-GPS-200 Table 3-Ia",
   "tags": ["gps"],
   "rate": 1023000.0,
   "length": 1023,
-  "params": {
-    "prn": {
-      "default": 1,
-      "comment": "satellite PRN signal number, 1-32"
-    }
-  },
-  "sequences": [
-    {
-      "length": 10,
-      "taps": [0, 7],
-      "init": 1023
-    },
-    {
-      "length": 10,
-      "taps": [0, 1, 2, 4, 7, 8],
-      "init": 1023
-    }
-  ],
+  "params": {"prn": {"default": 1, "comment": "satellite PRN signal number, 1-32"}},
+  "sequences": [{"length": 10, "taps": [0, 7], "init": 1023}, {"length": 10, "taps": [0, 1, 2, 4, 7, 8], "init": 1023}],
   "select": {
     "component": 1,
-    "stages": {
-      "param": "prn"
-    },
+    "stages": {"param": "prn"},
     "table": {
       "1": [2, 6],
       "2": [3, 7],

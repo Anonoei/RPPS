@@ -16,10 +16,15 @@ Where a batch lives: `b.x` is an array of `xp` (on a device, a device array); `b
 plan on another array module puts a `ToHost` before it and a `ToDevice` after, so every crossing is in `describe()`.
 Nothing converts implicitly: `to_host(a)` is the one way back.
 
+Most kernels are array code over `xp`. A loop that array code does badly (LDPC's layers, the demapper's sums over points)
+is a device kernel of its own: portable CUDA C that NVRTC and hiprtc compile as it is, built by `device_functions` when
+`has_device_kernels(xp)`; on numpy the kernel runs its host path, the reference.
+
 An operator gives one with `op.kernel(params, how)` (params: its controlled parameters; how: `/` decode, `*` encode, `+` stage;
 returns None for what it has no kernel for). A step whose operators do not is run by `LoopKernel`: the existing
 per-frame operator, through `Data`. That path is also the oracle every kernel is compared with.
 """
+import threading
 from collections import namedtuple
 from dataclasses import dataclass, field
 
@@ -59,6 +64,23 @@ def to_host(a):
         return a
     get = getattr(a, "get", None)
     return get() if get is not None else np.asarray(a)
+
+def has_device_kernels(xp):
+    """True when `xp` compiles and launches kernels of its own (CuPy, on CUDA or HIP); not numpy, not a pretend device"""
+    return xp is not np and hasattr(xp, "RawModule") and hasattr(xp, "cuda")
+
+_MODULES, _MODULES_LOCK = {}, threading.Lock()
+
+def device_functions(xp, source, names):
+    """The functions `names` of the device kernel `source` (portable CUDA C: NVRTC or hiprtc compile it as it is), compiled
+    once per process, device and source"""
+    key = (xp.__name__, xp.cuda.Device().id, source)
+    with _MODULES_LOCK:
+        f = _MODULES.get(key)
+        if f is None:
+            mod = xp.RawModule(code=source)
+            f = _MODULES[key] = {n: mod.get_function(n) for n in names}
+    return f
 
 class Kernel:
     """A batch function. Subclasses set `name` and give `run`; `shape` says the output length for an input length (None: not

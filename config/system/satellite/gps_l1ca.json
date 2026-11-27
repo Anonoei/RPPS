@@ -1,0 +1,12 @@
+{
+  "ref": "IS-GPS-200",
+  "tags": ["gps"],
+  "title": "GPS L1 C/A",
+  "features": {
+    "modulation": ["bpsk"],
+    "chip_rate": 1022999.9999999999,
+    "code_length": 1023,
+    "baud": 50,
+    "frequency": [[1575000000.0, 1576000000.0]]
+  }
+}

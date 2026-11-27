@@ -14,8 +14,10 @@ The unit is the **batch**, not the thread: N frames through one program pays on 
       Kernel      a pure function over [N, L] arrays, run(xp, batch); LoopKernel runs frame by frame through the operators
 
 - An operator gives its kernel with `op.kernel(params, how)`; a step without one runs through `LoopKernel`, which is also
-  the oracle every kernel is checked against (`test_batch_kernels.py`). Kernels: `symbol.kernels` (`Demap`, `Rotate`,
-  `Gather`), `code.kernels` (`BlockDecode`, `XorMask`), `sync.kernels` (`PilotLine`); the protocol is `rpps.base.kernel`.
+  the oracle every kernel is checked against (`tests/unit/parallel/`). Kernels: `symbol.kernels` (`Demap`, `Rotate`,
+  `Gather`), `code.kernels` (`BlockDecode`, `LdpcDecode`, `BchDecode`, `Permute` of an interleaver, `Identity` of a code a
+  frame switches off, `XorMask`), `sync.kernels` (`PilotLine`), `link.kernels` (`HeaderDecode` of a framed header); the
+  protocol is `rpps.base.kernel`.
 - Kernels belong to generic operators, never a protocol; they use only what numpy and cupy share (`xp`), hold their
   constants, keep shapes fixed per key, and mark a failed row instead of raising. `BatchPlan.describe()` is data, what a
   device library or HLS generator would build from.
@@ -38,16 +40,26 @@ fork).
   decoders, a `LoopKernel`). Every crossing is a kernel, so `BatchPlan.describe()` shows the cost; nothing converts
   implicitly. Constants go to a device once (`Kernel.const`). `bad`, `why`, `notes` and `code_failed` stay on the host.
 - **Instructions**, each with the numpy run as its oracle: (1) array code over `xp`, which most kernels are and which
-  runs on CuPy unchanged; (2) hand-written device kernels for loops (layered LDPC, Viterbi ACS) in a portable subset of
-  CUDA C that HIP compiles as it is (wavefront width a parameter, not 32), compiled at run time by CuPy (NVRTC or
-  hiprtc) and looked up as `rpps._native` is; (3) `describe()`, the export for an FPGA or HLS flow.
+  runs on CuPy unchanged; (2) hand-written device kernels for what array code does badly, in a portable subset of CUDA C
+  that HIP compiles as it is (no warp intrinsics, no wavefront width assumed), compiled at run time by CuPy (NVRTC or
+  hiprtc) through `rpps.base.kernel.device_functions`: the layered min-sum LDPC decoder (`rpps.code.kernels.LdpcDecode`,
+  a launch per layer over every check and codeword, codewords the fastest axis so accesses are contiguous, the batch
+  compacted as codewords converge), BCH syndromes (`BchDecode`: only the words with errors go to the host to be located,
+  their bits flipped on the device) and the soft demapper (`Demap`, a thread a symbol); (3) `describe()`, the export for
+  an FPGA or HLS flow. A header's fields are read on the host from its few bits (`HeaderDecode`); its payload is cut on
+  the device. On `dvbs2/normal` the whole region stays on a device: one upload, one download.
 - **Getting results back.** The download at the plan's end gives numpy; results are built on the host and the
   `Scheduler` puts them in order, as for any executor. A dedicated device executor (later) overlaps the next batch's
   upload with this one's work on device streams, with `Scheduler(eager=False)` so batches fill.
-- **Checked without a GPU.** `tests/unit/fakedevice.py` is numpy behind an array type that refuses what CuPy refuses
+- **Checked without a GPU.** `tests/support/fakedevice.py` is numpy behind an array type that refuses what CuPy refuses
   (no implicit conversion, no numpy array mixed in); every kernel and the DVB-S2 region run on it in the suite.
-- **What moves next:** batch decoders on the device (FEC is most of the time), then the front's block estimators (the
-  front, with its per-sample loops, stays on the CPU).
+- **Batches pay on a device.** A layer launch needs thousands of (check, codeword) threads to fill a GPU, so a device
+  wins from about 16 frames a batch (`Parallel(max_batch=)`) and is even at one; measure with `tools/device_bench.py`.
+  On an AMD Radeon 860M (an integrated GPU) against 16 CPU threads with the C++ kernels, 16-64 frames a batch, the
+  machine otherwise idle: LDPC 1.9-2.4x, BCH 2.0-3.6x (clean words; 1.0-1.5x with five errors a word), demap 4.2-8.6x;
+  the DVB-S2 region 2.1x, and the receiver end to end (four workers) 1.1x, the serial front now most of its time.
+- **The front on a device** (`"device": true`): frame sync, `timing: mat` (16% faster end to end on the 860M), Oerder
+  & Meyr and MPower (1.3x slower: each window waits on the device). Per-sample loops stay on the CPU.
 """
 from .frame import Frame, Result, OK, DROPPED
 from .executor import Executor, InlineExecutor, ThreadExecutor, ProcessExecutor, make

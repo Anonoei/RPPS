@@ -1,5 +1,4 @@
 {
-  "base": "scramble",
   "type": "feedthrough",
   "comment": "V.35 feedthrough scrambler",
   "tags": ["v.35"],

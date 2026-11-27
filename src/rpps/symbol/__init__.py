@@ -10,17 +10,17 @@ A signal is built from explicit pieces, and a new kind of signal is a new config
 ## Constellations
 
 A constellation is a set of points and the ways of labelling them with bits. PSK, QAM, APSK and ASK are generators
-(`rp.symbol.PSK(8)`, `rp.symbol.QAM(16)`, `rp.symbol.generate("64QAM")`); anything else is a config file:
+(`rp.symbol.PSK(8)`, `rp.symbol.QAM(16)`, `rp.symbol.generate("64QAM")`); anything else is a config file
+(config/constellation/<group>/<name>.json):
 
-    {"base": "constellation",
-     "points": [{"mag": 1, "pha": 45}, {"re": 0, "im": 2}, [-1.5, 0]],
-     "maps": [{"map": [0, 1, 3, 2], "comment": "R000 Grey"}]}
+    {"points": [{"mag": 1, "pha": 45}, {"re": 0, "im": 2}, [-1.5, 0]],
+     "maps": [{"map": [0, 1, 3, 2], "comment": "Grey"}]}
 
 `maps[i].map[point]` is the value (bits, first bit most significant) the point carries. Points are scaled to unit mean
 power unless `"normalize": false`. The first map is also turned by every rotation the points allow, with and without
 spectral inversion (`rp.symbol.load("psk/qpsk", "R090 inverted")`): the maps a receiver has to try when it does not know
 the carrier phase or the IQ sense. Shapes and definitions are separate: DVB-S2's 16APSK is
-`rp.symbol.load("apsk/dvbs2_16apsk_3_4")`, not `generate("16APSK")`.
+`rp.symbol.load("apsk/dvbs2_16apsk", rate="3/4")`, not `generate("16APSK")`.
 
 ## Differential coding
 
@@ -40,7 +40,7 @@ Known structure among the symbols of a frame (`rpps.symbol.frame`), restarted at
 
 ## Recipes
 
-Each is exercised in `tests/unit/test_recipes.py` and `tests/unit/test_wave.py`. Shaping needs the symbols' rate, so the
+Each is exercised in `tests/unit/wave/test_recipes.py` and `tests/unit/wave/test_wave.py`. Shaping needs the symbols' rate, so the
 bits say theirs: `bits = rp.Data(b, Fs=1e6, sps=1)`.
 
     # 802.11b 1 Mb/s: DBPSK, Barker-11, then 11 Mcps shaped as you like
@@ -77,7 +77,7 @@ from .differential import Differential
 from .spread import Spread
 from .despread import Despread, correlate
 from .ofdm import Carriers
-from .frame import Header, Pilots, PhaseScramble, pilot_layout, rotating
+from .frame import Header, Pilots, PhaseScramble, Marker, Puncture, pilot_layout, rotating
 from .serial import ls, load, load_header, init, generate, load_or_generate
 
 from .modulation import Modulation

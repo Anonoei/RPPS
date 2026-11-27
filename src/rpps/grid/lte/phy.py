@@ -1,6 +1,6 @@
 """LTE downlink physical layer: numerology, reference signals, resource-element maps, transmit diversity (3GPP TS 36.211)
 
-FDD, normal cyclic prefix, 15 kHz subcarriers. A subframe (1 ms) is two slots of seven OFDM symbols; the resource grid of
+FDD and TDD (frame structures 1 and 2), normal cyclic prefix, 15 kHz subcarriers. A subframe (1 ms) is two slots of seven OFDM symbols; the resource grid of
 a subframe is (14, 12 N_RB): symbol l = 0..13 (slot l // 7), subcarrier k = 0..12 N_RB - 1 from the lowest, the DC
 subcarrier left out. Sample rates are 1.92 MS/s per FFT of 128: FFT = Fs / 15 kHz.
 
@@ -49,12 +49,21 @@ def grid(x, nfft, n_rb, early=None):
     """The (14, 12 N_RB) grid of one subframe's samples. Each FFT window starts `early` samples into the prefix (clear of
     the symbol before, and of a timing that runs late), the phase ramp that leaves taken off"""
     early = nfft//128 if early is None else early
+    idx, bins, turn = _grid_plan(int(nfft), int(n_rb), int(early))
+    W = np.fft.fft(np.asarray(x)[idx], axis=1)
+    return W[:, bins]*turn[None, :]
+
+@functools.lru_cache(maxsize=64)
+def _grid_plan(nfft, n_rb, early):
+    """What `grid` reads for a width: each symbol's FFT window, the subcarriers' bins, the ramp the early start leaves"""
     st = symbol_starts(nfft) - early
     idx = st[:, None] + np.arange(nfft)[None, :]
-    W = np.fft.fft(np.asarray(x)[idx], axis=1)
     k = np.arange(12*n_rb)
     f = np.where(k < 6*n_rb, k - 6*n_rb, k - 6*n_rb + 1)
-    return W[:, sc_bin(k, nfft, n_rb)]*np.exp(2j*np.pi*f*early/nfft)[None, :]
+    out = (idx, sc_bin(k, nfft, n_rb), np.exp(2j*np.pi*f*early/nfft))
+    for a in out:
+        a.flags.writeable = False
+    return out
 
 def ramp(n, start, step):
     """e^(-j 2 pi (start + step k)) for k = 0..n-1 (cycles): a derotation, complex64. Built from two short tables and their
@@ -117,29 +126,47 @@ def channel(G, pci, n_rb, sf, ports=4):
     the port's symbols of the subframe (it barely moves in 1 ms). Ports past `ports` are zeros. Every port and symbol at
     once: a port's reference signals are a comb of step 6, so each subcarrier's two neighbours are found by arithmetic"""
     nsc = 12*n_rb
-    ks = np.arange(nsc)
     H = np.zeros((4, 14, nsc), np.complex64)
-    tsym = np.arange(14, dtype=float)
+    plan = _channel_plan(int(pci), int(n_rb), int(sf), int(ports))
+    if plan is None:
+        return H
+    sym, kk, ref, i0, a, r, per_port = plan
+    h = G[sym[:, None], kk]/ref # Least squares at each reference signal
+    hs = h[r, i0]*(1 - a) + h[r, i0 + 1]*a # (rows, nsc)
+    for p, (sel, dt, den, tt) in enumerate(per_port):
+        H_p = hs[sel]
+        mean = H_p.mean(0)
+        slope = np.sum(dt[:, None]*(H_p - mean), axis=0)/den
+        H[p] = mean[None, :] + slope[None, :]*tt[:, None]
+    return H
+
+@functools.lru_cache(maxsize=512)
+def _channel_plan(pci, n_rb, sf, ports):
+    """What `channel` reads of a subframe's reference signals, which only the cell, its width, the subframe and the ports
+    decide: the rows (port, symbol), their subcarriers and values, each subcarrier's neighbours on its row's comb, and
+    each port's line in time"""
+    nsc = 12*n_rb
     rows = [(p, slot, l) for p in range(ports) for slot in (0, 1) for l in CRS_SYMBOLS[p]]
     if not rows:
-        return H
+        return None
     v = np.array([(crs_shift(p, 2*sf + slot, l) + pci) % 6 for p, slot, l in rows])
     sym = np.array([slot*7 + l for _, slot, l in rows])
     kk = 6*np.arange(2*n_rb)[None, :] + v[:, None] # (rows, 2 N_RB)
     ref = np.array([crs_values(pci, 2*sf + slot, l, n_rb) for p, slot, l in rows])
-    h = G[sym[:, None], kk]/ref # Least squares at each reference signal
-    t = np.clip((ks[None, :] - v[:, None])/6.0, 0, 2*n_rb - 1) # Where each subcarrier falls on its row's comb
+    t = np.clip((np.arange(nsc)[None, :] - v[:, None])/6.0, 0, 2*n_rb - 1) # Where each subcarrier falls on its row's comb
     i0 = np.minimum(np.floor(t).astype(np.int64), 2*n_rb - 2)
     a = t - i0
     r = np.arange(len(rows))[:, None]
-    hs = h[r, i0]*(1 - a) + h[r, i0 + 1]*a # (rows, nsc)
+    per_port = []
     for p in range(ports):
         sel = np.array([q == p for q, _, _ in rows])
-        t_p, H_p = sym[sel].astype(float), hs[sel]
+        t_p = sym[sel].astype(float)
         tm = t_p.mean()
-        slope = np.sum((t_p - tm)[:, None]*(H_p - H_p.mean(0)), axis=0)/np.sum((t_p - tm)**2)
-        H[p] = H_p.mean(0)[None, :] + slope[None, :]*(tsym - tm)[:, None]
-    return H
+        per_port.append((sel, t_p - tm, np.sum((t_p - tm)**2), np.arange(14, dtype=float) - tm))
+    out = (sym, kk, ref, i0, a, r, per_port)
+    for x in out[:-1]:
+        x.flags.writeable = False
+    return out
 
 # ---- transmit diversity (6.3.4.3), soft bits (7.1.2)
 
@@ -228,29 +255,47 @@ def pcfich_regs(pci, n_rb):
 def pcfich_res(pci, n_rb, ports):
     return _res(pcfich_regs(pci, n_rb), pci, ports)
 
-@functools.lru_cache(maxsize=256)
-def control_regs(pci, n_rb, cfi, phich_groups, ports):
-    """The PDCCH REGs (k0, l) of a subframe in the order they are filled (time first), past the PCFICH and PHICH (normal
-    duration)"""
-    nsc = 12*n_rb
+def short_phich(duplex, sf):
+    """TDD subframes 1 and 6: an extended PHICH of two symbols (Table 6.9.3-1)"""
+    return duplex == "tdd" and sf in (1, 6)
+
+def phich_regs(pci, n_rb, groups, ports, extended=False, short=False):
+    """The PHICH's REGs (k0, l), three a group (6.9.3)
+
+    Symbol 0 (normal duration), symbols 0-2 (extended), 0-1 (extended, `short`)"""
     pcf = pcfich_regs(pci, n_rb)
-    sym0 = [k for k in range(0, nsc, 6) if (k, 0) not in pcf]
-    n0 = len(sym0)
-    phich = {(sym0[(pci + m + (i*n0)//3) % n0], 0) for m in range(phich_groups) for i in range(3)}
-    used = set(pcf) | phich
-    return [(k, l) for k in range(nsc) for l in range(cfi) if k % _reg_step(l, ports) == 0 and (k, l) not in used]
+    free = [[k for k in range(0, 12*n_rb, _reg_step(l, ports)) if (k, l) not in pcf] for l in range(3)]
+    ref = len(free[1 if extended and short else 0])
+    out = set()
+    for m in range(groups):
+        for i in range(3):
+            l = 0 if not extended else (m//2 + i + 1) % 2 if short else i
+            n = len(free[l])
+            out.add((free[l][(pci*n//ref + m + (i*n)//3) % n], l))
+    return out
+
+@functools.lru_cache(maxsize=256)
+def control_regs(pci, n_rb, symbols, phich_groups, ports, extended=False, short=False):
+    """The PDCCH's REGs (k0, l)
+
+    Time first, past the PCFICH and the PHICH (`phich_regs`)"""
+    used = set(pcfich_regs(pci, n_rb)) | phich_regs(pci, n_rb, phich_groups, ports, extended, short)
+    return [(k, l) for k in range(12*n_rb) for l in range(symbols) if k % _reg_step(l, ports) == 0 and (k, l) not in used]
 
 def control_symbols(cfi, n_rb):
     """OFDM symbols of the control region: the CFI, one more at 10 resource blocks or fewer (Table 6.7-1)"""
     return int(cfi) + (1 if n_rb <= 10 else 0)
 
-def phich_groups(ng, n_rb):
-    return int(np.ceil(ng*n_rb/8))
+def phich_groups(ng, n_rb, mi=1):
+    """PHICH groups
+
+    ceil(Ng N_RB / 8), times m_i in TDD (Table 6.9-1: by the uplink-downlink configuration and the subframe)"""
+    return int(mi)*int(np.ceil(ng*n_rb/8))
 
 @functools.lru_cache(maxsize=256)
-def control_res(pci, n_rb, symbols, phich_groups_, ports):
+def control_res(pci, n_rb, symbols, phich_groups_, ports, extended=False, short=False):
     """(k, l) of the PDCCH REGs' resource elements in order (control_regs, each REG's four)"""
-    return _res(control_regs(pci, n_rb, symbols, phich_groups_, ports), pci, ports)
+    return _res(control_regs(pci, n_rb, symbols, phich_groups_, ports, extended, short), pci, ports)
 
 @functools.lru_cache(maxsize=256)
 def subblock_perm(n):
@@ -265,30 +310,38 @@ AMBIGUOUS = {12, 14, 16, 20, 24, 26, 32, 40, 44, 56}
 def riv_bits(n_rb):
     return int(np.ceil(np.log2(n_rb*(n_rb + 1)/2)))
 
-def dci_1a_size(n_rb):
-    """Format 1A's payload bits (FDD), padded to format 0's and past the ambiguous sizes (5.3.3.1.3)"""
-    f1a = 1 + 1 + riv_bits(n_rb) + 5 + 3 + 1 + 2 + 2
-    f0 = 1 + 1 + riv_bits(n_rb) + 5 + 1 + 2 + 3 + 1
+def dci_1a_size(n_rb, duplex="fdd"):
+    """Format 1A's payload bits (5.3.3.1.3)
+
+    Padded to format 0's and past the ambiguous sizes. TDD has a HARQ bit more and the downlink assignment index (format 0:
+    the UL index or assignment index)"""
+    tdd = duplex == "tdd"
+    f1a = 1 + 1 + riv_bits(n_rb) + 5 + 3 + 1 + 2 + 2 + (3 if tdd else 0)
+    f0 = 1 + 1 + riv_bits(n_rb) + 5 + 1 + 2 + 3 + 1 + (2 if tdd else 0)
     n = max(f1a, f0)
     return n + 1 if n in AMBIGUOUS else n
 
-def dci_1c_size(n_rb):
-    """Format 1C's payload bits (5.3.3.1.4): gap flag (N_RB >= 50), the allocation in steps of N_RB^step, 5 bits of TBS"""
-    step = 2 if n_rb < 50 else 4
-    nvrb = (n_rb//step)
-    gap = 1 if n_rb >= 50 else 0
-    return gap + int(np.ceil(np.log2(nvrb*(nvrb + 1)/2))) + 5
-
-def parse_1a(bits, n_rb):
-    """DCI 1A with an SI-, P- or RA-RNTI: flag, localized/distributed, RIV, MCS, HARQ, NDI, RV, TPC"""
+def _fields(bits):
     p = 0
     def take(n):
         nonlocal p
-        v = int("".join(str(int(x)) for x in bits[p:p + n]), 2)
+        v = 0
+        for b in bits[p:p + n]:
+            v = (v << 1) | int(b)
         p += n
         return v
-    return {"flag": take(1), "distributed": take(1), "riv": take(riv_bits(n_rb)), "mcs": take(5), "harq": take(3),
-            "ndi": take(1), "rv": take(2), "tpc": take(2)}
+    return take
+
+def parse_1a(bits, n_rb, duplex="fdd"):
+    """DCI 1A's fields, with an SI-, P- or RA-RNTI
+
+    With those the NDI picks the second gap of a distributed allocation (`gap`, from 50 resource blocks) and the TPC's low
+    bit the TBS column"""
+    take = _fields(bits)
+    d = {"flag": take(1), "distributed": take(1), "riv": take(riv_bits(n_rb)), "mcs": take(5),
+         "harq": take(4 if duplex == "tdd" else 3), "ndi": take(1), "rv": take(2), "tpc": take(2)}
+    d["gap"] = int(d["distributed"] and n_rb >= 50 and d["ndi"])
+    return d
 
 def riv_decode(riv, n_rb):
     """(first resource block, count) of a contiguous allocation (36.213 7.1.6.3)"""
@@ -297,20 +350,129 @@ def riv_decode(riv, n_rb):
         L, S = n_rb - L + 2, n_rb - 1 - S
     return S, L
 
+# ---- DCI 1C (36.212 5.3.3.1.4, 36.213 7.1.6.3)
+
+def step_1c(n_rb):
+    """N_RB^step of format 1C's allocation (36.213 Table 7.1.6.3-1)"""
+    return 2 if n_rb < 50 else 4
+
+def _riv_1c_bits(n_rb):
+    n = gaps(n_rb)[1]//step_1c(n_rb)
+    return int(np.ceil(np.log2(n*(n + 1)/2)))
+
+def dci_1c_size(n_rb):
+    """Format 1C's payload bits
+
+    The gap (N_RB >= 50), the allocation in steps of N_RB^step over the first gap's virtual blocks, 5 bits of TBS"""
+    return (1 if n_rb >= 50 else 0) + _riv_1c_bits(n_rb) + 5
+
+def parse_1c(bits, n_rb):
+    take = _fields(bits)
+    return {"gap": take(1) if n_rb >= 50 else 0, "riv": take(_riv_1c_bits(n_rb)), "mcs": take(5)}
+
+# ---- distributed virtual resource blocks (36.211 6.2.3.2)
+
+def gaps(n_rb, second=False):
+    """(N_gap, N_VRB, interleaving unit) of a gap (Table 6.2.3.2-1)"""
+    if n_rb < 11:
+        g = (n_rb + 1)//2
+    elif n_rb == 11:
+        g = 4
+    else:
+        g = next(g for top, g in ((19, 8), (26, 12), (44, 18), (63, 27), (79, 32), (110, 48)) if n_rb <= top)
+    if not second:
+        n = 2*min(g, n_rb - g)
+        return g, n, n
+    if n_rb < 50:
+        raise ValueError(f"{n_rb} resource blocks have one gap")
+    g = 9 if n_rb <= 63 else 16
+    return g, n_rb//(2*g)*2*g, 2*g
+
+@functools.lru_cache(maxsize=32)
+def dvrb_map(n_rb, second=False):
+    """(2, N_VRB): each distributed block's physical block, per slot"""
+    gap, n_vrb, unit = gaps(n_rb, second)
+    P = 1 if n_rb <= 10 else 2 if n_rb <= 26 else 3 if n_rb <= 63 else 4 # RBG size (36.213 Table 7.1.6.1-1)
+    rows = int(np.ceil(unit/(4*P)))*P
+    null = 4*rows - unit
+    out = np.zeros((2, n_vrb), np.int64)
+    for n in range(n_vrb):
+        t, base = n % unit, unit*(n//unit)
+        a = 2*rows*(t % 2) + t//2 + base
+        b = rows*(t % 4) + t//4 + base
+        if null and t >= unit - null:
+            even = a - rows if t % 2 else a - rows + null//2
+        elif null and t % 4 >= 2:
+            even = b - null//2
+        else:
+            even = b
+        odd = (even - base + unit//2) % unit + base
+        for slot, v in enumerate((even, odd)):
+            out[slot, n] = v if v - base < unit//2 else v + gap - unit//2
+    out.flags.writeable = False
+    return out
+
+@functools.lru_cache(maxsize=None)
+def tbs_table(name="lte/tbs"):
+    """{I_TBS: [TBS, ...]} of a table/lte definition
+
+    lte/tbs (36.213 Table 7.1.7.2.1-1, the N_PRB columns 1..10 a DCI 1A for system information uses) or lte/tbs_1c (Table
+    7.1.7.2.3-1)"""
+    from ... import _config
+    t = _config.read(_config.find("table", name))
+    return {r[0]: list(r[1:]) for r in t["rows"]}
+
+def allocation(d, n_rb):
+    """(blocks, TBS) of a DCI, or None
+
+    d: the fields of parse_1a or parse_1c, with "format". None for an allocation or size the standard does not have"""
+    if d["format"] == "1C":
+        step = step_1c(n_rb)
+        first, count = riv_decode(int(d["riv"]), gaps(n_rb)[1]//step)
+        first, count, distributed = first*step, count*step, True
+        row = tbs_table("lte/tbs_1c").get(int(d["mcs"]))
+        tbs = None if row is None else row[0]
+    else:
+        first, count = riv_decode(int(d["riv"]), n_rb)
+        distributed = bool(d["distributed"])
+        row = tbs_table().get(int(d["mcs"]))
+        tbs = None if row is None else row[(3 if int(d["tpc"]) & 1 else 2) - 1] # N_PRB^1A: the TPC's low bit (36.213 7.1.7)
+    if tbs is None or first < 0 or count < 1:
+        return None
+    if distributed:
+        m = dvrb_map(n_rb, bool(d["gap"]))
+        if first + count > m.shape[1]:
+            return None
+        blocks = tuple(np.sort(m[slot, first:first + count]) for slot in (0, 1))
+    else:
+        if first + count > n_rb:
+            return None
+        blocks = (np.arange(first, first + count),)*2
+    return blocks, tbs
+
 # ---- PDSCH (6.3.5, 6.4)
 
-def pdsch_res(first, count, cfi, pci, sf, n_rb, ports):
-    """(k, l) of a localized PDSCH on resource blocks first..first+count-1: subcarrier first, then symbol, from symbol
-    `cfi`, around the reference signals, and in subframes 0 and 5 around the synchronization signals (and the PBCH in 0)"""
-    ks = np.arange(12*first, 12*(first + count))
+def pdsch_res(blocks, symbols, pci, sf, n_rb, ports, duplex="fdd"):
+    """(k, l) of a PDSCH's elements
+
+    On the resource blocks `blocks` (those of the even slot, of the odd slot): subcarrier first, then symbol, from symbol
+    `symbols` (the control region's), around the reference signals, the synchronization signals and the PBCH. FDD: PSS and
+    SSS in symbols 6 and 5 of subframes 0 and 5; TDD: SSS in symbol 13 of those, PSS in symbol 2 of subframes 1 and 6"""
+    ks = [(12*np.asarray(b)[:, None] + np.arange(12)).reshape(-1) for b in blocks]
     mask = crs_mask(pci, n_rb, ports)
     mid = (6*n_rb - 36, 6*n_rb + 36)
-    centre = (ks >= mid[0]) & (ks < mid[1])
+    if duplex == "tdd":
+        sync = (13,) if sf in (0, 5) else (2,) if sf in (1, 6) else ()
+    else:
+        sync = (5, 6) if sf in (0, 5) else ()
+    if sf == 0:
+        sync += (7, 8, 9, 10) # the PBCH
     K, L = [], []
-    for l in range(cfi, 14):
-        keep = ~mask[l, ks]
-        if (sf in (0, 5) and l in (5, 6)) or (sf == 0 and l in (7, 8, 9, 10)):
-            keep &= ~centre
-        K.append(ks[keep])
+    for l in range(symbols, 14):
+        k = ks[l//7]
+        keep = ~mask[l, k]
+        if l in sync:
+            keep &= ~((k >= mid[0]) & (k < mid[1]))
+        K.append(k[keep])
         L.append(np.full(int(keep.sum()), l))
     return np.concatenate(K), np.concatenate(L)

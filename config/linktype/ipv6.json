@@ -1,0 +1,18 @@
+{
+  "comment": "An IPv6 packet, from its header",
+  "ref": "https://www.tcpdump.org/linktypes.html, Linux include/uapi/linux/if_arp.h",
+  "dlt": 229,
+  "arphrd": 65534,
+  "proto": "0x86DD",
+  "dissector": "ipv6",
+  "signature": {
+    "min": 40,
+    "valid": "version == 6 and payload_length + 40 == size",
+    "fields": [
+      {"name": "version", "bits": 4},
+      {"name": "traffic_class", "bits": 8},
+      {"name": "flow", "bits": 20},
+      {"name": "payload_length", "bits": 16}
+    ]
+  }
+}

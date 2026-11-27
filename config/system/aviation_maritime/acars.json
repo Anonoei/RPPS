@@ -1,0 +1,5 @@
+{
+  "ref": "ARINC 618",
+  "title": "ACARS",
+  "features": {"modulation": ["2fsk", "am", "msk"], "baud": 2400, "frequency": [[129000000.0, 137000000.0]]}
+}

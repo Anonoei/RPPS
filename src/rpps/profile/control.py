@@ -42,7 +42,8 @@ The profile side (`"controls"` in a profile, keyed by the header step's id):
               "reach": 64,                                        how far back (header input items) a field can apply
               "on": "tx",                                         this entry drives only when transmitting ("rx", "both": default)
               "drive": {"map": {"name": "constellation"},         step id -> {parameter: source}: a field, a column of
-                        "ldpc": {"name": "ldpc"},                   the key's row, or {"calc": ...} over both
+                        "ldpc": {"name": "ldpc"},                   the key's row, or {"calc": ...} over both (with
+                                                                    "on": "tx" or "rx", in that direction only)
                         "plscram": {"length": {"calc": "slots*90 + pilots*((slots - 1)//16)*36"}}}}}
 
 A "calc" is an expression (as `{"expr": ...}` takes) worked out when the fields arrive; an "expr" or a "param" in a profile
@@ -68,10 +69,14 @@ class Table:
 
         {"base": "table", "comment": "...", "key": "modcod",                 or a list of key columns
          "columns": ["modcod", "constellation", "ldpc"],
-         "rows": [[4, "dvbs2_qpsk", "ldpc/dvbs2_64800_1_2"], ...]}
+         "rows": [[4, "psk/qpsk", "ldpc/dvbs2_64800_1_2"], ...]}
+
+    only: {field: value}: the rows apply only where the fields have these values (a field not given counts as its value),
+        e.g. DVB-S2's MODCODs, and not a DVB-S2X header's (its "s2x" bit set): no row then
     """
-    def __init__(self, name, key, columns, rows):
+    def __init__(self, name, key, columns, rows, only=None):
         self.name = name
+        self.only = dict(only or {})
         self.key = [key] if isinstance(key, str) else list(key)
         self.columns = list(columns)
         missing = [k for k in self.key if k not in self.columns]
@@ -88,6 +93,8 @@ class Table:
         """The row the fields' key values pick, or None (a key field missing, or no such row)"""
         if any(k not in fields or fields[k] is None for k in self.key):
             return None
+        if any(_norm(fields.get(k, v)) != _norm(v) for k, v in self.only.items()):
+            return None
         return self.rows.get(tuple(_norm(fields[k]) for k in self.key))
 
     def __repr__(self):
@@ -98,7 +105,7 @@ class Table:
         for k in ("key", "columns", "rows"):
             if k not in obj:
                 raise ConfigError(f"table {name}: needs '{k}'")
-        return Table(name, obj["key"], obj["columns"], obj["rows"])
+        return Table(name, obj["key"], obj["columns"], obj["rows"], obj.get("only"))
 
 def _norm(v):
     return int(v) if isinstance(v, bool) else v
@@ -138,13 +145,16 @@ class Entry:
         row = self.table.row(fields) if self.table is not None else None
         return {**(row or {}), **fields}, row
 
-    def values(self, fields):
+    def values(self, fields, direction=None):
         """{step id: {parameter: value}} these fields set, and the row they picked (None: none). A parameter whose source
-        the fields don't give is left alone, so a change that carries only some fields changes only what they drive"""
+        the fields don't give is left alone, so a change that carries only some fields changes only what they drive; so is
+        one whose source drives only the other direction ({"calc": ..., "on": "tx"})"""
         names, row = self.names(fields)
         out = {}
         for sid, ps in self.drive.items():
             for p, src in ps.items():
+                if direction is not None and isinstance(src, dict) and src.get("on", "both") not in ("both", direction):
+                    continue
                 v = self._value(src, names, fields)
                 if v is not _NA:
                     out.setdefault(sid, {})[p] = v
@@ -205,16 +215,20 @@ def parse(obj, steps, where):
 
 # ---- Positions through a step
 
+_IN, _OUT = (lambda x: x[0]), (lambda x: x[1])
+
 class PosMap:
     """How a step's input positions become its output positions: anchors (input, output, rate), from which the output
     advances `rate` items per input item. A step gets one when it first runs, one at every change applied to it (its rate
     may change), and one wherever it reports that it dropped or inserted items"""
-    __slots__ = ("a",)
-    def __init__(self, anchors=None):
+    __slots__ = ("a", "r0")
+    def __init__(self, anchors=None, r0=1.0):
         self.a = list(anchors or [])
+        self.r0 = float(r0) if r0 else 1.0 # Before any anchor: positions scale by the step's rate from 0, as its first
+        # output is placed (a stream that does not start at 0: a burst at its place in a capture)
 
     def copy(self):
-        return PosMap([list(x) for x in self.a])
+        return PosMap([list(x) for x in self.a], self.r0)
 
     def __bool__(self):
         return bool(self.a)
@@ -224,30 +238,34 @@ class PosMap:
         self.a = [x for x in self.a if x[0] <= i]
 
     def add(self, i, o, rate):
-        """An anchor; one at the same input position is replaced (what a step reports wins over what was worked out)"""
-        k = bisect.bisect_left([x[0] for x in self.a], i)
+        """An anchor; one at the same input position is replaced (what a step reports wins over what was worked out). One
+        on the line already there (a change that kept the rate: every header's) changes nothing and is not kept, so a long
+        stream's map stays as short as its rate changes"""
+        k = bisect.bisect_left(self.a, i, key=_IN)
         if k < len(self.a) and self.a[k][0] == i:
             self.a[k] = [i, o, rate]
-        else:
-            self.a.insert(k, [i, o, rate])
+            return
+        if k and rate == self.a[k - 1][2] and o == self.a[k - 1][1] + (i - self.a[k - 1][0])*rate:
+            return
+        self.a.insert(k, [i, o, rate])
 
     def rate_at(self, i):
-        k = bisect.bisect_right([x[0] for x in self.a], i) - 1
+        k = bisect.bisect_right(self.a, i, key=_IN) - 1
         return self.a[max(k, 0)][2] if self.a else 1.0
 
     def fwd(self, i):
         """Output position of input position i"""
         if not self.a:
-            return i
-        k = max(bisect.bisect_right([x[0] for x in self.a], i) - 1, 0)
+            return i*self.r0
+        k = max(bisect.bisect_right(self.a, i, key=_IN) - 1, 0)
         a = self.a[k]
         return a[1] + (i - a[0])*a[2]
 
     def back(self, o):
         """Input position of output position o"""
         if not self.a:
-            return o
-        k = max(bisect.bisect_right([x[1] for x in self.a], o) - 1, 0)
+            return o/self.r0
+        k = max(bisect.bisect_right(self.a, o, key=_OUT) - 1, 0)
         a = self.a[k]
         return a[0] + (o - a[1])/a[2] if a[2] else a[0]
 

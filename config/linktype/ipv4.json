@@ -1,0 +1,19 @@
+{
+  "comment": "An IPv4 packet, from its header",
+  "ref": "https://www.tcpdump.org/linktypes.html, Linux include/uapi/linux/if_arp.h",
+  "dlt": 228,
+  "arphrd": 65534,
+  "proto": "0x0800",
+  "dissector": "ip",
+  "signature": {
+    "min": 20,
+    "valid": "version == 4 and ihl >= 5 and total_length == size",
+    "check": {"crc": "internet16", "bytes": "ihl*4"},
+    "fields": [
+      {"name": "version", "bits": 4},
+      {"name": "ihl", "bits": 4},
+      {"name": "tos", "bits": 8},
+      {"name": "total_length", "bits": 16}
+    ]
+  }
+}

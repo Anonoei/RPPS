@@ -28,13 +28,15 @@ class Align(BitStage):
 
     period: units per period. unit: bits per unit (8: bytes, most significant bit first). acquire: periods to score, at
     least one whole pattern. start: "any" period, or "pattern": the output starts on the pattern's first position (a frame
-    of periods: DVB-S energy dispersal restarts every 8 packets). Its estimates are in `stream.est[name]`.
+    of periods: DVB-S energy dispersal restarts every 8 packets). publish: each period out is a frame start, {"frame": k}
+    published from it (rpps.base.control), so a header after it reads one period at a time (DVB-S's transport packets).
+    Its estimates are in `stream.est[name]`.
     """
     def __init__(self, period, markers=None, pattern=None, unit=8, acquire=None, threshold=0.9, misses=3, polarity=True,
-                 name="align", start="any"):
+                 name="align", start="any", publish=False):
         if start not in ("any", "pattern"):
             raise ValueError(f"start is 'any' or 'pattern', not {start!r}")
-        self.start = start
+        self.start, self.publish = start, bool(publish)
         if (markers is None) == (pattern is None):
             raise ValueError("give markers (any of a set) or pattern (one per period), not both")
         self.period, self.unit = int(period), int(unit)
@@ -58,7 +60,7 @@ class Align(BitStage):
 
     def new_state(self, meta):
         return SimpleNamespace(pending=None, pend_pos=None, locked=False, flip=False, miss=0, index=0,
-                               dropped=0, periods=0, fraction=0.0, boundary=None, locks=0)
+                               dropped=0, periods=0, fraction=0.0, boundary=None, locks=0, frames=0)
 
     @staticmethod
     def _hard(x):
@@ -76,18 +78,12 @@ class Align(BitStage):
 
     def _estimate(self, bits):
         """Best (fraction, bit offset, polarity flipped, pattern position of the first period) over a window of hard bits"""
-        best = (0.0, 0, False, 0)
-        P = self.span
-        n = (len(bits) - P)//P # whole periods every offset sees
-        for flip in ((False, True) if self.polarity else (False,)):
-            b = ~bits if flip else bits
-            for off in range(P):
-                heads = b[off:off + n*P].reshape(n, P)[:, :self.unit].astype(np.int64) @ self._w
-                for first in range(self.length):
-                    frac = float(self._expected(heads, first).mean())
-                    if frac > best[0]:
-                        best = (frac, off, flip, first)
-        return best
+        from ..math.bits import periodic_scores
+        sc = periodic_scores(bits, self.span, self.unit, self._allowed, polarity=self.polarity)
+        if not sc.size or sc.max() <= 0:
+            return (0.0, 0, False, 0)
+        flip, off, first = np.unravel_index(int(np.argmax(sc)), sc.shape)
+        return (float(sc[flip, off, first]), int(off), bool(flip), int(first))
 
     def step(self, x, st, meta):
         x = np.asarray(x)
@@ -127,6 +123,14 @@ class Align(BitStage):
                 if st.miss >= self.misses:
                     k = max(0, i + 1 - st.miss) # Keep the periods before the misses started
                     break
+            if self.publish:
+                from ..base.control import publish, anchor
+                n_out = sum(len(c) for c in out)
+                for j in range(k):
+                    at = st.pend_pos + j*P
+                    anchor(meta, self, at, n_out + j*P)
+                    publish(meta, self, {"frame": st.frames}, at=at, out=n_out + j*P)
+                    st.frames += 1
             out.append(chunk[:k*P])
             st.periods += k
             st.index = (st.index + k) % self.length

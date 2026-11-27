@@ -78,15 +78,18 @@ class Line(Pipe):
                 ctx[key] = bool(y[-1])
         elif self.name in MID:
             level, prev = ctx.get(key, (False, True)) # the line level, the bit before (Miller: a 1, so no boundary transition)
-            y = np.empty(2*len(x), dtype=bool)
-            for i, b in enumerate(x): # (a short state machine a bit: the level carries from one to the next)
-                if self.name != "miller" or (not b and not prev):
-                    level = not level # a transition at the start of the bit
-                y[2*i] = level
-                if bool(b) == MID[self.name]:
-                    level = not level # and in its middle
-                y[2*i + 1] = level
-                prev = bool(b)
+            # Each half bit's level is the level before XOR the parity of the transitions up to it: one at the start of a
+            # bit (Bi-phase always; Miller between two 0s), one mid-bit where the bit is the one MID sends
+            flips = np.empty(2*len(x), dtype=bool)
+            if self.name == "miller":
+                before = np.concatenate(([prev], x[:-1])) if len(x) else x
+                flips[0::2] = ~x & ~before
+            else:
+                flips[0::2] = True
+            flips[1::2] = x == MID[self.name]
+            y = (np.cumsum(flips, dtype=np.int64) % 2 == 1) ^ bool(level)
+            if len(x):
+                level, prev = bool(y[-1]), bool(x[-1])
             ctx[key] = (level, prev)
         else:
             y = np.empty(2*len(x), dtype=bool)

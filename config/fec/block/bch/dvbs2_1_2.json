@@ -1,8 +1,0 @@
-{
-  "base": "block",
-  "extends": "dvbs2_normal",
-  "comment": "DVB-S2 normal frame outer BCH, LDPC rate 1/2",
-  "n": 32400,
-  "k": 32208,
-  "t": 12
-}

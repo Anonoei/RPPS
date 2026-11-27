@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <pybind11/stl.h>
+#include <stdexcept>
 
 #include <vector>
 
@@ -198,13 +199,233 @@ std::vector<long long> gf2_eliminate(py::array_t<uint64_t, py::array::c_style> A
 }
 
 
+// ---------------------------------------------------------------- blind Reed-Solomon search (rpps/analysis/code/block/rs.py)
+// _count_zeros: the sliding transform of every byte stream (variant) at every root beta^j of every field, and how often
+// it is zero (z0) or the inverted-polarity constant Q (z1) at each codeword phase. Per (variant, field) independent: the
+// items of the parallel loop write disjoint cells. M1[(p*255 + j)*256 + x] = x*beta^j, MN the same for beta^(j*n).
+py::tuple rs_count_zeros(carray<uint8_t> V_a, long long n, carray<uint8_t> M1_a, carray<uint8_t> MN_a, carray<uint8_t> Q_a,
+                         long long words, int threads) {
+    check_shape(V_a, {-1, -1}, "V");
+    check_shape(Q_a, {-1, 255}, "Q");
+    const long long Vn = V_a.shape(0), L = V_a.shape(1), P = Q_a.shape(0);
+    if (M1_a.size() != P*255*256 || MN_a.size() != P*255*256)
+        throw std::invalid_argument("rs_count_zeros: M1 and MN are P*255*256 bytes");
+    if (n < 1)
+        throw std::invalid_argument("rs_count_zeros: n >= 1");
+    const long long T = std::min(L, n*(words + 1));
+    py::array_t<int16_t> z0({n, Vn, P, 255LL}), z1({n, Vn, P, 255LL});
+    int16_t *Z0 = z0.mutable_data(), *Z1 = z1.mutable_data();
+    std::fill(Z0, Z0 + z0.size(), 0);
+    std::fill(Z1, Z1 + z1.size(), 0);
+    const uint8_t *V = V_a.data(), *M1 = M1_a.data(), *MN = MN_a.data(), *Q = Q_a.data();
+    {
+        py::gil_scoped_release nogil;
+        parallel_for(Vn*P, threads, [&](long long vp) {
+            const long long v = vp/P, p = vp % P;
+            const uint8_t *m1 = M1 + p*255*256, *mn = MN + p*255*256, *q = Q + p*255, *row = V + v*L;
+            uint8_t E[255] = {0};
+            for (long long t = 0; t < T; t++) {
+                const uint8_t x = row[t], y = t >= n ? row[t - n] : 0;
+                const bool leave = t >= n, count = t >= n - 1;
+                const long long base = count ? (((t - n + 1) % n)*Vn + v)*P*255 + p*255 : 0;
+                for (long long j = 0; j < 255; j++) {
+                    uint8_t e = static_cast<uint8_t>(m1[j*256 + E[j]] ^ x);
+                    if (leave) e ^= mn[j*256 + y];
+                    E[j] = e;
+                    if (count) {
+                        Z0[base + j] += e == 0;
+                        Z1[base + j] += e == q[j];
+                    }
+                }
+            }
+        });
+    }
+    return py::make_tuple(z0, z1);
+}
+
 } // namespace
 
+
+// rpps.analysis.spectrum.find._Detector._detect_py: the occupied bins of whitened spectra Z (R rows of n bins, already
+// over their noise level). At each width k = 2^L (levels of them), the means of k bins at a stride of k/2 (the most
+// over the rows), seeded over hi[L] and grown over lo[L]; a run marks bins from its first window's centre - k/4 to its
+// last's + k/4 and is excised (set to 1) before the next width. From pool_from bins on it runs on means of `pool` bins.
+// Returns (occ (n) bool, score (n) float32: dB over the high threshold, kmin (n) float64: the narrowest width marking).
+py::tuple find_detect(carray<double> Z, carray<double> hi, carray<double> lo, long long pool_size, long long pool_from) {
+    if (Z.ndim() != 2) throw std::invalid_argument("find_detect: Z is (R, n)");
+    const long long R = Z.shape(0), n = Z.shape(1);
+    const int levels = static_cast<int>(hi.size());
+    if (static_cast<int>(lo.size()) != levels) throw std::invalid_argument("find_detect: hi and lo differ in length");
+    if (pool_size < 1 || (pool_size & (pool_size - 1))) throw std::invalid_argument("find_detect: pool a power of 2");
+    auto occ_o = py::array_t<bool>(n);
+    auto score_o = py::array_t<float>(n);
+    auto kmin_o = py::array_t<double>(n);
+    bool *oo = occ_o.mutable_data();
+    float *so = score_o.mutable_data();
+    double *ko = kmin_o.mutable_data();
+    {
+        py::gil_scoped_release nogil;
+        long long top = 1LL << (levels - 1);
+        while (top > n) top >>= 1;
+        const long long unit = std::max(top, pool_size);
+        const long long n_pad = (n + unit - 1)/unit*unit; // (blocks of every width fit; the padding is noise)
+        std::vector<double> Zx(R*n_pad, 1.0);
+        for (long long r = 0; r < R; r++) std::copy(Z.data() + r*n, Z.data() + (r + 1)*n, Zx.begin() + r*n_pad);
+        // The bin stage's marks, then the pooled stage's (each over its own points)
+        std::vector<uint8_t> occ1(n_pad, 0), occ;
+        std::vector<float> score1(n_pad, -INFINITY), score;
+        std::vector<double> kmin1(n_pad, INFINITY), kmin;
+        long long pool = 1, ncur = n_pad;
+        std::vector<double> B, Y, best;
+        long long nb = 0; // B's blocks a row (0: none)
+        std::vector<long long> gs, ge;
+        std::vector<uint8_t> mk;
+        std::vector<float> vk;
+        auto *O = &occ1;
+        auto *S = &score1;
+        auto *K = &kmin1;
+        for (int L = 0; L < levels; L++) {
+            const long long k = 1LL << L;
+            if (k > n) break;
+            if (pool == 1 && k >= pool_from) {
+                pool = pool_size;
+                const long long nn = n_pad/pool;
+                std::vector<double> Zp(R*nn);
+                for (long long r = 0; r < R; r++)
+                    for (long long j = 0; j < nn; j++) {
+                        double s = 0.0;
+                        for (long long q = 0; q < pool; q++) s += Zx[r*n_pad + j*pool + q];
+                        Zp[r*nn + j] = s/static_cast<double>(pool);
+                    }
+                Zx.swap(Zp);
+                ncur = nn;
+                occ.assign(ncur, 0);
+                score.assign(ncur, -INFINITY);
+                kmin.assign(ncur, INFINITY);
+                O = &occ;
+                S = &score;
+                K = &kmin;
+                nb = 0;
+            }
+            const long long kw = k/pool;
+            const long long n_win = k == 1 ? n - k + 1 : (n - k)/(k/2) + 1; // windows inside the real bins
+            const long long h = k == 1 ? 1 : kw/2;
+            Y.assign(n_win, -INFINITY);
+            if (k == 1) {
+                for (long long r = 0; r < R; r++)
+                    for (long long i = 0; i < n_win; i++) Y[i] = std::max(Y[i], Zx[r*ncur + i]);
+            } else {
+                if (nb == 0) { // block sums of h
+                    nb = ncur/h;
+                    B.assign(R*nb, 0.0);
+                    for (long long r = 0; r < R; r++)
+                        for (long long j = 0; j < nb; j++) {
+                            double s = 0.0;
+                            for (long long q = 0; q < h; q++) s += Zx[r*ncur + j*h + q];
+                            B[r*nb + j] = s;
+                        }
+                } else if (nb != ncur/h) { // pairs of the last width's blocks
+                    const long long nn = nb/2;
+                    for (long long r = 0; r < R; r++)
+                        for (long long j = 0; j < nn; j++) B[r*nn + j] = B[r*nb + 2*j] + B[r*nb + 2*j + 1];
+                    nb = nn;
+                    B.resize(R*nb);
+                }
+                for (long long r = 0; r < R; r++)
+                    for (long long i = 0; i < n_win; i++)
+                        Y[i] = std::max(Y[i], (B[r*nb + i] + B[r*nb + i + 1])/static_cast<double>(kw));
+            }
+            const double th = hi.data()[L], tl = lo.data()[L];
+            // Runs over the low threshold holding a seed over the high one, and each run's most
+            gs.clear();
+            ge.clear();
+            best.clear();
+            for (long long i = 0; i < n_win;) {
+                if (!(Y[i] > tl)) {
+                    i++;
+                    continue;
+                }
+                long long j = i;
+                double mx = -INFINITY;
+                bool seed = false;
+                while (j < n_win && Y[j] > tl) {
+                    mx = std::max(mx, Y[j]);
+                    seed |= Y[j] > th;
+                    j++;
+                }
+                if (seed) {
+                    gs.push_back(i);
+                    ge.push_back(j);
+                    best.push_back(mx);
+                }
+                i = j;
+            }
+            if (gs.empty()) continue;
+            mk.assign(ncur, 0);
+            vk.assign(ncur, -INFINITY);
+            for (std::size_t q = 0; q < gs.size(); q++) {
+                long long a0, b0;
+                if (k == 1) {
+                    a0 = gs[q];
+                    b0 = ge[q];
+                } else { // (in bins, then in this resolution's units)
+                    a0 = (gs[q]*(k/2) + k/4)/pool;
+                    b0 = ((ge[q] - 1)*(k/2) + k - k/4)/pool;
+                }
+                a0 = std::clamp(a0, 0LL, ncur);
+                b0 = std::clamp(b0, 0LL, ncur);
+                const float v = static_cast<float>(10.0*std::log10(std::max(best[q], 1e-30)/th));
+                for (long long i = a0; i < b0; i++) {
+                    mk[i] = 1;
+                    vk[i] = std::max(vk[i], v);
+                }
+            }
+            for (long long i = 0; i < ncur; i++) {
+                if (!mk[i]) continue;
+                (*O)[i] = 1;
+                (*S)[i] = std::max((*S)[i], vk[i]);
+                (*K)[i] = std::min((*K)[i], static_cast<double>(k));
+                for (long long r = 0; r < R; r++) Zx[r*ncur + i] = 1.0;
+            }
+            if (k > 1) { // the blocks the excision touched, summed again
+                long long last = -1;
+                for (long long i = 0; i < ncur; i++) {
+                    if (!mk[i] || i/h == last) continue;
+                    last = i/h;
+                    for (long long r = 0; r < R; r++) {
+                        double s = 0.0;
+                        for (long long q = 0; q < h; q++) s += Zx[r*ncur + last*h + q];
+                        B[r*nb + last] = s;
+                    }
+                }
+            } else {
+                nb = 0; // (the first blocks are taken from Zx at width 2)
+            }
+        }
+        for (long long i = 0; i < n; i++) {
+            oo[i] = occ1[i] != 0;
+            so[i] = score1[i];
+            ko[i] = kmin1[i];
+            if (pool > 1) {
+                const long long j = i/pool;
+                oo[i] = oo[i] || occ[j];
+                so[i] = std::max(so[i], score[j]);
+                ko[i] = std::min(ko[i], kmin[j]);
+            }
+        }
+    }
+    return py::make_tuple(occ_o, score_o, kmin_o);
+}
+
 void register_analysis(py::module_ &m) {
+    m.def("find_detect", &find_detect, "find_detect(Z (R, n), hi (levels), lo (levels), pool, pool_from) -> (occ, score, kmin): rpps.analysis.spectrum.find's detector",
+          py::arg("Z"), py::arg("hi"), py::arg("lo"), py::arg("pool"), py::arg("pool_from"));
     m.def("cpm_psp", &cpm_psp, "cpm_psp(r, Q (L, ns), atab (2, 8), S, parity, k1, k2) -> (bits, metric)",
           py::arg("r"), py::arg("Q"), py::arg("atab"), py::arg("S"), py::arg("parity"), py::arg("k1"), py::arg("k2"));
     m.def("gf2_eliminate", &gf2_eliminate, "gf2_eliminate(A (R, words) uint64 in place, ncols, threads) -> pivot columns",
           py::arg("A"), py::arg("ncols"), py::arg("threads") = 0);
+    m.def("rs_count_zeros", &rs_count_zeros, "rs_count_zeros(V (Vn, L) uint8, n, M1, MN (P*255*256) uint8, Q (P, 255) uint8, words, threads) -> (z0, z1) (n, Vn, P, 255) int16",
+          py::arg("V"), py::arg("n"), py::arg("M1"), py::arg("MN"), py::arg("Q"), py::arg("words"), py::arg("threads") = 0);
 }
 
 } // namespace rpps

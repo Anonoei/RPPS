@@ -1,8 +1,7 @@
 {
-  "base": "window",
   "type": "tukey",
   "comment": "Tukey (tapered cosine) window, a quarter of it tapered",
-  "params": {
-    "a": 0.25
-  }
+  "ref": "F. J. Harris, On the Use of Windows for Harmonic Analysis with the DFT, Proc. IEEE 66(1), 1978, 51-83",
+  "tags": ["example"],
+  "params": {"a": 0.25}
 }

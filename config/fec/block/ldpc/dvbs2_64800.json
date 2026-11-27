@@ -1,5 +1,4 @@
 {
-  "base": "block",
   "abstract": true,
   "type": "ldpc",
   "comment": "DVB-S2 normal frame LDPC codes (64800 bits): each rate's parity address table from annex B",

@@ -1,10 +1,6 @@
 {
-  "base": "conv",
   "extends": "k7_171_133",
   "comment": "DVB-S inner code, rate 3/4: G1=171 G2=133 octal",
   "tags": ["dvb-s"],
-  "puncture": [
-    [1, 0, 1],
-    [1, 1, 0]
-  ]
+  "puncture": [[1, 0, 1], [1, 1, 0]]
 }

@@ -1,0 +1,17 @@
+{
+  "type": "bch",
+  "comment": [
+    "P25 phase 1 Network Identifier: NAC (12 bits) and DUID (4 bits) in a (63,16,23) primitive BCH code over GF(2^6),",
+    "g(x) = 6331 1413 6723 5453 octal, then a 64th bit P that is the XOR of the DUID's two last bits S1, S0 (message",
+    "bits 14, 15): the last column of the spec's 16 x 64 generator matrix, 1 for LDU1 and LDU2 only (not overall",
+    "parity)"
+  ],
+  "ref": "TIA-102.BAAA-A 8.5, Tables 8-3, 8-4",
+  "tags": ["p25"],
+  "n": 63,
+  "k": 16,
+  "m": 6,
+  "poly": "0x43",
+  "t": 11,
+  "append": [[14, 15]]
+}

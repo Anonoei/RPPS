@@ -1,0 +1,9 @@
+{
+  "ref": "IRIG 106 ch 2",
+  "title": "IRIG 106 SOQPSK-TG",
+  "features": {
+    "modulation": ["oqpsk", "qpsk", "soqpsk"],
+    "h": 0.5,
+    "frequency": [[1435000000.0, 1525000000.0], [2200000000.0, 2395000000.0], [4400000000.0, 4950000000.0]]
+  }
+}
