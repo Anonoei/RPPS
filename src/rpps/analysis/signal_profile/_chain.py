@@ -199,7 +199,9 @@ class _Chain:
         """Other readings of a good lock no code fits, at most `n` (rpps._effort "retries"): [(baud, constellations)],
         the runner-up constellation of the search first (by its score), then twice and half the rate (a rate locked an
         octave off still shows a line; the symbols then repeat or smear, and no code fits them). None when the lock is
-        doubtful (its own steps say what else to try), named, or a code was found"""
+        doubtful (its own steps say what else to try), named, or a code was found (or the chain never ran)"""
+        if self.dead or not hasattr(self, "stream"):
+            return []
         det = self.stream.det
         fec = self.stream.est.get("fec") if det is not None else None
         acq = next((st for st in p.steps if st.kind == "acquire"), None)

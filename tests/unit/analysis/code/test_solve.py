@@ -201,3 +201,42 @@ def test_rs_scan_finds_words_with_errors_by_decoding_them(rng):
     with rp.effort("fast"):
         hyps, trials, _ = scan_rs(bits, names=["rs/204_188"], interleavers=False)
     assert not any(h.z > z_critical(trials) for h in hyps)
+
+def test_pair_z_by_matrix_products_is_each_relation_built():
+    """scan_conv's z for every generator pair (mother._pair_z, two matrix products) against the relations built one by
+    one: soft (_soft_z) and hard (the count of relation bits that hold)"""
+    from rpps.analysis.code.conv import mother
+    from rpps.math.prob import deviance_z
+    rng = np.random.default_rng(5)
+    K, polys = 5, mother._polys(5)
+    streams = [rng.integers(0, 2, 3000).astype(np.uint8) for _ in range(2)]
+    rel = [np.log(np.clip(np.tanh(np.abs(rng.normal(size=3000))*2), 1e-12, 1)) for _ in range(2)]
+    conv = [mother._convolve_all(c, polys, K) for c in streams]
+    sums = [mother._sum_all(r, polys, K) for r in rel]
+    soft, hard = mother._pair_z(conv, sums)[(0, 1)], mother._pair_z(conv, None)[(0, 1)]
+    for ia in range(len(polys)):
+        s = conv[0] ^ conv[1][ia]
+        assert np.allclose(soft[:, ia], mother._soft_z(s, sums[0] + sums[1][ia]))
+        assert np.allclose(hard[:, ia], deviance_z(s.sum(axis=1), s.shape[1]))
+
+def test_zero_syndrome_words_at_every_phase_by_prefix_xor():
+    """_rs_zero (every window's first syndrome from one prefix XOR) against the syndromes word by word: random bytes,
+    codewords after a stray lead (all 8 at their phase, none elsewhere), one value repeated (no codeword); every
+    configured byte-wide RS code, the dual-basis one too"""
+    from rpps.analysis.identify import _scans as S
+    from rpps.code.coding import cached
+    rng = np.random.default_rng(0)
+    for name in rp.code.names("block", "rs"):
+        code = cached(f"block/{name}").encoder
+        if getattr(code, "m", 8) != 8:
+            continue
+        n = code.den
+        cw = np.asarray((rp.Data(rng.integers(0, 2, code.num*8*30).astype(bool))*rp.code.load(f"block/{name}")).data)
+        for seg in (rng.integers(0, 256, 40*n), np.concatenate((rng.integers(0, 256, 57), code.to_symbols(cw))),
+                    np.full(30*n, 7)):
+            phases = list(range(n))
+            first = (len(seg) - n)//n - 8
+            rows = np.stack([seg[p + first*n:p + (first + 8)*n].reshape(8, n) for p in phases])
+            want = (~code.syndromes(rows.reshape(-1, n)).any(axis=1).reshape(n, 8) &
+                    ~(rows == rows[:, :, :1]).all(axis=2)).sum(axis=1)
+            assert np.array_equal(S._rs_zero(code, seg, n, phases, 8), want)

@@ -27,3 +27,11 @@ def test_fir_undoes_recur(rng):
     u = rng.integers(0, 2, 5000).astype(np.uint8)
     for delays in ([1, 2], [14, 17], [3, 20]):
         assert np.array_equal(gf2.fir(gf2.recur(u, delays), delays), u)
+
+def test_rank_by_the_native_elimination_is_the_reference_loops():
+    """gf2.rank (the C++ elimination's pivots) against its Python loop on products of known rank, every shape"""
+    rng = np.random.default_rng(0)
+    for R, n, k in ((10, 20, 5), (200, 300, 150), (64, 64, 64), (500, 128, 90), (1, 1, 1), (30, 700, 30)):
+        for _ in range(4):
+            M = (rng.integers(0, 2, (R, k)) @ rng.integers(0, 2, (k, n)) % 2).astype(np.uint8)
+            assert gf2.rank(M) == gf2._rank_python(M) <= k

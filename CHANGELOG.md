@@ -478,6 +478,13 @@ what to use instead.
 - **`rp.sync.time.OerderMeyr` times from a sample a symbol** (it needed 2): under 4 samples a symbol its window is
   upsampled by the least power of 2 to 4 (`rp.math.interp.upsampled`) and the symbols read with the 12-tap sinc under 2.
   A 30 MBd carrier in 50 MS/s (1.67 samples a symbol) receives as at 3.33, with no re-extraction.
+- **Blind analysis is 2-4x faster** (`tools/ident_bench.py`, 15 dB: DVB-S2 126 to 31 s a case, 802.11b 138 to 42, LTE
+  141 to 48, CCSDS TM concatenated 135 to 47; the test suite 478 to 209 s). The convolutional scan's z for every
+  generator pair comes from two matrix products (it built each relation: P^2 exponentials a stream pair); the
+  Reed-Solomon scan's first syndromes at every phase from one prefix XOR; `math.gf2.rank` by the C++ elimination;
+  `identify` looks for frames behind a marker before an RS scan over every phase (found, the scan has nothing to
+  add); `rp._config.ls` keeps its answers while no definition file changes (a listing was 20 ms, asked hundreds of
+  times a profile).
 - **Blind code scans reach lower SNR.** `identify`'s Reed-Solomon scan scores words that decode within t when no phase
   has clean words (`rs_decode_scan`, off at effort "fast"): RS(204,188) behind a DVB-S Viterbi is found at 6 dB Es/N0
   (8 before). The blind convolutional scan weighs each parity relation by its bits' LLRs: an unknown K=6 code is found
@@ -537,6 +544,7 @@ what to use instead.
   often as they fail): a CRC-24 passing on 28 of 149 weak packets is no chance. And a profile built on the one a code
   names isn't taken when a layer of its own gives nothing (`dvbs/si` on transport packets that carry no tables), nor a
   framed profile one of whose checks is refuted (DVB-S2's PLS read on 802.15.4 chips, its BBHEADER CRC never).
+- **`analysis.profile` raised AttributeError** retrying a signal whose channel couldn't be made.
 - **`rp.analysis.burst.shared_segments` raised a math domain error** on hundreds of bursts (a weak or absent network):
   the chance of them agreeing underflowed to 0. It is no shared segment, and the bursts are demodulated blind.
 - **A convolutional profile decoded at only some carrier phases** (`dvbs/qpsk`: 5 of 12): nothing resolved the 90 degree

@@ -120,10 +120,46 @@ def ls(domain, path=None, all=False, blind=False):
     blind: only what the blind tools (identify, survey, solve, the catalogue) try: not the definitions tagged "example"
     (made up to show a feature, no system uses them), and under `select_tags` only the tagged ones carrying a selected
     tag (untagged generic ones stay: QPSK, whose DVB-S2 map is tagged, is still a generic set)"""
+    roots_ = _roots(domain, path)
+    key = (domain, str(path) if path else None, all, blind, state(), selected_tags() if blind else None,
+           tuple(_fingerprint(r) for r in roots_))
+    hit = _LS.get(key)
+    if hit is not None:
+        return {k: list(v) for k, v in hit.items()}
+    out = _ls(domain, roots_, all, blind)
+    if len(_LS) > 256:
+        _LS.clear()
+    _LS[key] = out
+    return {k: list(v) for k, v in out.items()}
+
+_LS: dict = {} # ls's answers, by its arguments, the config state and the files' fingerprint
+
+def _fingerprint(root):
+    """Every .json below root with its modification time (one scandir walk: no parsing): what ls's answer depends on"""
+    out = []
+    stack = [str(root)]
+    while stack:
+        d = stack.pop()
+        try:
+            it = os.scandir(d)
+        except OSError:
+            continue
+        with it:
+            for e in it:
+                if e.is_dir(follow_symlinks=False):
+                    stack.append(e.path)
+                elif e.name.endswith(".json"):
+                    try:
+                        out.append((e.path, e.stat().st_mtime_ns))
+                    except OSError:
+                        pass
+    return tuple(sorted(out))
+
+def _ls(domain, roots_, all, blind):
     out: dict = {}
     seen = set() # (a name a higher layer has decides, as `locate` does)
     sel = set(selected_tags() or ()) if blind else set()
-    for root in _roots(domain, path):
+    for root in roots_:
         for f in _files(root):
             rel = f.parent.relative_to(root).as_posix()
             key = domain if rel == "." else rel

@@ -99,11 +99,17 @@ def _identify(symbols, constellation, names, blind, differential, profiles, baud
         steps = pre + symbol_steps(key) + [{"sync": "puncture", "conv": out.name},
                                            {"code": "conv", "name": out.name}]
         info = decode_tail(bit_streams(y, c, differential, keys=[key])[key], cached("/".join(conv.coding)))
-        h, t, short = scan_rs(info)
-        rs_rep = Report(h, t, None)
-        rs = rs_rep.verdict
+        # Frames behind a marker first, the code inside them (CCSDS TM concatenated): found, a Reed-Solomon scan over
+        # every phase of the stream has nothing to add (it costs seconds on a stream whose code is in its frames)
+        fl = layer(info)
+        if fl is not None and fl.code is not None:
+            rs, short = None, False
+        else:
+            h, t, short = scan_rs(info)
+            rs = Report(h, t, None).verdict
+            if rs is not None:
+                fl = None
         out.complete = rs is not None or not short # More symbols could still show a Reed-Solomon code inside
-        fl = layer(info) if rs is None else None # Frames behind a marker, the code inside them (CCSDS TM concatenated)
         if rs is None and (fl is None or fl.code is None): # Long frames (10232 bits at depth 5) want more than the tail
             more = decode_tail(bit_streams(y, c, differential, keys=[key])[key], cached("/".join(conv.coding)), fraction=0.95)
             if len(more) > 1.3*len(info):

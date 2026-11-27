@@ -181,17 +181,34 @@ def _rs_zero(code, seg, n, phases, words):
     """Zero-syndrome words among the last `words` whole codewords at each phase of seg: (len(phases),) counts. A random
     word has zero syndromes 256^-nroots of the time"""
     first = (len(seg) - max(phases) - 1)//n - words # Codewords from each phase that fit, less those used
-    rows = np.stack([seg[p + first*n:p + (first + words)*n].reshape(words, n) for p in phases])
-    flat_rows = rows.reshape(-1, n)
-    # S_1 of every word first: a word not of the code has it nonzero but for 1/256; all of them only for the rest
-    zero = code.syndromes(flat_rows, 1)[:, 0] == 0
+    seg = np.asarray(seg)
+    # S_1 of every word first: a word not of the code has it nonzero but for 1/256; all of them only for the rest.
+    # Every window's at once (`_s1_zero`): the same as code.syndromes(words, 1)[:, 0] == 0
+    starts = (np.asarray(phases)[:, None] + (first + np.arange(words))[None, :]*n).reshape(-1)
+    zero = _s1_zero(code, seg, n)[starts]
     rest = np.flatnonzero(zero)
     if len(rest):
-        zero[rest] = ~code.syndromes(flat_rows[rest]).any(axis=1)
-    zero = zero.reshape(len(phases), words)
-    flat = (rows == rows[:, :, :1]).all(axis=2) # One value repeated (idle, a dead carrier) is a codeword of any RS code
-    return (zero & ~flat).sum(axis=1)
+        rows = seg[starts[rest, None] + np.arange(n)[None, :]]
+        flat = (rows == rows[:, :1]).all(axis=1) # One value repeated (idle, a dead carrier) is a codeword of any RS code
+        zero[rest] = ~code.syndromes(rows).any(axis=1) & ~flat
+    return zero.reshape(len(phases), words).sum(axis=1)
 
+
+def _s1_zero(code, seg, n):
+    """Whether the first syndrome of the n-symbol window at every start of seg (field elements) is 0: (len(seg) - n + 1,)
+    bool. S_1(p) = sum_k seg[p + k] b^(n - 1 - k), b = alpha^(fcr prim), is b^(n - 1 + p) times the XOR of
+    x_j = seg[j] b^-j over the window: a prefix XOR gives every window's (zero when that XOR is), where the words one
+    by one cost n field products each, at every phase"""
+    gf = code.gf
+    q1 = (1 << code.m) - 1
+    seg = np.asarray(seg, dtype=np.int64)
+    step = (code.fcr*code.prim) % q1
+    j = np.arange(len(seg), dtype=np.int64)
+    nz = seg != 0
+    x = np.zeros(len(seg), np.int64)
+    x[nz] = gf.exp[(gf.log[seg[nz]] - j[nz]*step) % q1]
+    P = np.concatenate(([0], np.bitwise_xor.accumulate(x)))
+    return (P[n:] ^ P[:len(seg) - n + 1]) == 0
 
 def _rs_ok(code, seg, n, phases, words):
     """Words that decode (within the code's t errors, rpps.code: errors >= 0) among the last `words` whole codewords at

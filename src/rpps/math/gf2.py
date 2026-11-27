@@ -99,7 +99,15 @@ def rref(M, pivot_cols=None):
     return unpack_rows(A[:len(piv)], n), piv
 
 def rank(M):
-    """Rank of M over GF(2) (bit-packed elimination, rows below the pivot only)"""
+    """Rank of M over GF(2): the pivots of `eliminate_packed` (the C++ kernel), else `_rank_python`"""
+    from .. import _accel
+    M = np.asarray(M, dtype=np.uint8)
+    if _accel.native is not None and M.ndim == 2 and M.size:
+        return len(eliminate_packed(pack_rows(M), M.shape[1]))
+    return _rank_python(M)
+
+def _rank_python(M):
+    """`rank` by bit-packed elimination, rows below the pivot only: the reference"""
     M = np.asarray(M, dtype=np.uint8)
     R, n = M.shape
     A64, A8 = _pack(M)

@@ -543,7 +543,7 @@ def test_a_good_lock_no_code_fits_is_read_again():
     from rpps.analysis.signal_profile._result import SignalProfile
     det = N(baud=1e6, scores={"qpsk": 0.4, "8psk": 0.1, "bpsk": -1.0})
     ch = _Chain.__new__(_Chain)
-    ch.sig, ch.ch = N(width=1.35e6), N(Fs=8e6)
+    ch.dead, ch.sig, ch.ch = False, N(width=1.35e6), N(Fs=8e6)
     ch.stream = N(det=det, est={"fec": N(found=False, complete=True)})
     p = SignalProfile("s", ch.sig)
     p.add("acquire", "QPSK at 1 MBd")
@@ -565,3 +565,12 @@ def test_a_retry_at_another_rate_replaces_a_reading_that_found_no_code(dvbs_capt
     half = lambda s: {"baud": 5e5, "blind": False} if abs(s.mid - 1.7e6) < 2e5 else None
     p = min(rp.analysis.profile(fresh(), blind=False, hint=half), key=lambda p: abs(p.signal.mid - 1.7e6) - p.signal.width)
     assert p.profile_name == "dvbs/qpsk_3_4" and p.steps[1].kind == "retry" and "2x" in p.steps[1].what
+
+def test_a_chain_that_never_ran_has_no_retries():
+    """A chain whose channel failed (dead, no stream): nothing to read again, and no error"""
+    from types import SimpleNamespace as N
+    from rpps.analysis.signal_profile._chain import _Chain
+    from rpps.analysis.signal_profile._result import SignalProfile
+    ch = _Chain.__new__(_Chain)
+    ch.dead, ch.sig = True, N(width=1e3)
+    assert ch.retries(SignalProfile("s", ch.sig), 4) == []
