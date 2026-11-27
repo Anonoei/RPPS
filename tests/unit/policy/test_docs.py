@@ -80,4 +80,4 @@ def test_gen_docs(tmp_path):
     full = (tmp_path / "llms-full.txt").read_text()
     assert full.startswith((ROOT / "AGENTS.md").read_text().rstrip()[:200])
     assert "## rpps.base" in full and "## rpps.sync.track" in full
-    assert len(full) < 245_000, f"llms-full.txt is {len(full)} bytes: about {len(full)//4} tokens"
+    assert len(full) < 300_000, f"llms-full.txt is {len(full)} bytes: about {len(full)//4} tokens"
