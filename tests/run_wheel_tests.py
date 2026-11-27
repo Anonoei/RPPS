@@ -16,4 +16,5 @@ with tempfile.TemporaryDirectory() as tmp:
         shutil.copytree(ROOT / name, run / name, ignore=shutil.ignore_patterns("__pycache__"))
     for name in ("README.md", "pyproject.toml"):
         shutil.copy(ROOT / name, run / name)
-    sys.exit(subprocess.call([sys.executable, "-m", "pytest", "-q", "-m", "not slow", "tests/unit"], cwd=run))
+    # In parallel: serially a pass takes 16-27 minutes on a runner, and a wheel job tests three Pythons within an hour
+    sys.exit(subprocess.call([sys.executable, "-m", "pytest", "-q", "-n", "auto", "-m", "not slow", "tests/unit"], cwd=run))
