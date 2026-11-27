@@ -77,6 +77,17 @@ def test_ble_packets_are_messages_placed_in_the_capture(ble):
         assert m.fields["type"] == 2 and m.fields["txadd"] == 1 and m.payload == np.packbits(pdu).tobytes()
         assert 0 <= m.sample - start < 4*(8 + 32 + 16 + 8) # After the preamble and access address, at 4 samples a bit
 
+def test_ble_message_places_do_not_depend_on_where_the_burst_is_cut(ble):
+    """A floor far under the packets (rounding noise, here added) cuts each burst earlier: the preamble step drops the
+    lead, and the messages stay where their packets are"""
+    p, x, pdus, starts = ble
+    rng = np.random.default_rng(3)
+    y = x.copy()
+    for s in starts[1:]: # A faint lead-in, well over the silence and far under the packet
+        y[s - 120:s - 20] += (1e-3*(rng.normal(size=100) + 1j*rng.normal(size=100))).astype(np.complex64)
+    clean, led = run(p, x, 4e6, 4), run(p, y, 4e6, 4)
+    assert [m.sample for m in led] == [m.sample for m in clean]
+
 def runner_messages(name, x, Fs, block, kinds=None, **params):
     """Messages of a branching profile run block by block on a capture (rp.source.Memory)"""
     rx, msgs = rp.profile.load(name, **params).rx(kinds=kinds), []
