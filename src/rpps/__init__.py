@@ -37,7 +37,7 @@ with the package (`python -m rpps ls` lists them; `rp.load("<resource>/<name>")`
 `rpps._effort`). The per-sample loops and decoders run in C++ (`rpps._native`) with a Python fallback.
 """
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 __author__ = "Anonoei <to+dev@an0.us>"
 
 from . import logger
